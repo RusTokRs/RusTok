@@ -31,11 +31,7 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
 }
 
 fn registry_route_is_global(path: &str) -> bool {
-    const REGISTRY_ROOT: &str = "/v2/catalog";
-    const TENANT_SCOPED_PLATFORM_BUILD_SUFFIX: &str = "/platform-build-stage";
-
-    path_is_or_descendant(path, REGISTRY_ROOT)
-        && !path.ends_with(TENANT_SCOPED_PLATFORM_BUILD_SUFFIX)
+    path_is_or_descendant(path, "/v2/catalog/runner")
 }
 
 #[cfg(test)]
@@ -66,7 +62,15 @@ mod tests {
         );
         assert_eq!(
             tenant_route_scope("/v2/catalog/publish"),
-            TenantRouteScope::GlobalOperator
+            TenantRouteScope::TenantBound
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/publish/request-1/approve"),
+            TenantRouteScope::TenantBound
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/publish/request-1/platform-build-stage"),
+            TenantRouteScope::TenantBound
         );
         assert_eq!(
             tenant_route_scope("/v2/catalog/runner/claim"),
