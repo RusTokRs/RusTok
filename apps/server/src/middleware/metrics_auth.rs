@@ -1,3 +1,5 @@
+use crate::common::is_production_environment;
+
 use axum::{
     body::{Body, to_bytes},
     http::{HeaderValue, Request, StatusCode, header},
@@ -20,8 +22,10 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 /// no host token is configured.
 pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
+    let is_production = is_production_environment();
+
     if path == "/health/ready" {
-        let reveal_details = request_is_authorized(&request);
+        let reveal_details = request_is_authorized(&request, is_production);
         let response = next.run(request).await;
         return normalize_readiness_response(response, reveal_details).await;
     }
@@ -31,7 +35,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     }
 
     let Some(expected) = configured_token() else {
-        if cfg!(debug_assertions) {
+        if allow_unauthenticated_without_token(is_production) {
             return next.run(request).await;
         }
         return (
@@ -53,13 +57,17 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
         .into_response()
 }
 
-fn request_is_authorized(request: &Request<Body>) -> bool {
+fn request_is_authorized(request: &Request<Body>, is_production: bool) -> bool {
     match configured_token() {
         Some(expected) => {
             supplied_token(request).is_some_and(|supplied| constant_time_eq(supplied, &expected))
         }
-        None => cfg!(debug_assertions),
+        None => allow_unauthenticated_without_token(is_production),
     }
+}
+
+fn allow_unauthenticated_without_token(is_production: bool) -> bool {
+    !is_production
 }
 
 fn supplied_token(request: &Request<Body>) -> Option<&str> {
@@ -152,8 +160,8 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        constant_time_eq, is_protected_observability_path, parse_bearer_token,
-        readiness_http_status,
+        allow_unauthenticated_without_token, constant_time_eq, is_protected_observability_path,
+        parse_bearer_token, readiness_http_status,
     };
     use axum::http::StatusCode;
 
@@ -172,6 +180,12 @@ mod tests {
         assert!(!is_protected_observability_path("/health/live"));
         assert!(!is_protected_observability_path("/health/ready"));
         assert!(!is_protected_observability_path("/api/graphql"));
+    }
+
+    #[test]
+    fn missing_token_is_fail_closed_only_for_production_environment() {
+        assert!(!allow_unauthenticated_without_token(true));
+        assert!(allow_unauthenticated_without_token(false));
     }
 
     #[test]
