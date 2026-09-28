@@ -468,9 +468,6 @@ pub fn compose_application_router(
         .layer(axum_middleware::from_fn_with_state(
             runtime.rate_limit_state,
             rate_limit_for_paths,
-        ))
-        .layer(axum_middleware::from_fn(
-            middleware::security_headers::security_headers,
         ));
 
     let router = middleware::http_stack::apply_http_edge_stack(
