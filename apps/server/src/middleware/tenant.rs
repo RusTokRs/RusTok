@@ -30,7 +30,7 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v2";
-const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 2;
+const TENANT_CONTEXT_SCHEMA_VERSION: u32 = 3;
 const TENANT_NEGATIVE_SCHEMA_VERSION: u32 = 1;
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -55,7 +55,7 @@ struct CachedTenantContext {
     name: String,
     slug: String,
     domain: Option<String>,
-    settings_json: String,
+    settings: serde_json::Value,
     default_locale: String,
     is_active: bool,
 }
@@ -69,7 +69,7 @@ impl TryFrom<TenantContext> for CachedTenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings_json: serde_json::to_string(&context.settings)?,
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
         })
@@ -85,7 +85,7 @@ impl TryFrom<CachedTenantContext> for TenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: serde_json::from_str(&context.settings_json)?,
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
         })
