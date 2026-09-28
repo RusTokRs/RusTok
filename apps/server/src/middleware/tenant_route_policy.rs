@@ -54,6 +54,18 @@ mod tests {
             TenantRouteScope::GlobalOperator
         );
         assert_eq!(
+            tenant_route_scope("/api/fn/admin/active-build"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/api/fn/admin/build-history"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/ws/builds"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
             tenant_route_scope("/healthcare"),
             TenantRouteScope::TenantBound
         );
