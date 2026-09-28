@@ -454,10 +454,12 @@ fn matching_path_policy<'a>(
     path: &str,
 ) -> Option<&'a PathRateLimitPolicy> {
     policies.iter().find(|policy| {
-        policy
-            .prefixes
-            .iter()
-            .any(|prefix| path.starts_with(prefix))
+        policy.prefixes.iter().any(|prefix| {
+            path == *prefix
+                || path
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        })
     })
 }
 
@@ -786,6 +788,62 @@ mod diagnostic_tests {
         assert_eq!(fingerprint.len(), 16);
         assert!(!fingerprint.contains("192.0.2.10"));
         assert!(!fingerprint.contains("7f4f3e6e-3f1f-4f99-8d4b-3cc2c3b7a2d1"));
+    }
+}
+
+#[cfg(test)]
+mod path_matching_tests {
+    use super::*;
+
+    fn policy(prefix: &'static str, namespace: &'static str) -> PathRateLimitPolicy {
+        PathRateLimitPolicy {
+            limiter: Arc::new(RateLimiter::new(RateLimitConfig {
+                requests_per_minute: 10,
+                burst: 2,
+                redis_url: None,
+                redis_key_prefix: namespace.to_string(),
+            })),
+            prefixes: Arc::new(vec![prefix]),
+        }
+    }
+
+    #[test]
+    fn path_matching_respects_segment_boundaries() {
+        let policies = vec![
+            policy("/api/auth/login", "auth"),
+            policy("/api/", "api"),
+        ];
+
+        assert_eq!(
+            matching_path_policy(&policies, "/api/auth/login")
+                .expect("exact auth route")
+                .limiter
+                .namespace(),
+            "auth"
+        );
+        assert_eq!(
+            matching_path_policy(&policies, "/api/auth/login/device")
+                .expect("nested auth route")
+                .limiter
+                .namespace(),
+            "auth"
+        );
+        assert_eq!(
+            matching_path_policy(&policies, "/api/auth/login-extra")
+                .expect("generic api route")
+                .limiter
+                .namespace(),
+            "api"
+        );
+    }
+
+    #[test]
+    fn root_prefix_matches_itself_and_descendants_only() {
+        let policies = vec![policy("/api/auth/reset", "auth")];
+
+        assert!(matching_path_policy(&policies, "/api/auth/reset").is_some());
+        assert!(matching_path_policy(&policies, "/api/auth/reset/confirm").is_some());
+        assert!(matching_path_policy(&policies, "/api/auth/resetting").is_none());
     }
 }
 
