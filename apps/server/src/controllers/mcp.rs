@@ -599,30 +599,54 @@ async fn execute_remote_scaffold_tool(
             let request: ScaffoldModuleRequest = parse_tool_args(arguments)?;
             match draft_store.stage_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_stage_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::error!(
+                        correlation_id = %correlation_id,
+                        tool = %tool_name,
+                        error = %error,
+                        "MCP scaffold stage failed"
+                    );
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_stage_failed",
+                        "Scaffold staging failed",
+                    ))
+                },
             }
         }
         TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
             let request: ReviewModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.review_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_review_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::error!(
+                        correlation_id = %correlation_id,
+                        tool = %tool_name,
+                        error = %error,
+                        "MCP scaffold review failed"
+                    );
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_review_failed",
+                        "Scaffold review failed",
+                    ))
+                },
             }
         }
         TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
             let request: ApplyModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.apply_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_apply_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::error!(
+                        correlation_id = %correlation_id,
+                        tool = %tool_name,
+                        error = %error,
+                        "MCP scaffold apply failed"
+                    );
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_apply_failed",
+                        "Scaffold apply failed",
+                    ))
+                },
             }
         }
         _ => envelope_value(McpToolResponse::<()>::error(
