@@ -20,11 +20,26 @@ fn sample_tenant_projection(is_active: bool) -> TenantReadProjection {
 }
 
 #[test]
+fn tenant_cache_keys_change_with_generation_without_exposing_raw_identity() {
+    let builder = TenantCacheKeyBuilder::new("v2");
+    let current = builder.kind_key(TenantIdentifierKind::Slug, "demo", 10);
+    let next = builder.kind_key(TenantIdentifierKind::Slug, "demo", 11);
+    let current_negative = builder.kind_negative_key(TenantIdentifierKind::Slug, "demo", 10);
+    let next_negative = builder.kind_negative_key(TenantIdentifierKind::Slug, "demo", 11);
+
+    assert_ne!(current, next);
+    assert_ne!(current_negative, next_negative);
+    assert_ne!(current, current_negative);
+    assert!(!current.contains("demo"));
+    assert!(!next.contains("demo"));
+}
+
+#[test]
 fn canonical_tenant_keys_are_bounded_and_do_not_embed_long_identifiers() {
     let builder = TenantCacheKeyBuilder::new("v2");
     let identifier = format!("tenant-{}", "x".repeat(2_048));
-    let key = builder.kind_key(TenantIdentifierKind::Slug, &identifier);
-    let negative = builder.kind_negative_key(TenantIdentifierKind::Slug, &identifier);
+    let key = builder.kind_key(TenantIdentifierKind::Slug, &identifier, 1);
+    let negative = builder.kind_negative_key(TenantIdentifierKind::Slug, &identifier, 1);
 
     assert!(key.len() <= 512);
     assert!(negative.len() <= 512);

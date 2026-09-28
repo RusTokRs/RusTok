@@ -921,7 +921,9 @@ mod tests {
             settings.runtime.host_mode = RuntimeHostMode::Api;
             let runtime_context = ServerRuntimeContext::new(database.clone(), settings.clone());
             let cache = CacheService::from_url(None);
-            tenant::init_tenant_cache_infrastructure(&runtime_context, &cache).await;
+            tenant::init_tenant_cache_infrastructure(&runtime_context, &cache)
+                .await
+                .expect("tenant cache infrastructure");
             runtime_context.shared_insert(cache);
             let event_transport: Arc<dyn EventTransport> =
                 Arc::new(OutboxTransport::new(database.clone()));

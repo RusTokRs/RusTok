@@ -42,18 +42,19 @@ pub mod tenant {
     pub async fn init_tenant_cache_infrastructure(
         ctx: &ServerRuntimeContext,
         cache_service: &CacheService,
-    ) {
-        super::tenant_runtime::init_tenant_cache_infrastructure(ctx, cache_service).await;
-        let _ = crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+    ) -> crate::error::Result<()> {
+        super::tenant_runtime::init_tenant_cache_infrastructure(ctx, cache_service).await?;
+        crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
             ctx,
             cache_service.clone(),
         )
-        .await;
+        .await?;
         crate::services::tenant_locale_generation::start_tenant_locale_generation_listener(
             ctx,
             cache_service.clone(),
         )
         .await;
+        Ok(())
     }
 
     /// Invalidate the tenant resolver namespace through a durable generation rotation.
