@@ -32,7 +32,7 @@ use crate::middleware::tenant::{TenantCacheStats, tenant_cache_stats};
 use crate::models::_entities::tenants::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::email::{EmailDeliveryMetricsSnapshot, email_delivery_metrics_snapshot};
-use crate::services::rbac_consistency::{RbacConsistencyStats, load_rbac_consistency_stats};
+use crate::services::rbac_consistency::load_rbac_consistency_stats;
 use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
     RuntimeGuardrailSnapshot, collect_runtime_guardrail_snapshot,
@@ -71,7 +71,9 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
             payload.push_str(&render_email_backend_metrics(&ctx));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
-            payload.push_str(&render_search_metrics(&ctx).await);
+            if ctx.settings().features.search_indexing {
+                payload.push_str(&render_search_metrics(&ctx).await);
+            }
             payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);
 
             Ok((
@@ -86,26 +88,28 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
 }
 
 pub fn router() -> crate::routes::ServerRouter {
-    axum::Router::new().route("/metrics/", get(metrics))
+    axum::Router::new()
+        .route("/metrics", get(metrics))
+        .route("/metrics/", get(metrics))
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
     if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>()
-        && let Err(error) = shared.0.sync_runtime_metrics().await
+        && shared.0.sync_runtime_metrics().await.is_err()
     {
-        warn!(error = %error, "failed to sync API rate-limit metrics");
+        warn!(namespace = "api", "failed to sync rate-limit metrics");
     }
 
     if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>()
-        && let Err(error) = shared.0.sync_runtime_metrics().await
+        && shared.0.sync_runtime_metrics().await.is_err()
     {
-        warn!(error = %error, "failed to sync auth rate-limit metrics");
+        warn!(namespace = "auth", "failed to sync rate-limit metrics");
     }
 
     if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>()
-        && let Err(error) = shared.0.sync_runtime_metrics().await
+        && shared.0.sync_runtime_metrics().await.is_err()
     {
-        warn!(error = %error, "failed to sync oauth rate-limit metrics");
+        warn!(namespace = "oauth", "failed to sync rate-limit metrics");
     }
 }
 
@@ -175,22 +179,32 @@ async fn render_tenant_activity_metrics(ctx: &ServerRuntimeContext) -> String {
     let active_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(true))
         .count(ctx.db())
-        .await
-        .unwrap_or(0);
+        .await;
+
     let inactive_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(false))
         .count(ctx.db())
-        .await
-        .unwrap_or(0);
+        .await;
 
-    format_tenant_activity_metrics(active_total, inactive_total)
+    match (active_total, inactive_total) {
+        (Ok(active_total), Ok(inactive_total)) => {
+            format!(
+                "rustok_tenant_activity_metrics_collection_status 1\nrustok_tenant_active_total {active_total}\nrustok_tenant_inactive_total {inactive_total}\nrustok_tenant_total {tenant_total}\n",
+                tenant_total = active_total + inactive_total,
+            )
+        }
+        _ => {
+            warn!("failed to collect tenant activity metrics");
+            format!(
+                "rustok_tenant_activity_metrics_collection_status 0\nrustok_tenant_active_total NaN\nrustok_tenant_inactive_total NaN\nrustok_tenant_total NaN\n"
+            )
+        }
+    }
 }
 
 fn format_tenant_activity_metrics(active_total: u64, inactive_total: u64) -> String {
     format!(
-        "rustok_tenant_active_total {active_total}\n\
-rustok_tenant_inactive_total {inactive_total}\n\
-rustok_tenant_total {tenant_total}\n",
+        "rustok_tenant_activity_metrics_collection_status 1\nrustok_tenant_active_total {active_total}\nrustok_tenant_inactive_total {inactive_total}\nrustok_tenant_total {tenant_total}\n",
         tenant_total = active_total + inactive_total,
     )
 }
@@ -307,13 +321,13 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
         .count(ctx.db())
         .await
-        .unwrap_or(0);
+        .ok();
 
     let dlq_total = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Failed))
         .count(ctx.db())
         .await
-        .unwrap_or(0);
+        .ok();
 
     let retries_total = ctx
         .db()
@@ -324,8 +338,7 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         .await
         .ok()
         .flatten()
-        .and_then(|row| row.try_get::<i64>("", "total").ok())
-        .unwrap_or(0);
+        .and_then(|row| row.try_get::<i64>("", "total").ok());
 
     let pending_lag_seconds = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
@@ -334,11 +347,22 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         .await
         .ok()
         .flatten()
-        .map(|event| (Utc::now() - event.created_at).num_seconds().max(0))
-        .unwrap_or(0);
+        .map(|event| (Utc::now() - event.created_at).num_seconds().max(0));
 
-    let mut payload =
-        format_outbox_metrics(backlog_size, dlq_total, retries_total, pending_lag_seconds);
+    if backlog_size.is_none()
+        || dlq_total.is_none()
+        || retries_total.is_none()
+        || pending_lag_seconds.is_none()
+    {
+        warn!("failed to collect one or more outbox metrics");
+    }
+
+    let mut payload = format_outbox_metrics_optional(
+        backlog_size,
+        dlq_total,
+        retries_total,
+        pending_lag_seconds,
+    );
     let relay_metrics = ctx
         .shared_get::<Arc<EventRuntime>>()
         .and_then(|runtime| {
@@ -352,20 +376,49 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
     payload
 }
 
+fn format_metric_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "NaN".to_string(), |value| value.to_string())
+}
+
+fn format_metric_i64(value: Option<i64>) -> String {
+    value.map_or_else(|| "NaN".to_string(), |value| value.to_string())
+}
+
+fn format_outbox_metrics_optional(
+    backlog_size: Option<u64>,
+    dlq_total: Option<u64>,
+    retries_total: Option<i64>,
+    pending_lag_seconds: Option<i64>,
+) -> String {
+    let status = if backlog_size.is_some()
+        && dlq_total.is_some()
+        && retries_total.is_some()
+        && pending_lag_seconds.is_some()
+    {
+        1
+    } else {
+        0
+    };
+    format!(
+        "rustok_outbox_metrics_collection_status {status}\nrustok_outbox_backlog_size {backlog_size}\nrustok_outbox_dlq_total {dlq_total}\nrustok_outbox_retries_total {retries_total}\nrustok_outbox_pending_lag_seconds {pending_lag_seconds}\n",
+        backlog_size = format_metric_u64(backlog_size),
+        dlq_total = format_metric_u64(dlq_total),
+        retries_total = format_metric_i64(retries_total),
+        pending_lag_seconds = format_metric_i64(pending_lag_seconds),
+    )
+}
+
 fn format_outbox_metrics(
     backlog_size: u64,
     dlq_total: u64,
     retries_total: i64,
     pending_lag_seconds: i64,
 ) -> String {
-    format!(
-        "rustok_outbox_backlog_size {backlog_size}\n\
-rustok_outbox_dlq_total {dlq_total}\n\
-rustok_outbox_retries_total {retries_total}\n\
-rustok_outbox_pending_lag_seconds {pending_lag_seconds}\n\
-outbox_backlog_size {backlog_size}\n\
-outbox_dlq_total {dlq_total}\n\
-outbox_retries_total {retries_total}\n",
+    format_outbox_metrics_optional(
+        Some(backlog_size),
+        Some(dlq_total),
+        Some(retries_total),
+        Some(pending_lag_seconds),
     )
 }
 
@@ -494,11 +547,11 @@ async fn render_rbac_metrics(ctx: &ServerRuntimeContext) -> String {
     let stats = RbacService::metrics_snapshot();
     let started_at = Instant::now();
     let consistency = match load_rbac_consistency_stats(ctx).await {
-        Ok(stats) => stats,
-        Err(error) => {
+        Ok(stats) => Some(stats),
+        Err(_) => {
             RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
-            warn!(error = %error, "failed to load RBAC consistency stats");
-            RbacConsistencyStats::default()
+            warn!("failed to load RBAC consistency stats");
+            None
         }
     };
     let latency_ms = started_at.elapsed().as_millis() as u64;
@@ -507,9 +560,15 @@ async fn render_rbac_metrics(ctx: &ServerRuntimeContext) -> String {
 
     format_rbac_metrics(
         stats,
-        consistency.users_without_roles_total,
-        consistency.orphan_user_roles_total,
-        consistency.orphan_role_permissions_total,
+        consistency
+            .as_ref()
+            .map(|value| value.users_without_roles_total),
+        consistency
+            .as_ref()
+            .map(|value| value.orphan_user_roles_total),
+        consistency
+            .as_ref()
+            .map(|value| value.orphan_role_permissions_total),
     )
 }
 
@@ -519,58 +578,59 @@ async fn render_search_metrics(ctx: &ServerRuntimeContext) -> String {
 
     match ctx.db().query_one_raw(stmt).await {
         Ok(Some(row)) => {
-            let read_metric =
-                |column: &str| -> i64 { row.try_get::<i64>("", column).unwrap_or(0).max(0) };
+            let values = [
+                row.try_get::<i64>("", "total_documents")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "public_documents")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "stale_documents")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "tenants_with_documents")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "lagging_tenants")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "bootstrap_pending_tenants")
+                    .ok()
+                    .map(|value| value.max(0)),
+                row.try_get::<i64>("", "max_lag_seconds")
+                    .ok()
+                    .map(|value| value.max(0)),
+            ];
+            let complete = values.iter().all(Option::is_some);
+            if !complete {
+                warn!("failed to decode one or more search metrics");
+            }
 
             format!(
-                "rustok_search_metrics_collection_status 1\n\
-rustok_search_documents_total {total_documents}\n\
-rustok_search_public_documents_total {public_documents}\n\
-rustok_search_stale_documents_total {stale_documents}\n\
-rustok_search_tenants_with_documents_total {tenants_with_documents}\n\
-rustok_search_lagging_tenants_total {lagging_tenants}\n\
-rustok_search_bootstrap_pending_tenants_total {bootstrap_pending_tenants}\n\
-rustok_search_max_lag_seconds {max_lag_seconds}\n",
-                total_documents = read_metric("total_documents"),
-                public_documents = read_metric("public_documents"),
-                stale_documents = read_metric("stale_documents"),
-                tenants_with_documents = read_metric("tenants_with_documents"),
-                lagging_tenants = read_metric("lagging_tenants"),
-                bootstrap_pending_tenants = read_metric("bootstrap_pending_tenants"),
-                max_lag_seconds = read_metric("max_lag_seconds"),
+                "rustok_search_metrics_collection_status {status}\nrustok_search_documents_total {total_documents}\nrustok_search_public_documents_total {public_documents}\nrustok_search_stale_documents_total {stale_documents}\nrustok_search_tenants_with_documents_total {tenants_with_documents}\nrustok_search_lagging_tenants_total {lagging_tenants}\nrustok_search_bootstrap_pending_tenants_total {bootstrap_pending_tenants}\nrustok_search_max_lag_seconds {max_lag_seconds}\n",
+                status = if complete { 1 } else { 0 },
+                total_documents = format_metric_i64(values[0]),
+                public_documents = format_metric_i64(values[1]),
+                stale_documents = format_metric_i64(values[2]),
+                tenants_with_documents = format_metric_i64(values[3]),
+                lagging_tenants = format_metric_i64(values[4]),
+                bootstrap_pending_tenants = format_metric_i64(values[5]),
+                max_lag_seconds = format_metric_i64(values[6]),
             )
         }
-        Ok(None) => "rustok_search_metrics_collection_status 0\n\
-rustok_search_documents_total 0\n\
-rustok_search_public_documents_total 0\n\
-rustok_search_stale_documents_total 0\n\
-rustok_search_tenants_with_documents_total 0\n\
-rustok_search_lagging_tenants_total 0\n\
-rustok_search_bootstrap_pending_tenants_total 0\n\
-rustok_search_max_lag_seconds 0\n"
-            .to_string(),
-        Err(error) => {
-            if !is_missing_relation_error(&error) {
-                warn!(error = %error, "failed to load search metrics snapshot");
-            }
-            "rustok_search_metrics_collection_status 0\n\
-rustok_search_documents_total 0\n\
-rustok_search_public_documents_total 0\n\
-rustok_search_stale_documents_total 0\n\
-rustok_search_tenants_with_documents_total 0\n\
-rustok_search_lagging_tenants_total 0\n\
-rustok_search_bootstrap_pending_tenants_total 0\n\
-rustok_search_max_lag_seconds 0\n"
-                .to_string()
+        Ok(None) => {
+            warn!("search metrics snapshot returned no row");
+            search_metrics_unavailable_payload()
+        }
+        Err(_) => {
+            warn!("failed to load search metrics snapshot");
+            search_metrics_unavailable_payload()
         }
     }
 }
-
-fn is_missing_relation_error(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    message.contains("no such table")
-        || message.contains("undefinedtable")
-        || message.contains("relation") && message.contains("does not exist")
+fn search_metrics_unavailable_payload() -> String {
+    "rustok_search_metrics_collection_status 0\nrustok_search_documents_total NaN\nrustok_search_public_documents_total NaN\nrustok_search_stale_documents_total NaN\nrustok_search_tenants_with_documents_total NaN\nrustok_search_lagging_tenants_total NaN\nrustok_search_bootstrap_pending_tenants_total NaN\nrustok_search_max_lag_seconds NaN\n"
+        .to_string()
 }
 
 fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
@@ -660,10 +720,13 @@ auth_login_inactive_user_attempt_total {login_inactive_user_attempt_total}\n",
 
 fn format_rbac_metrics(
     stats: RbacResolverMetricsSnapshot,
-    users_without_roles_total: i64,
-    orphan_user_roles_total: i64,
-    orphan_role_permissions_total: i64,
+    users_without_roles_total: Option<i64>,
+    orphan_user_roles_total: Option<i64>,
+    orphan_role_permissions_total: Option<i64>,
 ) -> String {
+    let consistency_metrics_available = users_without_roles_total.is_some()
+        && orphan_user_roles_total.is_some()
+        && orphan_role_permissions_total.is_some();
     let consistency_query_failures_total =
         RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.load(Ordering::Relaxed);
     let consistency_query_latency_ms_total =
@@ -709,9 +772,10 @@ fn format_rbac_metrics(
         engine_decisions_policy_total = stats.engine_decisions_policy_total,
         engine_eval_duration_ms_total = stats.engine_eval_duration_ms_total,
         engine_eval_duration_samples = stats.engine_eval_duration_samples,
-        users_without_roles_total = users_without_roles_total,
-        orphan_user_roles_total = orphan_user_roles_total,
-        orphan_role_permissions_total = orphan_role_permissions_total,
+        users_without_roles_total = format_metric_i64(users_without_roles_total),
+        orphan_user_roles_total = format_metric_i64(orphan_user_roles_total),
+        orphan_role_permissions_total = format_metric_i64(orphan_role_permissions_total),
+        consistency_metrics_available = if consistency_metrics_available { 1 } else { 0 },
         consistency_query_failures_total = consistency_query_failures_total,
         consistency_query_latency_ms_total = consistency_query_latency_ms_total,
         consistency_query_latency_samples = consistency_query_latency_samples,
@@ -810,10 +874,19 @@ mod tests {
 
     #[test]
     fn rbac_metrics_render_consistency_values() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 7, 3, 1);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(7), Some(3), Some(1));
         assert!(payload.contains("rustok_rbac_users_without_roles_total 7"));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total 3"));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total 1"));
+    }
+
+    #[test]
+    fn unavailable_rbac_consistency_metrics_are_explicit() {
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), None, None, None);
+        assert!(payload.contains("rustok_rbac_consistency_metrics_collection_status 0"));
+        assert!(payload.contains("rustok_rbac_users_without_roles_total NaN"));
+        assert!(payload.contains("rustok_rbac_orphan_user_roles_total NaN"));
+        assert!(payload.contains("rustok_rbac_orphan_role_permissions_total NaN"));
     }
 
     #[test]
@@ -833,16 +906,16 @@ mod tests {
     }
 
     #[test]
-    fn outbox_metrics_include_canonical_names_and_compatibility_aliases() {
+    fn outbox_metrics_publish_only_canonical_names() {
         let payload = format_outbox_metrics(11, 2, 7, 42);
 
         assert_metric_line(&payload, "rustok_outbox_backlog_size");
         assert_metric_line(&payload, "rustok_outbox_dlq_total");
         assert_metric_line(&payload, "rustok_outbox_retries_total");
         assert_metric_line(&payload, "rustok_outbox_pending_lag_seconds");
-        assert_metric_line(&payload, "outbox_backlog_size");
-        assert_metric_line(&payload, "outbox_dlq_total");
-        assert_metric_line(&payload, "outbox_retries_total");
+        assert!(!payload.contains("outbox_backlog_size "));
+        assert!(!payload.contains("outbox_dlq_total "));
+        assert!(!payload.contains("outbox_retries_total "));
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));
@@ -998,6 +1071,29 @@ mod tests {
         assert!(payload.contains("rustok_tenant_locale_cache_hits_total 8"));
         assert!(payload.contains("rustok_tenant_locale_cache_misses_total 2"));
         assert!(payload.contains("rustok_tenant_locale_db_queries_total 2"));
+    }
+
+    #[test]
+    fn metric_formatters_render_unknown_values_as_nan() {
+        assert_eq!(super::format_metric_u64(None), "NaN");
+        assert_eq!(super::format_metric_i64(None), "NaN");
+    }
+
+    #[test]
+    fn unavailable_outbox_metrics_are_explicit() {
+        let payload = super::format_outbox_metrics_optional(Some(3), None, Some(2), None);
+        assert!(payload.contains("rustok_outbox_metrics_collection_status 0"));
+        assert!(payload.contains("rustok_outbox_backlog_size 3"));
+        assert!(payload.contains("rustok_outbox_dlq_total NaN"));
+        assert!(payload.contains("rustok_outbox_pending_lag_seconds NaN"));
+    }
+
+    #[test]
+    fn unavailable_search_metrics_are_explicit() {
+        let payload = super::search_metrics_unavailable_payload();
+        assert!(payload.contains("rustok_search_metrics_collection_status 0"));
+        assert!(payload.contains("rustok_search_documents_total NaN"));
+        assert!(payload.contains("rustok_search_max_lag_seconds NaN"));
     }
 
     #[test]

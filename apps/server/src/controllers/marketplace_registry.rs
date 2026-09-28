@@ -1,4 +1,5 @@
 use axum::{
+    Extension,
     Json,
     body::Body,
     body::Bytes,
@@ -21,6 +22,7 @@ const REGISTRY_ARTIFACT_MAX_BYTES: usize =
     crate::services::registry_governance::MODULE_PUBLISH_ARTIFACT_MAX_BYTES;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
+const REGISTRY_CATALOG_DEFAULT_PAGE_SIZE: usize = 100;
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -59,6 +61,7 @@ use crate::services::registry_governance::{
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
     RegistryAuthorSignatureEvidenceInput, RegistryExternalPrebuiltStageInput,
     RegistryGovernanceError, RegistryGovernanceService, RegistryPlatformBuildStageInput,
+    RegistryPublishRequestPermission,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
@@ -68,7 +71,7 @@ use crate::services::registry_remote_transitions::{
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
-use rustok_api::request::RequestContext;
+use rustok_api::request::ResolvedRequestLocale;
 use rustok_modules::{
     ModuleCommandContext, ModuleExternalSourceEvidence, ModuleGovernanceError,
     ModuleGovernanceErrorCategory, ModuleGovernanceValidationStageSnapshot,
@@ -102,6 +105,7 @@ struct RegistryCatalogListParams {
             headers(
                 ("etag" = String, description = "Current entity tag for conditional GET"),
                 ("cache-control" = String, description = "Shared cache policy for the reference registry"),
+                ("vary" = String, description = "Presentation and tenant-selector dimensions varied by shared caches"),
                 ("x-total-count" = i64, description = "Total number of modules in the filtered collection before limit/offset")
             )
         ),
@@ -111,6 +115,7 @@ struct RegistryCatalogListParams {
             headers(
                 ("etag" = String, description = "Current entity tag for conditional GET"),
                 ("cache-control" = String, description = "Shared cache policy for the reference registry"),
+                ("vary" = String, description = "Presentation and tenant-selector dimensions varied by shared caches"),
                 ("x-total-count" = i64, description = "Total number of modules in the filtered collection before limit/offset")
             )
         )
@@ -118,12 +123,12 @@ struct RegistryCatalogListParams {
 )]
 async fn catalog(
     State(ctx): State<ServerRuntimeContext>,
-    request_context: RequestContext,
+    Extension(resolved_locale): Extension<ResolvedRequestLocale>,
     headers: HeaderMap,
     Query(params): Query<RegistryCatalogListParams>,
 ) -> Result<Response<Body>, Error> {
     let first_party_modules = sort_catalog_modules(filter_catalog_modules(
-        first_party_catalog_modules(&ctx, &request_context).await?,
+        first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str()).await?,
         &params,
     ));
     let (first_party_modules, total_count) = paginate_catalog_modules(first_party_modules, &params);
@@ -167,11 +172,11 @@ async fn catalog(
 )]
 async fn catalog_module(
     State(ctx): State<ServerRuntimeContext>,
-    request_context: RequestContext,
+    Extension(resolved_locale): Extension<ResolvedRequestLocale>,
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response<Body>, Error> {
-    let module = first_party_catalog_modules(&ctx, &request_context)
+    let module = first_party_catalog_modules(&ctx, resolved_locale.effective_locale.as_str())
         .await?
         .into_iter()
         .find(|module| module.slug == slug)
@@ -228,9 +233,10 @@ async fn publish(
         if !request.module.ownership.eq_ignore_ascii_case("first_party")
             && !authority.can_manage_modules
         {
-            return Err(Error::BadRequest(
-                "Live third-party registry publish requires modules.manage authority".to_string(),
-            ));
+            return Err(http_error(HttpError::forbidden(
+                "forbidden",
+                "Live third-party registry publish requires modules.manage authority",
+            )));
         }
         if matches!(
             request.module.artifact_origin,
@@ -805,15 +811,22 @@ async fn download_publish_artifact(
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Response<Body>, Error> {
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
-    let has_user_session = optional_authority_from_auth(&headers, auth)?.is_some();
-    if !has_user_session && require_remote_executor_access(&ctx, &headers).is_err() {
-        return Err(Error::Unauthorized(
-            "Registry artifact download requires a user session or x-rustok-runner-token"
-                .to_string(),
-        ));
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
+    if let Some(authority) = optional_authority_from_auth(&headers, auth)? {
+        governance
+            .authorized_publish_request_status_snapshot(
+                &request_id,
+                &authority,
+                RegistryPublishRequestPermission::Manage,
+                "download an artifact for",
+            )
+            .await
+            .map_err(map_registry_governance_error)?;
+    } else {
+        require_remote_executor_access(&ctx, &headers)?;
     }
 
-    let artifact = RegistryGovernanceService::new(ctx.db_clone())
+    let artifact = governance
         .publish_artifact_download_snapshot(&request_id)
         .await
         .map_err(map_registry_governance_error)?
@@ -828,11 +841,21 @@ async fn download_publish_artifact(
             std::time::Duration::from_secs(300),
         )
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to create private download URL: {error}"))
+        .map_err(|_| {
+            tracing::error!("Failed to create private registry artifact download URL");
+            Error::InternalServerError
         })?
     {
-        return Ok(axum::response::Redirect::temporary(&download_url).into_response());
+        let mut response = axum::response::Redirect::temporary(&download_url).into_response();
+        response.headers_mut().insert(
+            CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        response.headers_mut().insert(
+            "referrer-policy",
+            HeaderValue::from_static("no-referrer"),
+        );
+        return Ok(response);
     }
 
     let bytes = storage
@@ -841,21 +864,24 @@ async fn download_publish_artifact(
             artifact.storage_key.as_str(),
         ))
         .await
-        .map_err(|error| Error::Message(format!("Failed to read registry artifact: {error}")))?
+        .map_err(|_| {
+            tracing::error!("Failed to read registry artifact");
+            Error::InternalServerError
+        })?
         .bytes()
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to read registry artifact body: {error}"))
+        .map_err(|_| {
+            tracing::error!("Failed to read registry artifact body");
+            Error::InternalServerError
         })?;
     Response::builder()
         .status(StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, artifact.content_type)
         .header(CACHE_CONTROL, "private, no-store")
         .body(Body::from(bytes))
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to build artifact download response: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to build registry artifact download response");
+            Error::InternalServerError
         })
 }
 
@@ -2221,17 +2247,19 @@ pub fn read_only_router() -> crate::routes::ServerRouter {
 
 async fn first_party_catalog_modules(
     ctx: &ServerRuntimeContext,
-    request_context: &RequestContext,
+    locale: &str,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
     let manifest = PlatformCompositionService::active_manifest(ctx.db())
         .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to load platform composition for catalog: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to load platform composition for registry catalog");
+            Error::InternalServerError
         })?;
     let modules = ManifestManager::catalog_modules(&manifest)
-        .map_err(|error| Error::Message(format!("Failed to build marketplace catalog: {error}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to build marketplace catalog");
+            Error::InternalServerError
+        })?;
 
     let first_party_modules = modules
         .into_iter()
@@ -2241,14 +2269,13 @@ async fn first_party_catalog_modules(
     RegistryGovernanceService::new(ctx.db_clone())
         .apply_catalog_projection(
             first_party_modules,
-            Some(request_context.locale.as_str()),
-            Some(request_context.locale.as_str()),
+            Some(locale),
+            Some(locale),
         )
         .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to project registry releases into catalog: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to project registry releases into catalog");
+            Error::InternalServerError
         })
 }
 
@@ -2321,12 +2348,15 @@ fn paginate_catalog_modules(
 ) -> (Vec<CatalogManifestModule>, usize) {
     let total_count = modules.len();
     let offset = params.offset.unwrap_or(0).min(total_count);
-    let limit = params.limit.map(|value| value.min(100));
+    let limit = params
+        .limit
+        .unwrap_or(REGISTRY_CATALOG_DEFAULT_PAGE_SIZE)
+        .min(REGISTRY_CATALOG_DEFAULT_PAGE_SIZE);
 
     let modules = modules
         .into_iter()
         .skip(offset)
-        .take(limit.unwrap_or(usize::MAX))
+        .take(limit)
         .collect::<Vec<_>>();
 
     (modules, total_count)
@@ -2342,18 +2372,23 @@ where
 {
     let etag = registry_etag(payload)?;
     let etag_header = HeaderValue::from_str(&etag)
-        .map_err(|err| Error::Message(format!("Failed to build registry ETag header: {err}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to build registry ETag header");
+            Error::InternalServerError
+        })?;
     let total_count_header = total_count.map(registry_total_count_header).transpose()?;
     if request_matches_etag(headers, &etag) {
         let mut builder = Response::builder()
             .status(StatusCode::NOT_MODIFIED)
             .header(CACHE_CONTROL, registry_cache_control())
+            .header("vary", registry_cache_vary())
             .header(ETAG, etag_header.clone());
         if let Some(total_count_header) = total_count_header.as_ref() {
             builder = builder.header(registry_total_count_header_name(), total_count_header);
         }
-        return builder.body(Body::empty()).map_err(|err| {
-            Error::Message(format!("Failed to build registry 304 response: {err}"))
+        return builder.body(Body::empty()).map_err(|_| {
+            tracing::error!("Failed to build registry 304 response");
+            Error::InternalServerError
         });
     }
 
@@ -2361,6 +2396,9 @@ where
     response
         .headers_mut()
         .insert(CACHE_CONTROL, registry_cache_control());
+    response
+        .headers_mut()
+        .insert("vary", registry_cache_vary());
     response.headers_mut().insert(ETAG, etag_header);
     if let Some(total_count_header) = total_count_header {
         response
@@ -2375,15 +2413,18 @@ fn registry_cache_control() -> HeaderValue {
     HeaderValue::from_static("public, max-age=60")
 }
 
+fn registry_cache_vary() -> HeaderValue {
+    HeaderValue::from_static("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
+}
+
 fn registry_total_count_header_name() -> HeaderName {
     HeaderName::from_static("x-total-count")
 }
 
 fn registry_total_count_header(total_count: usize) -> Result<HeaderValue, Error> {
-    HeaderValue::from_str(&total_count.to_string()).map_err(|err| {
-        Error::Message(format!(
-            "Failed to build registry total-count header: {err}"
-        ))
+    HeaderValue::from_str(&total_count.to_string()).map_err(|_| {
+        tracing::error!("Failed to build registry total-count header");
+        Error::InternalServerError
     })
 }
 
@@ -2392,7 +2433,10 @@ where
     T: serde::Serialize,
 {
     let body = serde_json::to_vec(payload)
-        .map_err(|err| Error::Message(format!("Failed to serialize registry payload: {err}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to serialize registry payload for ETag");
+            Error::InternalServerError
+        })?;
     let hash = Sha256::digest(body);
     Ok(format!("\"{}\"", hex::encode(hash)))
 }
@@ -2405,7 +2449,10 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
             value
                 .split(',')
                 .map(str::trim)
-                .any(|candidate| candidate == "*" || candidate == etag)
+                .any(|candidate| {
+                    candidate == "*"
+                        || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+                })
         })
         .unwrap_or(false)
 }
@@ -2925,7 +2972,7 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
         .chain()
         .find_map(|cause| cause.downcast_ref::<ModuleGovernanceError>())
     {
-        return map_module_governance_error(owner_error, &error);
+        return map_module_governance_error(owner_error);
     }
 
     let typed = error
@@ -2934,22 +2981,25 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 
     match typed {
         Some(RegistryGovernanceError::Malformed(message)) => Error::BadRequest(message.clone()),
-        Some(RegistryGovernanceError::Unauthorized(message)) => {
-            tracing::warn!(error = %error, "Registry governance unauthorized");
-            Error::Unauthorized(message.clone())
+        Some(RegistryGovernanceError::Unauthorized(_)) => {
+            tracing::warn!("Registry governance authentication rejected");
+            Error::Unauthorized("Registry operation requires valid authentication".to_string())
         }
-        Some(RegistryGovernanceError::Forbidden(message)) => {
-            tracing::warn!(error = %error, "Registry governance forbidden");
-            http_error(HttpError::forbidden("forbidden", message.as_str()))
+        Some(RegistryGovernanceError::Forbidden(_)) => {
+            tracing::warn!("Registry governance authorization denied");
+            http_error(HttpError::forbidden(
+                "forbidden",
+                "You do not have permission to perform this registry operation",
+            ))
         }
         Some(RegistryGovernanceError::NotFound(_)) => Error::NotFound,
-        Some(RegistryGovernanceError::Conflict(message)) => http_error(HttpError::new(
+        Some(RegistryGovernanceError::Conflict(_)) => http_error(HttpError::new(
             StatusCode::CONFLICT,
             "conflict",
-            message.as_str(),
+            "Registry operation conflicts with the current state",
         )),
         Some(RegistryGovernanceError::Internal(_)) | None => {
-            tracing::error!(error = %error, "Registry governance error");
+            tracing::error!("Registry governance operation failed");
             Error::InternalServerError
         }
     }
@@ -2957,13 +3007,16 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 
 /// Maps the stable owner error contract at the HTTP edge. The registry adapter
 /// must not reclassify owner failures into server-local error types.
-fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
+fn map_module_governance_error(error: &ModuleGovernanceError) -> Error {
     match error.category() {
         ModuleGovernanceErrorCategory::InvalidInput => {
             http_error(HttpError::bad_request(error.code(), error.to_string()))
         }
         ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(error.code(), error.to_string()))
+            http_error(HttpError::forbidden(
+                error.code(),
+                "You do not have permission to perform this registry operation",
+            ))
         }
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(error.code(), "Not found"))
@@ -2974,7 +3027,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
             error.to_string(),
         )),
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(error = %source, "Registry governance owner error");
+            tracing::error!("Registry governance owner operation failed");
             Error::InternalServerError
         }
     }
@@ -2995,7 +3048,10 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
             http_error(HttpError::bad_request(code, detail))
         }
         ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(code, detail))
+            http_error(HttpError::forbidden(
+                code,
+                "You do not have permission to perform this registry runner operation",
+            ))
         }
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(code, "Not found"))
@@ -3004,7 +3060,7 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
             http_error(HttpError::new(StatusCode::CONFLICT, code, detail))
         }
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(%detail, "Remote validation transition failed");
+            tracing::error!("Remote validation transition failed");
             Error::InternalServerError
         }
     }
@@ -3053,4 +3109,117 @@ fn validate_registry_version(version: &str) -> Result<(), Error> {
         ))
     })?;
     Ok(())
+}
+
+
+#[cfg(test)]
+mod marketplace_registry_tests {
+    use super::{
+        RegistryCatalogListParams, build_registry_response, map_module_governance_error,
+        paginate_catalog_modules, request_matches_etag,
+    };
+    use crate::modules::CatalogManifestModule;
+    use axum::body::to_bytes;
+    use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
+    use rustok_modules::{ModuleGovernanceError, ModuleGovernanceErrorCategory};
+
+    fn module(slug: &str) -> CatalogManifestModule {
+        CatalogManifestModule {
+            slug: slug.to_string(),
+            source: "registry".to_string(),
+            crate_name: format!("rustok-{slug}"),
+            name: Some(slug.to_string()),
+            category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            version: Some("1.0.0".to_string()),
+            description: None,
+            git: None,
+            rev: None,
+            path: None,
+            required: false,
+            depends_on: Vec::new(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: None,
+            checksum_sha256: None,
+            signature: None,
+            versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no-ui".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: std::collections::HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn catalog_pagination_is_bounded_when_limit_is_omitted() {
+        let modules = (0..125).map(|index| module(&format!("module-{index:03}"))).collect();
+        let (page, total) = paginate_catalog_modules(modules, &RegistryCatalogListParams::default());
+
+        assert_eq!(total, 125);
+        assert_eq!(page.len(), 100);
+    }
+
+    #[test]
+    fn if_none_match_accepts_weak_etags() {
+        let etag = "\"abc123\"";
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_static("W/\"abc123\", \"other\""),
+        );
+
+        assert!(request_matches_etag(&headers, etag));
+    }
+
+    #[tokio::test]
+    async fn registry_response_declares_presentation_vary() {
+        let headers = HeaderMap::new();
+        let response = build_registry_response(
+            &headers,
+            &serde_json::json!({"modules": []}),
+            Some(0),
+        )
+        .expect("registry response should build");
+
+        assert_eq!(
+            response.headers().get("cache-control").and_then(|value| value.to_str().ok()),
+            Some("public, max-age=60")
+        );
+        assert_eq!(
+            response.headers().get("vary").and_then(|value| value.to_str().ok()),
+            Some("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
+        assert!(!body.is_empty());
+    }
+
+    #[test]
+    fn permission_denied_mapping_does_not_echo_owner_details() {
+        let error = ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized;
+        assert_eq!(
+            error.category(),
+            ModuleGovernanceErrorCategory::PermissionDenied
+        );
+
+        let mapped = map_module_governance_error(&error);
+        match mapped {
+            crate::error::Error::Http(http) => {
+                assert_eq!(http.status, StatusCode::FORBIDDEN);
+                assert!(!http.message.contains("request"));
+                assert!(!http.message.contains("principal"));
+            }
+            other => panic!("expected HTTP error, got {other:?}"),
+        }
+    }
 }

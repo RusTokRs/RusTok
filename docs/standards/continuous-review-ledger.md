@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`  
+**Current main SHA:** `4903e6e7db1477271e976012a4a8ec0e7ade59e4`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -140,8 +140,8 @@ Hard limits for every iteration:
 - [x] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit; completed with four remediation iterations and a final fresh second pass. OAuth/OIDC transport, scope, caching, and handshake boundaries are now aligned with the reviewed contract.
 - [x] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Tenant isolation, permission boundaries, pagination semantics, and database error handling were reverified.
 - [x] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass.
-- [ ] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit.
-- [ ] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit.
+- [x] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
+- [x] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit; completed with five remediation iterations and a final fresh second pass.
 - [ ] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit.
 - [ ] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit.
 - [ ] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit.
@@ -195,6 +195,53 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.22 Result — `controllers/marketplace_registry.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `e3a8ec0d1aaedb348749ab9e4f4e94d203e73fbb`.
+- **Iteration 1:** commit `e3f1fa81696cc2df0e7c04f047bba6c65d25a9b6`.
+  - **Finding:** the deployment-global `/catalog` and `/catalog/{slug}` handlers required `RequestContext`, which in turn requires tenant context. Registry-only host mode intentionally bypasses tenant resolution, so those global routes failed at runtime instead of using the accepted global catalog boundary.
+  - **Remediation:** catalog handlers now consume the resolved presentation locale directly, while keeping tenant resolution out of the global read-only catalog; the catalog page size is also bounded to 100 by default instead of returning an unbounded collection when `limit` is omitted.
+- **Iteration 2:** commit `97c5667844b84bfbc6241b03c42d0a55480558c7`.
+  - **Finding:** authenticated user sessions could download any publish artifact because the download handler checked only for the presence of a session, bypassing the owner `Manage` authorization contract. The live third-party publish guard also returned HTTP 400 for a permission failure.
+  - **Remediation:** user-session artifact downloads now require the canonical owner management authorization; runner-token access remains the separate non-user path. Third-party live publish permission failures now map to HTTP 403.
+- **Iteration 3:** commit `3d27e352c34b3a2500d165723f460ff9667883c8`.
+  - **Finding:** public registry governance errors, storage failures, and owner-internal failures could carry internal detail through server `Error::Message` or typed forbidden/unauthorized responses/logs.
+  - **Remediation:** internal and authorization failures now use stable generic transport messages and stable log text; raw owner/storage error details are no longer propagated at this controller boundary.
+- **Iteration 4:** commits `9a6006fe5fd926cd63d4c4f0dac273ec1e63d0bc`, `e775d6bcbc23500a091cd0290d4c268dd0fceaea`, and `31299cd2e253eb165ef253635c6af1ae2419e7fc`.
+  - **Finding:** public catalog caching did not declare the locale/tenant-selector dimensions that can change the effective presentation, and `If-None-Match` did not support weak validators. Internal response-construction errors also used the generic `Error::Message` path, and the first regression test patch exposed import/escaping fallout during re-audit.
+  - **Remediation:** 200/304 catalog responses now emit the explicit `Vary` dimensions, weak ETags are accepted, internal response failures use the stable internal error boundary, and focused regression tests were corrected and retained.
+- **Iteration 5:** commit `ed303eaf6cd96d87e179308ec6b3dfe7cb519f6c`.
+  - **Finding:** redirects to storage-issued signed artifact URLs were not explicitly non-cacheable, leaving a bearer-like signed URL in a potentially cacheable redirect response.
+  - **Remediation:** signed artifact redirects now use `private, no-store` and `Referrer-Policy: no-referrer`.
+- **Documentation synchronization:** commit `4903e6e7db1477271e976012a4a8ec0e7ade59e4` records the global catalog cache/pagination contract in the accepted architecture document.
+- **Final fresh second pass:** independently re-read the complete controller, registry-only/full host composition, locale/request-context boundary, registry governance owner service and typed error taxonomy, artifact storage/download flow, remote runner transitions, API/architecture contracts, and updated regression tests. Rechecked tenant isolation, authorization, idempotency inputs, body limits, cache keys/ETags/Vary, signed redirects, legacy actor/publisher rejection, raw error/log leakage, dynamic label/cardinality risks, and unbounded collection handling. No remaining unblocked controller-owned defect was found.
+- **Non-findings:** `GET /v2/catalog/publish/{request_id}` was reviewed against the owner status-snapshot contract and remains an optional-authority status read; no evidence in the active registry contract required converting it into a separately authenticated mutation boundary. Direct `ManifestManager` use in the global catalog remains intentional because the accepted architecture explicitly defines active platform composition plus global registry governance projection as the source for these two deployment-global routes.
+- **Verification:** repository source inspection, architecture/API/settings owner review, migration/schema inspection, immediate re-audits after each remediation, final source-level regression pass, and commit history reconciliation only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`.
+
+### FS-22.02.21 Result — `controllers/metrics.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `7cdc78d34cf20a14d1871dffa6cee0fc569b5cd3`.
+- **Iteration 1:** commit `e6a9b14976ed3ad9aa648ccf368605e11ae5b370`.
+  - **Finding:** the controller registered only `/metrics/` while the canonical API documentation and observability-auth boundary expose `/metrics`.
+  - **Remediation:** both explicit `/metrics` and `/metrics/` routes now invoke the same handler; observability-auth path coverage remains aligned with both.
+  - **Finding:** search metrics were rendered even when `features.search_indexing` was disabled.
+  - **Remediation:** search metric collection now follows the same feature gate as readiness/search schema requirements.
+- **Iteration 2:** commits `69e2dcf9e5f1cc00743ed7148b8e66aee536ee95`, `8578107c6f8868206d68f1b71fbf6bd92713b97e`, `1c103e51452322434d64f960c4ee0163ad6f5d36`, and `7d786bc0c1cc418e50daf8bea59244cb6feaf098`.
+  - **Finding:** tenant-activity, outbox, RBAC consistency, and search collectors converted storage/decoding failures into plausible zero values, making monitoring report false healthy/empty state.
+  - **Remediation:** affected metric families now expose explicit collection-status signals and `NaN` for unavailable values; RBAC consistency values retain the failure counter without pretending the consistency counts are zero.
+  - **Finding:** metrics synchronization logged backend error payloads directly.
+  - **Remediation:** rate-limit metrics failure logs now emit only stable namespace/context text.
+- **Iteration 3:** commit `e3a8ec0d1aaedb348749ab9e4f4e94d203e73fbb`.
+  - **Finding:** outbox collector retained historical unprefixed compatibility aliases (`outbox_backlog_size`, `outbox_dlq_total`, `outbox_retries_total`) after equivalent RBAC aliases had already been removed under the repository zero-legacy policy.
+  - **Remediation:** only canonical `rustok_outbox_*` metric names remain; regression expectations were updated accordingly.
+- **Final fresh second pass:** independently re-read the full controller plus metrics-auth, rate-limit namespace construction, search diagnostics/feature ownership, API docs, and telemetry registry contracts. Rechecked route parity, feature gating, error/unknown semantics, secret-safe logging, label cardinality/source safety, worker/runtime observations, and absence of unprefixed outbox metric aliases. No remaining unblocked controller-owned defect was found.
+- **Non-findings:** dynamic runtime metric labels are bounded by fixed limiter namespaces/backend kinds and fixed worker/provider/state vocabularies; the existing dual outbox canonical naming family was retained because it is the current exposed contract, while only the explicitly historical unprefixed aliases were removed.
+- **Verification:** repository source inspection, commit-diff review, adjacent owner-contract inspection, immediate re-audits after each remediation, and final fresh second pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`.
 
 ### FS-22.02.20 Result — `controllers/health.rs`
 
