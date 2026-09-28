@@ -156,6 +156,8 @@ backends such as `vault:*`, `kubernetes:*` and cloud secret managers remain
 contract-level refs for `plan`/`preflight` and fail-fast on `apply` until an
 external resolver is connected.
 
+The HTTP adapter's asynchronous job identity is host-runtime durable: job status is stored in the server runtime database, not the target install database, so another replica can read the same job after submission. The durable record stores a bounded optional success-output projection and a stable public failure message; detailed executor failures are not copied into the HTTP job payload.
+
 The HTTP adapter publishes a thin wizard surface:
 `GET /api/install/status`, `POST /api/install/plan`,
 `POST /api/install/preflight`, `POST /api/install/apply`,
