@@ -7,7 +7,7 @@ pub enum SortDirection {
 }
 
 impl SortDirection {
-    pub fn opposite(&self) -> Self {
+    pub fn opposite(self) -> Self {
         match self {
             Self::Asc => Self::Desc,
             Self::Desc => Self::Asc,

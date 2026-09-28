@@ -113,8 +113,9 @@ impl FilterValue {
             Self::Empty => true,
             Self::Text(s) => s.trim().is_empty(),
             Self::Select(s) => s.trim().is_empty(),
-            Self::NumberRange { min, max } => min.is_none() && max.is_none(),
-            Self::DateRange { from, to } => from.is_none() && to.is_none(),
+            Self::NumberRange { min, max } => min.map_or(true, |n| n.is_nan()) && max.map_or(true, |n| n.is_nan()),
+            Self::DateRange { from, to } => from.as_deref().map_or(true, |s| s.trim().is_empty())
+                && to.as_deref().map_or(true, |s| s.trim().is_empty()),
             Self::Boolean(_) => false,
         }
     }
@@ -175,5 +176,21 @@ impl ColumnFilters {
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &FilterValue)> {
         self.filters.iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blank_ranges_are_not_persisted() {
+        assert!(FilterValue::DateRange { from: Some(" ".into()), to: Some(String::new()) }.is_empty());
+        assert!(FilterValue::NumberRange { min: Some(f64::NAN), max: None }.is_empty());
+    }
+
+    #[test]
+    fn boolean_false_is_an_active_filter() {
+        assert!(!FilterValue::Boolean(false).is_empty());
     }
 }
