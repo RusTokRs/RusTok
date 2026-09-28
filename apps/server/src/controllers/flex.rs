@@ -446,12 +446,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn router_uses_the_documented_canonical_schema_collection_path() {
-        let _router = router();
-        assert_eq!("/api/v1/flex/schemas", "/api/v1/flex/schemas");
-    }
-
     #[tokio::test]
     async fn rest_handlers_roundtrip_standalone_schema_and_entry() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
