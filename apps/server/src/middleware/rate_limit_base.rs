@@ -795,14 +795,9 @@ mod diagnostic_tests {
 mod path_matching_tests {
     use super::*;
 
-    fn policy(prefix: &'static str, namespace: &'static str) -> PathRateLimitPolicy {
+    fn policy(prefix: &'static str) -> PathRateLimitPolicy {
         PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new(RateLimitConfig {
-                requests_per_minute: 10,
-                burst: 2,
-                redis_url: None,
-                redis_key_prefix: namespace.to_string(),
-            })),
+            limiter: Arc::new(RateLimiter::new(RateLimitConfig::per_minute(10, 2))),
             prefixes: Arc::new(vec![prefix]),
         }
     }
@@ -810,8 +805,8 @@ mod path_matching_tests {
     #[test]
     fn path_matching_respects_segment_boundaries() {
         let policies = vec![
-            policy("/api/auth/login", "auth"),
-            policy("/api/", "api"),
+            policy("/api/auth/login"),
+            policy("/api/"),
         ];
 
         assert_eq!(
@@ -819,27 +814,27 @@ mod path_matching_tests {
                 .expect("exact auth route")
                 .limiter
                 .namespace(),
-            "auth"
+            "default"
         );
         assert_eq!(
             matching_path_policy(&policies, "/api/auth/login/device")
                 .expect("nested auth route")
                 .limiter
                 .namespace(),
-            "auth"
+            "default"
         );
         assert_eq!(
             matching_path_policy(&policies, "/api/auth/login-extra")
                 .expect("generic api route")
                 .limiter
                 .namespace(),
-            "api"
+            "default"
         );
     }
 
     #[test]
     fn root_prefix_matches_itself_and_descendants_only() {
-        let policies = vec![policy("/api/auth/reset", "auth")];
+        let policies = vec![policy("/api/auth/reset")];
 
         assert!(matching_path_policy(&policies, "/api/auth/reset").is_some());
         assert!(matching_path_policy(&policies, "/api/auth/reset/confirm").is_some());
