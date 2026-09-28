@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `2afdf813171dc6a596343770045433044b66ab0a`  
+**Current main SHA:** `284e9a4d860c8adc9d38548e9ec859961226bd76`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -262,6 +262,7 @@ Hard limits for every iteration:
 - **Deferred finding AUTH-EXTRACTOR-01:** `apps/server/src/extractors/auth/mod.rs` validates tenant ownership after loading sessions/users by primary key, but the underlying session/user queries are not tenant-filtered at SQL level. The subsequent equality checks prevent cross-tenant authorization, but the query boundary does not itself carry the canonical tenant predicate required by the repository data-isolation standard. **Owning component:** `apps/server/src/extractors/auth/mod.rs`; handle as a dedicated extractor/auth iteration.
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no tests, clippy, gatekeeper, build, or runtime commands were executed by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.06` complete. Next planned primary module is `FS-22.02.07 — apps/server/src/middleware/channel.rs`.
+- **Merged:** PR #4174, merge commit `284e9a4d860c8adc9d38548e9ec859961226bd76`.
 
 ### Deferred owning-module findings discovered during FS-22
 
