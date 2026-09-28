@@ -18,10 +18,11 @@ const MAX_READINESS_BODY_BYTES: usize = 256 * 1024;
 /// A valid observability bearer token receives the full dependency diagnostic
 /// body. Production is fail-closed for metrics/runtime/module diagnostics when
 /// no host token is configured.
-pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
+pub async fn require_bearer(mut request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
     if path == "/health/ready" {
         let reveal_details = request_is_authorized(&request);
+        request.headers_mut().remove(header::AUTHORIZATION);
         let response = next.run(request).await;
         return normalize_readiness_response(response, reveal_details).await;
     }
@@ -42,6 +43,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     };
 
     if supplied_token(&request).is_some_and(|supplied| constant_time_eq(supplied, &expected)) {
+        request.headers_mut().remove(header::AUTHORIZATION);
         return next.run(request).await;
     }
 
@@ -194,6 +196,21 @@ mod tests {
         assert_eq!(parse_bearer_token("bearer secret"), Some("secret"));
         assert_eq!(parse_bearer_token("Basic secret"), None);
         assert_eq!(parse_bearer_token("Bearer   "), None);
+    }
+
+    #[test]
+    #[test]
+    fn protected_observability_credential_is_route_owned_after_validation() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer observability-token".parse().unwrap(),
+        );
+        assert!(supplied_token(&axum::http::Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap()) .is_none());
+        assert!(headers.contains_key(header::AUTHORIZATION));
     }
 
     #[test]
