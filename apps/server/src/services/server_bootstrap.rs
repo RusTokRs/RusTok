@@ -139,7 +139,7 @@ pub async fn bootstrap_application_router(
     configure_product_catalog_deployment(&runtime_ctx).await?;
     configure_profile_media_public_image_deployment(&runtime_ctx).await?;
     let runtime =
-        bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
+        bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
     let router = compose_application_router(
