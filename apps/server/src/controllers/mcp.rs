@@ -13,6 +13,7 @@ use crate::extractors::{
     rbac::{RequireMcpManage, RequireMcpRead},
     tenant::CurrentTenant,
 };
+use crate::services::mcp_management_authority::McpManagementAuthorityError;
 use crate::services::mcp_management::{
     ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpClientDetails,
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
@@ -662,6 +663,22 @@ async fn get_client(
     Ok(Json(map_client_details(details)))
 }
 
+fn map_mcp_management_authority_error(
+    error: McpManagementAuthorityError,
+) -> crate::error::Error {
+    match error {
+        McpManagementAuthorityError::Invalid(message) => crate::error::Error::BadRequest(message),
+        McpManagementAuthorityError::Forbidden(message) => {
+            crate::error::Error::Forbidden(message)
+        }
+        McpManagementAuthorityError::NotFound(_) => crate::error::Error::NotFound,
+        McpManagementAuthorityError::Internal(detail) => {
+            tracing::error!(error = %detail, "MCP management authority validation failed");
+            crate::error::Error::InternalServerError
+        }
+    }
+}
+
 async fn create_client(
     State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -677,7 +694,7 @@ async fn create_client(
         &input.granted_permissions,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_management_authority_error)?;
 
     let result = McpManagementService::create_client(
         ctx.db(),
@@ -1029,6 +1046,26 @@ fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEvent
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mcp_management_authority_error_mapping_is_fail_closed() {
+        assert!(matches!(
+            map_mcp_management_authority_error(McpManagementAuthorityError::Invalid("bad input".into())),
+            crate::error::Error::BadRequest(_)
+        ));
+        assert!(matches!(
+            map_mcp_management_authority_error(McpManagementAuthorityError::Forbidden("denied".into())),
+            crate::error::Error::Forbidden(_)
+        ));
+        assert!(matches!(
+            map_mcp_management_authority_error(McpManagementAuthorityError::NotFound("client".into())),
+            crate::error::Error::NotFound
+        ));
+        assert!(matches!(
+            map_mcp_management_authority_error(McpManagementAuthorityError::Internal("db secret".into())),
+            crate::error::Error::InternalServerError
+        ));
+    }
+
     use super::*;
 
     #[test]
