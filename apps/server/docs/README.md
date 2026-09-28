@@ -217,6 +217,9 @@ remain separate unfinished control-plane work.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
   the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
   delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.
+- Password-reset and email-verification request endpoints keep their public response generic even when
+  email transport setup or URL preparation fails for an existing account; delivery/preparation failures
+  are server-observable but must not become account-enumeration signals.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
