@@ -57,6 +57,18 @@ pub async fn resolve_optional(
             );
         }
     };
+    if is_observability_auth_path(request_path.as_str()) {
+        if let Some(host_authority) = host_authority {
+            parts.extensions.insert(host_authority);
+        }
+        let req = Request::from_parts(parts, body);
+        return pages_inline_authoring_response(
+            with_host_authority_scope(host_authority, next.run(req)).await,
+            false,
+            false,
+        );
+    }
+
     let human_user_only =
         is_human_user_self_service_path(request_path.as_str()) || pages_inline_authoring;
     let request_method = parts.method.clone();
@@ -216,6 +228,18 @@ fn pages_inline_authoring_response(
     response
 }
 
+fn is_observability_auth_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/metrics"
+            | "/metrics/"
+            | "/api/_health/metrics"
+            | "/health/ready"
+            | "/health/runtime"
+            | "/health/modules"
+    )
+}
+
 fn is_human_user_self_service_path(path: &str) -> bool {
     matches!(
         path,
@@ -308,9 +332,9 @@ fn service_forum_boundary_violation(
 mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
-        is_human_user_self_service_path, is_pages_inline_authoring_server_fn,
-        is_pages_inline_authoring_surface, pages_inline_authoring_response,
-        service_forum_boundary_violation,
+        is_human_user_self_service_path, is_observability_auth_path,
+        is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
+        pages_inline_authoring_response, service_forum_boundary_violation,
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
@@ -344,6 +368,30 @@ mod tests {
         );
 
         assert!(crate::auth::decode_access_token(&config, "not-a-jwt").is_err());
+    }
+
+    #[test]
+    fn observability_auth_paths_are_excluded_from_user_jwt_resolution() {
+        for path in [
+            "/metrics",
+            "/metrics/",
+            "/api/_health/metrics",
+            "/health/ready",
+            "/health/runtime",
+            "/health/modules",
+        ] {
+            assert!(is_observability_auth_path(path), "{path}");
+        }
+
+        for path in [
+            "/api/auth/me",
+            "/api/graphql",
+            "/api/forum/topics",
+            "/catalog/modules",
+            "/v2/catalog/publish",
+        ] {
+            assert!(!is_observability_auth_path(path), "{path}");
+        }
     }
 
     #[test]
