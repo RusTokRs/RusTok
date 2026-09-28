@@ -45,8 +45,9 @@ pub fn auth_config_from_host_settings(
     access_expiration: u64,
     settings: Option<&serde_json::Value>,
 ) -> Result<AuthConfig> {
-    let app_settings =
-        settings.and_then(|value| serde_json::from_value::<AppSettings>(value.clone()).ok());
+    let app_settings = settings
+        .map(|value| serde_json::from_value::<AppSettings>(value.clone()))
+        .transpose()?;
     let auth_settings = app_settings.and_then(|s| s.auth).unwrap_or_default();
     auth_config_from_parts(secret, access_expiration, auth_settings)
 }
@@ -276,6 +277,20 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+
+    #[test]
+    fn auth_config_rejects_malformed_nested_auth_settings() {
+        let settings = serde_json::json!({
+            "auth": {
+                "algorithm": "RS999"
+            }
+        });
+
+        let result = auth_config_from_host_settings(secret(), 900, Some(&settings));
+
+        assert!(matches!(result, Err(crate::error::Error::Json(_))));
     }
 
     #[test]
