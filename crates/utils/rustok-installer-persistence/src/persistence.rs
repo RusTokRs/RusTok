@@ -18,9 +18,83 @@ pub struct InstallerPersistenceService {
     db: DatabaseConnection,
 }
 
+#[derive(Debug)]
+pub enum InstallHttpJobAdmission {
+    Created(install_http_job::Model),
+    Replay(install_http_job::Model),
+    Conflict(install_http_job::Model),
+}
+
 impl InstallerPersistenceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    pub async fn admit_http_job(
+        &self,
+        job_id: Uuid,
+        idempotency_key: &str,
+        request_hash: &str,
+        submitted_at: chrono::DateTime<Utc>,
+    ) -> Result<InstallHttpJobAdmission, sea_orm::DbErr> {
+        let idempotency_key = idempotency_key.trim();
+        if idempotency_key.is_empty() || idempotency_key.len() > 191 {
+            return Err(sea_orm::DbErr::Custom(
+                "installer HTTP idempotency key must contain 1 to 191 bytes".to_string(),
+            ));
+        }
+        if request_hash.len() != 64
+            || !request_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(sea_orm::DbErr::Custom(
+                "installer HTTP request hash must be a canonical SHA-256 hex digest".to_string(),
+            ));
+        }
+
+        if let Some(existing) = self.find_http_job_by_idempotency_key(idempotency_key).await? {
+            return Ok(compare_http_job_request(existing, request_hash));
+        }
+
+        let result = install_http_job::ActiveModel {
+            id: Set(job_id),
+            idempotency_key: Set(Some(idempotency_key.to_string())),
+            request_hash: Set(Some(request_hash.to_string())),
+            status: Set(HTTP_INSTALL_JOB_RUNNING_STATUS.to_string()),
+            submitted_at: Set(submitted_at),
+            started_at: Set(submitted_at),
+            finished_at: Set(None),
+            session_id: Set(None),
+            tenant_id: Set(None),
+            output: Set(None),
+            error_message: Set(None),
+            updated_at: Set(submitted_at),
+        }
+        .insert(&self.db)
+        .await;
+
+        match result {
+            Ok(model) => Ok(InstallHttpJobAdmission::Created(model)),
+            Err(error) if is_unique_constraint(&error) => {
+                let existing = self
+                    .find_http_job_by_idempotency_key(idempotency_key)
+                    .await?
+                    .ok_or(error)?;
+                Ok(compare_http_job_request(existing, request_hash))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn find_http_job_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<install_http_job::Model>, sea_orm::DbErr> {
+        install_http_job::Entity::find()
+            .filter(install_http_job::Column::IdempotencyKey.eq(idempotency_key))
+            .one(&self.db)
+            .await
     }
 
     pub async fn create_http_job(
@@ -81,7 +155,7 @@ impl InstallerPersistenceService {
                 status: Set(HTTP_INSTALL_JOB_SUCCEEDED_STATUS.to_string()),
                 finished_at: Set(Some(now)),
                 session_id: Set(Some(session_id)),
-                tenant_id: Set(Some(tenant_id)),
+                tenant_id: Set(tenant_id),
                 output: Set(output),
                 error_message: Set(None),
                 updated_at: Set(now),
@@ -269,6 +343,24 @@ impl InstallerPersistenceService {
     }
 }
 
+fn compare_http_job_request(
+    existing: install_http_job::Model,
+    request_hash: &str,
+) -> InstallHttpJobAdmission {
+    if existing.request_hash.as_deref() == Some(request_hash) {
+        InstallHttpJobAdmission::Replay(existing)
+    } else {
+        InstallHttpJobAdmission::Conflict(existing)
+    }
+}
+
+fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
+}
+
 fn ensure_http_job_transition_applied(
     job_id: Uuid,
     rows_affected: u64,
@@ -374,6 +466,8 @@ mod tests {
             r#"
             CREATE TABLE install_http_jobs (
                 id TEXT PRIMARY KEY NOT NULL,
+                idempotency_key TEXT NULL,
+                request_hash TEXT NULL,
                 status TEXT NOT NULL,
                 submitted_at TEXT NOT NULL,
                 started_at TEXT NOT NULL,
@@ -438,6 +532,62 @@ mod tests {
             },
             next: Some("done".to_string()),
         }
+    }
+
+    #[tokio::test]
+    async fn identical_http_job_requests_replay_the_same_job() {
+        let db = setup_http_jobs_table().await;
+        let service = InstallerPersistenceService::new(db);
+        let job_id = Uuid::new_v4();
+        let submitted_at = Utc::now();
+
+        let created = service
+            .admit_http_job(job_id, "instance:one:release:two", &"a".repeat(64), submitted_at)
+            .await
+            .expect("job should be admitted");
+        assert!(matches!(created, InstallHttpJobAdmission::Created(_)));
+
+        let replay = service
+            .admit_http_job(
+                Uuid::new_v4(),
+                "instance:one:release:two",
+                &"a".repeat(64),
+                submitted_at,
+            )
+            .await
+            .expect("exact replay should succeed");
+        match replay {
+            InstallHttpJobAdmission::Replay(model) => assert_eq!(model.id, job_id),
+            _ => panic!("exact replay must return the original durable job"),
+        }
+    }
+
+    #[tokio::test]
+    async fn changed_http_apply_request_conflicts_on_the_same_install_identity() {
+        let db = setup_http_jobs_table().await;
+        let service = InstallerPersistenceService::new(db);
+        let submitted_at = Utc::now();
+
+        service
+            .admit_http_job(
+                Uuid::new_v4(),
+                "instance:one:release:two",
+                &"a".repeat(64),
+                submitted_at,
+            )
+            .await
+            .expect("job should be admitted");
+
+        let conflict = service
+            .admit_http_job(
+                Uuid::new_v4(),
+                "instance:one:release:two",
+                &"b".repeat(64),
+                submitted_at,
+            )
+            .await
+            .expect("request mismatch should be represented as a conflict");
+        assert!(matches!(conflict, InstallHttpJobAdmission::Conflict(_)));
     }
 
     #[tokio::test]
