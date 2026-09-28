@@ -795,9 +795,12 @@ mod diagnostic_tests {
 mod path_matching_tests {
     use super::*;
 
-    fn policy(prefix: &'static str) -> PathRateLimitPolicy {
+    fn policy(prefix: &'static str, namespace: &'static str) -> PathRateLimitPolicy {
         PathRateLimitPolicy {
-            limiter: Arc::new(RateLimiter::new(RateLimitConfig::per_minute(10, 2))),
+            limiter: Arc::new(RateLimiter::new_with_namespace(
+                RateLimitConfig::per_minute(10, 2),
+                namespace,
+            )),
             prefixes: Arc::new(vec![prefix]),
         }
     }
@@ -805,8 +808,8 @@ mod path_matching_tests {
     #[test]
     fn path_matching_respects_segment_boundaries() {
         let policies = vec![
-            policy("/api/auth/login"),
-            policy("/api/"),
+            policy("/api/auth/login", "auth"),
+            policy("/api/", "api"),
         ];
 
         assert_eq!(
@@ -814,14 +817,14 @@ mod path_matching_tests {
                 .expect("exact auth route")
                 .limiter
                 .namespace(),
-            "default"
+            "auth"
         );
         assert_eq!(
             matching_path_policy(&policies, "/api/auth/login/device")
                 .expect("nested auth route")
                 .limiter
                 .namespace(),
-            "default"
+            "api"
         );
         assert_eq!(
             matching_path_policy(&policies, "/api/auth/login-extra")
