@@ -8,9 +8,10 @@ use axum::{
 };
 use chrono::Utc;
 use rustok_api::{
-    Action, AuthContextExtension, HostRuntimeContext, Permission, Resource, SharedModuleEffectivePolicyReader, TenantContext,
+    Action, AuthContextExtension, HostRuntimeContext, Permission, Resource, TenantContext,
     has_any_effective_permission,
 };
+use rustok_modules::{ModuleEffectivePolicyReader, SharedModuleEffectivePolicyReader};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
