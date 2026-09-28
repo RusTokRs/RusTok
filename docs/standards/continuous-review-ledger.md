@@ -249,7 +249,7 @@ Hard limits for every iteration:
 
 - [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
-- [ ] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — re-audit self-service principal admission; delegated OAuth users must not inherit direct-session-only capabilities.
+- [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
