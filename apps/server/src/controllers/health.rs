@@ -35,7 +35,9 @@ use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
     RuntimeGuardrailSnapshot, RuntimeGuardrailStatus, collect_runtime_guardrail_snapshot,
 };
+use crate::host_authority::current_host_authority;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_api::HostAuthority;
 
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 3;
@@ -340,6 +342,21 @@ pub async fn ready(
     }))
 }
 
+fn require_operator_health_authority() -> Result<()> {
+    let Some(authority) = current_host_authority() else {
+        return Err(crate::error::Error::Unauthorized(
+            "Operator health endpoint requires host authority".to_string(),
+        ));
+    };
+    if matches!(authority.authority(), HostAuthority::Read | HostAuthority::Manage) {
+        Ok(())
+    } else {
+        Err(crate::error::Error::Forbidden(
+            "Operator health endpoint requires host read authority".to_string(),
+        ))
+    }
+}
+
 fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     use crate::services::marketplace_catalog::{
         MarketplaceProviderHealthStatus, SharedMarketplaceCatalogService,
@@ -396,10 +413,13 @@ fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     path = "/health/runtime",
     tag = "health",
     responses(
-        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot)
+        (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot),
+        (status = 401, description = "Host authority is required"),
+        (status = 403, description = "Host read authority is required")
     )
 )]
 pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    require_operator_health_authority()?;
     let snapshot = collect_runtime_guardrail_snapshot(&ctx).await;
     Ok(json_response(snapshot))
 }
@@ -411,10 +431,13 @@ pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response
     path = "/health/modules",
     tag = "health",
     responses(
-        (status = 200, description = "Module health statuses", body = ModulesHealthResponse)
+        (status = 200, description = "Module health statuses", body = ModulesHealthResponse),
+        (status = 401, description = "Host authority is required"),
+        (status = 403, description = "Host read authority is required")
     )
 )]
 pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<Response> {
+    require_operator_health_authority()?;
     let mut modules_health = Vec::new();
     let mut overall_healthy = true;
 
@@ -1027,6 +1050,30 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/health/ready", get(ready))
         .route("/health/runtime", get(runtime))
         .route("/health/modules", get(modules))
+}
+
+#[cfg(test)]
+mod operator_health_tests {
+    use super::require_operator_health_authority;
+    use crate::host_authority::with_host_authority_scope;
+    use rustok_api::{HostAuthority, HostAuthorityContext};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn rejects_operator_health_without_host_authority() {
+        let result = with_host_authority_scope(None, async { require_operator_health_authority() }).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn accepts_read_host_authority() {
+        let authority =
+            HostAuthorityContext::for_actor(HostAuthority::Read, Uuid::new_v4()).expect("authority");
+        let result =
+            with_host_authority_scope(Some(authority), async { require_operator_health_authority() })
+                .await;
+        assert!(result.is_ok());
+    }
 }
 
 #[cfg(test)]

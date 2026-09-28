@@ -10,6 +10,20 @@ pub(super) async fn cache_health_native() -> Result<CacheHealthResponse, ServerF
     {
         use leptos::prelude::expect_context;
         use rustok_cache::CacheService;
+        use rustok_api::{AuthContext, TenantContext, Permission, has_effective_permission};
+
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new("Cache health access is denied"));
+        }
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(ServerFnError::new("settings:read required"));
+        }
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let payload = if let Some(cache) = runtime.shared_get::<CacheService>() {

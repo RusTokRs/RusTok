@@ -9,7 +9,9 @@ use serde::Deserialize;
 
 use crate::{
     channels,
-    common::settings::RustokSettings,
+    common::settings::{
+        RustokSettings, effective_environment_name, is_production_environment,
+    },
     controllers,
     error::{Error, Result},
     middleware::security_headers::hsts_enabled,
@@ -79,6 +81,10 @@ pub async fn run() -> Result<()> {
     migrate_database_if_enabled(&db, config.database.auto_migrate).await?;
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+    rustok_settings
+        .tenant
+        .validate_for_environment(production)
+        .map_err(|error| Error::BadRequest(format!("Invalid tenant deployment settings: {error}")))?;
     let runtime_ctx = ServerRuntimeContext::new(db, rustok_settings.clone());
     let auth_config = crate::auth::auth_config_from_host_settings(
         config.auth.jwt.secret.clone(),
@@ -253,19 +259,6 @@ fn jwt_secret_looks_like_placeholder(secret: &str) -> bool {
             < 16
 }
 
-fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
-
 fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
     let router = Router::new()
         .merge(controllers::health::router())
@@ -336,26 +329,7 @@ async fn connect_database(
 }
 
 async fn load_config() -> Result<HostConfig> {
-    let environment = std::env::var("RUSTOK_ENV")
-        .or_else(|_| std::env::var("APP_ENV"))
-        .unwrap_or_else(|_| {
-            if cfg!(debug_assertions) {
-                "development".to_string()
-            } else {
-                "production".to_string()
-            }
-        });
-    let environment = environment.trim();
-    if environment.is_empty()
-        || !environment
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
-    {
-        return Err(Error::BadRequest(
-            "RUSTOK_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
-                .to_string(),
-        ));
-    }
+    let environment = effective_environment_name().map_err(Error::BadRequest)?;
 
     let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()

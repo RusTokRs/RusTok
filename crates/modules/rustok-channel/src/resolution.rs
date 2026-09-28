@@ -104,25 +104,19 @@ impl ChannelResolver {
         let mut trace = Vec::new();
 
         if let Some(channel_id) = facts.header_channel_id {
-            match self.service.get_channel_detail(channel_id).await? {
-                detail if detail.channel.tenant_id != facts.tenant_id => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderId,
-                        outcome: ResolutionOutcome::Rejected,
-                        detail: format!(
-                            "Channel '{channel_id}' does not belong to tenant '{}'",
-                            facts.tenant_id
-                        ),
-                    });
-                }
-                detail if !detail.channel.is_active => {
+            match self
+                .service
+                .get_channel_detail_for_tenant(facts.tenant_id, channel_id)
+                .await?
+            {
+                Some(detail) if !detail.channel.is_active => {
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::HeaderId,
                         outcome: ResolutionOutcome::Rejected,
                         detail: format!("Channel '{channel_id}' is inactive"),
                     });
                 }
-                detail => {
+                Some(detail) => {
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::HeaderId,
                         outcome: ResolutionOutcome::Matched,
@@ -133,6 +127,15 @@ impl ChannelResolver {
                         ChannelResolutionOrigin::HeaderId,
                         trace,
                     ));
+                }
+                None => {
+                    trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::HeaderId,
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!(
+                            "No active channel with id '{channel_id}' exists in the resolved tenant scope"
+                        ),
+                    });
                 }
             }
         } else {
@@ -224,23 +227,31 @@ impl ChannelResolver {
                     .get_channel_by_host_target_value(facts.tenant_id, normalized.as_str())
                     .await?
                 {
+                    if detail.channel.is_active {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::Host,
+                            outcome: ResolutionOutcome::Matched,
+                            detail: format!("Matched host target '{normalized}'"),
+                        });
+                        return Ok(ResolutionDecision::matched(
+                            detail,
+                            ChannelResolutionOrigin::Host,
+                            trace,
+                        ));
+                    }
+
                     trace.push(ResolutionTraceStep {
                         stage: ResolutionStage::Host,
-                        outcome: ResolutionOutcome::Matched,
-                        detail: format!("Matched host target '{normalized}'"),
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!("Host target '{normalized}' resolved to an inactive channel"),
                     });
-                    return Ok(ResolutionDecision::matched(
-                        detail,
-                        ChannelResolutionOrigin::Host,
-                        trace,
-                    ));
+                } else {
+                    trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::Host,
+                        outcome: ResolutionOutcome::Miss,
+                        detail: format!("No host target matched '{normalized}'"),
+                    });
                 }
-
-                trace.push(ResolutionTraceStep {
-                    stage: ResolutionStage::Host,
-                    outcome: ResolutionOutcome::Miss,
-                    detail: format!("No host target matched '{normalized}'"),
-                });
             } else {
                 trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::Host,
@@ -316,10 +327,21 @@ impl ChannelResolver {
                 continue;
             }
 
-            let detail = self
+            let Some(detail) = self
                 .service
-                .get_channel_detail(rule.action_channel_id)
-                .await?;
+                .get_channel_detail_for_tenant(facts.tenant_id, rule.action_channel_id)
+                .await?
+            else {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::Policy,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: format!(
+                        "Policy rule '{}' in set '{}' resolved outside the tenant scope",
+                        rule.id, rule.policy_set_slug
+                    ),
+                });
+                continue;
+            };
             if !detail.channel.is_active {
                 trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::Policy,
@@ -547,6 +569,44 @@ mod tests {
                 .iter()
                 .any(|step| step.outcome == ResolutionOutcome::Rejected),
             "trace must explain rejected invalid host"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolver_skips_inactive_host_channel_and_falls_back() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+
+        let inactive_channel_id = create_channel(&db, tenant_id, "inactive-host").await;
+        add_web_target(&db, inactive_channel_id, "shop.example.test").await;
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "UPDATE channels SET is_active = ? WHERE id = ?",
+            [false.into(), inactive_channel_id.into()],
+        ))
+        .await
+        .expect("channel should be deactivated");
+
+        let default_channel_id = create_channel(&db, tenant_id, "default").await;
+        let facts = RequestFacts {
+            tenant_id,
+            host: Some("shop.example.test".to_string()),
+            ..RequestFacts::default()
+        };
+
+        let decision = ChannelResolver::new(db)
+            .resolve(&facts)
+            .await
+            .expect("resolution should succeed");
+        assert_eq!(
+            decision.source,
+            Some(ChannelResolutionOrigin::Default),
+            "inactive host channel must not terminate resolution"
+        );
+        assert_eq!(
+            decision.detail.expect("default channel").channel.id,
+            default_channel_id
         );
     }
 

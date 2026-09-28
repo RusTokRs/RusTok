@@ -28,6 +28,11 @@ pub async fn resolve_optional(
     let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
+    let suppress_user_authorization = matches!(
+        super::tenant_route_policy::tenant_route_scope(request_path.as_str()),
+        super::tenant_route_policy::TenantRouteScope::GlobalOperator
+            | super::tenant_route_policy::TenantRouteScope::SelfResolvingHandshake
+    );
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
     let host_authority = match take_host_authority(&mut parts.headers) {
         Ok(authority) => authority,
@@ -60,8 +65,24 @@ pub async fn resolve_optional(
     let request_method = parts.method.clone();
     let mut rbac_scope = None;
 
-    match resolve_current_user(&mut parts, &ctx).await {
-        Ok(current_user) => {
+    let current_user = if suppress_user_authorization {
+        None
+    } else {
+        match resolve_current_user(&mut parts, &ctx).await {
+            Ok(current_user) => Some(current_user),
+            Err((status, message)) if presented_credentials || pages_inline_authoring => {
+                return pages_inline_authoring_response(
+                    (status, message).into_response(),
+                    pages_inline_authoring,
+                    pages_inline_authoring_surface,
+                );
+            }
+            Err(_) => None,
+        }
+    };
+
+    if let Some(current_user) = current_user {
+
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
                     (
@@ -138,15 +159,6 @@ pub async fn resolve_optional(
                 scopes: current_user.scopes,
                 grant_type: current_user.grant_type,
             }));
-        }
-        Err((status, message)) if presented_credentials || pages_inline_authoring => {
-            return pages_inline_authoring_response(
-                (status, message).into_response(),
-                pages_inline_authoring,
-                pages_inline_authoring_surface,
-            );
-        }
-        Err(_) => {}
     }
 
     if let Some(host_authority) = host_authority {
@@ -291,6 +303,47 @@ mod tests {
         let mut headers = HeaderMap::new();
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
+        assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn global_operator_routes_skip_jwt_parsing_but_preserve_operator_authorization() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            "Bearer setup-or-observability-token".parse().unwrap(),
+        );
+
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/install/apply"),
+            super::super::tenant_route_policy::TenantRouteScope::GlobalOperator
+        );
+        assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn self_resolving_handshakes_skip_http_jwt_parsing_but_preserve_authorization() {
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/graphql/ws"),
+            super::super::tenant_route_policy::TenantRouteScope::SelfResolvingHandshake
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            "Bearer handshake-token".parse().unwrap(),
+        );
+        assert!(headers.contains_key(AUTHORIZATION));
+    }
+
+    #[test]
+    fn tenant_bound_routes_keep_authorization_for_user_authentication() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer user-token".parse().unwrap());
+
+        assert_eq!(
+            super::super::tenant_route_policy::tenant_route_scope("/api/graphql"),
+            super::super::tenant_route_policy::TenantRouteScope::TenantBound
+        );
         assert!(headers.contains_key(AUTHORIZATION));
     }
 
