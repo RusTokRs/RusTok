@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::error::{Error, Result};
+
 #[cfg(feature = "mod-blog")]
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
@@ -26,12 +28,9 @@ struct IndexReplayStopKeepalive {
     _receiver: tokio::sync::watch::Receiver<bool>,
 }
 
-pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
-    #[cfg(feature = "mod-seo")]
-    start_seo_redirect_cache_reconciliation(ctx);
-
+pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>> {
     if let Some(shared) = ctx.shared_get::<SharedGraphqlSchema>() {
-        return shared.0.clone();
+        return Ok(shared.0.clone());
     }
 
     // Select the public-image provider before any host snapshot is built. The enriched extension
@@ -45,16 +44,20 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
 
     #[cfg(feature = "mod-alloy")]
     let alloy_runtime = alloy_runtime_from_context(ctx);
-    let registry = ctx
-        .shared_get::<rustok_core::ModuleRegistry>()
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "ModuleRegistry not initialized before GraphQL schema build; falling back to build_registry()"
-            );
-            let reg = crate::modules::build_registry();
-            ctx.shared_insert(reg.clone());
-            reg
-        });
+    let registry = ctx.shared_get::<rustok_core::ModuleRegistry>().ok_or_else(|| {
+        Error::Message(
+            "ModuleRegistry is unavailable; GraphQL schema composition requires boot-owned registry state"
+                .to_string(),
+        )
+    })?;
+    let marketplace_catalog = ctx
+        .shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
+        .ok_or_else(|| {
+            Error::Message(
+                "SharedModuleMarketplaceCatalog is unavailable; GraphQL schema composition requires boot-owned catalog state"
+                    .to_string(),
+            )
+        })?;
     let static_module_registry_reader =
         static_module_registry_reader_from_context(ctx, registry.clone());
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
@@ -62,12 +65,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         .with_shared_value(registry);
     let host_runtime = runtime_extensions.apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
-    let host_runtime =
-        if let Some(catalog) = ctx.shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>() {
-            host_runtime.with_shared_value(catalog)
-        } else {
-            host_runtime
-        };
+    let host_runtime = host_runtime.with_shared_value(marketplace_catalog);
     #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
     let host_runtime = attach_storage_runtime(host_runtime, ctx);
     #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
@@ -134,7 +132,10 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
 
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
-    schema
+    #[cfg(feature = "mod-seo")]
+    start_seo_redirect_cache_reconciliation(ctx);
+
+    Ok(schema)
 }
 
 #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
