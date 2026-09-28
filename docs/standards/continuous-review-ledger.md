@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `5625810cbd8dc4e17f7361d4087c2744efc07651`  
+**Current main SHA:** `c79806106f246a75e21f497d262aed74a42519e2`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -138,7 +138,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit; completed with six consecutive remediation iterations and a final fresh second pass. Remaining RBAC self-mutation invalidation and full detached WebSocket worker lifecycle are explicitly deferred to their owner/FS-24 tracks.
 - [x] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Registration-policy and invite-consumption boundaries are now enforced.
 - [x] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit; completed with four remediation iterations and a final fresh second pass. OAuth/OIDC transport, scope, caching, and handshake boundaries are now aligned with the reviewed contract.
-- [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
+- [x] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Tenant isolation, permission boundaries, pagination semantics, and database error handling were reverified.
 - [ ] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit.
 - [ ] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit.
 - [ ] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit.
@@ -195,6 +195,22 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.19 Result — `controllers/users.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `9e35c1d58a46db3c0be2a669fa0dd5586311c9ec`.
+- **Final main after this module track:** `c79806106f246a75e21f497d262aed74a42519e2`.
+- **Iteration 1:** PR #4211, merge commit `e6a5393f519703e2c51f452965cfda377a524cdd`.
+  - **Finding:** `list_users` swallowed `num_items()` and `fetch_page()` database errors with `unwrap_or*`, returning HTTP 200 with a misleading empty user list during DB failures.
+  - **Remediation:** database failures now propagate through the canonical server `Error::Database` boundary.
+- **Iteration 2:** PR #4212, merge commit `c79806106f246a75e21f497d262aed74a42519e2`.
+  - **Finding:** `get_user` converted `DbErr` to `Error::Message(e.to_string())` unnecessarily instead of using the canonical database error variant.
+  - **Remediation:** `DbErr` now propagates with `await?`; tenant filtering and `404 NotFound` behavior remain unchanged.
+- **Final fresh second pass:** independently re-read the complete controller after both merges and rechecked tenant scoping on list/get, permission checks, page bounds, query filters, DB-error propagation, and response mapping. No remaining unblocked controller-owned defect was found.
+- **Non-findings:** the current list ordering is deterministic by `CreatedAt` only but is not treated as a blocker because page-number pagination remains inherently mutation-sensitive; no security boundary is crossed and adding a tie-breaker would be a separate API-semantics change.
+- **Verification:** repository source inspection, adjacent server error-boundary review, immediate re-audits after each patch, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.20 — `apps/server/src/controllers/health.rs`.
 
 ### FS-22.02.18 Result — `controllers/oauth.rs`
 
