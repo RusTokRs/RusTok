@@ -148,8 +148,14 @@ async fn plan(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    let host_production = crate::common::settings::is_production_environment();
+    require_setup_token(&headers, host_production)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
+    if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
     }))
@@ -160,8 +166,14 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    let host_production = crate::common::settings::is_production_environment();
+    require_setup_token(&headers, host_production)?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
+    if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
         passed: report.passed(),
@@ -175,17 +187,30 @@ async fn apply(
     State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
-    require_setup_token(&headers, request.plan.environment.is_production())?;
-    let plan = bind_host_install_plan(&ctx, request.plan).await?;
+    let host_production = crate::common::settings::is_production_environment();
+    require_setup_token(&headers, host_production)?;
+    let InstallApplyRequest {
+        plan: requested_plan,
+        lock_owner,
+        lock_ttl_secs,
+        pg_admin_url: requested_pg_admin_url,
+    } = request;
+    let requested_production = requested_plan.environment.is_production();
+    let plan = bind_host_install_plan(&ctx, requested_plan).await?;
+    if host_production && !requested_production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
-    let pg_admin_url = if request.plan.environment.is_production() {
+    let pg_admin_url = if requested_production {
         configured_value("RUSTOK_INSTALL_PG_ADMIN_URL")
     } else {
-        request.pg_admin_url
+        requested_pg_admin_url
     };
-    if request.plan.environment.is_production()
-        && request.plan.database.create_if_missing
+    if requested_production
+        && plan.database.create_if_missing
         && pg_admin_url.is_none()
     {
         return Err(bad_request_error(
@@ -194,11 +219,10 @@ async fn apply(
     }
 
     let apply_options = InstallApplyOptions {
-        lock_owner: request
-            .lock_owner
+        lock_owner: lock_owner
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "http".to_string()),
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
+        lock_ttl_secs: lock_ttl_secs.unwrap_or(900),
         pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
@@ -386,7 +410,7 @@ async fn job_status(
     headers: HeaderMap,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers, crate::common::settings::is_production_environment())?;
     INSTALL_JOBS
         .lock()
         .await
@@ -401,7 +425,7 @@ async fn receipts(
     State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers, crate::common::settings::is_production_environment())?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
         .list_receipts(session_id)
