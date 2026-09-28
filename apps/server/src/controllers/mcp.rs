@@ -598,30 +598,39 @@ async fn execute_remote_scaffold_tool(
             let request: ScaffoldModuleRequest = parse_tool_args(arguments)?;
             match draft_store.stage_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_stage_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::warn!(error = %error, "MCP scaffold stage failed");
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_stage_failed",
+                        "MCP scaffold stage request was invalid",
+                    ))
+                },
             }
         }
         TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
             let request: ReviewModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.review_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_review_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::warn!(error = %error, "MCP scaffold review failed");
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_review_failed",
+                        "MCP scaffold review request failed",
+                    ))
+                },
             }
         }
         TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
             let request: ApplyModuleScaffoldRequest = parse_tool_args(arguments)?;
             match draft_store.apply_scaffold_draft(&context, request).await {
                 Ok(response) => envelope_value(McpToolResponse::success(response)),
-                Err(error) => envelope_value(McpToolResponse::<()>::error(
-                    "scaffold_apply_failed",
-                    error.to_string(),
-                )),
+                Err(error) => {
+                    tracing::error!(error = %error, "MCP scaffold apply failed");
+                    envelope_value(McpToolResponse::<()>::error(
+                        "scaffold_apply_failed",
+                        "MCP scaffold apply failed",
+                    ))
+                },
             }
         }
         _ => envelope_value(McpToolResponse::<()>::error(
@@ -722,7 +731,7 @@ async fn rotate_token(
         client_id,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_authority_error)?;
 
     let result = McpManagementService::rotate_token(
         ctx.db(),
@@ -760,7 +769,7 @@ async fn update_policy(
         &input.granted_permissions,
     )
     .await
-    .map_err(|error| crate::error::Error::Forbidden(error.to_string()))?;
+    .map_err(map_mcp_authority_error)?;
 
     let policy = McpManagementService::update_policy(
         ctx.db(),
