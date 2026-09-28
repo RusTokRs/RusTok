@@ -16,6 +16,26 @@ status: active
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
+### Deep Audit Execution Protocol — mandatory for every phase
+
+The audit must move slowly enough to discover second-order defects. A phase is not a single scan and not a single patch. Every phase uses the following closed loop:
+
+1. **Discovery pass:** read the complete in-scope production path end-to-end, including callers, persistence, configuration, transport adapters, failure paths, and adjacent boundaries. Pattern scanners are supporting evidence only.
+2. **Invariant map:** write down the business, security, tenancy, authorization, transaction, concurrency, retry/idempotency, lifecycle, and compatibility invariants that the path must preserve.
+3. **Finding isolation:** group findings by root cause. Do not batch unrelated fixes merely because they touch the same file. Prefer one small coherent remediation unit at a time.
+4. **Implementation pass:** fix the root cause, not the visible symptom. Do not redesign unrelated code during the same remediation unit.
+5. **Immediate re-audit:** after every remediation unit, re-read the entire changed function/module and all direct callers/callees. Explicitly inspect what assumptions the change invalidated.
+6. **Adjacent-boundary re-audit:** inspect the nearest upstream and downstream boundaries (transport, auth, tenant/channel/locale context, DB schema, events/outbox, cache, worker, UI/CLI contract as applicable). This is mandatory even when the initial finding appeared local.
+7. **Regression audit:** compare the pre-change and post-change behavior as a reviewer would: removed behavior, newly reachable states, error mapping, fallback behavior, defaults, feature-flag interactions, concurrency behavior, and observability. Ask specifically: "What new bug could this change have introduced?"
+8. **Fresh second pass:** repeat the audit against the modified area without relying on the original finding list. New findings discovered here are treated as first-class findings, not dismissed as out of scope merely because the first pass missed them.
+9. **Static verification:** run only repository-approved static/source verification available in the environment; never claim tests, clippy, or gatekeeper success unless actually executed.
+10. **Commit boundary:** commit only after the re-audit loop is clean. The phase branch must stay small and reviewable.
+11. **Pre-PR review:** inspect the complete branch diff against refreshed main; verify that documentation/ledger statements exactly match implementation and that no unrelated file drift entered the branch.
+12. **Post-merge refresh:** refresh main, then perform a lightweight reconciliation of the merged result before starting the next phase.
+
+**Regression prohibition:** a fix that introduces a new correctness, security, data-integrity, availability, performance, or compatibility defect is not considered a successful remediation. The phase must remain open until the introduced defect is also fixed and re-audited.
+
+**Small-step rule:** if a phase uncovers a large architectural problem, split it into additional subphases in this same ledger rather than making a large speculative rewrite.
 ### Execution contract
 
 - Canonical trigger: `реализуй план аудита`.
@@ -23,8 +43,10 @@ status: active
 - Governance preflight is recorded here, but the implementation audit starts at the server/runtime boundary and continues through every affected layer to the final shared-library surface.
 - Execute phases strictly in order, one phase at a time.
 - Before each phase, refresh `main`, record its SHA, and create/use only a dedicated phase branch from that refreshed SHA.
-- Audit first, then implement every repository-owned in-scope root-cause defect on the phase branch.
-- Commit the audit/implementation result, open a PR to `main`, merge it, then refresh `main` before the next phase.
+- Audit first, then implement every repository-owned in-scope root-cause defect on the phase branch, using the mandatory closed-loop re-audit protocol above.
+- After every remediation unit, re-audit the changed area and adjacent boundaries for newly introduced defects before continuing.
+- Commit only after the complete branch diff has passed the fresh re-audit.
+- Commit the audit/implementation result, open a PR to `main`, merge it, then refresh `main` and perform the post-merge reconciliation before the next phase.
 - Do not mutate another agent's branch or force-update shared history.
 - Tests are run by the maintainer/user. The agent MUST NOT run test suites unless this rule is explicitly changed; tests may be inspected and static/source checks may be performed.
 - Do not declare a phase complete until repository-owned findings are fixed or explicitly blocked by an owner decision/ADR, the phase branch is integrated into `main`, and the ledger is updated.
@@ -68,6 +90,9 @@ status: active
 
 - [x] **SERVER-21-08 — production image contained development/test configuration and did not self-declare its production config contract.** The production stage copied the entire `apps/server/config` directory, including known development/test credentials. It now creates an empty operator-owned `/app/config` mount point, sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`, and deliberately excludes development/test YAML files from the production image.
 
+### Phase Granularity Rule
+
+The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
@@ -100,12 +125,12 @@ status: active
 - [ ] Cross-tenant / cross-principal / cross-channel / cross-locale leakage risks were checked.
 - [ ] Concurrency, retry, idempotency and transaction boundaries were checked where applicable.
 - [ ] Persistence, migrations and rollback implications were checked where applicable.
+- [ ] Every remediation unit received an immediate re-audit, adjacent-boundary re-audit, and fresh second pass.
+- [ ] The final branch diff received a regression-focused review specifically looking for defects introduced by the fixes.
 - [ ] All repository-owned defects found in scope were implemented on the phase branch or explicitly blocked by an owner decision/ADR.
 - [ ] Tests were inspected but left for maintainer execution under the current contract.
 - [ ] Static/source checks feasible without running test suites were performed where relevant.
-- [ ] Phase result was committed, PR'd, merged to `main`, and the ledger was updated afterward.
-
-
+- [ ] Phase result was committed, PR'd, merged to `main`, post-merge reconciled, and the ledger was updated afterward.
 ## Deep Full-Stack Audit Cycle — 2026-09-27
 
 **Status:** COMPLETE  
