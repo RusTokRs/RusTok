@@ -94,3 +94,30 @@ enum InstallHttpJobs {
     ErrorMessage,
     UpdatedAt,
 }
+
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectionTrait, Database};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    use super::Migration;
+
+    #[tokio::test]
+    async fn creates_durable_http_job_table() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        Migration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("install_http_jobs migration should apply");
+
+        assert!(
+            db.get_schema_manager()
+                .has_table("install_http_jobs")
+                .await
+                .expect("table lookup should succeed")
+        );
+    }
+}
