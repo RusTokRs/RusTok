@@ -18,11 +18,11 @@ A set of unit tests verifying our OAuth2 implementation compliance with RFC stan
 | RFC 7636 | PKCE (Proof Key for Code Exchange) | `services/oauth_app.rs` | 7 |
 | RFC 7519 | JSON Web Token (JWT) | `auth.rs` | 5 |
 | RFC 7009 | Token Revocation | `services/oauth_app.rs` | 2 |
-| RFC 8414 | Authorization Server Metadata | `services/oauth_app.rs` | 3 |
+| RFC 8414 | Authorization Server Metadata | `services/oauth_app.rs`, `controllers/oauth_metadata.rs` | 7 |
 | — | OAuth2 scope enforcement | `context/auth.rs` | 7 |
 | — | Credential security | `auth.rs` | 6 |
 
-**Total: 45 tests**
+**Total: 49 tests**
 
 ## Running Tests
 
@@ -99,8 +99,11 @@ cargo test -p rustok-server --lib
 ### RFC 8414 — Authorization Server Metadata
 
 - Required fields: `issuer`, `token_endpoint`, `response_types_supported`
+- Issuer and endpoint URLs are derived from the configured auth issuer; malformed/query/fragment/non-root issuers are rejected
+- `response_modes_supported` advertises only the query response mode implemented by the authorization flow
+- `claims_supported` lists only claims actually returned by the UserInfo endpoint
 - Metadata matches the actual implementation
-- Well-known paths: `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`
+- Well-known paths: `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration` (the latter is the RFC 8414 alias, not a full OIDC Provider Configuration document)
 
 ### OAuth2 JWT Claims Extensions
 
