@@ -99,6 +99,7 @@ pub async fn list_executions(
     auth: AuthContext,
     Path(workflow_id): Path<Uuid>,
 ) -> HttpResult<Json<Vec<WorkflowExecutionResponse>>> {
+    crate::controllers::ensure_workflow_module_enabled(&runtime.db_clone(), tenant.id).await?;
     ensure_execution_permission(
         &auth,
         &[Permission::WORKFLOW_EXECUTIONS_LIST],
@@ -127,6 +128,7 @@ pub async fn get_execution(
     auth: AuthContext,
     Path(execution_id): Path<Uuid>,
 ) -> HttpResult<Json<WorkflowExecutionResponse>> {
+    crate::controllers::ensure_workflow_module_enabled(&runtime.db_clone(), tenant.id).await?;
     ensure_execution_permission(
         &auth,
         &[Permission::WORKFLOW_EXECUTIONS_READ],

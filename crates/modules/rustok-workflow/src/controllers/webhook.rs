@@ -22,30 +22,6 @@ pub async fn receive(
     body: Bytes,
 ) -> HttpResult<Json<WebhookResponse>> {
     let db = runtime.db_clone();
-    let tenant = rustok_tenant::entities::tenant::Entity::find()
-        .filter(rustok_tenant::entities::tenant::Column::Slug.eq(&tenant_slug))
-        .one(&db)
-        .await
-        .map_err(|err| {
-            tracing::error!(
-                tenant_slug = %tenant_slug,
-                error = %err,
-                "Workflow webhook tenant lookup failed"
-            );
-            HttpError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "workflow_webhook_unavailable",
-                "Workflow webhook is temporarily unavailable".to_string(),
-            )
-        })?
-        .filter(|tenant| tenant.is_active)
-        .ok_or_else(|| {
-            HttpError::not_found(
-                "workflow_webhook_not_found",
-                "Workflow webhook endpoint was not found".to_string(),
-            )
-        })?;
-
     let signature = headers
         .get("x-webhook-signature")
         .and_then(|value| value.to_str().ok());

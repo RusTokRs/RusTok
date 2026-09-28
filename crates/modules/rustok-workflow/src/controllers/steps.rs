@@ -100,6 +100,7 @@ pub async fn add_step(
     Path(id): Path<Uuid>,
     Json(input): Json<CreateWorkflowStepInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    crate::controllers::ensure_workflow_module_enabled(&runtime.db_clone(), tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());
@@ -117,6 +118,7 @@ pub async fn update_step(
     Path((id, step_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<UpdateWorkflowStepInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    crate::controllers::ensure_workflow_module_enabled(&runtime.db_clone(), tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());
@@ -135,6 +137,7 @@ pub async fn delete_step(
     auth: AuthContext,
     Path((id, step_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    crate::controllers::ensure_workflow_module_enabled(&runtime.db_clone(), tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());

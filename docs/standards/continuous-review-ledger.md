@@ -161,6 +161,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.02/22.04 finding in progress — self-resolving handshake Authorization collision.** `SelfResolvingHandshake` routes intentionally resolve their own tenant/auth context, but the generic JWT middleware previously still attempted to parse the HTTP `Authorization` header when present, causing requests such as signed webhooks or GraphQL WS handshakes with an unrelated bearer header to fail before their owning protocol handler. `auth_context` now skips user-JWT parsing for `SelfResolvingHandshake` while preserving the header for the route owner.
 
+- [ ] **FS-22.05 finding in progress — Workflow runtime lifecycle bypass.** All Workflow HTTP CRUD/execution/step handlers and the signed webhook now require the tenant-scoped `workflow` module to be enabled before business execution. This keeps compile-time route availability separate from runtime module lifecycle.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
