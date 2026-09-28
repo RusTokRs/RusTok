@@ -247,7 +247,9 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection and branch/PR diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.02.32` complete. Next primary module: `FS-22.03` must first be decomposed into one-primary-module iterations.
 
-- [ ] **FS-22.03 — identity/auth propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.03 — identity/auth propagation:** in progress; decomposed into one-primary-module iterations.
+- [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
+- [ ] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — re-audit self-service principal admission; delegated OAuth users must not inherit direct-session-only capabilities.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -257,6 +259,19 @@ Hard limits for every iteration:
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
 
+### FS-22.03.01 Iteration 1 — `apps/server/src/extractors/auth/mod.rs`
+
+- **Base:** refreshed `main` at `1c7bf562207bb32ac0ef395b15b8bd5fe7725b53`; a later independent main change was refreshed before PR and found unrelated to this boundary.
+- **Invariant map:** token verification must validate signature/issuer/audience/expiry before principal classification; tenant identity must match routed tenant; direct users require a live session bound to the token subject; delegated OAuth users require a current active app, grant, scope ceiling, and applicable consent; service tokens require an active app, client-credentials grant, app-subject binding, and current app permission ceiling; authentication must not depend on presentation/localization data.
+- **Finding AUTH-22.03.01-01:** active OAuth-app resolution called `find_active_by_client_id`, which hydrated tenant locale and `oauth_app_translations` even though the authentication resolver needs only security/configuration fields. A presentation-storage outage or migration drift could therefore turn into an authentication outage for otherwise valid OAuth bearer tokens and added avoidable database work on every delegated/service-token request.
+- **Remediation:** added the owner-side security-only `find_active_security_by_client_id` lookup and switched the auth extractor to it. Presentation-oriented lookup remains available to presentation callers and is not changed into a competing security source.
+- **Regression coverage:** added an extractor integration regression that removes `oauth_app_translations` after app creation and verifies service-token permission resolution still succeeds.
+- **Immediate/adjacent re-audit:** re-read the full extractor, OAuth app model lookup/hydration helpers, OAuth token issuance service, auth-context propagation, principal-kind classifier, RBAC permission restriction, session model, and OAuth consent lookup. The security lookup now has no tenant-locale/translation dependency; token scope and tenant checks remain fail-closed.
+- **Fresh second pass:** independently compared authentication behavior for direct, delegated, and service principals; rechecked malformed/removed scopes, inactive OAuth apps, session-subject binding, inactive users, RBAC storage failure mapping, and the changed presentation/security lookup boundary. No additional repository-owned root-cause issue remained inside this primary module.
+- **Adjacent finding assigned to next primary:** delegated OAuth users currently satisfy the `SecurityActorKind::User` check used by `auth_context.rs` self-service admission. This permits delegated principals to reach direct-session-oriented endpoints such as password/profile/session operations; because the fix belongs to the middleware admission boundary, it is explicitly recorded as `FS-22.03.02` rather than patched from the extractor.
+- **Documentation:** `apps/server/docs/README.md` now states that access-token authentication uses a security-only OAuth app lookup independent of presentation translations.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.01` complete after merge; next primary module is `FS-22.03.02 — apps/server/src/middleware/auth_context.rs`.
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
 - **Base:** refreshed `main` at `a10cfc7982fac9bdaa3013a825c8598869c53442`; dedicated branch `codex/audit-fs-22.02.11-security-headers`.
