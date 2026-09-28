@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `6151373006e5169b71064ef29f7eb83e0dcf4e22`  
+**Current main SHA:** `a6001d414deffefdd32fb5eda8bff5b0680b894c`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -271,7 +271,20 @@ Hard limits for every iteration:
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
 - [x] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; completed after PR #4284 and post-merge reconciliation. Next primary module: `FS-22.04.04 — apps/server/src/middleware/channel.rs`..
 - [x] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity; completed after PR #4286 and post-merge reconciliation. Next primary module: `FS-22.04.05 — apps/server/src/middleware/locale.rs`.
-- [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
+- [x] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation; completed after fresh module-level re-audit from `a6001d414deffefdd32fb5eda8bff5b0680b894c`. No additional repository-owned in-scope defect required code remediation.
+### FS-22.04.05 Iteration 1 — `apps/server/src/middleware/locale.rs`
+
+- **Base:** refreshed `main` at `a6001d414deffefdd32fb5eda8bff5b0680b894c`; dedicated branch `codex/audit-fs-22.04.05-locale`.
+- **Invariant map:** trusted tenant requests must never honor a locale outside the tenant-owned policy; canonical request-locale precedence and normalization must remain unchanged; empty/legacy policy projections must fail closed to the trusted tenant default; cache fills must not repopulate obsolete policy after invalidation; local cache generation state must remain bounded and fail closed on version exhaustion; durable tenant-generation recovery must invalidate local locale state on missed, gapped, or regressed observations; response `Content-Language` and request `ResolvedRequestLocale` must use the same effective locale.
+- **Discovery:** re-read `apps/server/src/middleware/locale.rs` end-to-end together with the tenant `TenantLocalePolicyPort`, locale-policy owner validation/persistence, tenant/locale generation listeners, application-router ordering, cache initialization, request-locale primitives, and the retained locale-generation regression suite.
+- **Confirmed current contract:** the middleware always constrains tenant-bound requests, including an empty policy projection; locale-policy reads are owner-port based and typed; tenant locale policy validation enforces canonical locale uniqueness, exactly one enabled default, valid enabled fallbacks, and acyclic fallback graphs; tenant locale writes commit policy rows, tenant default, idempotency receipt, and invalidating events transactionally; the shared tenant durable generation is advanced by the canonical event transport and consumed by both tenant and locale cache listeners.
+- **Generation/cache review:** the bounded monotonic per-tenant version namespace prevents stale async fills from becoming reachable after invalidation; rollover clears obsolete keys; version exhaustion bypasses cache state rather than reusing an unsafe token. The locale generation listener handles exact/wildcard invalidations, durable-ahead recovery, local lag, Redis publication gaps, and generation regression by clearing local state and retaining degraded readiness.
+- **Router/propagation review:** the composed HTTP stack executes tenant resolution before locale middleware (then auth/channel), while registry/worker-only profiles intentionally run locale without tenant because those routes are not tenant-bound. `resolve_locale` consumes only the trusted tenant extension and the canonical `resolve_request_locale` primitive; downstream `RequestContext` now requires the resulting `ResolvedRequestLocale`.
+- **Fresh second pass:** independently re-read the locale middleware after the surrounding FS-22.04.01..04 changes landed on `main`, checked cache/generation failure paths and fallback ordering again, and compared the module against the owner policy contract. No new repository-owned defect remained in this primary module.
+- **Deferred adjacent findings:** the legacy `rustok-core::i18n::Locale` projection mismatch for world-language Unicode locales remains intentionally assigned to `FS-22.04.10`; GraphQL WebSocket policy/selection remains `FS-22.04.06`. Neither is patched from `locale.rs` because doing so would create a competing owner/contract.
+- **Verification:** GitHub source inspection, cross-file static reasoning, and branch/ledger diff review only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.05` complete after integration; next primary module is `FS-22.04.06 — apps/server/src/controllers/graphql.rs`.
+
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
 - [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
 - [ ] **FS-22.04.08 — `crates/libs/rustok-api/src/context/channel.rs`** — shared ChannelContext shape/source propagation if the preceding middleware audit exposes owner-level contract drift.
