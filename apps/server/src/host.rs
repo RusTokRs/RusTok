@@ -9,7 +9,9 @@ use serde::Deserialize;
 
 use crate::{
     channels,
-    common::settings::{RustokSettings, is_production_environment},
+    common::settings::{
+        RustokSettings, effective_environment_name, is_production_environment,
+    },
     controllers,
     error::{Error, Result},
     middleware::security_headers::hsts_enabled,
@@ -327,23 +329,15 @@ async fn connect_database(
 }
 
 async fn load_config() -> Result<HostConfig> {
-    let environment = std::env::var("RUSTOK_ENV")
-        .or_else(|_| std::env::var("APP_ENV"))
-        .unwrap_or_else(|_| {
-            if cfg!(debug_assertions) {
-                "development".to_string()
-            } else {
-                "production".to_string()
-            }
-        });
-    let environment = environment.trim();
+    let environment = effective_environment_name().map_err(Error::BadRequest)?;
+
     if environment.is_empty()
         || !environment
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
     {
         return Err(Error::BadRequest(
-            "RUSTOK_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
+            "RUSTOK_ENV/RUST_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
                 .to_string(),
         ));
     }
