@@ -26,11 +26,21 @@ pub async fn receive(
         .filter(rustok_tenant::entities::tenant::Column::Slug.eq(&tenant_slug))
         .one(&db)
         .await
-        .map_err(|err| HttpError::bad_request("workflow_operation_failed", err.to_string()))?
+        .map_err(|err| {
+            tracing::error!(
+                tenant_slug = %tenant_slug,
+                error = %err,
+                "Workflow webhook tenant lookup failed"
+            );
+            HttpError::internal_server_error(
+                "workflow_webhook_unavailable",
+                "Workflow webhook is temporarily unavailable".to_string(),
+            )
+        })?
         .ok_or_else(|| {
-            HttpError::bad_request(
-                "workflow_operation_failed",
-                format!("Tenant not found: {tenant_slug}"),
+            HttpError::not_found(
+                "workflow_webhook_not_found",
+                "Workflow webhook endpoint was not found".to_string(),
             )
         })?;
 
@@ -51,7 +61,18 @@ pub async fn receive(
                     "Webhook signature verification failed".to_string(),
                 )
             }
-            other => HttpError::bad_request("workflow_operation_failed", other.to_string()),
+            other => {
+                tracing::error!(
+                    tenant_slug = %tenant_slug,
+                    webhook_slug = %webhook_slug,
+                    error = %other,
+                    "Workflow webhook execution failed"
+                );
+                HttpError::internal_server_error(
+                    "workflow_webhook_failed",
+                    "Workflow webhook execution failed".to_string(),
+                )
+            }
         })?;
 
     info!(
