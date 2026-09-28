@@ -146,7 +146,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
 - [x] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit; completed with one remediation unit and a fresh independent second pass restoring typed HTTP error semantics; OpenAPI aggregation omission deferred to FS-22.02.31.
-- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with one root-cause remediation slice and a fresh independent second pass restoring atomic mutation+outbox consistency.
+- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass: atomic mutation+outbox consistency restored, and documented Flex schema collection route aligned with its OpenAPI path.
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
@@ -283,6 +283,21 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.26` complete. Next primary module: `FS-22.02.27 — apps/server/src/controllers/flex.rs`.
 
+
+
+
+### FS-22.02.27 Iteration 1 — `apps/server/src/controllers/flex.rs`
+
+- **Base:** refreshed `main` at `61fdeb9c348123348f5676bd01d5ec06b165a2a6`; dedicated branch `codex/audit-fs-22.02.27-flex-controller`.
+- **Invariant map:** REST handlers must derive tenant and actor identity from trusted extractors; all schema/entry reads and writes remain tenant-scoped and permission-gated; standalone mutation, localized persistence, translation-change evidence and durable domain event must commit atomically; REST routes and OpenAPI paths must agree; Flex domain errors must map through the canonical transport adapter without leaking internals.
+- **Confirmed finding FLEX-22.02.27-01:** standalone create/update/delete service mutations committed Flex rows and translation evidence before the controller attempted to publish `flex.*` events through the process EventBus. A transport failure could therefore leave committed business state with no durable event, violating the canonical event-flow contract.
+- **Remediation FLEX-22.02.27-01:** moved construction/persistence of `flex.schema.*` and `flex.entry.*` root events into the same owner `DatabaseTransaction` via `TransactionalEventBus::publish_root_in_tx`; removed the controller's post-commit best-effort EventBus publication. Added focused service tests proving durable event creation and rollback when the outbox write is unavailable. The tests were not executed by the agent.
+- **Confirmed finding FLEX-22.02.27-02:** the schema collection route was registered as `/api/v1/flex/schemas/` while the controller's OpenAPI declaration and public contract use `/api/v1/flex/schemas`. Axum path matching is exact, so a client using the documented canonical path could miss the handler.
+- **Remediation FLEX-22.02.27-02:** changed the route to the documented canonical path without a trailing slash. Existing OpenAPI registration in `swagger.rs` already uses the non-slashed path.
+- **Non-findings:** no new tenant-isolation or RBAC bypass was found; every handler uses `CurrentTenant` plus the dedicated `flex_schemas:*` / `flex_entries:*` extractor, and the server passes only that trusted tenant id into the service. The standalone owner docs explicitly mark indexer/cascade-delete as no longer an outstanding backlog item, so schema-cascade deletion does not require synthetic per-entry events in this module iteration.
+- **Fresh second pass:** re-read the complete changed controller and persistence adapter, Flex standalone contracts/event helpers, outbox transactional writer/transport, event-flow contract, auth/RBAC extractors, route/OpenAPI registration, schema migration cascade rules and existing standalone tests. No additional repository-owned defect was found inside the primary controller module.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.27` complete. Next primary module: `FS-22.02.28 — apps/server/src/controllers/installer.rs`.
 
 ### FS-22.02.27 Iteration 1 — `apps/server/src/controllers/flex.rs`
 
