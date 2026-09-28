@@ -9,10 +9,11 @@
 
 use axum::{
     extract::{
-        State,
+        Extension, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::IntoResponse,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
@@ -20,7 +21,14 @@ use uuid::Uuid;
 
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use rustok_api::{AuthContextExtension, Permission, has_any_effective_permission};
 use rustok_build::BuildEvent;
+
+const BUILD_STREAM_PERMISSIONS: [Permission; 3] = [
+    Permission::MODULES_READ,
+    Permission::MODULES_LIST,
+    Permission::MODULES_MANAGE,
+];
 
 // ── Wire-format message ───────────────────────────────────────────────────────
 
@@ -118,9 +126,23 @@ impl From<BuildEvent> for WsBuildMessage {
 pub async fn ws_builds(
     ws: WebSocketUpgrade,
     State(ctx): State<ServerRuntimeContext>,
-) -> impl IntoResponse {
+    auth: Option<Extension<AuthContextExtension>>,
+) -> Response {
+    let Some(Extension(auth)) = auth else {
+        return (StatusCode::UNAUTHORIZED, "Authentication required").into_response();
+    };
+
+    if !has_any_effective_permission(&auth.0.permissions, &BUILD_STREAM_PERMISSIONS) {
+        return (
+            StatusCode::FORBIDDEN,
+            "Permission denied: modules:read required",
+        )
+            .into_response();
+    }
+
     let hub = build_event_hub_from_context(&ctx);
     ws.on_upgrade(move |socket| handle_socket(socket, hub))
+        .into_response()
 }
 
 async fn handle_socket(
@@ -173,4 +195,34 @@ async fn handle_socket(
 pub fn router() -> crate::routes::ServerRouter {
     use axum::routing::get;
     axum::Router::new().route("/ws/builds", get(ws_builds))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{BUILD_STREAM_PERMISSIONS, Permission, has_any_effective_permission};
+
+    #[test]
+    fn build_stream_accepts_each_module_read_level() {
+        assert!(has_any_effective_permission(
+            &[Permission::MODULES_READ],
+            &BUILD_STREAM_PERMISSIONS,
+        ));
+        assert!(has_any_effective_permission(
+            &[Permission::MODULES_LIST],
+            &BUILD_STREAM_PERMISSIONS,
+        ));
+        assert!(has_any_effective_permission(
+            &[Permission::MODULES_MANAGE],
+            &BUILD_STREAM_PERMISSIONS,
+        ));
+    }
+
+    #[test]
+    fn build_stream_rejects_unrelated_permissions() {
+        assert!(!has_any_effective_permission(
+            &[Permission::USERS_READ],
+            &BUILD_STREAM_PERMISSIONS,
+        ));
+    }
 }
