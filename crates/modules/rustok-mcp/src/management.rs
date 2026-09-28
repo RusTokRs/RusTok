@@ -355,6 +355,8 @@ pub struct McpScaffoldDraftRecord {
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum McpManagementMutationError {
+    #[error("MCP management permission denied: {0}")]
+    Forbidden(String),
     #[error("invalid MCP management mutation: {0}")]
     Validation(String),
     #[error("MCP management resource not found: {0}")]
