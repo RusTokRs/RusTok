@@ -133,6 +133,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.03 finding in progress — OAuth client lookup tenant isolation.** OAuth token issuance and revocation previously loaded an application by global `client_id` and only then compared `app.tenant_id` with the request tenant. A tenant-scoped client lookup is now the primary query boundary for these flows, with existing post-load tenant checks retained where applicable.
 
+- [ ] **FS-22.05/22.10 finding in progress — OAuth/OIDC discovery and UserInfo contract drift.** Discovery previously defaulted to `http://localhost:3000` even though the server listens on `5150`, and production could publish localhost endpoints when `RUSTOK_PUBLIC_URL` was absent. Metadata now defaults to `http://localhost:5150` only in non-production and rejects missing public URL configuration in production. UserInfo now requires delegated OAuth + `openid`, and profile/email claims are emitted only when their corresponding scopes are present; `email_verified` reflects persisted verification state.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

@@ -782,30 +782,50 @@ async fn userinfo_handler_inner(
         });
     }
 
-    if !current_user
-        .scopes
-        .iter()
-        .any(|scope| matches!(scope.as_str(), "openid" | "profile"))
-    {
+    if !current_user.scopes.iter().any(|scope| scope == "openid") {
         return Err(TokenErrorResponse {
             error: "insufficient_scope".to_string(),
-            error_description: "UserInfo requires the openid or profile scope".to_string(),
+            error_description: "UserInfo requires the openid scope".to_string(),
         });
     }
 
     let user = current_user.user;
     let inferred_role = current_user.inferred_role;
+    let profile_claims = current_user.scopes.iter().any(|scope| scope == "profile");
+    let email_claims = current_user.scopes.iter().any(|scope| scope == "email");
 
-    let userinfo = serde_json::json!({
-        "sub": user.id.to_string(),
-        "name": user.name.unwrap_or_default(),
-        "email": user.email,
-        "email_verified": user.is_email_verified(),
-        "role": inferred_role.to_string(),
-        "tenant_id": user.tenant_id.to_string(),
-    });
+    let mut userinfo = serde_json::Map::from_iter([(
+        "sub".to_string(),
+        serde_json::Value::String(user.id.to_string()),
+    )]);
 
-    Ok(Json(userinfo))
+    if profile_claims {
+        userinfo.insert(
+            "name".to_string(),
+            serde_json::Value::String(user.name.unwrap_or_default()),
+        );
+        userinfo.insert(
+            "role".to_string(),
+            serde_json::Value::String(inferred_role.to_string()),
+        );
+        userinfo.insert(
+            "tenant_id".to_string(),
+            serde_json::Value::String(user.tenant_id.to_string()),
+        );
+    }
+
+    if email_claims {
+        userinfo.insert(
+            "email".to_string(),
+            serde_json::Value::String(user.email),
+        );
+        userinfo.insert(
+            "email_verified".to_string(),
+            serde_json::Value::Bool(user.is_email_verified()),
+        );
+    }
+
+    Ok(Json(serde_json::Value::Object(userinfo)))
 }
 
 pub fn router() -> crate::routes::ServerRouter {

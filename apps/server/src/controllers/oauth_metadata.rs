@@ -33,26 +33,31 @@ async fn get_metadata(
         .auth_config()
         .ok_or_else(|| Error::Message("Auth config error".into()))?;
 
-    // Generate issuer base URL
-    // In a real environment, this should be the public URL from config.
-    // Fallback to localhost if not configured (useful for dev)
-    let domain =
-        std::env::var("RUSTOK_PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let issuer = auth_config.issuer.clone();
+    let production = crate::common::settings::is_production_environment();
+    let domain = match std::env::var("RUSTOK_PUBLIC_URL") {
+        Ok(value) if !value.trim().is_empty() => value.trim().trim_end_matches('/').to_string(),
+        _ if production => {
+            return Err(Error::BadRequest(
+                "RUSTOK_PUBLIC_URL must be configured for production OAuth/OIDC metadata"
+                    .to_string(),
+            ));
+        }
+        _ => "http://localhost:5150".to_string(),
+    };
 
-    // Normally issuer is a URL in OIDC, but if it's just "rustok", we return the domain base
-    let issuer_url = if issuer.starts_with("http") {
-        issuer
+    let issuer = auth_config.issuer.trim();
+    let issuer_url = if issuer.starts_with("https://") || issuer.starts_with("http://") {
+        issuer.to_string()
     } else {
         domain.clone()
     };
 
     Ok(Json(OAuthAuthorizationServerMetadata {
         issuer: issuer_url,
-        authorization_endpoint: format!("{}/api/oauth/authorize", domain),
-        token_endpoint: format!("{}/api/oauth/token", domain),
-        userinfo_endpoint: format!("{}/api/oauth/userinfo", domain),
-        revocation_endpoint: format!("{}/api/oauth/revoke", domain),
+        authorization_endpoint: format!("{domain}/api/oauth/authorize"),
+        token_endpoint: format!("{domain}/api/oauth/token"),
+        userinfo_endpoint: format!("{domain}/api/oauth/userinfo"),
+        revocation_endpoint: format!("{domain}/api/oauth/revoke"),
 
         scopes_supported: vec![
             "openid".into(),
@@ -83,15 +88,11 @@ async fn get_metadata(
 
         claims_supported: vec![
             "sub".into(),
-            "iss".into(),
-            "aud".into(),
-            "exp".into(),
-            "iat".into(),
-            "client_id".into(),
+            "email".into(),
+            "email_verified".into(),
+            "name".into(),
             "role".into(),
             "tenant_id".into(),
-            "email".into(),
-            "name".into(),
         ],
     }))
 }
