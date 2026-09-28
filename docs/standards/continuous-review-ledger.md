@@ -377,7 +377,7 @@ Hard limits for every iteration:
 - **Regression audit:** normal successful token generation remains 32 random bytes encoded as 64 hexadecimal characters; refresh rotation and initial session creation now fail closed if secure randomness cannot be obtained. No secret or RNG error detail is propagated to the client.
 - **Fresh post-merge second pass:** after PR #4237 merged at `20f7e24b8ab8aa691af11e5cb80652965f52c7ef`, the full changed credentials/error/adapter/lifecycle surface was re-read. That pass identified the remaining test migration defect; PR #4238 merged it at `54ad2e75f2f5f0984ae5937358119316117db86b`. A second fresh pass then confirmed all production and test call sites use the fallible contract and no further in-scope defect remained.
 - **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned verification policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
-- **Integration:** PR #4237 merged the production remediation into `main`; PR #4238 merged the post-merge test-contract correction. Current `main) after closeout is `54ad2e75f2f5f0984ae5937358119316117db86b`.
+- **Integration:** PR #4237 merged the production remediation into `main`; PR #4238 merged the post-merge test-contract correction. Current `main` after closeout is `54ad2e75f2f5f0984ae5937358119316117db86b`.
 - **Status:** `FS-22.03.08` complete. Next primary module: `FS-22.03.09 — crates/modules/rustok-auth/src/config.rs`.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
