@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `68de093f69723c21c6c7d538e54ade63e119da03`  
-**Active branch:** `main`
+**Current main SHA:** `3a52404b2563c568011bb91c93d4d1eb52510ec9`  
+**Active branch:** `codex/audit-fs-22.04.03`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -269,7 +269,7 @@ Hard limits for every iteration:
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** in progress; decomposed into one-primary-module iterations focused on the shared request-context boundary first, then tenant resolution/cache, channel resolution/cache, locale policy/cache, and transport propagation boundaries.
 - [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
-- [ ] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation.
+- [ ] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; implementation complete on the dedicated iteration branch, pending integration and post-merge reconciliation.
 - [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity.
 - [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
@@ -419,6 +419,21 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read the complete modified `tenant_resolution.rs` from the iteration branch, including all error/status mappings and tests, then compared the branch against refreshed `main`. No remaining repository-owned defect was found in this primary module.
 - **Verification:** GitHub source inspection and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.02` complete after PR #4281 merged into `main` at `68de093f69723c21c6c7d538e54ade63e119da03`. Post-merge source re-read confirmed the duplicate-header rejection, terminal-dot host canonicalization, slug-preserving subdomain resolution, and bounded diagnostics.
+### FS-22.04.03 Iterations 1-3 — `apps/server/src/middleware/tenant.rs`
+
+- **Base:** refreshed `main` at `3a52404b2563c568011bb91c93d4d1eb52510ec9`; dedicated branch `codex/audit-fs-22.04.03`.
+- **Invariant map:** tenant cache entries must deserialize completely within the typed cache boundary; malformed or incompatible values must become cache misses and be invalidated; tenant context must contain only active tenants; positive/negative entries must be generation-consistent with source-of-truth mutations; cache initialization must bind one canonical `CacheService` and one infrastructure instance; cache failures must degrade to explicit availability failures rather than silently serving an unsafe value.
+- **Finding TENANTCTX-22.04.03-01:** `CachedTenantContext` stored `TenantContext.settings` as a nested `settings_json: String`. The typed cache layer could therefore successfully deserialize the envelope while the later `TenantContext::try_from` failed on the nested JSON. Such a malformed cache value was not invalidated by the typed cache layer and could repeat a 500 until TTL.
+- **Remediation:** cache payload now stores `settings: serde_json::Value` directly; tenant context envelope schema version advanced from 2 to 3 so all pre-change entries are treated as schema misses; conversions are now infallible `From` implementations, eliminating the post-cache nested-deserialization failure path.
+- **Finding TENANTCTX-22.04.03-02:** `init_tenant_cache_infrastructure` used check-then-insert for the shared `CacheService` and cache infrastructure. Concurrent callers using different cache-service instances could observe absence and replace the canonical shared service while independently constructing infrastructure against another instance.
+- **Remediation:** shared cache service insertion now uses `shared_insert_if_absent`; the already-published canonical service is retrieved and used to construct the tenant cache infrastructure; infrastructure publication also uses `shared_insert_if_absent`.
+- **Regression coverage:** aligned the structured-cache round-trip test with schema version 3 and added source guards proving typed settings, infallible conversions, schema versioning and atomic cache initialization.
+- **Immediate/adjacent re-audit:** re-read the complete `tenant.rs`, `tenant_tests.rs`, cache typed-envelope/load path, weighted/generation-aware backends, tenant generation listener/bootstrap, `rustok-tenant::TenantReadPort`, tenant settings bounds, route policy and the application bootstrap caller. Generation fencing still wraps the full negative-check/load/fill operation and tenant owner writes continue to publish durable generation invalidation.
+- **Regression audit:** old schema-2 entries cannot be consumed because the expected schema is now 3; positive/negative cache keys retain the same generation semantics; active-tenant admission remains enforced before caching; repeated initialization is idempotent and canonical-service-bound; tenant owner settings remain bounded to 16 KiB before entering the cache path.
+- **Fresh second pass:** independently re-read the modified production module and its companion tests after all remediation units, checked for the removed `settings_json` path and false-fallible conversions, and compared the complete branch against refreshed `main`. No additional repository-owned defect remained in the primary module.
+- **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** implementation complete on the dedicated iteration branch; ready for PR and merge.
+
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
 
