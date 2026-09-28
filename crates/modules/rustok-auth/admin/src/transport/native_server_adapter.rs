@@ -985,7 +985,9 @@ pub async fn revoke_oauth_app_native(id: uuid::Uuid) -> Result<uuid::Uuid, Serve
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::require_auth_admin_tenant_scope;
+    use super::{oauth_app_from_mutation_record, require_auth_admin_tenant_scope};
+    use chrono::Utc;
+    use rustok_auth::OAuthAppMutationRecord;
     use uuid::Uuid;
 
     #[test]
@@ -993,5 +995,35 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         assert!(require_auth_admin_tenant_scope(tenant_id, tenant_id).is_ok());
         assert!(require_auth_admin_tenant_scope(tenant_id, Uuid::new_v4()).is_err());
+    }
+
+    #[test]
+    fn oauth_transport_preserves_rotate_capability_from_authoritative_record() {
+        let record = OAuthAppMutationRecord {
+            id: Uuid::new_v4(),
+            name: "Test app".to_string(),
+            slug: "test-app".to_string(),
+            description: None,
+            icon_url: None,
+            app_type: "service".to_string(),
+            client_id: Uuid::new_v4(),
+            redirect_uris: vec![],
+            scopes: vec![],
+            grant_types: vec!["client_credentials".to_string()],
+            granted_permissions: vec![],
+            manifest_ref: None,
+            auto_created: false,
+            managed_by_manifest: false,
+            is_active: true,
+            can_edit: true,
+            can_rotate_secret: false,
+            can_revoke: true,
+            active_token_count: 0,
+            last_used_at: None,
+            created_at: Utc::now(),
+        };
+
+        let app = oauth_app_from_mutation_record(record);
+        assert!(!app.can_rotate_secret);
     }
 }
