@@ -127,6 +127,7 @@ struct TenantLocaleCacheKey {
     version: u64,
 }
 
+#[derive(Clone)]
 struct TenantLocaleCache {
     cache: Cache<TenantLocaleCacheKey, Arc<Vec<TenantLocaleRecord>>>,
     versions: Arc<Mutex<TenantLocaleCacheVersionState>>,
@@ -188,20 +189,14 @@ impl TenantLocaleCache {
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
     ) -> Result<Arc<Vec<TenantLocaleRecord>>, sea_orm::DbErr> {
+        if let Some(locales) = self.get(tenant_id).await {
+            return Ok(locales);
+        }
+
         let Some(version) = self.tenant_version(tenant_id) else {
             self.record_db_query();
             return load_tenant_locales(ctx, tenant_id).await.map(Arc::new);
         };
-
-        if let Some(locales) = self
-            .cache
-            .get(&self.cache_key(tenant_id, version))
-            .await
-        {
-            self.hits.fetch_add(1, Ordering::Relaxed);
-            return Ok(locales);
-        }
-        self.misses.fetch_add(1, Ordering::Relaxed);
 
         let cache = self.clone();
         self.cache
@@ -285,8 +280,11 @@ impl TenantLocaleCache {
     }
 }
 
-fn tenant_locale_entry_weight(_tenant_id: &Uuid, locales: &Arc<Vec<TenantLocaleRecord>>) -> u32 {
-    let mut weight = std::mem::size_of::<Uuid>()
+fn tenant_locale_entry_weight(
+    _key: &TenantLocaleCacheKey,
+    locales: &Arc<Vec<TenantLocaleRecord>>,
+) -> u32 {
+    let mut weight = std::mem::size_of::<TenantLocaleCacheKey>()
         .saturating_add(std::mem::size_of::<Arc<Vec<TenantLocaleRecord>>>())
         .saturating_add(std::mem::size_of::<Vec<TenantLocaleRecord>>());
     for locale in locales.iter() {
