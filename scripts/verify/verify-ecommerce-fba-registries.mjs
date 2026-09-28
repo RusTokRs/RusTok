@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
@@ -35,6 +35,20 @@ export class EcommerceFbaRegistryVerificationError extends Error {
 const defaultRoot = new URL('../../', import.meta.url);
 
 const createReader = (root) => (path) => readFileSync(new URL(path, root), 'utf8');
+const createPortReader = (root) => (module) => {
+  const filePath = `crates/modules/rustok-${module}/src/ports.rs`;
+  if (existsSync(new URL(filePath, root))) return readFileSync(new URL(filePath, root), 'utf8');
+  const dirPath = `crates/modules/rustok-${module}/src/ports`;
+  if (existsSync(new URL(dirPath, root))) {
+    const dirUrl = new URL(dirPath, root);
+    return readdirSync(dirUrl)
+      .filter((file) => file.endsWith('.rs'))
+      .map((file) => readFileSync(new URL(`${dirPath}/${file}`, root), 'utf8'))
+      .join('\n');
+  }
+  fail(`${module} ports source not found`);
+  return '';
+};
 
 const fail = (message) => {
   throw new EcommerceFbaRegistryVerificationError(message);
@@ -158,6 +172,7 @@ export function verifyEcommerceFbaRegistries({
   modules = ecommerceFbaModules,
 } = {}) {
   const read = createReader(root);
+  const readPort = createPortReader(root);
   const central = read('docs/modules/registry.md');
   const providerRegistries = new Map();
 
@@ -167,7 +182,7 @@ export function verifyEcommerceFbaRegistries({
     const plan = read(`crates/modules/rustok-${module}/docs/implementation-plan.md`);
     const manifest = read(`crates/modules/rustok-${module}/rustok-module.toml`);
     const cargo = read(`crates/modules/rustok-${module}/Cargo.toml`);
-    const portSource = read(`crates/modules/rustok-${module}/src/ports.rs`);
+    const portSource = readPort(module);
     const libSource = read(`crates/modules/rustok-${module}/src/lib.rs`);
 
     if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);

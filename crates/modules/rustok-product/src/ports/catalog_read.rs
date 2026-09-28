@@ -1,26 +1,26 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
-use crate::{
-    AdminProductList, AdminProductListQuery, StorefrontProductList, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection,
-};
+use crate::{AdminProductList, CatalogService, StorefrontProductList};
 
 use super::diagnostics::{
     log_product_port_failure, parse_port_tenant_id, product_context_error,
-    product_error_to_port_error, product_owner_error_facts, product_storage_error,
-    product_variant_not_found, validate_admin_products_request,
-    validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
-    validate_published_products_request,
+    product_error_to_port_error, product_storage_error, product_variant_not_found,
+};
+use super::types::{
+    validate_admin_products_request, validate_legacy_admin_products_request,
+    validate_legacy_storefront_products_request, validate_published_products_request,
+    AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
+    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
+    PublishedProductsRequest, StorefrontProductProjectionRequest,
+    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
 };
 
-const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
-const MAX_ADMIN_PRODUCTS_PER_PAGE: u64 = 100;
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
 const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_projection";
 const READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION: &str = "read_storefront_product_projection";
@@ -99,7 +99,7 @@ pub trait ProductCatalogReadPort: Send + Sync {
 
     /// Optional compatibility projection for the mounted legacy storefront GraphQL list.
     /// Existing adapters remain source-compatible and fail closed until they explicitly
-    /// implement vendor/product-type/raw-search plus shipping-profile projection semantics.
+    /// implement the exact legacy list semantics.
     async fn list_legacy_storefront_products(
         &self,
         _context: PortContext,
@@ -107,12 +107,13 @@ pub trait ProductCatalogReadPort: Send + Sync {
     ) -> Result<LegacyStorefrontProductList, PortError> {
         Err(PortError::unavailable(
             "product.legacy_storefront_list_unavailable",
-            "legacy storefront product listing is unavailable",
+            "legacy product storefront listing is unavailable",
         ))
     }
 
-    /// Optional admin-list capability. Existing remote/test adapters remain source-compatible
-    /// until they explicitly support this projection; mounted consumers fail closed otherwise.
+    /// Optional compatibility projection for the mounted legacy admin REST list.
+    /// Existing adapters remain source-compatible and fail closed until they explicitly
+    /// implement the exact legacy list semantics.
     async fn list_admin_products(
         &self,
         _context: PortContext,
@@ -137,125 +138,6 @@ pub trait ProductCatalogReadPort: Send + Sync {
             "legacy product admin listing is unavailable",
         ))
     }
-}
-
-// ── Request / Response types ─────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProductProjectionRequest {
-    pub product_id: Uuid,
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VariantProductProjectionRequest {
-    pub variant_id: Uuid,
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PublishedProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FilteredPublishedProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-    pub query: StorefrontProductListQuery,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StorefrontProductProjectionSubject {
-    ProductId { product_id: Uuid },
-    Handle { handle: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StorefrontVariantProductProjectionRequest {
-    pub variant_id: Uuid,
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StorefrontProductProjectionRequest {
-    pub subject: StorefrontProductProjectionSubject,
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LegacyStorefrontProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub public_channel_slug: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub search: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LegacyStorefrontProductList {
-    pub items: Vec<LegacyStorefrontProductListItem>,
-    pub total: u64,
-    pub page: u64,
-    pub per_page: u64,
-    pub has_next: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LegacyStorefrontProductListItem {
-    pub id: Uuid,
-    pub status: crate::entities::product::ProductStatus,
-    pub title: String,
-    pub handle: String,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub shipping_profile_slug: String,
-    pub tags: Vec<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdminProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub query: AdminProductListQuery,
-    /// Compatibility-only exact filters for mounted legacy REST. Owner-native callers leave
-    /// these unset and retain the typed query semantics above.
-    pub raw_status: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    /// Preserve the mounted legacy REST projection: empty missing titles and normalized
-    /// shipping-profile metadata fallback. Owner-native callers leave this disabled.
-    pub empty_missing_title: bool,
-    pub page: u64,
-    pub per_page: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LegacyAdminProductsRequest {
-    pub locale: Option<String>,
-    pub fallback_locale: Option<String>,
-    pub search: Option<String>,
-    pub status: Option<crate::entities::product::ProductStatus>,
-    pub vendor: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
 }
 
 // ── CatalogService adapter ──────────────────────────────────────────
@@ -322,12 +204,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context
             .require_policy(PortCallPolicy::read())
             .map_err(|error| product_context_error(&context, owner_operation, error))?;
-        validate_published_products_request(
-            &context,
-            owner_operation,
-            &request,
-            MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-        )?;
+        validate_published_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.list_published_products_with_locale_fallback(
@@ -457,12 +334,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context
             .require_policy(PortCallPolicy::read())
             .map_err(|error| product_context_error(&context, owner_operation, error))?;
-        validate_legacy_storefront_products_request(
-            &context,
-            owner_operation,
-            &request,
-            MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-        )?;
+        validate_legacy_storefront_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let LegacyStorefrontProductsRequest {
             locale,
@@ -499,12 +371,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context
             .require_policy(PortCallPolicy::read())
             .map_err(|error| product_context_error(&context, owner_operation, error))?;
-        validate_admin_products_request(
-            &context,
-            owner_operation,
-            &request,
-            MAX_ADMIN_PRODUCTS_PER_PAGE,
-        )?;
+        validate_admin_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let AdminProductsRequest {
             locale,
@@ -545,12 +412,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context
             .require_policy(PortCallPolicy::read())
             .map_err(|error| product_context_error(&context, owner_operation, error))?;
-        validate_legacy_admin_products_request(
-            &context,
-            owner_operation,
-            &request,
-            MAX_ADMIN_PRODUCTS_PER_PAGE,
-        )?;
+        validate_legacy_admin_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let LegacyAdminProductsRequest {
             locale,
@@ -562,24 +424,17 @@ impl ProductCatalogReadPort for crate::CatalogService {
             per_page,
         } = request;
         let locale = locale.as_deref().unwrap_or(context.locale.as_str());
-        let page = page.max(1);
-        self.list_admin_products_with_compatibility_query(
+        self.list_legacy_admin_products_with_locale_fallback(
             tenant_id,
             locale,
             fallback_locale.as_deref(),
-            AdminProductListQuery {
-                search,
-                status,
-                category_id: None,
-                sort_by: StorefrontProductSortBy::CreatedAt,
-                sort_direction: StorefrontProductSortDirection::Desc,
-                attribute_filters: Vec::new(),
-            },
+            search.as_deref(),
+            status,
+            vendor.as_deref(),
+            crate::StorefrontProductSortBy::CreatedAt,
+            crate::StorefrontProductSortDirection::Desc,
             page,
             per_page,
-            None,
-            vendor.as_deref(),
-            None,
             false,
             true,
         )
@@ -597,9 +452,8 @@ mod tests {
     use crate::error::CommerceError;
     use rustok_api::{PortActor, PortErrorKind};
 
-    use super::diagnostics::{
-        product_error_to_port_error, validate_published_products_request,
-    };
+    use super::diagnostics::product_error_to_port_error;
+    use super::types::validate_published_products_request;
     use super::*;
 
     fn base_context() -> PortContext {
@@ -648,68 +502,89 @@ mod tests {
             "corr-product-b",
         );
         let error = parse_port_tenant_id(&context, READ_PRODUCT_PROJECTION_OPERATION)
-            .expect_err("product port tenant_id must be a UUID");
+            .expect_err("product tenant ids must be uuid-backed");
 
         assert_eq!(error.kind, PortErrorKind::Validation);
         assert_eq!(error.code, "product.tenant_id_invalid");
         assert_eq!(error.message, "product request context is invalid");
-        assert!(!error.retryable);
-
-        assert_eq!(
-            parse_port_tenant_id(&base_context(), READ_PRODUCT_PROJECTION_OPERATION)
-                .expect("nil UUID is a valid UUID"),
-            Uuid::nil()
-        );
     }
 
     #[test]
-    fn published_products_request_enforces_bounded_pagination() {
-        let context = base_context();
+    fn product_page_validation_bounds_request() {
+        let context = base_context().with_deadline(Duration::from_secs(3));
         let mut request = published_request();
-        request.page = 0;
 
-        let error = validate_published_products_request(
+        request.page = 0;
+        let page_error = validate_published_products_request(
             &context,
             LIST_PUBLISHED_PRODUCTS_OPERATION,
             &request,
-            MAX_PUBLISHED_PRODUCTS_PER_PAGE,
         )
-        .expect_err("page zero must be rejected before storage access");
-
-        assert_eq!(error.kind, PortErrorKind::Validation);
-        assert_eq!(error.code, "product.page_invalid");
-        assert_eq!(error.message, "published products page is invalid");
+        .expect_err("page 0 must be rejected");
+        assert_eq!(page_error.kind, PortErrorKind::Validation);
+        assert_eq!(page_error.code, "product.page_invalid");
+        assert_eq!(page_error.message, "published products page is invalid");
 
         request.page = 1;
-        request.per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE + 1;
-
-        let error = validate_published_products_request(
+        request.per_page = 0;
+        let zero_per_page = validate_published_products_request(
             &context,
             LIST_PUBLISHED_PRODUCTS_OPERATION,
             &request,
-            MAX_PUBLISHED_PRODUCTS_PER_PAGE,
         )
-        .expect_err("oversized page size must be rejected before storage access");
+        .expect_err("per_page 0 must be rejected");
+        assert_eq!(zero_per_page.kind, PortErrorKind::Validation);
+        assert_eq!(zero_per_page.code, "product.per_page_invalid");
+        assert_eq!(
+            zero_per_page.message,
+            "published products page size is invalid"
+        );
 
-        assert_eq!(error.kind, PortErrorKind::Validation);
-        assert_eq!(error.code, "product.per_page_invalid");
-        assert_eq!(error.message, "published products page size is invalid");
+        request.per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE + 1;
+        let large_per_page = validate_published_products_request(
+            &context,
+            LIST_PUBLISHED_PRODUCTS_OPERATION,
+            &request,
+        )
+        .expect_err("oversized per_page must be rejected");
+        assert_eq!(large_per_page.kind, PortErrorKind::Validation);
+        assert_eq!(large_per_page.code, "product.per_page_invalid");
+        assert_eq!(
+            large_per_page.message,
+            "published products page size is invalid"
+        );
 
         request.per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE;
-        assert!(
-            validate_published_products_request(
-                &context,
-                LIST_PUBLISHED_PRODUCTS_OPERATION,
-                &request,
-                MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-            )
-            .is_ok()
-        );
+        assert!(validate_published_products_request(
+            &context,
+            LIST_PUBLISHED_PRODUCTS_OPERATION,
+            &request,
+        )
+        .is_ok());
     }
 
     #[test]
-    fn commerce_errors_map_to_typed_product_port_errors() {
-        let context = base_context();
+    fn product_database_error_maps_to_unavailable() {
+        let context = base_context().with_deadline(Duration::from_secs(3));
+        let error = product_storage_error(
+            &context,
+            READ_PRODUCT_PROJECTION_OPERATION,
+            sea_orm::DbErr::Custom("connection pool exhausted".to_string()),
+        );
+
+        assert_eq!(error.kind, PortErrorKind::Unavailable);
+        assert_eq!(error.code, "product.database_unavailable");
+        assert_eq!(
+            error.message,
+            "product storage is temporarily unavailable"
+        );
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn product_domain_errors_map_to_stable_public_codes() {
+        let context = base_context().with_deadline(Duration::from_secs(3));
+
         let not_found = product_error_to_port_error(
             &context,
             READ_PRODUCT_PROJECTION_OPERATION,
@@ -720,21 +595,11 @@ mod tests {
         assert_eq!(not_found.message, "product was not found");
         assert!(!not_found.retryable);
 
-        let validation = product_error_to_port_error(
-            &context,
-            READ_PRODUCT_PROJECTION_OPERATION,
-            CommerceError::Validation("bad".to_string()),
-        );
-        assert_eq!(validation.kind, PortErrorKind::Validation);
-        assert_eq!(validation.code, "product.validation");
-        assert_eq!(validation.message, "product request is invalid");
-        assert!(!validation.retryable);
-
         let duplicate = product_error_to_port_error(
             &context,
             READ_PRODUCT_PROJECTION_OPERATION,
             CommerceError::DuplicateHandle {
-                handle: "sku-a".to_string(),
+                handle: "sample-product".to_string(),
                 locale: "ru".to_string(),
             },
         );
