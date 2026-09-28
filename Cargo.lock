@@ -13816,20 +13816,15 @@ name = "rustok-grid"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
 name = "rustok-grid-leptos"
 version = "0.1.0"
 dependencies = [
- "iu-leptos",
  "leptos",
  "leptos-use",
  "rustok-grid",
- "rustok-ui-core",
- "serde",
- "serde_json",
  "web-sys",
 ]
 

@@ -5,6 +5,11 @@ use leptos_use::use_intersection_observer;
 
 use rustok_grid::{GridPagination, PaginationMode};
 
+/// Default choices offered by the "rows per page" selector.
+pub const DEFAULT_PAGE_SIZE_OPTIONS: [usize; 4] = [10, 20, 50, 100];
+
+/// Footer bar: range summary, page size, mode switch, page navigation and the
+/// infinite-scroll sentinel.
 #[component]
 pub fn GridPaginationBar(
     pagination: Signal<GridPagination>,
@@ -12,23 +17,28 @@ pub fn GridPaginationBar(
     on_page_size_change: Callback<usize>,
     on_mode_change: Callback<PaginationMode>,
     on_load_more: Callback<()>,
+    /// Selectable page sizes. The current page size is always included so the
+    /// `<select>` can never end up showing a blank value.
+    #[prop(optional)]
+    page_size_options: Option<Vec<usize>>,
 ) -> impl IntoView {
     let sentinel_ref = NodeRef::<Div>::new();
+    let configured_options =
+        StoredValue::new(page_size_options.unwrap_or_else(|| DEFAULT_PAGE_SIZE_OPTIONS.to_vec()));
 
-    // Infinite scroll observer
+    // Infinite scroll: load the next page when the sentinel becomes visible.
     let _ = use_intersection_observer(sentinel_ref, move |entries, _| {
-        if let Some(entry) = entries.first() {
-            if entry.is_intersecting() {
-                let p = pagination.get();
-                if p.mode == PaginationMode::Infinite && p.has_next {
-                    on_load_more.run(());
-                }
-            }
+        if !entries.iter().any(|entry| entry.is_intersecting()) {
+            return;
+        }
+        let state = pagination.get_untracked();
+        if state.mode == PaginationMode::Infinite && state.has_next {
+            on_load_more.run(());
         }
     });
 
     let current_page = move || pagination.get().page;
-    let total_pages = move || pagination.get().total_pages().max(1);
+    let total_pages = move || pagination.get().total_pages();
     let total_items = move || pagination.get().total;
     let from_item = move || pagination.get().from_index();
     let to_item = move || pagination.get().to_index();
@@ -37,44 +47,63 @@ pub fn GridPaginationBar(
     let has_next = move || pagination.get().has_next;
     let is_infinite = move || pagination.get().mode == PaginationMode::Infinite;
 
+    let size_options = move || {
+        let mut options = configured_options.get_value();
+        options.retain(|size| *size > 0);
+        let current = page_size();
+        if !options.contains(&current) {
+            options.push(current);
+        }
+        options.sort_unstable();
+        options.dedup();
+        options
+    };
+
     view! {
         <div class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border/80 bg-muted/20 text-xs text-muted-foreground select-none">
-            // Mode toggle & Info
+            // Range summary & page size
             <div class="flex items-center gap-3">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5" aria-live="polite">
                     <span>"Showing"</span>
-                    <span class="font-semibold text-foreground">
-                        {from_item} "-" {to_item}
-                    </span>
+                    <span class="font-semibold text-foreground">{from_item} "-" {to_item}</span>
                     <span>"of"</span>
                     <span class="font-semibold text-foreground">{total_items}</span>
                 </div>
 
-                <div class="h-3 w-px bg-border/60"></div>
+                <div class="h-3 w-px bg-border/60" aria-hidden="true"></div>
 
-                // Rows per page
-                <div class="flex items-center gap-1.5">
+                <label class="flex items-center gap-1.5">
                     <span>"Rows per page:"</span>
                     <select
-                        prop:value=page_size
+                        prop:value=move || page_size().to_string()
                         on:change=move |ev: Event| {
                             if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-                                on_page_size_change.run(size);
+                                if size > 0 {
+                                    on_page_size_change.run(size);
+                                }
                             }
                         }
                         class="text-xs rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:border-primary focus:outline-none"
                     >
-                        <option value="10">"10"</option>
-                        <option value="20">"20"</option>
-                        <option value="50">"50"</option>
-                        <option value="100">"100"</option>
+                        {move || {
+                            let current = page_size();
+                            size_options()
+                                .into_iter()
+                                .map(|size| {
+                                    view! {
+                                        <option value=size.to_string() selected=size == current>
+                                            {size.to_string()}
+                                        </option>
+                                    }
+                                })
+                                .collect_view()
+                        }}
                     </select>
-                </div>
+                </label>
             </div>
 
-            // Mode switch & Page navigation
-            <div class="flex items-center gap-2">
-                // Mode Toggle button
+            // Mode switch & page navigation
+            <nav class="flex items-center gap-2" aria-label="Pagination">
                 <button
                     type="button"
                     on:click=move |_| {
@@ -91,52 +120,50 @@ pub fn GridPaginationBar(
                     {move || if is_infinite() { "Mode: Infinite ⤓" } else { "Mode: Paged 📄" }}
                 </button>
 
-                // Paged buttons (shown if Paged mode)
-                {move || {
-                    if !is_infinite() {
-                        let cur = current_page();
-                        let tot = total_pages();
-                        view! {
-                            <div class="flex items-center gap-1 ml-2">
-                                <button
-                                    type="button"
-                                    disabled=move || !has_prev()
-                                    on:click=move |_| on_page_change.run(cur.saturating_sub(1))
-                                    class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
-                                >
-                                    "‹ Previous"
-                                </button>
-                                <span class="px-2 font-medium text-foreground">
-                                    {cur} " / " {tot}
-                                </span>
-                                <button
-                                    type="button"
-                                    disabled=move || !has_next()
-                                    on:click=move |_| on_page_change.run(cur.saturating_add(1))
-                                    class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
-                                >
-                                    "Next ›"
-                                </button>
-                            </div>
-                        }
-                        .into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
-            </div>
+                <Show when=move || !is_infinite()>
+                    <div class="flex items-center gap-1 ml-2">
+                        <button
+                            type="button"
+                            aria-label="Previous page"
+                            disabled=move || !has_prev()
+                            on:click=move |_| {
+                                let page = current_page();
+                                if page > 1 {
+                                    on_page_change.run(page - 1);
+                                }
+                            }
+                            class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
+                        >
+                            "‹ Previous"
+                        </button>
+                        <span class="px-2 font-medium text-foreground">
+                            {move || current_page()} " / " {move || total_pages()}
+                        </span>
+                        <button
+                            type="button"
+                            aria-label="Next page"
+                            disabled=move || !has_next()
+                            on:click=move |_| {
+                                if has_next() {
+                                    on_page_change.run(current_page().saturating_add(1));
+                                }
+                            }
+                            class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
+                        >
+                            "Next ›"
+                        </button>
+                    </div>
+                </Show>
+            </nav>
 
-            // Invisible sentinel div for infinite scroll
-            {move || {
-                if is_infinite() {
-                    view! {
-                        <div node_ref=sentinel_ref class="h-1 w-full -mt-2 opacity-0 pointer-events-none" />
-                    }
-                    .into_any()
-                } else {
-                    ().into_any()
-                }
-            }}
+            // Sentinel observed for infinite scrolling.
+            <Show when=move || is_infinite()>
+                <div
+                    node_ref=sentinel_ref
+                    class="h-1 w-full -mt-2 opacity-0 pointer-events-none"
+                    aria-hidden="true"
+                />
+            </Show>
         </div>
     }
 }
