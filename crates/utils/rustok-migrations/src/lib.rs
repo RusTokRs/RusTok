@@ -49,6 +49,7 @@ mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
 mod m20260808_000099_create_module_operation_override_states;
 mod m20260928_000001_create_install_http_jobs;
+mod m20260928_000002_add_install_http_job_idempotency;
 
 pub mod schema_diff;
 pub use schema_diff::*;
@@ -1130,6 +1131,20 @@ mod tests {
             "server migrator must include search typo-tolerance indexes migration"
         );
     }
+    #[test]
+    fn migrator_includes_install_http_job_idempotency() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            names.iter().any(|name| {
+                name == "m20260928_000002_add_install_http_job_idempotency"
+            }),
+            "server migrator must include installer HTTP job idempotency storage"
+        );
+    }
+
     #[test]
     fn migrator_includes_durable_http_installer_jobs() {
         let names = Migrator::migrations()
