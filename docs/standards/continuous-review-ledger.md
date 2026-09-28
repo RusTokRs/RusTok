@@ -167,7 +167,26 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection and branch diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were run by the agent.
 - **Status:** `FS-22.02.28` complete. Next primary module: `FS-22.02.29 — apps/server/src/controllers/mcp.rs`.
 - [x] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit; reconciled against concurrent `main` changes, with two additional remediation units: historical completion closure and removal of unsafe PostgreSQL admin-URL fallback.
-- [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
+### FS-22.02.29 Iteration 1 — `apps/server/src/controllers/mcp.rs`
+
+- **Base:** refreshed `main` at `c697b8c340aa09e797bac8b4f9611db316f623a9`; dedicated branch `codex/audit-fs-22.02.29-mcp-controller`.
+- **Invariant map:** all MCP management mutations must preserve tenant/actor authority ceilings across every transport; DB failures must remain server-internal; tool/scaffold error responses must not expose implementation diagnostics; GraphQL and REST must preserve the same typed error semantics; persisted runtime binding must remain token/client/tenant scoped.
+- **Finding MCP-22.02.29-01:** `McpManagementService::map_db_err` returned HTTP 400 with the raw database error text.
+- **Remediation:** DB failures now log server-side and map to generic HTTP 500.
+- **Finding MCP-22.02.29-02:** `DbBackedMcpRuntimeBridge` had the same raw DB-to-400 mapper, producing the same incorrect client-visible classification on MCP runtime operations.
+- **Remediation:** runtime DB failures now use generic HTTP 500 with server-side diagnostics only.
+- **Finding MCP-22.02.29-03:** MCP management authority errors in REST were flattened to 403, so expected invalid/not-found/internal conditions received the wrong HTTP status.
+- **Remediation:** added typed `map_mcp_authority_error`; invalid -> 400, forbidden -> 403, not-found -> 404, internal -> generic 500. Added focused status tests.
+- **Finding MCP-22.02.29-04:** remote Alloy scaffold stage/review/apply responses returned raw `error.to_string()` values, which could expose filesystem paths and internal implementation details to the MCP caller.
+- **Remediation:** stage/review/apply now log the underlying error and return stable generic tool error messages.
+- **Finding MCP-22.02.29-05:** the shared GraphQL management provider erased the server `Error` type into `McpManagementMutationError::Internal(String)`, so GraphQL lost 400/404 semantics and could expose internal messages. The typed management error also lacked a `Forbidden` variant for authority denials.
+- **Remediation:** added `McpManagementMutationError::Forbidden`; server provider now preserves forbidden/bad-input/not-found/internal categories with stable messages, and GraphQL maps forbidden to `PERMISSION_DENIED` while retaining the existing validation/conflict/not-found/internal mappings. Added focused provider regression coverage.
+- **Security non-findings:** scaffold filesystem writes remain bounded by `RUSTOK_MCP_SCAFFOLD_WORKSPACE_ROOT` plus workspace `Cargo.toml`/target-directory invariants; persisted token resolution enforces token expiry/revocation, active client, tenant-consistent client/policy, and current delegated-user permissions; the production runtime composes `GuardedMcpManagementProvider` around `ServerMcpManagementMutationProvider`, so GraphQL does not bypass the existing authority ceiling. Current default tool requirements do not use arbitrary policy scopes as standalone default grants.
+- **Liveness note reviewed:** scaffold draft status uses an explicit `staged -> applying -> applied/failed` flow. No documented lease/timeout contract exists for crash recovery of `applying`; introducing a synthetic lease would require owner schema/state-machine changes and was not folded into this controller iteration without a defined recovery contract.
+- **Fresh second pass:** re-read `mcp.rs`, `mcp_management.rs`, `mcp_runtime.rs`, `mcp_management_authority.rs`, `mcp_management_guard.rs`, `mcp_management_mutation_provider.rs`, MCP GraphQL management code, scaffold workspace owner, token model, MCP docs, and runtime composition. Checked raw error responses, typed status mapping, GraphQL parity, tenant binding, authority wrapping, token lifecycle and scaffold path controls. No additional repository-owned defect remained in the primary controller surface.
+- **Verification:** repository-content inspection and branch diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were run by the agent per maintainer-owned execution policy.
+- **Status:** `FS-22.02.29` complete. Next primary module: `FS-22.02.30 — apps/server/src/controllers/oauth.rs`.
+- [x] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit; completed with five remediation units and a fresh independent second pass across REST, GraphQL, runtime binding, authority guard and scaffold transport boundaries.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
 - [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
 - [ ] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit.
