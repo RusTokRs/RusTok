@@ -37,6 +37,10 @@ fn tenant_context_cache_payload_keeps_settings_typed_and_versioned() {
     let tenant = source("apps/server/src/middleware/tenant.rs");
     assert!(tenant.contains("TENANT_CONTEXT_SCHEMA_VERSION: u32 = 3"));
     assert!(tenant.contains("settings: serde_json::Value"));
+    assert!(tenant.contains("impl From<TenantContext> for CachedTenantContext"));
+    assert!(tenant.contains("impl From<CachedTenantContext> for TenantContext"));
+    assert!(!tenant.contains("impl TryFrom<TenantContext> for CachedTenantContext"));
+    assert!(!tenant.contains("impl TryFrom<CachedTenantContext> for TenantContext"));
     assert!(!tenant.contains("settings_json: String"));
     assert!(!tenant.contains("serde_json::from_str(&context.settings_json)"));
 }
