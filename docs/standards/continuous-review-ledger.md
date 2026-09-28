@@ -169,6 +169,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.06 finding in progress — Commerce admin had no module-lifecycle boundary.** Commerce admin HTTP handlers checked permissions but the compiled route remained usable when the tenant's effective Commerce module was unavailable or disabled. The admin surface is now wrapped once at its router boundary and resolves the canonical `SharedModuleEffectivePolicyReader`; tenant context is required and policy unavailability fails closed. Storefront remains on its separate channel-aware availability contract.
 
+- [ ] **FS-22.06 finding in progress — Commerce storefront tenant-level lifecycle bypass.** `/store/*` was protected only by channel-module bindings; when no `ChannelContext` existed, `is_module_enabled_for_request_channel` deliberately returned `true`, so a tenant with Commerce disabled could still reach the compiled storefront API. The `/store` router now uses the same canonical effective `commerce` policy guard as `/admin`; channel-level checks remain in the storefront handlers.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

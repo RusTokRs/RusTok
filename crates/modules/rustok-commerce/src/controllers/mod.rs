@@ -524,8 +524,13 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         require_commerce_module,
     ));
 
+    let store_router = store::axum_router().layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        require_commerce_module,
+    ));
+
     Ok(axum::Router::new()
-        .nest("/store", store::axum_router())
+        .nest("/store", store_router)
         .nest("/admin", admin_router)
         .with_state(state))
 }
