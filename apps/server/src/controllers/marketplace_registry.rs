@@ -1,4 +1,5 @@
 use axum::{
+    Extension,
     Json,
     body::Body,
     body::Bytes,
@@ -104,6 +105,7 @@ struct RegistryCatalogListParams {
             headers(
                 ("etag" = String, description = "Current entity tag for conditional GET"),
                 ("cache-control" = String, description = "Shared cache policy for the reference registry"),
+                ("vary" = String, description = "Presentation and tenant-selector dimensions varied by shared caches"),
                 ("x-total-count" = i64, description = "Total number of modules in the filtered collection before limit/offset")
             )
         ),
@@ -113,6 +115,7 @@ struct RegistryCatalogListParams {
             headers(
                 ("etag" = String, description = "Current entity tag for conditional GET"),
                 ("cache-control" = String, description = "Shared cache policy for the reference registry"),
+                ("vary" = String, description = "Presentation and tenant-selector dimensions varied by shared caches"),
                 ("x-total-count" = i64, description = "Total number of modules in the filtered collection before limit/offset")
             )
         )
@@ -2410,10 +2413,9 @@ fn registry_total_count_header_name() -> HeaderName {
 }
 
 fn registry_total_count_header(total_count: usize) -> Result<HeaderValue, Error> {
-    HeaderValue::from_str(&total_count.to_string()).map_err(|err| {
-        Error::Message(format!(
-            "Failed to build registry total-count header: {err}"
-        ))
+    HeaderValue::from_str(&total_count.to_string()).map_err(|_| {
+        tracing::error!("Failed to build registry total-count header");
+        Error::InternalServerError
     })
 }
 
@@ -3158,11 +3160,11 @@ mod marketplace_registry_tests {
 
     #[test]
     fn if_none_match_accepts_weak_etags() {
-        let etag = ""abc123"";
+        let etag = "\"abc123\"";
         let mut headers = HeaderMap::new();
         headers.insert(
             IF_NONE_MATCH,
-            HeaderValue::from_static("W/"abc123", "other""),
+            HeaderValue::from_static("W/\"abc123\", \"other\""),
         );
 
         assert!(request_matches_etag(&headers, etag));
