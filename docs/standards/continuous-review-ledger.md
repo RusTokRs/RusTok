@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `3a52404b2563c568011bb91c93d4d1eb52510ec9`  
-**Active branch:** `codex/audit-fs-22.04.03`
+**Current main SHA:** `9f1a6cfb929bbc9073643c9bba320113bf72fa91`  
+**Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -269,7 +269,7 @@ Hard limits for every iteration:
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** in progress; decomposed into one-primary-module iterations focused on the shared request-context boundary first, then tenant resolution/cache, channel resolution/cache, locale policy/cache, and transport propagation boundaries.
 - [x] **FS-22.04.01 — `crates/libs/rustok-api/src/request.rs`** — completed with trusted request-context projection, canonical locale evidence, URL form decoding, and tenant-consistency fences.
 - [x] **FS-22.04.02 — `apps/server/src/middleware/tenant_resolution.rs`** — typed tenant identifier/source resolution and request-trust boundary; completed after PR #4281 and post-merge reconciliation. Next primary module: `FS-22.04.03 — apps/server/src/middleware/tenant.rs`.
-- [ ] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; implementation complete on the dedicated iteration branch, pending integration and post-merge reconciliation.
+- [x] **FS-22.04.03 — `apps/server/src/middleware/tenant.rs`** — tenant read-port/cache/context materialization and invalidation propagation; completed after PR #4284 and post-merge reconciliation. Next primary module: `FS-22.04.04 — apps/server/src/middleware/channel.rs`..
 - [ ] **FS-22.04.04 — `apps/server/src/middleware/channel.rs`** — channel RequestFacts, selector/host/OAuth/locale propagation and cache identity.
 - [ ] **FS-22.04.05 — `apps/server/src/middleware/locale.rs`** — tenant locale policy enforcement and cache/generation propagation.
 - [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
@@ -432,7 +432,7 @@ Hard limits for every iteration:
 - **Regression audit:** old schema-2 entries cannot be consumed because the expected schema is now 3; positive/negative cache keys retain the same generation semantics; active-tenant admission remains enforced before caching; repeated initialization is idempotent and canonical-service-bound; tenant owner settings remain bounded to 16 KiB before entering the cache path.
 - **Fresh second pass:** independently re-read the modified production module and its companion tests after all remediation units, checked for the removed `settings_json` path and false-fallible conversions, and compared the complete branch against refreshed `main`. No additional repository-owned defect remained in the primary module.
 - **Verification:** repository source inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migrations or runtime commands were executed by the agent; maintainer verification remains required.
-- **Status:** implementation complete on the dedicated iteration branch; ready for PR and merge.
+- **Status:** `FS-22.04.03` complete after PR #4284 merged into `main` at `9f1a6cfb929bbc9073643c9bba320113bf72fa91`. Post-merge source re-read confirmed typed `settings` payloads, schema version 3, infallible cache-context conversion, and atomic canonical cache-service/infrastructure initialization.
 
 
 ### FS-22.03.18 Iterations 1-3 — `apps/server/src/services/oauth_admin_guard.rs`
