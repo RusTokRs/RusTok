@@ -171,16 +171,31 @@ impl FieldConstraints {
         self
     }
 
+    /// Set required constraint (alias).
+    pub fn with_required(self, required: bool) -> Self {
+        self.required(required)
+    }
+
     /// Set minimum string length.
     pub fn min_length(mut self, min: usize) -> Self {
         self.min_length = Some(min);
         self
     }
 
+    /// Set minimum string length (alias).
+    pub fn with_min_length(self, min: usize) -> Self {
+        self.min_length(min)
+    }
+
     /// Set maximum string length.
     pub fn max_length(mut self, max: usize) -> Self {
         self.max_length = Some(max);
         self
+    }
+
+    /// Set maximum string length (alias).
+    pub fn with_max_length(self, max: usize) -> Self {
+        self.max_length(max)
     }
 
     /// Set both minimum and maximum string length.
@@ -344,10 +359,20 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set field label (alias).
+    pub fn with_label(self, label: impl Into<String>) -> Self {
+        self.label(label)
+    }
+
     /// Set field description.
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
         self
+    }
+
+    /// Set field description (alias).
+    pub fn with_description(self, desc: impl Into<String>) -> Self {
+        self.description(desc)
     }
 
     /// Set field placeholder.
@@ -356,16 +381,31 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set field placeholder (alias).
+    pub fn with_placeholder(self, ph: impl Into<String>) -> Self {
+        self.placeholder(ph)
+    }
+
     /// Replace field constraints.
     pub fn constraints(mut self, constraints: FieldConstraints) -> Self {
         self.constraints = constraints;
         self
     }
 
+    /// Replace field constraints (alias).
+    pub fn with_constraints(self, constraints: FieldConstraints) -> Self {
+        self.constraints(constraints)
+    }
+
     /// Mark field as required.
     pub fn required(mut self) -> Self {
         self.constraints.required = true;
         self
+    }
+
+    /// Mark field as required (alias).
+    pub fn with_required(self, required: bool) -> Self {
+        self.set_required(required)
     }
 
     /// Set required state explicitly.
@@ -380,10 +420,20 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set minimum string length (alias).
+    pub fn with_min_length(self, min: usize) -> Self {
+        self.min_length(min)
+    }
+
     /// Set maximum string length.
     pub fn max_length(mut self, max: usize) -> Self {
         self.constraints.max_length = Some(max);
         self
+    }
+
+    /// Set maximum string length (alias).
+    pub fn with_max_length(self, max: usize) -> Self {
+        self.max_length(max)
     }
 
     /// Set length range.
@@ -393,16 +443,31 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set length range (alias).
+    pub fn with_length_range(self, min: usize, max: usize) -> Self {
+        self.length_range(min, max)
+    }
+
     /// Set minimum numerical value.
     pub fn min(mut self, min: f64) -> Self {
         self.constraints.min = Some(min);
         self
     }
 
+    /// Set minimum numerical value (alias).
+    pub fn with_min(self, min: f64) -> Self {
+        self.min(min)
+    }
+
     /// Set maximum numerical value.
     pub fn max(mut self, max: f64) -> Self {
         self.constraints.max = Some(max);
         self
+    }
+
+    /// Set maximum numerical value (alias).
+    pub fn with_max(self, max: f64) -> Self {
+        self.max(max)
     }
 
     /// Set numerical range.
@@ -412,10 +477,20 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set numerical range (alias).
+    pub fn with_range(self, min: f64, max: f64) -> Self {
+        self.range(min, max)
+    }
+
     /// Set numeric step.
     pub fn step(mut self, step: f64) -> Self {
         self.constraints.step = Some(step);
         self
+    }
+
+    /// Set numeric step (alias).
+    pub fn with_step(self, step: f64) -> Self {
+        self.step(step)
     }
 
     /// Set regex pattern.
@@ -424,10 +499,20 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set regex pattern (alias).
+    pub fn with_pattern(self, pat: impl Into<String>) -> Self {
+        self.pattern(pat)
+    }
+
     /// Set file accept filter.
     pub fn accept(mut self, accept: impl Into<String>) -> Self {
         self.constraints.accept = Some(accept.into());
         self
+    }
+
+    /// Set file accept filter (alias).
+    pub fn with_accept(self, accept: impl Into<String>) -> Self {
+        self.accept(accept)
     }
 
     /// Set multiple selection flag.
@@ -436,10 +521,20 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set multiple selection flag (alias).
+    pub fn with_multiple(self, multiple: bool) -> Self {
+        self.multiple(multiple)
+    }
+
     /// Set disabled state.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
+    }
+
+    /// Set disabled state (alias).
+    pub fn with_disabled(self, disabled: bool) -> Self {
+        self.disabled(disabled)
     }
 
     /// Set default value.
@@ -448,16 +543,31 @@ impl FieldDescriptor {
         self
     }
 
+    /// Set default value (alias).
+    pub fn with_default_value(self, val: impl Into<String>) -> Self {
+        self.default_value(val)
+    }
+
     /// Set options list.
     pub fn options(mut self, opts: Vec<FieldOption>) -> Self {
         self.options = opts;
         self
     }
 
+    /// Set options list (alias).
+    pub fn with_options(self, opts: Vec<FieldOption>) -> Self {
+        self.options(opts)
+    }
+
     /// Append a single selectable option.
     pub fn add_option(mut self, opt: impl Into<FieldOption>) -> Self {
         self.options.push(opt.into());
         self
+    }
+
+    /// Append a single selectable option (alias).
+    pub fn with_option(self, opt: impl Into<FieldOption>) -> Self {
+        self.add_option(opt)
     }
 
     /// Validate a value using this descriptor's constraints.

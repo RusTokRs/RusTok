@@ -91,50 +91,54 @@ impl FormContext {
 /// Per-field context provided by `<FormField>` to its children.
 ///
 /// Consumed by `<FormLabel>`, `<FormMessage>`, `<FormDescription>`, and inputs.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct FieldContext {
     /// The field name this context represents.
-    pub name: &'static str,
+    pub name: String,
     /// The HTML id associated with this field control.
-    pub id: &'static str,
+    pub id: String,
     /// Reference to the parent form context.
     pub form: FormContext,
 }
 
 impl FieldContext {
-    /// Create a new `FieldContext` with explicit static name, id, and parent `FormContext`.
-    pub fn new(name: &'static str, id: &'static str, form: FormContext) -> Self {
-        Self { name, id, form }
+    /// Create a new `FieldContext` with explicit name, id, and parent `FormContext`.
+    pub fn new(name: impl Into<String>, id: impl Into<String>, form: FormContext) -> Self {
+        Self {
+            name: name.into(),
+            id: id.into(),
+            form,
+        }
     }
 
     /// Whether this field currently has a validation error.
     pub fn is_invalid(&self) -> bool {
-        self.form.is_field_invalid(self.name)
+        self.form.is_field_invalid(&self.name)
     }
 
     /// Whether this field is marked dirty in the form's dirty tracker.
     pub fn is_dirty(&self) -> bool {
-        self.form.is_field_dirty(self.name)
+        self.form.is_field_dirty(&self.name)
     }
 
     /// Mark this field as modified in the parent form's dirty tracker.
     pub fn mark_dirty(&self) {
-        self.form.mark_dirty(self.name);
+        self.form.mark_dirty(&self.name);
     }
 
     /// Mark this field as clean in the parent form's dirty tracker.
     pub fn mark_clean(&self) {
-        self.form.mark_clean(self.name);
+        self.form.mark_clean(&self.name);
     }
 
     /// The first error message for this field, if any.
     pub fn error_message(&self) -> Option<String> {
-        self.form.field_error(self.name)
+        self.form.field_error(&self.name)
     }
 
     /// All error messages for this field.
     pub fn all_error_messages(&self) -> Vec<String> {
-        self.form.field_errors_for(self.name)
+        self.form.field_errors_for(&self.name)
     }
 
     /// Whether the parent form is currently submitting.

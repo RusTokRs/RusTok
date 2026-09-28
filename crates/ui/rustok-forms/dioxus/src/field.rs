@@ -33,10 +33,10 @@ use crate::context::{FieldContext, FormContext};
 #[component]
 pub fn FormField(
     /// The field name. Must match the key used in `FormState::field_error`.
-    name: &'static str,
+    name: String,
     /// Explicit target HTML id. If omitted, defaults to `name`.
     #[props(default)]
-    id: Option<&'static str>,
+    id: Option<String>,
     /// Extra CSS classes on the wrapper `<div>`.
     #[props(default)]
     class: Option<String>,
@@ -44,7 +44,7 @@ pub fn FormField(
     children: Element,
 ) -> Element {
     let form_ctx = use_context::<FormContext>();
-    let field_id = id.unwrap_or(name);
+    let field_id = id.unwrap_or_else(|| name.clone());
 
     provide_context(FieldContext::new(name, field_id, form_ctx));
 
