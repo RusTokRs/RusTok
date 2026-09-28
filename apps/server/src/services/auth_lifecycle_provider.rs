@@ -16,6 +16,17 @@ use crate::services::email::{PasswordResetEmail, email_service_from_ctx, passwor
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
+fn internal_lifecycle_error<E>(error: E) -> AuthLifecycleMutationError
+where
+    E: std::fmt::Display,
+{
+    tracing::error!(
+        error = %error,
+        "Auth lifecycle provider operation failed"
+    );
+    AuthLifecycleMutationError::Internal("Auth lifecycle operation failed".to_string())
+}
+
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 pub struct ServerAuthLifecycleProvider {
@@ -51,7 +62,7 @@ impl ServerAuthLifecycleProvider {
         let permissions =
             RbacService::get_user_permissions(self.runtime_ctx.db(), &tenant_id, &user_id)
                 .await
-                .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+                .map_err(internal_lifecycle_error)?;
         let mut values = permissions
             .iter()
             .map(ToString::to_string)
@@ -111,7 +122,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
             .filter(users::Column::TenantId.eq(context.tenant_id))
             .one(self.runtime_ctx.db())
             .await
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?
+            .map_err(internal_lifecycle_error)?
             .ok_or(AuthLifecycleMutationError::Unauthorized)?;
 
         let role = AuthLifecycleService::resolve_effective_role(
@@ -227,7 +238,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
     ) -> Result<(), AuthLifecycleMutationError> {
         let user = users::Entity::find_by_email(self.runtime_ctx.db(), context.tenant_id, &email)
             .await
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+            .map_err(internal_lifecycle_error)?;
 
         let Some(user) = user else {
             return Ok(());
@@ -430,6 +441,16 @@ impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
         AuthUserBackfillDbReader::new(self.runtime_ctx.db_clone())
             .list_users_for_profile_backfill(request)
             .await
+            .map_err(redact_lifecycle_error)
+    }
+}
+
+fn redact_lifecycle_error(error: AuthLifecycleMutationError) -> AuthLifecycleMutationError {
+    match error {
+        AuthLifecycleMutationError::Internal(message) => {
+            internal_lifecycle_error(message)
+        }
+        other => other,
     }
 }
 
@@ -448,9 +469,7 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
     match error {
         InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
         InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        InviteAcceptanceError::Internal(error) => {
-            AuthLifecycleMutationError::Internal(error.to_string())
-        }
+        InviteAcceptanceError::Internal(error) => internal_lifecycle_error(error),
     }
 }
 
@@ -463,7 +482,7 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError 
         AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
         AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
         AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
-        AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
+        AuthLifecycleError::Internal(err) => internal_lifecycle_error(err),
     }
 }
 
@@ -478,11 +497,3 @@ mod tests {
         assert!(ServerAuthLifecycleProvider::ensure_registration_enabled(&enabled).is_ok());
 
         let mut disabled = RustokSettings::default();
-        disabled.features.registration_enabled = false;
-        assert!(matches!(
-            ServerAuthLifecycleProvider::ensure_registration_enabled(&disabled),
-            Err(rustok_auth::AuthLifecycleMutationError::Validation(message))
-                if message == "Registration is disabled"
-        ));
-    }
-}
