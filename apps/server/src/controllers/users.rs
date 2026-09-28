@@ -5,7 +5,7 @@ use axum::{
     routing::get,
 };
 use rustok_api::{Permission, has_effective_permission};
-use rustok_auth::{UserItem, UsersListParams, UsersResponse};
+pub use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;

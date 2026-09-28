@@ -60,5 +60,5 @@ pub use field::{
 };
 pub use form::Form;
 pub use inputs::{
-    FormCheckbox, FormInput, FormRadioGroup, FormSelect, FormSwitch, FormTextarea,
+    FormCheckbox, FormFileInput, FormInput, FormRadioGroup, FormSelect, FormSwitch, FormTextarea,
 };

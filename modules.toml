@@ -43,6 +43,7 @@ outbox = { crate = "rustok-outbox", source = "path", path = "crates/modules/rust
 events = { crate = "rustok-events-module", source = "path", path = "crates/modules/rustok-events-module", required = true, depends_on = ["outbox"] }
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/modules/rustok-tenant", required = true }
 rbac = { crate = "rustok-rbac", source = "path", path = "crates/modules/rustok-rbac", required = true, depends_on = ["outbox"] }
+translation = { crate = "rustok-translation", source = "path", path = "crates/modules/rustok-translation", required = true, depends_on = ["tenant", "outbox"] }
 
 # Domain modules (optional)
 content = { crate = "rustok-content", source = "path", path = "crates/modules/rustok-content" }
@@ -80,7 +81,6 @@ navigation = { crate = "rustok-navigation", source = "path", path = "crates/modu
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/modules/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/modules/rustok-taxonomy", depends_on = ["content", "outbox"] }
 media = { crate = "rustok-media", source = "path", path = "crates/modules/rustok-media", depends_on = ["outbox"] }
-translation = { crate = "rustok-translation", source = "path", path = "crates/modules/rustok-translation" }
 seo = { crate = "rustok-seo", source = "path", path = "crates/modules/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/modules/rustok-workflow" }
 alloy = { crate = "alloy", source = "path", path = "crates/modules/alloy" }

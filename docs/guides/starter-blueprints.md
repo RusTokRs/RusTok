@@ -20,7 +20,7 @@ In RusToK, demo and starter content is **declarative, typed, and domain-governed
 - Content is imported strictly through **public domain module services** (`PageService`, `PostService`, `CategoryService`, `TopicService`, `TaxonomyService`, `NavigationService`).
 - **No direct raw SQL inserts**: all business rules, slug allocations, timestamps, revisions, outbox events, and database constraints are respected.
 - **Idempotency**: Running an import multiple times on the same tenant will not corrupt data or produce duplicate entities.
-- **Storefront-Ready**: After import, the landing page, navigation menus, blog posts, and forum topics are immediately published and visible on storefronts without requiring manual intervention in the admin panel.
+- **Multilingual Support**: Supports multi-language demo data, localized pages, menus, and blog posts. See the [Multilingual Demo Guide](./multilingual-demo.md).
 
 ---
 

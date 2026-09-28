@@ -304,7 +304,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-ui-core` | **Framework-agnostic UI contracts:** route/query context and intents, table/list pagination, sorting, filtering, selection, presentation policy, input normalization, and busy-key helpers. |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
 | `rustok-ui-auth` | **Framework-agnostic client auth:** `AuthUser`, `AuthSession`, expiry policy, and typed client auth errors. Leptos lifecycle bindings remain in `leptos-auth`. |
-| `rustok-ui-forms` | **Framework-agnostic form state:** submission lifecycle, field errors, validation issues, and issue-to-field mapping. Framework adapters own hooks/signals and rendering. |
+| `rustok-forms` | **Framework-agnostic form state:** submission lifecycle, validation engine, field descriptors, and dirty tracking. Companion adapter: `rustok-forms-leptos`. |
 | `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Project Fluent `.ftl` catalogs), `declare_module_i18n!`, `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
 | `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
@@ -335,7 +335,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Framework-agnostic GraphQL transport client | `crates/ui/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
 | Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
 | Framework-agnostic auth values and expiry policy | `crates/ui/rustok-ui-auth/` | `AuthUser`, `AuthSession`, `AuthError` |
-| Framework-agnostic form/validation-result state | `crates/ui/rustok-ui-forms/` | `FormState`, `FieldError`, `ValidationIssue` |
+| Framework-agnostic form/validation-result state | `crates/ui/rustok-forms/` | `FormState`, `FieldError`, `ValidationIssue`, `FormValidator`, `DirtyTracker` |
 | Framework-agnostic table/list state | `crates/ui/rustok-ui-core/` | `UiPaginationState`, `UiSortState`, `UiFilterRule`, `UiSelectionState` |
 | Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `declare_module_i18n!`, `UiMessages` static catalog storage, Fluent resolution and locale normalization |
 | Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
@@ -372,7 +372,7 @@ When creating a new shared library, decide upfront:
 - Name: `crates/ui/rustok-ui-<name>/` for shared UI semantics, or an existing
   owner crate when the contract belongs to a domain/capability
 - **NO** `leptos::*` or `dioxus::*` imports
-- Example: `rustok-ui-core`, `rustok-ui-forms`, `rustok-ui-i18n`, `rustok-graphql`
+- Example: `rustok-ui-core`, `rustok-forms`, `rustok-ui-i18n`, `rustok-graphql`
 - Works with both Leptos and Dioxus UI adapters
 
 ### Current extraction opportunities (examples)
@@ -384,7 +384,7 @@ If you see these patterns duplicated across modules, extract them:
 - **i18n message resolution** -> Already in `rustok-ui-i18n` (`LeptosUiMessages`)
 - **GraphQL error mapping** -> Already in `rustok-graphql`
 - **Native/GraphQL transport evidence and build-profile transport selection** -> Already in `rustok-ui-transport`
-- **Form submission/validation-result state** -> Already in `rustok-ui-forms`
+- **Form submission/validation-result state** -> Already in `rustok-forms` (components in `rustok-forms-leptos`)
 - **Table/list pagination, sorting, filtering and selection state** -> Already in `rustok-ui-core`
 - **Selection state URL sync** -> Already in `leptos-ui-routing`
 
@@ -525,7 +525,7 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | `use_cookie("lang")` or local `Accept-Language` parsing | Violates platform i18n contract |
 | `auto_select_first` as selection source of truth | Causes stale state bugs |
 | Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `rustok-graphql`) |
-| Reimplementing portable form, pagination, sorting, filtering, or selection state locally | Duplicates `rustok-ui-forms` / `rustok-ui-core` contracts |
+| Reimplementing portable form, pagination, sorting, filtering, or selection state locally | Duplicates `rustok-forms` / `rustok-ui-core` contracts |
 | Writing `leptos-ui` primitives locally | Duplicates the Leptos design-system adapter |
 | Domain business UI placed inside `apps/admin/src/` | Host becomes domain owner |
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |

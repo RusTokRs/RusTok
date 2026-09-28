@@ -220,6 +220,7 @@ from complete operation safety and retention through serving cutover.
 
 - [Quick Start](./guides/quickstart.md)
 - [Starter Blueprints & Demo Data](./guides/starter-blueprints.md)
+- [Multilingual Demo & Architecture](./guides/multilingual-demo.md)
 - [Testing](./guides/testing.md)
 - [Observability Quick Start](./guides/observability-quickstart.md)
 - [Runtime Guardrails](./guides/runtime-guardrails.md)

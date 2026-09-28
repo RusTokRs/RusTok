@@ -87,6 +87,9 @@ pub fn FormItem(
 /// Renders a `<label>` with a required-indicator when `required` is set.
 #[component]
 pub fn FormLabel(
+    /// Explicit target input ID. If omitted, defaults to the enclosing `FormField` name.
+    #[prop(optional, into)]
+    html_for: Option<String>,
     /// Show a required indicator (`*`).
     #[prop(optional)]
     required: bool,
@@ -96,7 +99,7 @@ pub fn FormLabel(
     children: Children,
 ) -> impl IntoView {
     let field = use_context::<FieldContext>();
-    let for_attr = field.as_ref().map(|f| f.name.clone());
+    let for_attr = html_for.or_else(|| field.as_ref().map(|f| f.name.clone()));
 
     let label_class = move || {
         let base = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
@@ -168,14 +171,22 @@ pub fn FormControl(
 /// available.
 #[component]
 pub fn FormMessage(
+    /// Optional explicit message override. If omitted, reads from `FieldContext` or `FormContext`.
+    #[prop(optional, into)]
+    message: Option<String>,
+    /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
 ) -> impl IntoView {
     let field_ctx = use_context::<FieldContext>();
     let form_ctx = use_context::<FormContext>();
 
+    let msg_id = field_ctx.as_ref().map(|f| format!("{}-message", f.name));
+
     let error_text = move || -> Option<String> {
-        if let Some(ref field) = field_ctx {
+        if let Some(ref m) = message {
+            Some(m.clone())
+        } else if let Some(ref field) = field_ctx {
             field.error_message()
         } else if let Some(ref form) = form_ctx {
             form.state.get().form_error.clone()
@@ -193,7 +204,7 @@ pub fn FormMessage(
 
     view! {
         {move || error_text().map(|msg| view! {
-            <p data-slot="form-message" class=merged.clone()>
+            <p id=msg_id.clone() role="alert" data-slot="form-message" class=merged.clone()>
                 {msg}
             </p>
         })}
@@ -209,6 +220,9 @@ pub fn FormDescription(
     class: String,
     children: Children,
 ) -> impl IntoView {
+    let field_ctx = use_context::<FieldContext>();
+    let desc_id = field_ctx.as_ref().map(|f| format!("{}-description", f.name));
+
     let base = "text-muted-foreground text-sm";
     let merged = if class.is_empty() {
         base.to_string()
@@ -216,7 +230,7 @@ pub fn FormDescription(
         format!("{base} {class}")
     };
     view! {
-        <p data-slot="form-description" class=merged>
+        <p id=desc_id data-slot="form-description" class=merged>
             {children()}
         </p>
     }
@@ -247,9 +261,82 @@ pub fn FormError(
 
     view! {
         {move || error_text().map(|msg| view! {
-            <div data-slot="form-error" class=merged.clone()>
+            <div role="alert" data-slot="form-error" class=merged.clone()>
                 {msg}
             </div>
         })}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_forms::FormState;
+
+    #[test]
+    fn test_form_field_renders_label_and_for_attr() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormField name="email">
+                    <FormLabel required=true>"Email"</FormLabel>
+                    <FormDescription>"Enter your corporate email"</FormDescription>
+                    <FormMessage />
+                </FormField>
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("for=\"email\""));
+        assert!(html.contains("id=\"email-description\""));
+        assert!(html.contains("Email"));
+        assert!(html.contains("*"));
+        // No error message since form state has no error
+        assert!(!html.contains("data-slot=\"form-message\""));
+    }
+
+    #[test]
+    fn test_form_field_renders_error_message_when_invalid() {
+        let state = FormState::idle().with_field_error("email", "Email is required");
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormField name="email">
+                    <FormLabel>"Email"</FormLabel>
+                    <FormMessage />
+                </FormField>
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("text-destructive"));
+        assert!(html.contains("id=\"email-message\""));
+        assert!(html.contains("role=\"alert\""));
+        assert!(html.contains("Email is required"));
+    }
+
+    #[test]
+    fn test_form_error_renders_form_level_message() {
+        let state = FormState::with_form_error("Server unavailable");
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormError />
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("role=\"alert\""));
+        assert!(html.contains("Server unavailable"));
     }
 }

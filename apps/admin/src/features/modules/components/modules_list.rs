@@ -19,7 +19,7 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
-use rustok_ui_forms::FormState;
+use rustok_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, closure::Closure};

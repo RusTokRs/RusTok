@@ -37,6 +37,9 @@ pub fn Form(
     /// Extra CSS classes on the `<form>` element.
     #[prop(optional, into)]
     class: String,
+    /// HTML id attribute on the `<form>` element.
+    #[prop(optional, into)]
+    id: Option<String>,
     children: Children,
 ) -> impl IntoView {
     let read_state: Signal<FormState> = state.into();
@@ -53,11 +56,33 @@ pub fn Form(
 
     view! {
         <form
+            id=id
             on:submit=handle_submit
             class=class
             novalidate=true
         >
             {children()}
         </form>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_form_renders_novalidate_and_id() {
+        let state = RwSignal::new(FormState::idle());
+        let html = view! {
+            <Form state=state on_submit=Callback::new(|_| ()) id="test-form" class="space-y-4">
+                <input type="text" name="name" />
+            </Form>
+        }
+        .to_html();
+
+        assert!(html.contains("id=\"test-form\""));
+        assert!(html.contains("novalidate"));
+        assert!(html.contains("class=\"space-y-4\""));
+        assert!(html.contains("name=\"name\""));
     }
 }

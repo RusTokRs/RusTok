@@ -116,11 +116,25 @@ impl FormState {
         !self.is_submitting && self.form_error.is_none() && self.field_errors.is_empty()
     }
 
+    /// Whether the form currently has no form-level error and no field-level errors.
+    pub fn is_valid(&self) -> bool {
+        !self.has_errors()
+    }
+
     pub fn field_error(&self, field: &str) -> Option<&str> {
         self.field_errors
             .iter()
             .find(|fe| fe.field == field)
             .map(|fe| fe.message.as_str())
+    }
+
+    /// All error messages associated with the given field name.
+    pub fn field_errors_for(&self, field: &str) -> Vec<&str> {
+        self.field_errors
+            .iter()
+            .filter(|fe| fe.field == field)
+            .map(|fe| fe.message.as_str())
+            .collect()
     }
 
     pub fn is_field_invalid(&self, field: &str) -> bool {
@@ -129,6 +143,11 @@ impl FormState {
 
     pub fn has_errors(&self) -> bool {
         self.form_error.is_some() || !self.field_errors.is_empty()
+    }
+
+    /// Clear all validation errors for a specific field name.
+    pub fn clear_field_error(&mut self, field: &str) {
+        self.field_errors.retain(|fe| fe.field != field);
     }
 
     pub fn clear_errors(&mut self) {
@@ -203,6 +222,25 @@ mod tests {
         state.reset();
         assert!(!state.is_submitting);
         assert!(!state.has_errors());
+        assert!(state.is_valid());
         assert!(state.is_success());
+    }
+
+    #[test]
+    fn clear_field_error_retains_others() {
+        let mut state = FormState::idle()
+            .with_field_error("email", "Bad email")
+            .with_field_error("username", "Too short");
+
+        assert!(!state.is_valid());
+        assert_eq!(state.field_errors_for("email"), vec!["Bad email"]);
+
+        state.clear_field_error("email");
+        assert!(!state.is_field_invalid("email"));
+        assert!(state.is_field_invalid("username"));
+        assert!(!state.is_valid());
+
+        state.clear_field_error("username");
+        assert!(state.is_valid());
     }
 }

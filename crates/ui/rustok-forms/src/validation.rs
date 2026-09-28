@@ -52,17 +52,28 @@ pub mod rules {
         }
     }
 
-    /// Validates basic email syntax (contains `@` and `.` after `@`, non-empty parts).
+    /// Validates basic email syntax (non-empty local part and domain, valid domain dots, no whitespace).
     pub fn email(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(()); // Use required() to enforce presence
         }
-        let valid = v.contains('@')
-            && v.split('@').count() == 2
-            && v.split('@').nth(1).map_or(false, |domain| domain.contains('.') && !domain.ends_with('.'));
 
-        if valid {
+        let mut parts = v.split('@');
+        let user = parts.next().unwrap_or("");
+        let domain = parts.next().unwrap_or("");
+
+        let is_valid = parts.next().is_none()
+            && !user.is_empty()
+            && !domain.is_empty()
+            && !user.contains(char::is_whitespace)
+            && !domain.contains(char::is_whitespace)
+            && !domain.starts_with('.')
+            && !domain.ends_with('.')
+            && domain.contains('.')
+            && domain.split('.').all(|seg| !seg.is_empty());
+
+        if is_valid {
             Ok(())
         } else {
             Err(FieldError {
@@ -72,13 +83,75 @@ pub mod rules {
         }
     }
 
-    /// Validates basic URL syntax (starts with http:// or https:// and has host).
+    /// Validates web URL syntax (starts with http:// or https://, valid host without whitespace).
     pub fn url(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
         }
-        if (v.starts_with("http://") || v.starts_with("https://")) && v.len() > 10 {
+
+        let rest = if let Some(r) = v.strip_prefix("https://") {
+            r
+        } else if let Some(r) = v.strip_prefix("http://") {
+            r
+        } else {
+            return Err(FieldError {
+                field: field.into(),
+                message: message.into(),
+            });
+        };
+
+        if rest.is_empty() || rest.contains(char::is_whitespace) || rest.starts_with('/') || rest.starts_with(':') {
+            return Err(FieldError {
+                field: field.into(),
+                message: message.into(),
+            });
+        }
+
+        let host = rest
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or("");
+
+        if host.is_empty() || host.starts_with('.') || host.ends_with('.') {
+            return Err(FieldError {
+                field: field.into(),
+                message: message.into(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Validates kebab-case slug syntax (e.g. `blog-post-1`, lowercase ASCII, numbers, hyphens, no consecutive hyphens).
+    pub fn slug(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        let is_valid = !v.starts_with('-')
+            && !v.ends_with('-')
+            && !v.contains("--")
+            && v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+
+        if is_valid {
+            Ok(())
+        } else {
+            Err(FieldError {
+                field: field.into(),
+                message: message.into(),
+            })
+        }
+    }
+
+    /// Validates that two field values match (e.g. password confirmation).
+    pub fn matches(
+        field: impl Into<String>,
+        value: &str,
+        expected: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value == expected {
             Ok(())
         } else {
             Err(FieldError {
@@ -172,6 +245,22 @@ impl FormValidator {
         self.check(rules::url(field, value, message))
     }
 
+    /// Validates kebab-case slug format.
+    pub fn slug(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::slug(field, value, message))
+    }
+
+    /// Validates that a value matches an expected string (e.g. password confirmation).
+    pub fn matches(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        expected: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::matches(field, value, expected, message))
+    }
+
     /// Validates numeric range.
     pub fn range<T: PartialOrd + Copy>(
         self,
@@ -184,7 +273,7 @@ impl FormValidator {
         self.check(rules::range(field, value, min, max, message))
     }
 
-    /// Validates custom predicate.
+    /// Validates custom predicate condition.
     pub fn custom(
         mut self,
         field: impl Into<String>,
@@ -192,6 +281,25 @@ impl FormValidator {
         message: impl Into<String>,
     ) -> Self {
         if !condition {
+            self.errors.push(FieldError {
+                field: field.into(),
+                message: message.into(),
+            });
+        }
+        self
+    }
+
+    /// Validates custom closure predicate.
+    pub fn validate<F>(
+        mut self,
+        field: impl Into<String>,
+        predicate: F,
+        message: impl Into<String>,
+    ) -> Self
+    where
+        F: FnOnce() -> bool,
+    {
+        if !predicate() {
             self.errors.push(FieldError {
                 field: field.into(),
                 message: message.into(),
@@ -230,13 +338,17 @@ mod tests {
             .required("title", "", "Title is required")
             .min_length("username", "ab", 3, "Username must be >= 3 chars")
             .email("email", "bad-email", "Invalid email")
-            .url("website", "https://example.com", "Invalid URL");
+            .url("website", "https://example.com", "Invalid URL")
+            .slug("slug", "Invalid Slug", "Slug invalid")
+            .matches("confirm", "pwd1", "pwd2", "Passwords must match");
 
         let errs = validator.finish().unwrap_err();
-        assert_eq!(errs.len(), 3);
+        assert_eq!(errs.len(), 5);
         assert_eq!(errs[0].field, "title");
         assert_eq!(errs[1].field, "username");
         assert_eq!(errs[2].field, "email");
+        assert_eq!(errs[3].field, "slug");
+        assert_eq!(errs[4].field, "confirm");
     }
 
     #[test]
@@ -245,6 +357,9 @@ mod tests {
             .required("title", "Hello", "Title required")
             .min_length("username", "alex", 3, "Username >= 3")
             .email("email", "user@example.com", "Email")
+            .url("website", "https://example.com/blog", "URL")
+            .slug("slug", "my-first-post-2026", "Slug")
+            .matches("confirm", "secret", "secret", "Passwords match")
             .range("age", 25, Some(18), Some(120), "Age between 18 and 120");
 
         assert!(validator.finish().is_ok());
@@ -264,12 +379,65 @@ mod tests {
 
         let res_too_short = rules::min_length("name", "Привет", 7, "Min 7 chars");
         assert!(res_too_short.is_err());
+
+        let res_max = rules::max_length("name", "Привет", 6, "Max 6 chars");
+        assert!(res_max.is_ok());
+
+        let res_max_exceeded = rules::max_length("name", "Привет!", 6, "Max 6 chars");
+        assert!(res_max_exceeded.is_err());
     }
 
     #[test]
-    fn test_empty_email_is_allowed_if_not_required() {
-        let res = rules::email("optional_email", "", "Invalid email");
-        assert!(res.is_ok());
+    fn test_email_edge_cases() {
+        assert!(rules::email("email", "", "Invalid").is_ok()); // optional
+        assert!(rules::email("email", "user@example.com", "Invalid").is_ok());
+        assert!(rules::email("email", "first.last@domain.co.uk", "Invalid").is_ok());
+
+        // Invalid emails
+        assert!(rules::email("email", "@example.com", "Invalid").is_err());
+        assert!(rules::email("email", "user@", "Invalid").is_err());
+        assert!(rules::email("email", "user@.com", "Invalid").is_err());
+        assert!(rules::email("email", "user@com.", "Invalid").is_err());
+        assert!(rules::email("email", "user@domain..com", "Invalid").is_err());
+        assert!(rules::email("email", "user name@example.com", "Invalid").is_err());
+        assert!(rules::email("email", "user@exam ple.com", "Invalid").is_err());
+        assert!(rules::email("email", "user@a@b.com", "Invalid").is_err());
+    }
+
+    #[test]
+    fn test_url_edge_cases() {
+        assert!(rules::url("url", "", "Invalid").is_ok()); // optional
+        assert!(rules::url("url", "https://rustok.dev", "Invalid").is_ok());
+        assert!(rules::url("url", "http://localhost:3000/api", "Invalid").is_ok());
+        assert!(rules::url("url", "https://example.com/path?q=1#hash", "Invalid").is_ok());
+
+        // Invalid URLs
+        assert!(rules::url("url", "http://", "Invalid").is_err());
+        assert!(rules::url("url", "http://    ", "Invalid").is_err());
+        assert!(rules::url("url", "not-a-url", "Invalid").is_err());
+        assert!(rules::url("url", "ftp://example.com", "Invalid").is_err());
+        assert!(rules::url("url", "https://.com", "Invalid").is_err());
+    }
+
+    #[test]
+    fn test_slug_edge_cases() {
+        assert!(rules::slug("slug", "", "Invalid").is_ok()); // optional
+        assert!(rules::slug("slug", "valid-slug-123", "Invalid").is_ok());
+        assert!(rules::slug("slug", "article", "Invalid").is_ok());
+
+        // Invalid slugs
+        assert!(rules::slug("slug", "-leading-dash", "Invalid").is_err());
+        assert!(rules::slug("slug", "trailing-dash-", "Invalid").is_err());
+        assert!(rules::slug("slug", "double--dash", "Invalid").is_err());
+        assert!(rules::slug("slug", "UPPERCASE", "Invalid").is_err());
+        assert!(rules::slug("slug", "has spaces", "Invalid").is_err());
+        assert!(rules::slug("slug", "special!char", "Invalid").is_err());
+    }
+
+    #[test]
+    fn test_matches_rule() {
+        assert!(rules::matches("pwd", "pass123", "pass123", "Mismatch").is_ok());
+        assert!(rules::matches("pwd", "pass123", "pass456", "Mismatch").is_err());
     }
 
     #[test]
@@ -283,9 +451,14 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_rule() {
+    fn test_custom_and_validate_closure() {
         let validator = FormValidator::new()
-            .custom("terms", false, "Must accept terms");
-        assert_eq!(validator.into_errors().len(), 1);
+            .custom("terms", false, "Must accept terms")
+            .validate("code", || 1 + 1 == 3, "Math error");
+
+        let errs = validator.into_errors();
+        assert_eq!(errs.len(), 2);
+        assert_eq!(errs[0].field, "terms");
+        assert_eq!(errs[1].field, "code");
     }
 }

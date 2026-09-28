@@ -48,7 +48,8 @@ Before writing reusable code, check whether it already exists in shared librarie
 - `leptos-ui-routing` - `UiRouteContext`, `module_route_base()`, `query_value()`
 - `rustok-graphql` - framework-agnostic GraphQL HTTP client
 - `rustok-ui-core` - framework-agnostic route, pagination, sorting, filtering, selection, and presentation contracts
-- `rustok-ui-forms` - framework-agnostic form submission and validation-result state
+- `rustok-forms` - framework-agnostic form submission lifecycle, validation engine, field descriptors, and dirty tracking
+- `rustok-forms-leptos` - Leptos 0.8 form components, accessible controls, and submit button
 - `rustok-ui-auth` - framework-agnostic client auth/session values and expiry policy
 - `leptos-auth` - auth hooks and session
 

@@ -173,7 +173,6 @@ leptos_router = "0.8.13"
 leptos-auth = { path = "crates/ui/leptos-auth", default-features = false }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
-rustok-ui-forms = { path = "crates/ui/rustok-ui-forms" }
 rustok-forms = { path = "crates/ui/rustok-forms" }
 rustok-forms-leptos = { path = "crates/ui/rustok-forms/leptos" }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }

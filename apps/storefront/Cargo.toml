@@ -94,7 +94,7 @@ leptos-auth = { workspace = true }
 rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-ui-routing.workspace = true
-rustok-ui-forms = { workspace = true }
+rustok-forms = { workspace = true }
 leptos-use = { workspace = true }
 rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -155,7 +155,7 @@ normal = [
   "leptos-auth",
   "rustok-graphql",
   "rustok-ui-transport",
-  "rustok-ui-forms",
+  "rustok-forms",
   "leptos-use",
   "rustok-ui-i18n",
   "leptos_router",
@@ -181,7 +181,7 @@ normal = [
 [package.metadata.cargo-machete]
 ignored = [
   "futures",
-  "rustok-ui-forms",
+  "rustok-forms",
   "leptos-ui-routing",
   "leptos-use",
   "rustok-ui-i18n",

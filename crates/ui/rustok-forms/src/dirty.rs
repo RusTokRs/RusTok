@@ -30,6 +30,11 @@ impl DirtyTracker {
         self.fields.remove(field);
     }
 
+    /// Alias for `unmark`: mark a field as clean.
+    pub fn mark_clean(&mut self, field: &str) {
+        self.unmark(field);
+    }
+
     /// Record whether a field is modified relative to its initial value.
     pub fn record_change(&mut self, field: impl Into<String>, is_different: bool) {
         let f = field.into();
@@ -53,6 +58,11 @@ impl DirtyTracker {
     /// Number of dirty fields.
     pub fn count(&self) -> usize {
         self.fields.len()
+    }
+
+    /// Return a vector containing all dirty field names in sorted order.
+    pub fn dirty_fields(&self) -> Vec<String> {
+        self.fields.iter().cloned().collect()
     }
 
     /// Iterate over dirty field names in sorted order.
@@ -88,13 +98,15 @@ mod tests {
         let mut tracker = DirtyTracker::new();
         tracker.mark("a");
         tracker.mark("b");
-        tracker.unmark("a");
+        tracker.mark_clean("a");
         assert!(!tracker.is_dirty("a"));
         assert!(tracker.is_dirty("b"));
+        assert_eq!(tracker.dirty_fields(), vec!["b"]);
 
         tracker.reset();
         assert!(!tracker.is_any_dirty());
         assert_eq!(tracker.count(), 0);
+        assert!(tracker.dirty_fields().is_empty());
     }
 
     #[test]
@@ -102,8 +114,10 @@ mod tests {
         let mut tracker = DirtyTracker::new();
         tracker.record_change("title", true);
         assert!(tracker.is_dirty("title"));
+        assert_eq!(tracker.dirty_fields(), vec!["title"]);
 
         tracker.record_change("title", false);
         assert!(!tracker.is_dirty("title"));
+        assert!(tracker.dirty_fields().is_empty());
     }
 }

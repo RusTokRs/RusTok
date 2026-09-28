@@ -131,6 +131,41 @@ impl FieldDescriptor {
         self
     }
 
+    pub fn min_length(mut self, min: usize) -> Self {
+        self.constraints.min_length = Some(min);
+        self
+    }
+
+    pub fn max_length(mut self, max: usize) -> Self {
+        self.constraints.max_length = Some(max);
+        self
+    }
+
+    pub fn min(mut self, min: f64) -> Self {
+        self.constraints.min = Some(min);
+        self
+    }
+
+    pub fn max(mut self, max: f64) -> Self {
+        self.constraints.max = Some(max);
+        self
+    }
+
+    pub fn pattern(mut self, pat: impl Into<String>) -> Self {
+        self.constraints.pattern = Some(pat.into());
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    pub fn default_value(mut self, val: impl Into<String>) -> Self {
+        self.default_value = Some(val.into());
+        self
+    }
+
     pub fn options(mut self, opts: Vec<FieldOption>) -> Self {
         self.options = opts;
         self
@@ -146,11 +181,21 @@ mod tests {
         let field = FieldDescriptor::new("email", FieldKind::Email)
             .label("Email address")
             .placeholder("user@example.com")
+            .default_value("admin@example.com")
+            .min_length(5)
+            .max_length(100)
+            .pattern(r"^.+@.+$")
+            .disabled(true)
             .required();
 
         assert_eq!(field.name, "email");
         assert_eq!(field.kind, FieldKind::Email);
         assert!(field.constraints.required);
+        assert_eq!(field.constraints.min_length, Some(5));
+        assert_eq!(field.constraints.max_length, Some(100));
+        assert_eq!(field.constraints.pattern.as_deref(), Some(r"^.+@.+$"));
+        assert!(field.disabled);
+        assert_eq!(field.default_value.as_deref(), Some("admin@example.com"));
         assert_eq!(field.label.as_deref(), Some("Email address"));
     }
 
@@ -160,10 +205,11 @@ mod tests {
             .label("Locale")
             .options(vec![
                 FieldOption::new("en", "English"),
-                FieldOption::new("ru", "Русский"),
+                FieldOption::new("ru", "Русский").disabled(),
             ]);
 
         assert_eq!(field.options.len(), 2);
         assert!(!field.options[0].disabled);
+        assert!(field.options[1].disabled);
     }
 }

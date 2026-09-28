@@ -40,7 +40,8 @@ Verification relies on the current-state contract:
 - [ ] `crates/ui/rustok-graphql`
 - [ ] `crates/ui/rustok-ui-auth`
 - [ ] `crates/ui/rustok-ui-core`
-- [ ] `crates/ui/rustok-ui-forms`
+- [ ] `crates/ui/rustok-forms`
+- [ ] `crates/ui/rustok-forms/leptos`
 - [ ] `crates/ui/rustok-ui-i18n`
 - [ ] `crates/ui/rustok-ui-transport`
 

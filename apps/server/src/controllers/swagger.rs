@@ -456,7 +456,7 @@ impl utoipa::Modify for SecurityAddon {
             "/v2/catalog/runner/{claim_id}/complete",
             "/v2/catalog/runner/{claim_id}/fail",
         ] {
-            if let Some(operation) = openapi.paths.get_path_item(path).and_then(|item| item.post.as_mut()) {
+            if let Some(operation) = openapi.paths.paths.get_mut(path).and_then(|item| item.post.as_mut()) {
                 operation.security = Some(vec![SecurityRequirement::new(
                     "runner_token",
                     std::iter::empty::<String>(),

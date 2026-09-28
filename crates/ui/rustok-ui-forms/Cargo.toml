@@ -1,9 +1,0 @@
-[package]
-name = "rustok-ui-forms"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Framework-neutral form submission and validation state for RusToK"
-
-[dependencies]
-serde.workspace = true

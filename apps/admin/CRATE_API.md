@@ -14,7 +14,7 @@
 
 ## Dependencies on Other Crates
 - `leptos-auth`, `leptos-ui`, `leptos-ui-routing`, `rustok-graphql`,
-  `rustok-ui-auth`, `rustok-ui-core`, `rustok-ui-forms`, and `rustok-ui-i18n`.
+  `rustok-ui-auth`, `rustok-ui-core`, `rustok-forms`, and `rustok-ui-i18n`.
 
 ## Common AI Mistakes
 - Incorrect imports between `leptos-*` crates (confusing packages/ and crates/ variants).

@@ -41,7 +41,16 @@ pub fn SubmitButton(
         }
     };
 
+    let has_submitting_text = submitting_text.is_some();
     let submitting_text_val = submitting_text;
+
+    let children_class = move || {
+        if is_submitting() && has_submitting_text {
+            "hidden"
+        } else {
+            "inline-flex items-center gap-1.5"
+        }
+    };
 
     view! {
         <button
@@ -61,7 +70,7 @@ pub fn SubmitButton(
             } else {
                 ().into_any()
             }}
-            <span class=move || if is_submitting() { "hidden" } else { "inline-flex items-center gap-1.5" }>
+            <span class=children_class>
                 {children()}
             </span>
         </button>
@@ -111,5 +120,68 @@ pub fn ResetButton(
         >
             {children()}
         </button>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_forms::FormState;
+
+    #[test]
+    fn test_submit_button_idle_renders_children() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("type=\"submit\""));
+        assert!(html.contains("Save Changes"));
+        // Spinner should not be present in idle state
+        assert!(!html.contains("animate-spin"));
+    }
+
+    #[test]
+    fn test_submit_button_submitting_shows_spinner_and_disabled() {
+        let state = FormState::submitting();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("disabled"));
+        assert!(html.contains("animate-spin"));
+        assert!(html.contains("Saving..."));
+    }
+
+    #[test]
+    fn test_reset_button_renders_type_button() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <ResetButton>"Cancel"</ResetButton>
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("type=\"button\""));
+        assert!(html.contains("Cancel"));
     }
 }
