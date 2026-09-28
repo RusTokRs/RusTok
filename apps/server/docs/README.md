@@ -214,6 +214,9 @@ remain separate unfinished control-plane work.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
+- Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
+  the typed `AuthPrincipalKind::DirectUser` principal. Delegated OAuth user principals are valid for
+  delegated OAuth/storefront flows but do not inherit the direct-session self-service contract.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
