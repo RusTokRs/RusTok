@@ -189,7 +189,7 @@ pub async fn bootstrap_app_runtime(
 
     initialize_module_work_runtime(&runtime_ctx, &registry, runtime_extensions.as_ref()).await?;
 
-    let graphql_schema = init_graphql_schema(&runtime_ctx);
+    let graphql_schema = init_graphql_schema(&runtime_ctx)?;
     let rate_limits =
         init_rate_limit_layers(&runtime_ctx, settings, &cache_service, Some(auth_config))?;
 
