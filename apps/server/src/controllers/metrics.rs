@@ -400,7 +400,7 @@ fn format_outbox_metrics_optional(
         0
     };
     format!(
-        "rustok_outbox_metrics_collection_status {status}\nrustok_outbox_backlog_size {backlog_size}\nrustok_outbox_dlq_total {dlq_total}\nrustok_outbox_retries_total {retries_total}\nrustok_outbox_pending_lag_seconds {pending_lag_seconds}\noutbox_backlog_size {backlog_size}\noutbox_dlq_total {dlq_total}\noutbox_retries_total {retries_total}\n",
+        "rustok_outbox_metrics_collection_status {status}\nrustok_outbox_backlog_size {backlog_size}\nrustok_outbox_dlq_total {dlq_total}\nrustok_outbox_retries_total {retries_total}\nrustok_outbox_pending_lag_seconds {pending_lag_seconds}\n",
         backlog_size = format_metric_u64(backlog_size),
         dlq_total = format_metric_u64(dlq_total),
         retries_total = format_metric_i64(retries_total),
@@ -906,16 +906,16 @@ mod tests {
     }
 
     #[test]
-    fn outbox_metrics_include_canonical_names_and_compatibility_aliases() {
+    fn outbox_metrics_publish_only_canonical_names() {
         let payload = format_outbox_metrics(11, 2, 7, 42);
 
         assert_metric_line(&payload, "rustok_outbox_backlog_size");
         assert_metric_line(&payload, "rustok_outbox_dlq_total");
         assert_metric_line(&payload, "rustok_outbox_retries_total");
         assert_metric_line(&payload, "rustok_outbox_pending_lag_seconds");
-        assert_metric_line(&payload, "outbox_backlog_size");
-        assert_metric_line(&payload, "outbox_dlq_total");
-        assert_metric_line(&payload, "outbox_retries_total");
+        assert!(!payload.contains("outbox_backlog_size "));
+        assert!(!payload.contains("outbox_dlq_total "));
+        assert!(!payload.contains("outbox_retries_total "));
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));
