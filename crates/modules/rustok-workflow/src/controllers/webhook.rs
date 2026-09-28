@@ -38,6 +38,7 @@ pub async fn receive(
                 "Workflow webhook is temporarily unavailable".to_string(),
             )
         })?
+        .filter(|tenant| tenant.is_active)
         .ok_or_else(|| {
             HttpError::not_found(
                 "workflow_webhook_not_found",

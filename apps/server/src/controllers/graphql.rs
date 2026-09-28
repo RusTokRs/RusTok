@@ -29,6 +29,7 @@ use crate::{
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
+use sea_orm::EntityTrait;
 
 const WS_CLOSE_UNAUTHORIZED: u16 = 4401;
 const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect required";
@@ -307,6 +308,15 @@ async fn revalidate_ws_auth(
     auth_runtime: &ServerAuthRuntime,
     lease: &GraphqlWsAuthLease,
 ) -> Result<RbacRequestScope, ()> {
+    let tenant = crate::models::_entities::tenants::Entity::find_by_id(lease.tenant_id)
+        .one(auth_runtime.runtime_ctx().db())
+        .await
+        .map_err(|_| ())?
+        .ok_or(())?;
+    if !tenant.is_active {
+        return Err(());
+    }
+
     let current_user =
         resolve_current_user_from_access_token(auth_runtime, lease.tenant_id, &lease.access_token)
             .await

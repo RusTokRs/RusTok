@@ -155,6 +155,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05 finding in progress — GraphQL build subscription crossed tenant/platform boundaries.** `buildProgress` consumed the global `BuildEventHub` while authorizing only tenant `modules:read/list/manage`, so a tenant admin could observe platform-wide build events. The subscription now requires host `Read` authority. GraphQL WS `connection_init` accepts an optional `hostAuthorityToken`, validated through the same configured host-authority policy as HTTP; ordinary user-token GraphQL subscriptions remain unchanged.
 
+- [ ] **FS-22.04 finding in progress — tenant deactivation lifecycle on long-lived/self-resolving transports.** GraphQL WS validated tenant activity only during `connection_init`, so an already-open socket could continue after the tenant was disabled; workflow webhook directly loaded the tenant and could similarly trigger active workflows for a disabled tenant because it bypasses the normal tenant resolver. WS auth revalidation now fail-closes when the persisted tenant is missing/inactive, and workflow webhook tenant lookup rejects inactive tenants as not-found.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
