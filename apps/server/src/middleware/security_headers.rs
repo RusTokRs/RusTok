@@ -430,6 +430,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn outer_security_layer_covers_edge_short_circuit_responses() {
+        let app = crate::middleware::http_stack::apply_http_edge_stack(
+            Router::new(),
+            false,
+            None,
+            10,
+        )
+        .layer(middleware::from_fn(security_headers));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/api/edge-probe")
+                    .header("origin", "http://localhost:3000")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .expect("CORS preflight request"),
+            )
+            .await
+            .expect("CORS preflight response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-security-policy")
+                .and_then(|value| value.to_str().ok()),
+            Some(API_CSP)
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-content-type-options")
+                .and_then(|value| value.to_str().ok()),
+            Some("nosniff")
+        );
+    }
+
+    #[tokio::test]
     async fn csp_reports_are_rate_limited_before_collection_and_keep_security_headers() {
         let state = PathRateLimitMiddlewareState {
             policies: Arc::new(vec![PathRateLimitPolicy {
