@@ -98,34 +98,42 @@ pub struct InstallStatusResponse {
 
 async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    match persistence.latest_session().await {
-        Ok(Some(session)) => {
-            let completed = session.status == "completed";
-            Ok(Json(InstallStatusResponse {
-                status: session.status,
-                initialized: true,
-                completed,
-                session_id: Some(session.id),
-                tenant_id: session.tenant_id,
-                lock_owner: session.lock_owner,
-                lock_expires_at: session.lock_expires_at,
-                completed_at: session.completed_at,
-            }))
+    let completed = match persistence.has_completed_session().await {
+        Ok(completed) => completed,
+        Err(error) if installer_schema_missing(&error) => {
+            return Ok(Json(InstallStatusResponse {
+                status: "not_initialized".to_string(),
+                initialized: false,
+                completed: false,
+                session_id: None,
+                tenant_id: None,
+                lock_owner: None,
+                lock_expires_at: None,
+                completed_at: None,
+            }));
         }
+        Err(error) => {
+            return Err(internal_error(format!(
+                "failed to read installer completion state: {error}"
+            )));
+        }
+    };
+
+    match persistence.latest_session().await {
+        Ok(Some(session)) => Ok(Json(InstallStatusResponse {
+            status: session.status,
+            initialized: true,
+            completed,
+            session_id: Some(session.id),
+            tenant_id: session.tenant_id,
+            lock_owner: session.lock_owner,
+            lock_expires_at: session.lock_expires_at,
+            completed_at: session.completed_at,
+        })),
         Ok(None) => Ok(Json(InstallStatusResponse {
             status: "not_started".to_string(),
             initialized: true,
-            completed: false,
-            session_id: None,
-            tenant_id: None,
-            lock_owner: None,
-            lock_expires_at: None,
-            completed_at: None,
-        })),
-        Err(error) if installer_schema_missing(&error) => Ok(Json(InstallStatusResponse {
-            status: "not_initialized".to_string(),
-            initialized: false,
-            completed: false,
+            completed,
             session_id: None,
             tenant_id: None,
             lock_owner: None,
