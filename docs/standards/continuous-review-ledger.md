@@ -151,6 +151,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.06/22.07 finding in progress — global build state exposed through tenant admin + unauthenticated build stream.** Build persistence is platform-global (the `builds` model has no `tenant_id`), yet `admin/active-build`, `admin/build-history`, and `/ws/builds` were reachable under tenant-level/module permissions; the WebSocket handler did not authenticate at all and streamed the global event hub. These surfaces are now host-global and require `HostAuthority::Read`, aligning all three readers with the platform-global data model.
 
+- [ ] **FS-22.06/22.07 finding in progress — platform build surfaces were globally readable through tenant-admin permissions.** The `builds` persistence model has no `tenant_id`, while `active_build()`/`list_builds_page()` return platform-wide state; `/api/fn/admin/active-build`, `/api/fn/admin/build-history`, and `/ws/builds` therefore cannot be made tenant-safe by filtering alone. They are now classified as `GlobalOperator` and require host `Read` authority. The build WebSocket contract was updated from JWT auth to host-global authority; route-policy tests cover all three surfaces.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
