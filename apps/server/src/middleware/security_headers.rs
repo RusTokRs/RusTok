@@ -430,10 +430,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_security_layer_collects_report_without_registered_route() {
+    async fn csp_report_layer_collects_report_without_registered_route() {
         let app = Router::new()
             .route("/probe", get(|| async { StatusCode::OK }))
-            .layer(middleware::from_fn(security_headers));
+            .layer(middleware::from_fn(handle_csp_report));
         let response = app
             .oneshot(
                 Request::builder()
