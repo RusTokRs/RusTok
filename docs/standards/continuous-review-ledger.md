@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `69c96eac789507fb70096498bf79c0772b1437ff`  
+**Current main SHA:** `c800d56cc230fe86495db24b38269222d449c7f6`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -133,7 +133,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [x] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Remaining full worker rollback/join/abort lifecycle gaps are explicitly deferred to FS-24.
 - [x] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Marketplace-provider panic handling remains a separate owner-module finding; full detached-worker lifecycle remains deferred to FS-24.
-- [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
+- [x] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
 - [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
 - [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
@@ -195,6 +195,21 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.14 Result — `server_runtime_context.rs`
+
+- **Status:** COMPLETE; no code remediation required.
+- **Fresh main base:** `c800d56cc230fe86495db24b38269222d449c7f6`.
+- **Invariant map:** the server runtime context must provide one immutable settings snapshot, one shared DB handle, type-safe singleton runtime values, atomic first-writer lifecycle registration, clone-safe access across Axum state, and no transport-level leakage of host secrets.
+- **Discovery:** read the complete `ServerRuntimeContext` / `ServerSharedValues` implementation and its direct runtime usage in lifecycle, health, guardrail, bootstrap, auth, and runtime composition paths.
+- **Security check:** `ServerAuthRuntime::auth_config()` is an internal server-state accessor. Actual controller callsites clone/use `AuthConfig` for token operations or public metadata generation; the auth secret is not serialized or emitted by these paths. No client-facing secret exposure was found.
+- **Concurrency check:** `shared_insert_if_absent` uses the map entry API under the write lock, so first-writer ownership is atomic. The known StopHandle bootstrap race therefore does not reappear in this storage primitive.
+- **Type-safety check:** `TypeId` is used consistently as the key and `Any::downcast` as the value boundary. The `expect()` inside the private `get_or_insert_with` invariant is only reachable on an impossible key/type mismatch created internally by the same TypeId insertion path.
+- **Locking check:** synchronous `RwLock` critical sections are short and do not perform async I/O in the current production callsites. `shared_map` executes its inspection callback under the read lock; all reviewed callers use non-reentrant pure accessors such as `is_finished` / `instance_id`.
+- **Fresh second pass:** independently re-read the complete module and reviewed actual `shared_map`, `shared_get`, `shared_insert`, `shared_insert_if_absent`, and `effective_policy_cache` call patterns. No remaining unblocked repository-owned defect was found.
+- **Decision:** no speculative API redesign or cosmetic refactor was introduced merely to create a diff.
+- **Verification:** source inspection, direct-callsite analysis, concurrency/type-boundary reasoning, and fresh second pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`.
 
 ### FS-22.02.13 Result — `app_runtime.rs`
 
