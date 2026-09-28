@@ -167,6 +167,7 @@ remain separate unfinished control-plane work.
 - `host::run` owns YAML configuration loading, database connection and graceful shutdown for the pure Axum executable; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition.
 - Auth host configuration parsing is fail-closed: malformed `settings.auth` input is returned as a startup error rather than being silently replaced by default auth overrides.
 - GraphQL/native password-reset requests keep the public result generic when token/email/URL preparation fails after an account lookup, so mail/configuration failures cannot disclose account existence.
+- Auth lifecycle provider internal failures are logged on the server and exposed to lifecycle transports only as the stable `Auth lifecycle operation failed` error; database/provider diagnostic strings are not sent through GraphQL error messages.
   Alloy runtime bootstrap also registers `SharedAlloyRuntime` via `ServerRuntimeContext` from an explicit DB handle,
   and Alloy GraphQL receives this runtime as schema-owned data without a framework-global context.
 - User complex fields and build progress subscription use schema-owned `DatabaseConnection`
