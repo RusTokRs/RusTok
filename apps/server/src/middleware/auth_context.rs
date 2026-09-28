@@ -350,7 +350,6 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {    #[test]
     fn global_auth_uses_only_the_verified_jwt_tenant_claim() {
         let config = crate::auth::AuthConfig::new(
             "test-secret-key-for-auth-context-32bytes-long".to_string(),
@@ -405,9 +404,8 @@ mod tests {
         ] {
             assert!(!is_observability_auth_path(path), "{path}");
         }
-    }
-
-
+    }    #[test]
+    fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {
         let mut headers = HeaderMap::new();
         assert!(!headers.contains_key(AUTHORIZATION));
         headers.insert(AUTHORIZATION, "Bearer invalid".parse().unwrap());
