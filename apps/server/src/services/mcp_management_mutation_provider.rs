@@ -308,6 +308,14 @@ mod provider_error_tests {
     use rustok_mcp::McpManagementMutationError;
 
     #[test]
+    fn maps_forbidden_errors_to_permission_denied_variant() {
+        assert!(matches!(
+            mutation_error(Error::Forbidden("denied".to_string())),
+            McpManagementMutationError::Forbidden(message) if message == "denied"
+        ));
+    }
+
+    #[test]
     fn maps_user_errors_without_exposing_internal_details() {
         assert!(matches!(
             mutation_error(Error::BadRequest("bad input".to_string())),
