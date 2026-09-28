@@ -323,7 +323,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             &command.email,
             &command.password,
             command.name,
-            role,
+            role.clone(),
             status,
         )
         .await
