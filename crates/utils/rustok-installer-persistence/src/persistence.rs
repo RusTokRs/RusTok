@@ -362,7 +362,7 @@ mod tests {
         InstallApplyOutput, InstallComposition, InstallDistributionBinding,
         InstallDistributionDeployment, InstallDistributionDeploymentReceipt,
     };
-    use sea_orm::{ConnectionTrait, Database, EntityTrait};
+    use sea_orm::{ConnectionTrait, Database};
 
     use super::*;
 
