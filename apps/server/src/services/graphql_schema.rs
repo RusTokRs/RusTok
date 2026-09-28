@@ -194,20 +194,13 @@ fn alloy_release_governance_from_ctx(
 #[cfg(feature = "mod-alloy")]
 fn alloy_published_rhai_source_from_ctx(
     ctx: &ServerRuntimeContext,
-) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
-    let storage = ctx
-        .shared_get::<rustok_storage::StorageRuntime>()
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "Alloy published-release import requires initialized durable storage; falling back to in-memory storage runtime"
-            );
-            let fallback = rustok_storage::StorageRuntime::in_memory();
-            ctx.shared_insert(fallback.clone());
-            fallback
-        });
-    crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
-        ctx.db_clone(),
-        storage,
+) -> Option<alloy::AlloyPublishedRhaiSourceProviderHandle> {
+    let storage = ctx.shared_get::<rustok_storage::StorageRuntime>()?;
+    Some(
+        crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+            ctx.db_clone(),
+            storage,
+        ),
     )
 }
 
@@ -300,27 +293,10 @@ mod forum_media_provider_composition_tests {
 }
 
 #[cfg(feature = "mod-media")]
-fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntime {
-    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
-        return storage;
-    }
-
-    let fallback = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
-        base_dir: std::env::temp_dir()
-            .join("rustok-media-fallback")
-            .to_string_lossy()
-            .into_owned(),
-        base_url: "/media".to_string(),
-        fsync: false,
-    })
-    .unwrap_or_else(|err| {
-        tracing::warn!(
-            "Failed to create fallback local storage runtime ({err}); falling back to in-memory store"
-        );
-        rustok_storage::StorageRuntime::in_memory()
-    });
-    ctx.shared_insert(fallback.clone());
-    fallback
+fn storage_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Option<rustok_storage::StorageRuntime> {
+    ctx.shared_get::<rustok_storage::StorageRuntime>()
 }
 
 #[cfg(all(test, feature = "mod-translation"))]
