@@ -174,6 +174,7 @@ Hard limits for every iteration:
 - **Adjacent finding deferred:** `apps/admin/src/app/security.rs` reproduces the same broad `/richtext/frame/` prefix classification for the standalone admin host. It belongs to the standalone-admin security boundary and is not the primary module for this iteration; record it for its owning module track rather than widening this patch.
 - **Planned remediation units:** rate-limit composition order; bounded report disposition; bounded sanitized origin; exact richtext frame/asset path classification; synchronization of the central CSP inventory with executable truth. Each unit will be independently re-read before the next one.
 - **Fresh finding SEC-22.02.11-06:** after narrowing the richtext boundary against the actual owner, the middleware's current cache override is also shown to overwrite the owner-specified `public, max-age=0, must-revalidate` policy for the unversioned `leptos-adapter.mjs` with `public, max-age=31536000, immutable`. The adapter is copied under a stable filename, so this can retain stale code beyond the owner contract.
+- **Fresh finding SEC-22.02.11-07:** `security_headers` is currently installed inside `apply_http_edge_stack`, so outer edge middleware can synthesize responses without passing through the security-header middleware. In particular, `adaptive_timeout` can return `408 Request Timeout` directly, and edge short-circuits such as CORS handling likewise need to remain covered by the host-wide response security baseline.
 
 ### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
 
