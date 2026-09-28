@@ -147,6 +147,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.09 finding in progress — malformed environment fail-open in helper callers.** `effective_environment_name()` rejects unsafe environment values, but the boolean `is_production_environment()` had a debug-build-dependent fallback on helper error. Security checks using the boolean could therefore treat a malformed environment as non-production in debug composition. The fallback is now fail-closed (`true`); invalid environment names are still rejected by the canonical resolver.
 
+- [ ] **FS-22.05 finding in progress — inactive host-selected channel.** Channel resolution rejected inactive channels selected by explicit ID/slug, but the host-target branch previously returned the match without checking `channel.is_active`. An inactive host-bound channel could therefore terminate resolution instead of falling back to policy/default. Host matches now require an active channel and otherwise continue resolution.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
