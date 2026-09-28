@@ -184,6 +184,25 @@ mod alloy_runtime_boundary_tests {
     }
 }
 
+#[cfg(all(test, feature = "mod-alloy"))]
+mod alloy_published_source_boundary_tests {
+    use sea_orm::Database;
+
+    use super::alloy_published_rhai_source_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_unavailable_for_published_rhai_source() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(alloy_published_rhai_source_from_ctx(&ctx).is_none());
+    }
+}
+
 #[cfg(feature = "mod-alloy")]
 fn alloy_release_governance_from_ctx(
     ctx: &ServerRuntimeContext,
@@ -289,6 +308,25 @@ mod forum_media_provider_composition_tests {
             .expect("host-published provider should remain selected");
 
         assert!(Arc::ptr_eq(&remote_like, &selected));
+    }
+}
+
+#[cfg(all(test, feature = "mod-media"))]
+mod storage_runtime_boundary_tests {
+    use sea_orm::Database;
+
+    use super::storage_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(storage_from_ctx(&ctx).is_none());
     }
 }
 
