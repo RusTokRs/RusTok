@@ -97,19 +97,19 @@ async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
     if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>()
         && let Err(error) = shared.0.sync_runtime_metrics().await
     {
-        warn!(error = %error, "failed to sync API rate-limit metrics");
+        warn!(namespace = "api", "failed to sync rate-limit metrics");
     }
 
     if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>()
         && let Err(error) = shared.0.sync_runtime_metrics().await
     {
-        warn!(error = %error, "failed to sync auth rate-limit metrics");
+        warn!(namespace = "auth", "failed to sync rate-limit metrics");
     }
 
     if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>()
         && let Err(error) = shared.0.sync_runtime_metrics().await
     {
-        warn!(error = %error, "failed to sync oauth rate-limit metrics");
+        warn!(namespace = "oauth", "failed to sync rate-limit metrics");
     }
 }
 
@@ -179,22 +179,32 @@ async fn render_tenant_activity_metrics(ctx: &ServerRuntimeContext) -> String {
     let active_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(true))
         .count(ctx.db())
-        .await
-        .unwrap_or(0);
+        .await;
+
     let inactive_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(false))
         .count(ctx.db())
-        .await
-        .unwrap_or(0);
+        .await;
 
-    format_tenant_activity_metrics(active_total, inactive_total)
+    match (active_total, inactive_total) {
+        (Ok(active_total), Ok(inactive_total)) => {
+            format!(
+                "rustok_tenant_activity_metrics_collection_status 1\nrustok_tenant_active_total {active_total}\nrustok_tenant_inactive_total {inactive_total}\nrustok_tenant_total {tenant_total}\n",
+                tenant_total = active_total + inactive_total,
+            )
+        }
+        _ => {
+            warn!("failed to collect tenant activity metrics");
+            format!(
+                "rustok_tenant_activity_metrics_collection_status 0\nrustok_tenant_active_total NaN\nrustok_tenant_inactive_total NaN\nrustok_tenant_total NaN\n"
+            )
+        }
+    }
 }
 
 fn format_tenant_activity_metrics(active_total: u64, inactive_total: u64) -> String {
     format!(
-        "rustok_tenant_active_total {active_total}\n\
-rustok_tenant_inactive_total {inactive_total}\n\
-rustok_tenant_total {tenant_total}\n",
+        "rustok_tenant_activity_metrics_collection_status 1\nrustok_tenant_active_total {active_total}\nrustok_tenant_inactive_total {inactive_total}\nrustok_tenant_total {tenant_total}\n",
         tenant_total = active_total + inactive_total,
     )
 }
@@ -498,11 +508,11 @@ async fn render_rbac_metrics(ctx: &ServerRuntimeContext) -> String {
     let stats = RbacService::metrics_snapshot();
     let started_at = Instant::now();
     let consistency = match load_rbac_consistency_stats(ctx).await {
-        Ok(stats) => stats,
-        Err(error) => {
+        Ok(stats) => Some(stats),
+        Err(_) => {
             RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
-            warn!(error = %error, "failed to load RBAC consistency stats");
-            RbacConsistencyStats::default()
+            warn!("failed to load RBAC consistency stats");
+            None
         }
     };
     let latency_ms = started_at.elapsed().as_millis() as u64;
@@ -511,9 +521,15 @@ async fn render_rbac_metrics(ctx: &ServerRuntimeContext) -> String {
 
     format_rbac_metrics(
         stats,
-        consistency.users_without_roles_total,
-        consistency.orphan_user_roles_total,
-        consistency.orphan_role_permissions_total,
+        consistency
+            .as_ref()
+            .map(|value| value.users_without_roles_total),
+        consistency
+            .as_ref()
+            .map(|value| value.orphan_user_roles_total),
+        consistency
+            .as_ref()
+            .map(|value| value.orphan_role_permissions_total),
     )
 }
 
@@ -568,6 +584,11 @@ rustok_search_max_lag_seconds 0\n"
                 .to_string()
         }
     }
+}
+
+fn search_metrics_unavailable_payload() -> String {
+    "rustok_search_metrics_collection_status 0\nrustok_search_documents_total NaN\nrustok_search_public_documents_total NaN\nrustok_search_stale_documents_total NaN\nrustok_search_tenants_with_documents_total NaN\nrustok_search_lagging_tenants_total NaN\nrustok_search_bootstrap_pending_tenants_total NaN\nrustok_search_max_lag_seconds NaN\n"
+        .to_string()
 }
 
 fn is_missing_relation_error(error: &sea_orm::DbErr) -> bool {
@@ -664,9 +685,9 @@ auth_login_inactive_user_attempt_total {login_inactive_user_attempt_total}\n",
 
 fn format_rbac_metrics(
     stats: RbacResolverMetricsSnapshot,
-    users_without_roles_total: i64,
-    orphan_user_roles_total: i64,
-    orphan_role_permissions_total: i64,
+    users_without_roles_total: Option<i64>,
+    orphan_user_roles_total: Option<i64>,
+    orphan_role_permissions_total: Option<i64>,
 ) -> String {
     let consistency_query_failures_total =
         RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.load(Ordering::Relaxed);
@@ -713,9 +734,9 @@ fn format_rbac_metrics(
         engine_decisions_policy_total = stats.engine_decisions_policy_total,
         engine_eval_duration_ms_total = stats.engine_eval_duration_ms_total,
         engine_eval_duration_samples = stats.engine_eval_duration_samples,
-        users_without_roles_total = users_without_roles_total,
-        orphan_user_roles_total = orphan_user_roles_total,
-        orphan_role_permissions_total = orphan_role_permissions_total,
+        users_without_roles_total = format_metric_i64(users_without_roles_total),
+        orphan_user_roles_total = format_metric_i64(orphan_user_roles_total),
+        orphan_role_permissions_total = format_metric_i64(orphan_role_permissions_total),
         consistency_query_failures_total = consistency_query_failures_total,
         consistency_query_latency_ms_total = consistency_query_latency_ms_total,
         consistency_query_latency_samples = consistency_query_latency_samples,
@@ -745,13 +766,6 @@ mod tests {
     };
     use rustok_cache::CacheService;
     use rustok_outbox::RelayMetricsSnapshot;
-
-    #[test]
-    fn router_exposes_canonical_metrics_path() {
-        let _router = super::router();
-        // The canonical scrape path is /metrics; /metrics/ is retained as the
-        // equivalent explicit path already covered by observability auth.
-    }
 
 
 
@@ -823,7 +837,7 @@ mod tests {
 
     #[test]
     fn rbac_metrics_render_consistency_values() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 7, 3, 1);
+        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(7), Some(3), Some(1));
         assert!(payload.contains("rustok_rbac_users_without_roles_total 7"));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total 3"));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total 1"));
@@ -1011,6 +1025,29 @@ mod tests {
         assert!(payload.contains("rustok_tenant_locale_cache_hits_total 8"));
         assert!(payload.contains("rustok_tenant_locale_cache_misses_total 2"));
         assert!(payload.contains("rustok_tenant_locale_db_queries_total 2"));
+    }
+
+    #[test]
+    fn metric_formatters_render_unknown_values_as_nan() {
+        assert_eq!(super::format_metric_u64(None), "NaN");
+        assert_eq!(super::format_metric_i64(None), "NaN");
+    }
+
+    #[test]
+    fn unavailable_outbox_metrics_are_explicit() {
+        let payload = super::format_outbox_metrics_optional(Some(3), None, Some(2), None);
+        assert!(payload.contains("rustok_outbox_metrics_collection_status 0"));
+        assert!(payload.contains("rustok_outbox_backlog_size 3"));
+        assert!(payload.contains("rustok_outbox_dlq_total NaN"));
+        assert!(payload.contains("rustok_outbox_pending_lag_seconds NaN"));
+    }
+
+    #[test]
+    fn unavailable_search_metrics_are_explicit() {
+        let payload = super::search_metrics_unavailable_payload();
+        assert!(payload.contains("rustok_search_metrics_collection_status 0"));
+        assert!(payload.contains("rustok_search_documents_total NaN"));
+        assert!(payload.contains("rustok_search_max_lag_seconds NaN"));
     }
 
     #[test]
