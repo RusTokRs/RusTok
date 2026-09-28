@@ -197,14 +197,20 @@ mod tests {
         let metadata =
             metadata_for_issuer("https://api.example.com").expect("valid issuer");
 
-        assert_eq!(metadata.response_modes_supported, vec!["query"]);
-        assert_eq!(metadata.claims_supported, vec![
-            "sub",
-            "role",
-            "tenant_id",
-            "email",
-            "name",
-            "email_verified",
-        ]);
+        assert_eq!(
+            metadata.response_modes_supported,
+            vec!["query".to_string()]
+        );
+        assert_eq!(
+            metadata.claims_supported,
+            vec![
+                "sub".to_string(),
+                "role".to_string(),
+                "tenant_id".to_string(),
+                "email".to_string(),
+                "name".to_string(),
+                "email_verified".to_string(),
+            ]
+        );
     }
 }
