@@ -4,10 +4,10 @@
 
 use axum::{
     Json,
-    extract::{ConnectInfo, Form, Query, State},
+    extract::{ConnectInfo, Form, FromRequest, Query, Request, State},
     http::{
         HeaderMap, StatusCode,
-        header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
+        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE},
     },
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -53,8 +53,13 @@ struct ValidatedAuthorizeRequest {
 async fn token_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
-    Json(req): Json<TokenRequest>,
+    request: Request,
 ) -> axum::response::Response {
+    let req = match parse_token_request(request, &ctx).await {
+        Ok(request) => request,
+        Err(error) => return oauth_error_response(error),
+    };
+
     match OAuthTokenService::exchange(&ctx, tenant_ctx.id, &req).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(error) => (
@@ -68,6 +73,43 @@ async fn token_handler(
     }
 }
 
+async fn parse_token_request(
+    request: Request,
+    state: &ServerAuthRuntime,
+) -> Result<TokenRequest, TokenErrorResponse> {
+    let is_form = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(is_form_encoded_content_type)
+        .unwrap_or(false);
+
+    if is_form {
+        Form::<TokenRequest>::from_request(request, state)
+            .await
+            .map(|Form(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth token request".to_string(),
+            })
+    } else {
+        Json::<TokenRequest>::from_request(request, state)
+            .await
+            .map(|Json(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth token request".to_string(),
+            })
+    }
+}
+
+fn is_form_encoded_content_type(value: &str) -> bool {
+    value
+        .split(';')
+        .next()
+        .map(str::trim)
+        .is_some_and(|media_type| media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded"))
+}
 async fn authorize_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
@@ -886,6 +928,14 @@ mod tests {
         settings
     }
 
+    #[test]
+    fn token_form_content_type_accepts_optional_parameters() {
+        assert!(is_form_encoded_content_type("application/x-www-form-urlencoded"));
+        assert!(is_form_encoded_content_type(
+            "Application/X-WWW-Form-Urlencoded; charset=UTF-8",
+        ));
+        assert!(!is_form_encoded_content_type("application/json"));
+    }
     #[test]
     fn browser_cookie_is_parsed_and_authorization_header_wins() {
         let mut headers = HeaderMap::new();
