@@ -81,8 +81,9 @@ where
                     }
                 }
                 PaginationMode::Infinite => {
-                    let end = (pag.page * pag.page_size).min(items.len());
-                    items[..end.min(items.len())].to_vec()
+                    let page = pag.page.max(1);
+                    let end = (page * pag.page_size).min(items.len());
+                    items[..end].to_vec()
                 }
             }
         } else {

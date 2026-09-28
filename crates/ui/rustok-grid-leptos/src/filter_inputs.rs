@@ -291,7 +291,7 @@ pub fn GridFilterCell(
                         match val.as_str() {
                             "true" => on_change.run((col.clone(), FilterValue::Boolean(true))),
                             "false" => on_change.run((col.clone(), FilterValue::Boolean(false))),
-                            _ => on_change.run((col.clone(), FilterValue::Text(String::new()))),
+                            _ => on_change.run((col.clone(), FilterValue::Empty)),
                         }
                     }
                     class="w-full text-xs rounded border border-border/80 bg-background/50 px-1.5 py-1 text-foreground focus:border-primary focus:outline-none"

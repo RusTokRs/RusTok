@@ -104,11 +104,13 @@ pub enum FilterValue {
         to: Option<String>,
     },
     Boolean(bool),
+    Empty,
 }
 
 impl FilterValue {
     pub fn is_empty(&self) -> bool {
         match self {
+            Self::Empty => true,
             Self::Text(s) => s.trim().is_empty(),
             Self::Select(s) => s.trim().is_empty(),
             Self::NumberRange { min, max } => min.is_none() && max.is_none(),
