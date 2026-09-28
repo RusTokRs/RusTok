@@ -13,7 +13,7 @@ Features:
 - **Dirty Tracking Integration**: `<Form [dirty_tracker=...]>` coordinates with `DirtyTracker`, automatically marking fields dirty on user input and clearing on reset.
 - **Layout Shift Prevention**: `<SubmitButton>` displays a spinner without collapsing button dimensions or hiding content when submitting text is omitted.
 - **Browser-Safe File Uploads**: `<FormFileInput>` prevents `InvalidStateError` DOM exceptions by avoiding JavaScript `prop:value` bindings on file inputs.
-- **Rich Input Controls**: Includes `FormInput`, `FormPasswordInput`, `FormNumberInput`, `FormSearchInput`, `FormHiddenInput`, `FormTextarea`, `FormSelect`, `FormCheckbox`, `FormSwitch`, `FormRadioGroup`, and `FormFileInput`.
+- **Rich Input Controls**: Includes `FormInput`, `FormPasswordInput`, `FormNumberInput`, `FormSearchInput`, `FormColorInput`, `FormRangeInput`, `FormOtpInput`, `FormHiddenInput`, `FormTextarea`, `FormSelect`, `FormCheckbox`, `FormSwitch`, `FormRadioGroup`, and `FormFileInput`.
 
 ## Components
 
@@ -30,6 +30,9 @@ Features:
 - `<FormPasswordInput value=... [on_input=...]>`: Dedicated password input with interactive show/hide visibility toggle.
 - `<FormNumberInput value=... [min=...] [max=...] [step=...]>`: Specialized numeric input.
 - `<FormSearchInput value=... [on_clear=...]>`: Search input with search icon and clear button.
+- `<FormColorInput value=... [on_change=...] [label=...]>`: Color picker input with swatch preview.
+- `<FormRangeInput value=... [min=0.0] [max=100.0] [step=1.0] [show_value=true]>`: Range slider with live numerical badge.
+- `<FormOtpInput value=... [length=6] [on_complete=...]>`: Split-cell 2FA / OTP verification code input.
 - `<FormHiddenInput value=... name=...>`: Hidden input for IDs, tokens, or fixed metadata.
 - `<FormTextarea value=... [on_input=...] [rows=3] [cols=...]>`: Multi-line text input.
 - `<FormSelect value=... options=... [placeholder=...] [multiple=false]>`: Dropdown select with SSR `selected` attribute support.

@@ -1,6 +1,6 @@
 # rustok-forms
 
-Framework-agnostic form state management, validation rule engine, and field descriptor contracts for the RusToK platform.
+Framework-agnostic form state management, validation rule engine, value sanitization, and field descriptor contracts for the RusToK platform.
 
 ## Overview
 
@@ -12,7 +12,10 @@ It acts as the single canonical source of truth for:
 - Path manipulation contracts (`parse_field_path`, `format_field_path`)
 - Declarative validation rules and accumulator (`FormValidator`, `validation_rules`)
 - Field schema descriptors and constraints (`FieldDescriptor`, `FieldKind`, `FieldConstraints`, `FieldOption`)
+- Collective form schemas (`FormSchema`)
 - Dirty field tracking (`DirtyTracker`)
+- Multi-step wizard and funnel tracking (`FormStepTracker`)
+- Value sanitization and normalization (`form_sanitizer`)
 
 ## Modules & Types
 
@@ -35,7 +38,7 @@ It acts as the single canonical source of truth for:
   - `required`: Non-empty, non-whitespace string check.
   - `min_length` / `max_length` / `length_between`: Unicode-safe character counting (UTF-8 multi-byte friendly).
   - `min_length_bytes` / `max_length_bytes`: Byte length constraints.
-  - `email`: RFC-compliant syntax validation (domain labels, local-part dot rules, no consecutive dots).
+  - `email`: RFC-compliant syntax validation.
   - `url`: Valid `http://` or `https://` protocol and host syntax.
   - `slug`: Kebab-case ASCII slug (`[a-z0-9-]`, no consecutive or boundary hyphens).
   - `matches`: Value equality check (e.g. password confirmation).
@@ -58,16 +61,22 @@ It acts as the single canonical source of truth for:
   - `custom` / `validate`: Custom predicate or closure condition.
 - `FormValidator`: Fluent accumulator builder with conditional evaluation (`validate_if`), nested sub-form prefixing (`merge_nested`), error merging (`merge`), and `finish()` returning `Result<(), Vec<FieldError>>`.
 
-### 4. `field` — Field Metadata & Schema
-- `FieldKind`: Enum covering `Text`, `Email`, `Password`, `Number`, `Url`, `Tel`, `Search`, `Date`, `DateTime`, `Time`, `Month`, `Week`, `Range`, `Color`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Radio`, `File`, `Hidden`, `RichText`, `Custom`.
+### 4. `field` & `schema` — Field Metadata, Constraints, & Schemas
+- `FieldKind`: Enum covering all HTML5 field kinds.
 - `FieldDescriptor`: Builder pattern configuring name, kind, label, placeholder, constraints, options, disabled state, default values, with `.validate(value)` schema execution.
 - `FieldConstraints`: Builder pattern configuring required, min/max length, numeric range, step, pattern, accept, multiple, with `.validate(field, value)` execution.
 - `FieldOption`: Selectable options for dropdowns, radios, and checkbox groups with disabled state and tuple conversion.
+- `FormSchema`: Collective schema definition supporting validation against maps (`validate_map`) or JSON structures (`validate_json`).
 
 ### 5. `dirty` — Modification Tracking
 - `DirtyTracker`: Set-based tracker recording modified fields since last reset.
 - Methods: `mark()`, `mark_many()`, `unmark()`, `unmark_many()`, `mark_clean()`, `record_change()`, `is_dirty()`, `contains()`, `is_any_of_dirty()`, `are_all_dirty()`, `is_any_dirty()`, `is_empty()`, `count()`, `len()`, `dirty_fields()`, `iter()`, `retain()`, `reset()`, `clear()`.
-- Implements `Extend`, `FromIterator`, `IntoIterator`, `Hash`.
+
+### 6. `step` — Multi-Step Wizard State
+- `FormStepTracker`: Manages active step index, completion state per step, boundary navigation (`next_step()`, `prev_step()`, `go_to_step()`), and progress calculation (`progress_percent()`).
+
+### 7. `sanitize` — Input Value Normalization
+- `form_sanitizer`: Utility functions including `trim()`, `lowercase()`, `uppercase()`, `slugify()`, `normalize_email()`, `normalize_phone()`, `digits_only()`, `alphanumeric_only()`, `strip_tags()`, `clamp_f64()`, and `clamp_i64()`.
 
 ## Adapters
 

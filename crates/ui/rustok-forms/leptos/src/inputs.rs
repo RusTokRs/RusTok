@@ -1216,6 +1216,303 @@ pub fn FormRadioGroup(
     }
 }
 
+// ─── FormColorInput ────────────────────────────────────────────────────────
+
+/// Color picker input with swatch preview.
+#[component]
+pub fn FormColorInput(
+    /// Hex color value signal (e.g. "#3b82f6").
+    #[prop(into)]
+    value: Signal<String>,
+    /// Callback on value change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Field name. Defaults to the enclosing `FormField` name if omitted.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Label text rendered next to the swatch.
+    #[prop(optional, into)]
+    label: Option<String>,
+    /// Disabled state.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let field = use_context::<FieldContext>();
+
+    let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+
+    let field_for_disabled = field.clone();
+    let is_disabled = Signal::derive(move || {
+        if let Some(sig) = disabled {
+            sig.get()
+        } else if let Some(ref f) = field_for_disabled {
+            f.is_submitting()
+        } else {
+            false
+        }
+    });
+
+    let field_for_dirty = field;
+    let on_change_handler = move |ev: Event| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
+        if let Some(cb) = on_change {
+            cb.run(val);
+        }
+    };
+
+    view! {
+        <div class=format!("inline-flex items-center gap-3 {class}")>
+            <div class="relative w-8 h-8 rounded-lg overflow-hidden border border-border shadow-sm cursor-pointer">
+                <input
+                    id=input_id
+                    type="color"
+                    name=name_attr
+                    prop:value=move || value.get()
+                    on:change=on_change_handler
+                    disabled=move || is_disabled.get()
+                    class="absolute -top-2 -left-2 w-12 h-12 cursor-pointer border-0 p-0"
+                />
+            </div>
+            {label.map(|lbl| view! { <span class="text-xs font-medium text-foreground">{lbl}</span> })}
+            <span class="text-xs font-mono text-muted-foreground uppercase">{move || value.get()}</span>
+        </div>
+    }
+}
+
+// ─── FormRangeInput ────────────────────────────────────────────────────────
+
+/// Range slider input with minimum/maximum labels and live value preview.
+#[component]
+pub fn FormRangeInput(
+    /// Numeric string value signal.
+    #[prop(into)]
+    value: Signal<String>,
+    /// Callback on input.
+    #[prop(optional, into)]
+    on_input: Option<Callback<String>>,
+    /// Callback on change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Minimum value. Defaults to 0.0.
+    #[prop(default = 0.0)]
+    min: f64,
+    /// Maximum value. Defaults to 100.0.
+    #[prop(default = 100.0)]
+    max: f64,
+    /// Step interval. Defaults to 1.0.
+    #[prop(default = 1.0)]
+    step: f64,
+    /// Whether to display a badge with the current numerical value. Defaults to true.
+    #[prop(default = true)]
+    show_value: bool,
+    /// Field name. Defaults to the enclosing `FormField` name if omitted.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Disabled state.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let field = use_context::<FieldContext>();
+
+    let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+
+    let field_for_disabled = field.clone();
+    let is_disabled = Signal::derive(move || {
+        if let Some(sig) = disabled {
+            sig.get()
+        } else if let Some(ref f) = field_for_disabled {
+            f.is_submitting()
+        } else {
+            false
+        }
+    });
+
+    let field_for_dirty = field;
+    let on_input_handler = move |ev| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
+        if let Some(cb) = on_input {
+            cb.run(val);
+        }
+    };
+
+    let on_change_handler = move |ev: Event| {
+        if let Some(cb) = on_change {
+            cb.run(event_target_value(&ev));
+        }
+    };
+
+    view! {
+        <div class=format!("flex flex-col gap-1.5 w-full {class}")>
+            <div class="flex items-center gap-3">
+                <input
+                    id=input_id
+                    type="range"
+                    name=name_attr
+                    min=min.to_string()
+                    max=max.to_string()
+                    step=step.to_string()
+                    prop:value=move || value.get()
+                    on:input=on_input_handler
+                    on:change=on_change_handler
+                    disabled=move || is_disabled.get()
+                    class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                {show_value.then(|| view! {
+                    <span class="min-w-[2.5rem] text-right font-mono text-xs font-semibold text-foreground">
+                        {move || value.get()}
+                    </span>
+                })}
+            </div>
+            <div class="flex justify-between text-[10px] text-muted-foreground px-0.5">
+                <span>{min.to_string()}</span>
+                <span>{max.to_string()}</span>
+            </div>
+        </div>
+    }
+}
+
+// ─── FormOtpInput ──────────────────────────────────────────────────────────
+
+/// One-Time Password / 2FA verification code input component.
+#[component]
+pub fn FormOtpInput(
+    /// Full OTP string value signal (e.g. 6 digits).
+    #[prop(into)]
+    value: Signal<String>,
+    /// Number of digits in the OTP code. Defaults to 6.
+    #[prop(default = 6)]
+    length: usize,
+    /// Callback on value change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Callback fired when all digits have been entered.
+    #[prop(optional, into)]
+    on_complete: Option<Callback<String>>,
+    /// Field name. Defaults to the enclosing `FormField` name if omitted.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID prefix. Defaults to enclosing `FormField` ID if omitted.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Disabled state.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let field = use_context::<FieldContext>();
+
+    let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone())).unwrap_or_else(|| "otp".to_string());
+    let base_id = id.or_else(|| field.as_ref().map(|f| f.id.clone())).unwrap_or_else(|| name_attr.clone());
+
+    let field_for_disabled = field.clone();
+    let is_disabled = Signal::derive(move || {
+        if let Some(sig) = disabled {
+            sig.get()
+        } else if let Some(ref f) = field_for_disabled {
+            f.is_submitting()
+        } else {
+            false
+        }
+    });
+
+    let field_for_invalid = field.clone();
+    let is_invalid = Signal::derive(move || {
+        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+    });
+
+    let field_for_dirty = field;
+    let on_digit_input = move |idx: usize, ev: Event| {
+        let raw = event_target_value(&ev);
+        let digit = raw.chars().filter(|c| c.is_ascii_digit()).last().map(|c| c.to_string()).unwrap_or_default();
+
+        let current_val = value.get();
+        let mut chars: Vec<char> = current_val.chars().collect();
+        while chars.len() < length {
+            chars.push(' ');
+        }
+        if let Some(c) = digit.chars().next() {
+            chars[idx] = c;
+        } else {
+            chars[idx] = ' ';
+        }
+
+        let new_val: String = chars.into_iter().collect::<String>().trim_end().to_string();
+
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
+        if let Some(cb) = on_change {
+            cb.run(new_val.clone());
+        }
+        if new_val.len() == length && !new_val.contains(' ') {
+            if let Some(cb) = on_complete {
+                cb.run(new_val);
+            }
+        }
+    };
+
+    view! {
+        <div class=format!("flex items-center gap-2 {class}")>
+            {(0..length).map(|idx| {
+                let cell_id = format!("{base_id}-{idx}");
+                let is_inv = is_invalid;
+                let val_sig = value.clone();
+                let digit_val = move || {
+                    let s = val_sig.get();
+                    s.chars().nth(idx).filter(|c| !c.is_whitespace()).map(|c| c.to_string()).unwrap_or_default()
+                };
+
+                let cell_class = move || {
+                    let base = "w-10 h-12 text-center text-base font-mono font-bold rounded-xl border bg-background text-foreground outline-none transition disabled:cursor-not-allowed disabled:opacity-50";
+                    let state_border = if is_inv.get() {
+                        "border-destructive text-destructive focus:border-destructive focus:ring-1 focus:ring-destructive/30"
+                    } else {
+                        "border-border focus:border-primary focus:ring-1 focus:ring-primary/20"
+                    };
+                    format!("{base} {state_border}")
+                };
+
+                view! {
+                    <input
+                        id=cell_id
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        maxlength="1"
+                        name=format!("{name_attr}[{idx}]")
+                        prop:value=digit_val
+                        on:input=move |ev| on_digit_input(idx, ev)
+                        disabled=move || is_disabled.get()
+                        class=cell_class
+                    />
+                }
+            }).collect_view()}
+        </div>
+    }
+}
+
 // ─── FormFileInput ─────────────────────────────────────────────────────────
 
 /// Safe file input component.
@@ -1545,5 +1842,37 @@ mod tests {
         assert!(html.contains("name=\"avatar\""));
         assert!(html.contains("accept=\"image/*\""));
         assert!(html.contains("multiple"));
+    }
+
+    #[test]
+    fn test_form_color_range_and_otp_inputs() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext::new(state_signal);
+
+        let color = Signal::derive(|| "#ff0000".to_string());
+        let range_val = Signal::derive(|| "75".to_string());
+        let otp_val = Signal::derive(|| "123456".to_string());
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormColorInput value=color name="theme_color" label="Theme" />
+                <FormRangeInput value=range_val name="volume" min=0.0 max=100.0 step=5.0 />
+                <FormOtpInput value=otp_val length=6 name="code" />
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("type=\"color\""));
+        assert!(html.contains("name=\"theme_color\""));
+        assert!(html.contains("#ff0000"));
+
+        assert!(html.contains("type=\"range\""));
+        assert!(html.contains("min=\"0\""));
+        assert!(html.contains("max=\"100\""));
+
+        assert!(html.contains("name=\"code[0]\""));
+        assert!(html.contains("name=\"code[5]\""));
     }
 }
