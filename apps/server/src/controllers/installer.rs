@@ -14,7 +14,9 @@ use rustok_installer::{
 use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -170,13 +172,27 @@ async fn apply(
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
+    let pg_admin_url = if request.plan.environment.is_production() {
+        configured_value("RUSTOK_INSTALL_PG_ADMIN_URL")
+    } else {
+        request.pg_admin_url
+    };
+    if request.plan.environment.is_production()
+        && request.plan.database.create_if_missing
+        && pg_admin_url.is_none()
+    {
+        return Err(bad_request_error(
+            "production database creation requires a host-selected RUSTOK_INSTALL_PG_ADMIN_URL",
+        ));
+    }
+
     let apply_options = InstallApplyOptions {
         lock_owner: request
             .lock_owner
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "http".to_string()),
         lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
-        pg_admin_url: request.pg_admin_url,
+        pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
         ),
@@ -406,10 +422,28 @@ fn require_setup_token(headers: &HeaderMap, production: bool) -> Result<()> {
                 .and_then(|value| value.strip_prefix("Bearer "))
         });
 
-    if provided.is_some_and(|value| value == expected) {
+    if provided.is_some_and(|value| constant_time_setup_token_eq(value, expected.as_str())) {
         Ok(())
     } else {
         Err(forbidden_error("invalid installer setup token"))
+    }
+}
+
+fn constant_time_setup_token_eq(provided: &str, expected: &str) -> bool {
+    let provided_digest = Sha256::digest(provided.as_bytes());
+    let expected_digest = Sha256::digest(expected.as_bytes());
+    bool::from(provided_digest.as_slice().ct_eq(expected_digest.as_slice()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_setup_token_eq;
+
+    #[test]
+    fn setup_token_comparison_matches_only_exact_values() {
+        assert!(constant_time_setup_token_eq("secret-token", "secret-token"));
+        assert!(!constant_time_setup_token_eq("secret-token", "secret-token-2"));
+        assert!(!constant_time_setup_token_eq("secret-token", "secret-token\0"));
     }
 }
 
