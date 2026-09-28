@@ -292,7 +292,8 @@ Hard limits for every iteration:
 - **Remediation:** add the versioned cache namespace and bounded rollover; always enforce tenant policy, including the empty-policy case; add focused regression tests for invalidation-version rotation, fail-closed exhaustion, and empty-policy fallback.
 - **Fresh second pass:** re-read the changed middleware, tenant locale generation listener, tenant policy owner, request locale primitives, application-router ordering, cache architecture guard, and current locale-generation guard. The remediation preserves query/cookie/header precedence, tenant ownership, durable invalidation semantics, and response/request locale parity; no additional repository-owned defect was found inside `locale.rs`.
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only; no tests, clippy, build, or runtime commands were executed by the agent, per maintainer-owned test policy.
-- **Status:** module-level fresh second pass clean; `FS-22.02.08` complete pending integration. Next planned primary module is `FS-22.02.09 — apps/server/src/middleware/tenant.rs`.
+- **Status:** module-level fresh second pass clean; `FS-22.02.08` complete and integrated into `main`. Next planned primary module is `FS-22.02.09 — apps/server/src/middleware/tenant.rs`.
+- **Merged:** PR #4176, merge commit `a1ae5b507cb877522256b215920648f2a217ffef`.
 
 ### Deferred owning-module findings discovered during FS-22
 
