@@ -80,6 +80,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
+        // Users
+        crate::controllers::users::list_users,
+        crate::controllers::users::get_user,
         // Flex standalone
         crate::controllers::flex::list_schemas,
         crate::controllers::flex::get_schema,
@@ -114,6 +117,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::controllers::auth::AuthResponse,
             crate::controllers::auth::UserInfo,
             crate::controllers::auth::LogoutResponse,
+
+            // Users
+            crate::controllers::users::UserItem,
+            crate::controllers::users::UsersListParams,
+            crate::controllers::users::UsersResponse,
 
             // Common
             crate::common::PaginationMeta,
@@ -190,7 +198,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         (name = "flex", description = "Flex standalone schemas and entries endpoints"),
         (name = "health", description = "Health check endpoints"),
         (name = "observability", description = "Observability and metrics endpoints"),
-        (name = "admin", description = "Admin operations")
+        (name = "admin", description = "Admin operations"),
+        (name = "users", description = "User administration endpoints")
     )
 )]
 pub struct ApiDoc;
@@ -472,6 +481,8 @@ mod tests {
             "/api/rbac/artifact-permissions/roles/{role_id}",
             "/api/admin/events/dlq",
             "/api/admin/events/dlq/{id}/replay",
+            "/api/users",
+            "/api/users/{id}",
             "/api/v1/flex/schemas",
             "/api/v1/flex/schemas/{schema_id}",
             "/api/v1/flex/schemas/{schema_id}/entries",
