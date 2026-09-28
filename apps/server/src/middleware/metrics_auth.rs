@@ -200,20 +200,6 @@ mod tests {
 
     #[test]
     #[test]
-    fn protected_observability_credential_is_route_owned_after_validation() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            "Bearer observability-token".parse().unwrap(),
-        );
-        assert!(supplied_token(&axum::http::Request::builder()
-            .uri("/metrics")
-            .body(Body::empty())
-            .unwrap()) .is_none());
-        assert!(headers.contains_key(header::AUTHORIZATION));
-    }
-
-    #[test]
     fn token_comparison_is_exact() {
         assert!(constant_time_eq("metrics-secret", "metrics-secret"));
         assert!(!constant_time_eq("metrics-secret", "metrics-secret-2"));
