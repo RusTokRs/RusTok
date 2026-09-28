@@ -22,6 +22,7 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{OptionalCurrentUser, resolve_current_user_from_access_token};
 use crate::graphql::AppSchema;
 use crate::graphql::persisted::is_cataloged_admin_hash;
+use crate::middleware::rate_limit::TRUSTED_CLIENT_IP_HEADER;
 use crate::middleware::tenant;
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
@@ -89,12 +90,13 @@ async fn graphql_handler(
         );
     }
 
+    let trusted_headers = trusted_graphql_headers(&headers);
     let mut request = req
         .data(runtime_ctx)
         .data(db)
         .data(tenant_ctx)
         .data(request_context)
-        .data(headers)
+        .data(trusted_headers)
         .data(registry)
         .data(locale);
 
@@ -126,6 +128,14 @@ async fn graphql_handler(
 
     let response = with_rbac_request_scope(rbac_scope, schema.execute(request)).await;
     graphql_http_response(response)
+}
+
+fn trusted_graphql_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut trusted = HeaderMap::new();
+    if let Some(value) = headers.get(TRUSTED_CLIENT_IP_HEADER) {
+        trusted.insert(TRUSTED_CLIENT_IP_HEADER, value.clone());
+    }
+    trusted
 }
 
 fn graphql_http_response(response: async_graphql::Response) -> Response {
@@ -448,6 +458,34 @@ mod tests {
     #[test]
     fn graphql_router_uses_the_canonical_http_path() {
         assert_eq!(GRAPHQL_HTTP_PATH, "/api/graphql");
+    }
+
+    #[test]
+    fn graphql_context_headers_include_only_trusted_client_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            TRUSTED_CLIENT_IP_HEADER,
+            "203.0.113.7".parse().expect("trusted ip"),
+        );
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer secret-user-token".parse().expect("authorization"),
+        );
+        headers.insert(
+            header::COOKIE,
+            "session=private".parse().expect("cookie"),
+        );
+
+        let filtered = super::trusted_graphql_headers(&headers);
+
+        assert_eq!(
+            filtered
+                .get(TRUSTED_CLIENT_IP_HEADER)
+                .and_then(|value| value.to_str().ok()),
+            Some("203.0.113.7")
+        );
+        assert!(filtered.get(header::AUTHORIZATION).is_none());
+        assert!(filtered.get(header::COOKIE).is_none());
     }
 
     #[test]
