@@ -31,10 +31,11 @@ pub fn CategoriesPage() -> impl IntoView {
     let (cat_description, set_cat_description) = signal(String::new());
 
     // Load categories
+    let res_locale = locale.clone();
     let categories_resource = LocalResource::new(move || {
         let tok = token.get();
         let ten = tenant.get();
-        let loc = locale.clone().unwrap_or_default();
+        let loc = res_locale.clone().unwrap_or_default();
         let _ = refresh_nonce.get();
         async move {
             let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())

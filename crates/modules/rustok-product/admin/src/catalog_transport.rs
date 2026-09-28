@@ -267,6 +267,6 @@ pub(crate) async fn create_catalog_category(
 ) -> Result<bool, GraphqlHttpError> {
     legacy::create_catalog_category(token, tenant_slug, tenant_id, user_id, locale, draft)
         .await
-        .map_err(|e| GraphqlHttpError::Network(e.to_string()))
+        .map_err(|e| GraphqlHttpError::Http(e.to_string()))
 }
 

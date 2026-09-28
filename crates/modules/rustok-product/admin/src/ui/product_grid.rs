@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 
 use crate::core::{
@@ -477,7 +478,7 @@ pub fn ProductGridPage() -> impl IntoView {
                                         </div>
                                     </a>
                                     <a
-                                        href=new_variable_href
+                                        href=new_variable_href.clone()
                                         class="flex items-start gap-2.5 p-2 rounded-xl hover:bg-accent transition-colors"
                                     >
                                         <span class="text-lg">"🎨"</span>
@@ -487,7 +488,7 @@ pub fn ProductGridPage() -> impl IntoView {
                                         </div>
                                     </a>
                                     <a
-                                        href=new_bundle_href
+                                        href=new_bundle_href.clone()
                                         class="flex items-start gap-2.5 p-2 rounded-xl hover:bg-accent transition-colors"
                                     >
                                         <span class="text-lg">"🎁"</span>
@@ -497,7 +498,7 @@ pub fn ProductGridPage() -> impl IntoView {
                                         </div>
                                     </a>
                                     <a
-                                        href=new_digital_href
+                                        href=new_digital_href.clone()
                                         class="flex items-start gap-2.5 p-2 rounded-xl hover:bg-accent transition-colors"
                                     >
                                         <span class="text-lg">"💾"</span>

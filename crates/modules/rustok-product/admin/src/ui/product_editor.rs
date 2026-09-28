@@ -93,10 +93,11 @@ pub fn ProductEditorPage(
     });
 
     // Categories list resource
+    let cat_locale = locale.clone();
     let categories_resource = LocalResource::new(move || {
         let tok = token.get();
         let ten = tenant.get();
-        let loc = locale.clone().unwrap_or_default();
+        let loc = cat_locale.clone().unwrap_or_default();
         async move {
             let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -134,6 +135,7 @@ pub fn ProductEditorPage(
 
     // Load existing product if in Edit mode
     let target_id = product_id.clone();
+    let eff_locale = locale.clone();
     Effect::new(move |_| {
         let _ = refresh_nonce.get();
         let Some(pid) = target_id.clone() else {
@@ -141,7 +143,7 @@ pub fn ProductEditorPage(
         };
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
-        let loc = locale.clone();
+        let loc = eff_locale.clone();
 
         spawn_local(async move {
             let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -225,7 +227,7 @@ pub fn ProductEditorPage(
         let base_token = token;
         let base_tenant = tenant;
         let base_locale = locale.clone();
-        move |_| {
+        move || {
             let url = new_image_url.get_untracked().trim().to_string();
             if url.is_empty() {
                 return;
@@ -310,6 +312,7 @@ pub fn ProductEditorPage(
     let current_edit_id = product_id.clone();
     let base_route_for_save = base_route.clone();
     let navigate = use_navigate();
+    let save_locale = locale.clone();
 
     let save_product = move |target_status: Option<&'static str>| {
         let t_val = title.get_untracked().trim().to_string();
@@ -333,7 +336,7 @@ pub fn ProductEditorPage(
 
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
-        let loc = locale.clone();
+        let loc = save_locale.clone();
         let base_route = base_route_for_save.clone();
         let edit_id_opt = current_edit_id.clone();
         let kind = active_kind.get_untracked();
@@ -437,7 +440,10 @@ pub fn ProductEditorPage(
                         <h1 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2.5 mt-0.5">
                             <span>{page_title}</span>
                             <span class=move || active_kind.get().badge_class()>
-                                {move || active_kind.get().label(locale.as_deref())}
+                                {
+                                    let badge_locale = locale.clone();
+                                    move || active_kind.get().label(badge_locale.as_deref())
+                                }
                             </span>
                         </h1>
                     </div>
@@ -493,35 +499,40 @@ pub fn ProductEditorPage(
                     {if is_ru { "Тип товара" } else { "Product Type" }}
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {[ProductKind::Simple, ProductKind::Variable, ProductKind::Bundle, ProductKind::Digital].into_iter().map(|kind| {
-                        let is_active = move || active_kind.get() == kind;
-                        view! {
-                            <button
-                                type="button"
-                                class=move || {
-                                    if is_active() {
-                                        "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
-                                    } else {
-                                        "flex flex-col items-start p-3 rounded-xl border border-border bg-background hover:border-primary/40 text-left transition"
+                    {[ProductKind::Simple, ProductKind::Variable, ProductKind::Bundle, ProductKind::Digital].into_iter().map({
+                        let switcher_locale = locale.clone();
+                        move |kind| {
+                            let is_active = move || active_kind.get() == kind;
+                            let label = kind.label(switcher_locale.as_deref());
+                            let desc = kind.description(switcher_locale.as_deref());
+                            view! {
+                                <button
+                                    type="button"
+                                    class=move || {
+                                        if is_active() {
+                                            "flex flex-col items-start p-3 rounded-xl border-2 border-primary bg-primary/5 text-left transition"
+                                        } else {
+                                            "flex flex-col items-start p-3 rounded-xl border border-border bg-background hover:border-primary/40 text-left transition"
+                                        }
                                     }
-                                }
-                                on:click=move |_| set_active_kind.set(kind)
-                            >
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base">
-                                        {match kind {
-                                            ProductKind::Simple => "📦",
-                                            ProductKind::Variable => "🎨",
-                                            ProductKind::Bundle => "🎁",
-                                            ProductKind::Digital => "💾",
-                                        }}
+                                    on:click=move |_| set_active_kind.set(kind)
+                                >
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-base">
+                                            {match kind {
+                                                ProductKind::Simple => "📦",
+                                                ProductKind::Variable => "🎨",
+                                                ProductKind::Bundle => "🎁",
+                                                ProductKind::Digital => "💾",
+                                            }}
+                                        </span>
+                                        <span class="text-xs font-bold text-foreground">{label}</span>
+                                    </div>
+                                    <span class="text-[11px] text-muted-foreground line-clamp-2 leading-tight">
+                                        {desc}
                                     </span>
-                                    <span class="text-xs font-bold text-foreground">{kind.label(locale.as_deref())}</span>
-                                </div>
-                                <span class="text-[11px] text-muted-foreground line-clamp-2 leading-tight">
-                                    {kind.description(locale.as_deref())}
-                                </span>
-                            </button>
+                                </button>
+                            }
                         }
                     }).collect_view()}
                 </div>
@@ -893,7 +904,7 @@ pub fn ProductEditorPage(
                                                             </button>
                                                         </div>
                                                         <div class="p-1.5 text-[10px] text-muted-foreground truncate">
-                                                            {if img.alt_text.is_empty() { "—" } else { &img.alt_text }}
+                                                            {if img.alt_text.is_empty() { "—".to_string() } else { img.alt_text.clone() }}
                                                         </div>
                                                     </div>
                                                 }
@@ -934,7 +945,10 @@ pub fn ProductEditorPage(
                                 <button
                                     type="button"
                                     class="h-9 px-3.5 rounded-xl bg-secondary text-secondary-foreground text-xs font-medium hover:bg-accent transition whitespace-nowrap"
-                                    on:click=on_add_image
+                                    on:click={
+                                        let on_add = on_add_image.clone();
+                                        move |_| on_add()
+                                    }
                                 >
                                     {if is_ru { "Добавить" } else { "Add" }}
                                 </button>
@@ -1104,20 +1118,31 @@ pub fn ProductEditorPage(
                         // SERP Preview Box
                         <div class="rounded-xl border border-border/70 bg-background/50 p-3 space-y-1">
                             <div class="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono truncate">
-                                {move || format!("https://store.domain/products/{}", if handle.get().is_empty() { "slug" } else { &handle.get() })}
+                                {move || {
+                                    let h = handle.get();
+                                    format!("https://store.domain/products/{}", if h.is_empty() { "slug" } else { &h })
+                                }}
                             </div>
                             <div class="text-xs font-semibold text-blue-600 dark:text-blue-400 truncate">
-                                {move || if meta_title.get().is_empty() {
-                                    if title.get().is_empty() { "Product Title | Store" } else { &title.get() }
-                                } else {
-                                    &meta_title.get()
+                                {move || {
+                                    let mt = meta_title.get();
+                                    if !mt.is_empty() {
+                                        mt
+                                    } else {
+                                        let t = title.get();
+                                        if t.is_empty() { "Product Title | Store".to_string() } else { t }
+                                    }
                                 }}
                             </div>
                             <div class="text-[11px] text-muted-foreground line-clamp-2">
-                                {move || if meta_description.get().is_empty() {
-                                    if description.get().is_empty() { "Product description will appear in search results." } else { &description.get() }
-                                } else {
-                                    &meta_description.get()
+                                {move || {
+                                    let md = meta_description.get();
+                                    if !md.is_empty() {
+                                        md
+                                    } else {
+                                        let d = description.get();
+                                        if d.is_empty() { "Product description will appear in search results.".to_string() } else { d }
+                                    }
                                 }}
                             </div>
                         </div>

@@ -54,7 +54,7 @@ pub struct ProductListItem {
     pub published_at: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductDetail {
     pub id: String,
     pub status: String,
