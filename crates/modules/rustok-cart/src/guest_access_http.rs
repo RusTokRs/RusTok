@@ -144,6 +144,64 @@ mod tests {
         assert_eq!(extract_presented_token(&headers), Ok(Some(token)));
     }
 
+ 
+#[test]
+fn duplicate_header_capabilities_fail_closed() {
+    let mut headers = HeaderMap::new();
+    let mut values = headers.get_all_mut(crate::GUEST_CART_TOKEN_HEADER);
+    values.append(token('a').parse().expect("header token"));
+    values.append(token('a').parse().expect("duplicate header token"));
+
+    assert_eq!(
+        extract_presented_token(&headers),
+        Err("Duplicate guest cart access tokens")
+    );
+}
+
+#[test]
+fn duplicate_cookie_capabilities_fail_closed() {
+    let token = token('a');
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        format!(
+            "{}={}; {}={}",
+            crate::GUEST_CART_TOKEN_COOKIE,
+            token,
+            crate::GUEST_CART_TOKEN_COOKIE,
+            token
+        )
+        .parse()
+        .expect("cookie"),
+    );
+
+    assert_eq!(
+        extract_presented_token(&headers),
+        Err("Duplicate guest cart access tokens")
+    );
+}
+
+#[test]
+fn invalid_header_does_not_fall_back_to_cookie_capability() {
+    let token = token('a');
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        crate::GUEST_CART_TOKEN_HEADER,
+        "invalid-token".parse().expect("invalid header"),
+    );
+    headers.insert(
+        axum::http::header::COOKIE,
+        format!("{}={token}", crate::GUEST_CART_TOKEN_COOKIE)
+            .parse()
+            .expect("cookie"),
+    );
+
+    assert_eq!(
+        extract_presented_token(&headers),
+        Err("Invalid guest cart access token")
+    );
+}
+
     #[test]
     fn conflicting_capabilities_fail_closed() {
         let mut headers = HeaderMap::new();
