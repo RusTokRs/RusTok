@@ -846,7 +846,16 @@ async fn download_publish_artifact(
             Error::InternalServerError
         })?
     {
-        return Ok(axum::response::Redirect::temporary(&download_url).into_response());
+        let mut response = axum::response::Redirect::temporary(&download_url).into_response();
+        response.headers_mut().insert(
+            CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        response.headers_mut().insert(
+            "referrer-policy",
+            HeaderValue::from_static("no-referrer"),
+        );
+        return Ok(response);
     }
 
     let bytes = storage
