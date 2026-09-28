@@ -42,7 +42,7 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
 
                     let current_w = {
                         let id_for_w = col_id.clone();
-                        move || column_widths.get().get(&id_for_w, col.width.current)
+                        move || column_widths.get().get_clamped(&id_for_w, col.width.current, col.width.min, col.width.max)
                     };
 
                     let item_c = item_for_click.clone();

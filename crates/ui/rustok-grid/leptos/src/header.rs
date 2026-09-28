@@ -40,7 +40,7 @@ pub fn GridHeader(
                         let id_for_w = id.clone();
                         let default_w = col.width.current;
                         let current_w = Signal::derive(move || {
-                            column_widths.get().get(&id_for_w, default_w)
+                            column_widths.get().get_clamped(&id_for_w, default_w, col.width.min, col.width.max)
                         });
 
                         let sort_dir = move || {

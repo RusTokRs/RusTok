@@ -15,6 +15,12 @@ impl ColumnWidths {
         self.widths.get(column_id).copied().unwrap_or(default_width)
     }
 
+    /// Read a persisted width while enforcing the current column constraints.
+    /// This protects the renderer from stale or hand-edited serialized state.
+    pub fn get_clamped(&self, column_id: &str, default_width: u32, min: u32, max: u32) -> u32 {
+        self.get(column_id, default_width).clamp(min.min(max), min.max(max))
+    }
+
     pub fn set(&mut self, column_id: impl Into<String>, width: u32) {
         self.widths.insert(column_id.into(), width);
     }
