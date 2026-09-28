@@ -13,30 +13,55 @@ use crate::FieldError;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldKind {
+    /// Standard single-line text input.
     Text,
+    /// Email input with email keyboard and format hints.
     Email,
+    /// Password input with masked characters.
     Password,
+    /// Numeric input with number keyboard and step increments.
     Number,
+    /// Web URL input.
     Url,
+    /// Telephone number input.
     Tel,
+    /// Search input with search icon and clear button.
     Search,
+    /// Multi-line text area.
     Textarea,
+    /// Dropdown selection input.
     Select,
+    /// Boolean checkbox.
     Checkbox,
+    /// Boolean toggle switch.
     Switch,
+    /// Single choice radio button group.
     Radio,
+    /// File upload input.
     File,
+    /// Calendar date input (`YYYY-MM-DD`).
     Date,
+    /// Date and time input (`YYYY-MM-DDTHH:MM`).
     DateTime,
+    /// Time input (`HH:MM`).
     Time,
+    /// Month picker input (`YYYY-MM`).
     Month,
+    /// Week picker input (`YYYY-Www`).
     Week,
+    /// Numerical range slider.
     Range,
+    /// Color picker input.
     Color,
+    /// Hidden field input for metadata/tokens.
     Hidden,
+    /// Rich text WYSIWYG editor.
     RichText,
     /// Extension point for module-specific field kinds.
-    Custom { type_name: String },
+    Custom {
+        /// Custom type discriminator string.
+        type_name: String,
+    },
 }
 
 impl FieldKind {
@@ -69,8 +94,11 @@ impl FieldKind {
 /// A selectable option for Select, Radio, CheckboxGroup, and similar fields.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FieldOption {
+    /// Option value submitted with the form.
     pub value: String,
+    /// Human-readable label displayed in UI.
     pub label: String,
+    /// Whether this option is disabled for selection.
     #[serde(default)]
     pub disabled: bool,
 }
@@ -110,11 +138,17 @@ impl<V: Into<String>, L: Into<String>> From<(V, L)> for FieldOption {
 /// Constraints on a field value, evaluated by validation logic.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct FieldConstraints {
+    /// Whether the field is mandatory (non-empty).
     pub required: bool,
+    /// Minimum string length in unicode characters.
     pub min_length: Option<usize>,
+    /// Maximum string length in unicode characters.
     pub max_length: Option<usize>,
+    /// Minimum numerical value.
     pub min: Option<f64>,
+    /// Maximum numerical value.
     pub max: Option<f64>,
+    /// Step interval for numbers.
     pub step: Option<f64>,
     /// Regex pattern for client-side validation hints.
     pub pattern: Option<String>,
@@ -126,62 +160,74 @@ pub struct FieldConstraints {
 }
 
 impl FieldConstraints {
+    /// Create a new empty `FieldConstraints`.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Set required constraint.
     pub fn required(mut self, required: bool) -> Self {
         self.required = required;
         self
     }
 
+    /// Set minimum string length.
     pub fn min_length(mut self, min: usize) -> Self {
         self.min_length = Some(min);
         self
     }
 
+    /// Set maximum string length.
     pub fn max_length(mut self, max: usize) -> Self {
         self.max_length = Some(max);
         self
     }
 
+    /// Set both minimum and maximum string length.
     pub fn length_range(mut self, min: usize, max: usize) -> Self {
         self.min_length = Some(min);
         self.max_length = Some(max);
         self
     }
 
+    /// Set minimum numerical value.
     pub fn min(mut self, min: f64) -> Self {
         self.min = Some(min);
         self
     }
 
+    /// Set maximum numerical value.
     pub fn max(mut self, max: f64) -> Self {
         self.max = Some(max);
         self
     }
 
+    /// Set both minimum and maximum numerical value.
     pub fn range(mut self, min: f64, max: f64) -> Self {
         self.min = Some(min);
         self.max = Some(max);
         self
     }
 
+    /// Set numeric step interval.
     pub fn step(mut self, step: f64) -> Self {
         self.step = Some(step);
         self
     }
 
+    /// Set regex pattern constraint.
     pub fn pattern(mut self, pattern: impl Into<String>) -> Self {
         self.pattern = Some(pattern.into());
         self
     }
 
+    /// Set file accept constraint.
     pub fn accept(mut self, accept: impl Into<String>) -> Self {
         self.accept = Some(accept.into());
         self
     }
 
+    /// Set multiple selection / upload support.
     pub fn multiple(mut self, multiple: bool) -> Self {
         self.multiple = multiple;
         self
@@ -253,22 +299,31 @@ impl FieldConstraints {
 /// directly without declaring descriptors.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FieldDescriptor {
+    /// Field name / submission key.
     pub name: String,
+    /// Field kind driving rendering and interaction.
     pub kind: FieldKind,
+    /// Validation and input constraints.
     #[serde(default)]
     pub constraints: FieldConstraints,
+    /// Optional field label.
     pub label: Option<String>,
+    /// Optional field description or help text.
     pub description: Option<String>,
+    /// Optional placeholder text.
     pub placeholder: Option<String>,
+    /// Whether the field is disabled.
     #[serde(default)]
     pub disabled: bool,
+    /// Default string value.
     pub default_value: Option<String>,
+    /// List of selectable options for dropdowns/radios.
     #[serde(default)]
     pub options: Vec<FieldOption>,
 }
 
 impl FieldDescriptor {
-    /// Create a minimal field descriptor.
+    /// Create a minimal field descriptor with name and kind.
     pub fn new(name: impl Into<String>, kind: FieldKind) -> Self {
         Self {
             name: name.into(),
@@ -283,103 +338,123 @@ impl FieldDescriptor {
         }
     }
 
+    /// Set field label.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
+    /// Set field description.
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
         self
     }
 
+    /// Set field placeholder.
     pub fn placeholder(mut self, ph: impl Into<String>) -> Self {
         self.placeholder = Some(ph.into());
         self
     }
 
+    /// Replace field constraints.
     pub fn constraints(mut self, constraints: FieldConstraints) -> Self {
         self.constraints = constraints;
         self
     }
 
+    /// Mark field as required.
     pub fn required(mut self) -> Self {
         self.constraints.required = true;
         self
     }
 
+    /// Set required state explicitly.
     pub fn set_required(mut self, required: bool) -> Self {
         self.constraints.required = required;
         self
     }
 
+    /// Set minimum string length.
     pub fn min_length(mut self, min: usize) -> Self {
         self.constraints.min_length = Some(min);
         self
     }
 
+    /// Set maximum string length.
     pub fn max_length(mut self, max: usize) -> Self {
         self.constraints.max_length = Some(max);
         self
     }
 
+    /// Set length range.
     pub fn length_range(mut self, min: usize, max: usize) -> Self {
         self.constraints.min_length = Some(min);
         self.constraints.max_length = Some(max);
         self
     }
 
+    /// Set minimum numerical value.
     pub fn min(mut self, min: f64) -> Self {
         self.constraints.min = Some(min);
         self
     }
 
+    /// Set maximum numerical value.
     pub fn max(mut self, max: f64) -> Self {
         self.constraints.max = Some(max);
         self
     }
 
+    /// Set numerical range.
     pub fn range(mut self, min: f64, max: f64) -> Self {
         self.constraints.min = Some(min);
         self.constraints.max = Some(max);
         self
     }
 
+    /// Set numeric step.
     pub fn step(mut self, step: f64) -> Self {
         self.constraints.step = Some(step);
         self
     }
 
+    /// Set regex pattern.
     pub fn pattern(mut self, pat: impl Into<String>) -> Self {
         self.constraints.pattern = Some(pat.into());
         self
     }
 
+    /// Set file accept filter.
     pub fn accept(mut self, accept: impl Into<String>) -> Self {
         self.constraints.accept = Some(accept.into());
         self
     }
 
+    /// Set multiple selection flag.
     pub fn multiple(mut self, multiple: bool) -> Self {
         self.constraints.multiple = multiple;
         self
     }
 
+    /// Set disabled state.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
+    /// Set default value.
     pub fn default_value(mut self, val: impl Into<String>) -> Self {
         self.default_value = Some(val.into());
         self
     }
 
+    /// Set options list.
     pub fn options(mut self, opts: Vec<FieldOption>) -> Self {
         self.options = opts;
         self
     }
 
+    /// Append a single selectable option.
     pub fn add_option(mut self, opt: impl Into<FieldOption>) -> Self {
         self.options.push(opt.into());
         self

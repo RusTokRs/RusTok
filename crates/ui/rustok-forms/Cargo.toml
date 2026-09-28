@@ -5,6 +5,16 @@ edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Framework-agnostic form state, validation, field contracts, and dirty tracking"
+repository = "https://github.com/RusTokRs/RusTok"
+documentation = "https://docs.rs/rustok-forms"
+readme = "README.md"
+keywords = ["forms", "validation", "state", "dirty-tracking", "schema"]
+categories = ["web-programming", "gui", "data-structures"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

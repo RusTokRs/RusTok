@@ -7,12 +7,24 @@ use serde::{Deserialize, Serialize};
 /// A validation error attached to a specific field.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FieldError {
+    /// The target field name (or empty string for form-level errors).
     pub field: String,
+    /// The localized or human-readable error message.
     pub message: String,
 }
 
 impl FieldError {
     /// Create a new `FieldError` for a specific field name.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rustok_forms::FieldError;
+    ///
+    /// let err = FieldError::new("email", "Please enter a valid email address");
+    /// assert_eq!(err.field, "email");
+    /// assert_eq!(err.message, "Please enter a valid email address");
+    /// ```
     pub fn new(field: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             field: field.into(),
@@ -21,6 +33,15 @@ impl FieldError {
     }
 
     /// Create a form-level error (empty field name).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rustok_forms::FieldError;
+    ///
+    /// let err = FieldError::form("Server unreachable, please try again later.");
+    /// assert!(err.is_form_level());
+    /// ```
     pub fn form(message: impl Into<String>) -> Self {
         Self {
             field: String::new(),
@@ -73,7 +94,9 @@ impl From<(String, &str)> for FieldError {
 /// A validation issue with a structured path (for nested/array fields).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ValidationIssue {
+    /// Segments identifying the nested path of the invalid value (e.g. `["items", "0", "price"]`).
     pub path: Vec<String>,
+    /// The localized or human-readable error message.
     pub message: String,
 }
 
@@ -95,6 +118,15 @@ impl ValidationIssue {
     }
 
     /// Convenience for a multi-segment path given as an iterator/slice of string-like items.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rustok_forms::ValidationIssue;
+    ///
+    /// let issue = ValidationIssue::nested(["addresses", "0", "city"], "City is required");
+    /// assert_eq!(issue.joined_path(), "addresses.0.city");
+    /// ```
     pub fn nested<I, S>(segments: I, message: impl Into<String>) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -136,6 +168,14 @@ impl From<ValidationIssue> for FieldError {
 
 /// Parse a field path string supporting both dot notation (`user.address.city`)
 /// and bracket notation (`items[0].name` or `users[1][street]`).
+///
+/// # Example
+///
+/// ```rust
+/// use rustok_forms::parse_field_path;
+///
+/// assert_eq!(parse_field_path("users[0].address.city"), vec!["users", "0", "address", "city"]);
+/// ```
 pub fn parse_field_path(path: &str) -> Vec<String> {
     let mut segments = Vec::new();
     let mut current = String::new();
@@ -174,6 +214,15 @@ pub fn parse_field_path(path: &str) -> Vec<String> {
 }
 
 /// Format path segments into a unified dot-separated string.
+///
+/// # Example
+///
+/// ```rust
+/// use rustok_forms::format_field_path;
+///
+/// let formatted = format_field_path(&["users", "0", "name"]);
+/// assert_eq!(formatted, "users.0.name");
+/// ```
 pub fn format_field_path<S: AsRef<str>>(segments: &[S]) -> String {
     segments
         .iter()

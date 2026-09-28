@@ -3,6 +3,17 @@
 //! Provides structural form layout components, accessible input controls,
 //! lifecycle-aware submit buttons, and reactive context coordination.
 //!
+//! # Overview
+//!
+//! `rustok-forms-leptos` bridges the framework-agnostic form primitives of
+//! [`rustok-forms`](https://docs.rs/rustok-forms) with Leptos 0.8 reactive views:
+//!
+//! - **Context Coordination**: [`Form`] provides [`FormContext`], [`FormField`] provides [`FieldContext`].
+//! - **Automatic Accessibility**: Propagates `aria-invalid`, `aria-describedby`, and `aria-errormessage` IDs automatically.
+//! - **Dirty Tracking**: Automatically tracks modified inputs using `DirtyTracker`.
+//! - **Lifecycle-Aware Buttons**: [`SubmitButton`] disables itself and renders a loading spinner during async submission; [`ResetButton`] resets values and clear error/dirty flags.
+//! - **Rich Input Controls**: Text, Password (with toggle), Number, Search, Color, Range, Split OTP/2FA, Textarea, Select, Checkbox, Switch, RadioGroup, and File input.
+//!
 //! # Example
 //!
 //! ```rust,ignore
@@ -46,6 +57,8 @@
 //!     }
 //! }
 //! ```
+
+#![warn(missing_docs)]
 
 pub mod button;
 pub mod context;

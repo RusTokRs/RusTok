@@ -11,6 +11,22 @@ use std::hash::Hash;
 use serde::{Deserialize, Serialize};
 
 /// Tracks which form fields have been modified since last reset.
+///
+/// # Example
+///
+/// ```rust
+/// use rustok_forms::DirtyTracker;
+///
+/// let mut tracker = DirtyTracker::new();
+/// assert!(!tracker.is_any_dirty());
+///
+/// tracker.mark("title");
+/// assert!(tracker.is_dirty("title"));
+/// assert_eq!(tracker.dirty_fields(), vec!["title"]);
+///
+/// tracker.reset();
+/// assert!(tracker.is_empty());
+/// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirtyTracker {
     fields: BTreeSet<String>,

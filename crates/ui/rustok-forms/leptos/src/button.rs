@@ -7,15 +7,21 @@ use crate::context::FormContext;
 /// Button visual style variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
+    /// Default high-contrast primary action button.
     #[default]
     Primary,
+    /// Subtle secondary action button.
     Secondary,
+    /// Destructive action button for irreversible operations (red).
     Destructive,
+    /// Outlined button with bordered border.
     Outline,
+    /// Transparent ghost button with hover background.
     Ghost,
 }
 
 impl ButtonVariant {
+    /// Return Tailwind CSS class names corresponding to this variant.
     pub fn class_names(&self) -> &'static str {
         match self {
             Self::Primary => "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
@@ -30,13 +36,17 @@ impl ButtonVariant {
 /// Button size preset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ButtonSize {
+    /// Small compact size (height 8, text-xs).
     Sm,
+    /// Medium standard size (height 9, text-xs).
     #[default]
     Md,
+    /// Large prominent size (height 10, text-sm).
     Lg,
 }
 
 impl ButtonSize {
+    /// Return Tailwind CSS class names corresponding to this size preset.
     pub fn class_names(&self) -> &'static str {
         match self {
             Self::Sm => "h-8 px-3 text-xs rounded-lg gap-1.5",

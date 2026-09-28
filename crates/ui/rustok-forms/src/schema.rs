@@ -1,181 +1,285 @@
-//! Schema-driven form definitions and collective validation.
+//! Declarative schema definition for dynamic, form-wide schemas.
+//!
+//! `FormSchema` provides an aggregated, declarative representation of an entire
+//! form's fields, types, constraints, default values, and validations. It enables
+//! dynamic schema reflection, automated map/JSON form payload validation, and
+//! form serialization.
 
 use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::FieldError;
-use crate::field::FieldDescriptor;
+use crate::field::{FieldConstraints, FieldDescriptor, FieldKind};
+use crate::validation::rules;
 
-/// A collection of field descriptors representing a complete form schema.
+/// Declarative schema holding the collection of all fields in a form.
 ///
-/// Enables server-driven form generation, configuration forms, and schema validation.
+/// # Example
+///
+/// ```rust
+/// use rustok_forms::schema::FormSchema;
+/// use rustok_forms::field::{FieldDescriptor, FieldKind};
+/// use std::collections::HashMap;
+///
+/// let mut schema = FormSchema::new("user_registration")
+///     .with_title("Create Account")
+///     .with_field(
+///         FieldDescriptor::new("username", FieldKind::Text)
+///             .label("Username")
+///             .required()
+///             .min_length(3)
+///     )
+///     .with_field(
+///         FieldDescriptor::new("email", FieldKind::Email)
+///             .label("Email Address")
+///             .required()
+///     );
+///
+/// let mut payload = HashMap::new();
+/// payload.insert("username".to_string(), "al".to_string());
+/// payload.insert("email".to_string(), "invalid-email".to_string());
+///
+/// let errors = schema.validate_map(&payload);
+/// assert_eq!(errors.len(), 2);
+/// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct FormSchema {
-    pub name: Option<String>,
+    /// Unique identifier for this schema.
+    pub id: String,
+    /// Human-readable title of the form.
+    pub title: Option<String>,
+    /// Optional explanatory description for the form.
+    pub description: Option<String>,
+    /// Field descriptors in this form.
     pub fields: Vec<FieldDescriptor>,
 }
 
 impl FormSchema {
-    /// Create a new empty `FormSchema`.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create a new named `FormSchema`.
-    pub fn named(name: impl Into<String>) -> Self {
+    /// Create a new `FormSchema` with the specified ID.
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
-            name: Some(name.into()),
+            id: id.into(),
+            title: None,
+            description: None,
             fields: Vec::new(),
         }
     }
 
-    /// Append a field descriptor to the schema.
-    pub fn field(mut self, descriptor: FieldDescriptor) -> Self {
-        self.fields.push(descriptor);
+    /// Set the human-readable title.
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
         self
     }
 
-    /// Replace or set all field descriptors.
-    pub fn fields(mut self, descriptors: Vec<FieldDescriptor>) -> Self {
-        self.fields = descriptors;
+    /// Set the form description.
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
         self
     }
 
-    /// Look up a field descriptor by name.
+    /// Add a field descriptor to the schema.
+    pub fn with_field(mut self, field: FieldDescriptor) -> Self {
+        self.fields.push(field);
+        self
+    }
+
+    /// Add multiple field descriptors to the schema.
+    pub fn with_fields<I: IntoIterator<Item = FieldDescriptor>>(mut self, fields: I) -> Self {
+        self.fields.extend(fields);
+        self
+    }
+
+    /// Find a field descriptor by name.
     pub fn get_field(&self, name: &str) -> Option<&FieldDescriptor> {
         self.fields.iter().find(|f| f.name == name)
     }
 
-    /// Check whether a field name exists in the schema.
+    /// Check if a field exists in the schema.
     pub fn has_field(&self, name: &str) -> bool {
         self.fields.iter().any(|f| f.name == name)
     }
 
-    /// List all field names in the schema in declaration order.
-    pub fn field_names(&self) -> Vec<&str> {
-        self.fields.iter().map(|f| f.name.as_str()).collect()
-    }
+    /// Validate a key-value map of string inputs against this schema.
+    ///
+    /// Evaluates:
+    /// - Required constraints (must be present and non-empty).
+    /// - Minimum and maximum string length.
+    /// - Regex patterns.
+    /// - Numeric range constraints (if kind is Number/Range/etc.).
+    /// - Email format constraints (if kind is Email).
+    /// - URL format constraints (if kind is Url).
+    /// - Select/Radio valid options.
+    pub fn validate_map(&self, data: &HashMap<String, String>) -> Vec<FieldError> {
+        let mut errors = Vec::new();
 
-    /// List all field names that are marked required.
-    pub fn required_fields(&self) -> Vec<&str> {
-        self.fields
-            .iter()
-            .filter(|f| f.constraints.required)
-            .map(|f| f.name.as_str())
-            .collect()
-    }
+        for field in &self.fields {
+            let value = data.get(&field.name).map(String::as_str);
 
-    /// Generate a map of default values defined across fields in the schema.
-    pub fn default_values(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        for f in &self.fields {
-            if let Some(ref val) = f.default_value {
-                map.insert(f.name.clone(), val.clone());
-            }
-        }
-        map
-    }
-
-    /// Validate a map of field name -> string value against the schema.
-    pub fn validate_map(&self, values: &HashMap<String, String>) -> Result<(), Vec<FieldError>> {
-        let mut all_errors = Vec::new();
-
-        for descriptor in &self.fields {
-            let val = values.get(&descriptor.name).map(String::as_str).unwrap_or("");
-            if let Err(errs) = descriptor.validate(val) {
-                all_errors.extend(errs);
-            }
-        }
-
-        if all_errors.is_empty() {
-            Ok(())
-        } else {
-            Err(all_errors)
-        }
-    }
-
-    /// Validate a JSON object against the schema.
-    pub fn validate_json(&self, json: &serde_json::Value) -> Result<(), Vec<FieldError>> {
-        let mut all_errors = Vec::new();
-
-        if let Some(obj) = json.as_object() {
-            for descriptor in &self.fields {
-                let val_str = match obj.get(&descriptor.name) {
-                    Some(serde_json::Value::String(s)) => s.clone(),
-                    Some(serde_json::Value::Number(n)) => n.to_string(),
-                    Some(serde_json::Value::Bool(b)) => b.to_string(),
-                    Some(serde_json::Value::Null) | None => String::new(),
-                    Some(other) => other.to_string(),
-                };
-
-                if let Err(errs) = descriptor.validate(&val_str) {
-                    all_errors.extend(errs);
+            // 1. Check required
+            if field.constraints.required {
+                let val_str = value.unwrap_or("");
+                if let Err(e) = rules::required(&field.name, val_str, format!("{} is required", field.name)) {
+                    errors.push(e);
+                    // Skip further checks if missing and required
+                    continue;
                 }
             }
-        } else {
-            all_errors.push(FieldError::form("Expected a JSON object"));
+
+            let val_str = match value {
+                Some(v) if !v.trim().is_empty() => v,
+                _ => continue, // empty optional field: valid
+            };
+
+            // 2. Length checks
+            if let Some(min) = field.constraints.min_length {
+                if let Err(e) = rules::min_length(&field.name, val_str, min, format!("{} must be at least {} characters", field.name, min)) {
+                    errors.push(e);
+                }
+            }
+            if let Some(max) = field.constraints.max_length {
+                if let Err(e) = rules::max_length(&field.name, val_str, max, format!("{} must be at most {} characters", field.name, max)) {
+                    errors.push(e);
+                }
+            }
+
+            // 3. Pattern checks
+            if let Some(pattern) = &field.constraints.pattern {
+                if let Err(e) = rules::pattern(&field.name, val_str, pattern, format!("{} format is invalid", field.name)) {
+                    errors.push(e);
+                }
+            }
+
+            // 4. Kind-specific format checks
+            match field.kind {
+                FieldKind::Email => {
+                    if let Err(e) = rules::email(&field.name, val_str, "Invalid email address format") {
+                        errors.push(e);
+                    }
+                }
+                FieldKind::Url => {
+                    if let Err(e) = rules::url(&field.name, val_str, "Invalid URL format") {
+                        errors.push(e);
+                    }
+                }
+                FieldKind::Number | FieldKind::Range => {
+                    if let Ok(num) = val_str.parse::<f64>() {
+                        if let Some(min) = field.constraints.min {
+                            if let Err(e) = rules::min(&field.name, num, min, format!("{} must be at least {}", field.name, min)) {
+                                errors.push(e);
+                            }
+                        }
+                        if let Some(max) = field.constraints.max {
+                            if let Err(e) = rules::max(&field.name, num, max, format!("{} must be at most {}", field.name, max)) {
+                                errors.push(e);
+                            }
+                        }
+                    } else {
+                        errors.push(FieldError::new(
+                            &field.name,
+                            "Must be a valid numeric value",
+                        ));
+                    }
+                }
+                FieldKind::Select | FieldKind::Radio => {
+                    if !field.options.is_empty() {
+                        let allowed_values: Vec<&str> =
+                            field.options.iter().map(|o| o.value.as_str()).collect();
+                        if let Err(e) = rules::one_of(&field.name, val_str, &allowed_values, format!("{} must be one of allowed options", field.name)) {
+                            errors.push(e);
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
 
-        if all_errors.is_empty() {
-            Ok(())
-        } else {
-            Err(all_errors)
+        errors
+    }
+
+    /// Validate a JSON object (`serde_json::Value`) against this schema.
+    pub fn validate_json(&self, json: &serde_json::Value) -> Vec<FieldError> {
+        let mut map = HashMap::new();
+
+        if let Some(obj) = json.as_object() {
+            for (k, v) in obj {
+                let str_val = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Null => String::new(),
+                    other => other.to_string(),
+                };
+                map.insert(k.clone(), str_val);
+            }
         }
+
+        self.validate_map(&map)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::{FieldDescriptor, FieldKind};
+    use crate::field::FieldOption;
 
     #[test]
-    fn schema_builder_and_query() {
-        let schema = FormSchema::named("user_registration")
-            .field(FieldDescriptor::new("username", FieldKind::Text).required().min_length(3))
-            .field(FieldDescriptor::new("email", FieldKind::Email).required())
-            .field(FieldDescriptor::new("bio", FieldKind::Textarea).default_value("About me..."));
+    fn test_schema_builder_and_validation() {
+        let schema = FormSchema::new("test_form")
+            .with_title("Test Form")
+            .with_field(
+                FieldDescriptor::new("name", FieldKind::Text)
+                    .required()
+                    .min_length(2)
+                    .max_length(50),
+            )
+            .with_field(
+                FieldDescriptor::new("age", FieldKind::Number)
+                    .required()
+                    .range(18.0, 120.0),
+            )
+            .with_field(
+                FieldDescriptor::new("role", FieldKind::Select)
+                    .required()
+                    .options(vec![
+                        FieldOption::new("admin", "Admin"),
+                        FieldOption::new("editor", "Editor"),
+                    ]),
+            );
 
-        assert_eq!(schema.name.as_deref(), Some("user_registration"));
-        assert_eq!(schema.field_names(), vec!["username", "email", "bio"]);
-        assert_eq!(schema.required_fields(), vec!["username", "email"]);
+        assert!(schema.has_field("name"));
+        assert!(schema.has_field("age"));
+        assert!(!schema.has_field("unknown"));
 
-        let defaults = schema.default_values();
-        assert_eq!(defaults.get("bio").map(String::as_str), Some("About me..."));
+        let mut valid_data = HashMap::new();
+        valid_data.insert("name".to_string(), "Alice".to_string());
+        valid_data.insert("age".to_string(), "25".to_string());
+        valid_data.insert("role".to_string(), "admin".to_string());
+
+        let errors = schema.validate_map(&valid_data);
+        assert!(errors.is_empty(), "expected valid, got: {:?}", errors);
+
+        let mut invalid_data = HashMap::new();
+        invalid_data.insert("name".to_string(), "A".to_string());
+        invalid_data.insert("age".to_string(), "15".to_string());
+        invalid_data.insert("role".to_string(), "superadmin".to_string());
+
+        let errors = schema.validate_map(&invalid_data);
+        assert_eq!(errors.len(), 3);
     }
 
     #[test]
-    fn schema_validate_map() {
-        let schema = FormSchema::new()
-            .field(FieldDescriptor::new("title", FieldKind::Text).required().min_length(5))
-            .field(FieldDescriptor::new("price", FieldKind::Number).required().min(0.0));
-
-        let mut values = HashMap::new();
-        values.insert("title".to_string(), "Hi".to_string());
-        values.insert("price".to_string(), "-10".to_string());
-
-        let errs = schema.validate_map(&values).unwrap_err();
-        assert_eq!(errs.len(), 2);
-    }
-
-    #[test]
-    fn schema_validate_json() {
-        let schema = FormSchema::new()
-            .field(FieldDescriptor::new("slug", FieldKind::Text).required())
-            .field(FieldDescriptor::new("count", FieldKind::Number).min(1.0));
+    fn test_validate_json() {
+        let schema = FormSchema::new("contact_form").with_field(
+            FieldDescriptor::new("email", FieldKind::Email).required(),
+        );
 
         let json = serde_json::json!({
-            "slug": "my-post",
-            "count": 5
+            "email": "not-an-email"
         });
 
-        assert!(schema.validate_json(&json).is_ok());
-
-        let bad_json = serde_json::json!({
-            "slug": "",
-            "count": 0
-        });
-
-        assert!(schema.validate_json(&bad_json).is_err());
+        let errors = schema.validate_json(&json);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "email");
     }
 }

@@ -505,6 +505,19 @@ pub mod rules {
 }
 
 /// Accumulator for running multiple validation rules across fields.
+///
+/// # Example
+///
+/// ```rust
+/// use rustok_forms::FormValidator;
+///
+/// let validator = FormValidator::new()
+///     .required("name", "John", "Name is required")
+///     .email("email", "john@example.com", "Invalid email")
+///     .min_length("password", "secret123", 8, "Password must be >= 8 chars");
+///
+/// assert!(validator.finish().is_ok());
+/// ```
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FormValidator {
     errors: Vec<FieldError>,

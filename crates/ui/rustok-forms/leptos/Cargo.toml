@@ -5,6 +5,15 @@ edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Leptos structural form components for rustok-forms"
+repository = "https://github.com/RusTokRs/RusTok"
+documentation = "https://docs.rs/rustok-forms-leptos"
+readme = "README.md"
+keywords = ["leptos", "forms", "ui", "wai-aria", "components"]
+categories = ["gui", "web-programming"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

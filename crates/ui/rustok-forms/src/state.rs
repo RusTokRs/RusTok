@@ -8,10 +8,14 @@ use crate::FieldError;
 /// Submission lifecycle of a form.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum FormSubmissionStatus {
+    /// Form has not been submitted yet or has been reset to clean state.
     #[default]
     Idle,
+    /// An asynchronous submission or validation mutation is currently in flight.
     Submitting,
+    /// The submission completed successfully.
     Success,
+    /// The submission failed with an error message (top-level error or field error).
     Failure(String),
 }
 
@@ -22,10 +26,14 @@ pub enum FormSubmissionStatus {
 /// components need to render labels, error messages, and disabled controls.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormState {
+    /// Whether an asynchronous submit request is currently pending.
     pub is_submitting: bool,
+    /// Whether the form submission has completed successfully.
     #[serde(default)]
     pub is_success: bool,
+    /// Optional top-level error message attached to the form itself.
     pub form_error: Option<String>,
+    /// Collection of validation errors attached to individual field names.
     pub field_errors: Vec<FieldError>,
 }
 
@@ -39,6 +47,17 @@ impl FormState {
     // ── Constructors ────────────────────────────────────────────────
 
     /// Create an initial idle form state.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rustok_forms::FormState;
+    ///
+    /// let state = FormState::idle();
+    /// assert!(!state.is_submitting);
+    /// assert!(!state.is_success());
+    /// assert!(state.is_valid());
+    /// ```
     pub fn idle() -> Self {
         Self {
             is_submitting: false,

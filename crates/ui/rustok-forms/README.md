@@ -4,7 +4,7 @@ Framework-agnostic form state management, validation rule engine, value sanitiza
 
 ## Overview
 
-`rustok-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` for serialization.
+`rustok-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` and `serde_json` for serialization.
 
 It acts as the single canonical source of truth for:
 - Form submission lifecycle (`FormState`, `FormSubmissionStatus`)
@@ -42,7 +42,7 @@ It acts as the single canonical source of truth for:
   - `url`: Valid `http://` or `https://` protocol and host syntax.
   - `slug`: Kebab-case ASCII slug (`[a-z0-9-]`, no consecutive or boundary hyphens).
   - `matches`: Value equality check (e.g. password confirmation).
-  - `range`: Generic numeric bounds `[min, max]` inclusive for `PartialOrd + Copy`.
+  - `min` / `max` / `range`: Generic numeric bounds `[min, max]` inclusive for `PartialOrd + Copy`.
   - `numeric`: Checks if string parses to a finite number (`f64`).
   - `integer`: Checks if string parses to a 64-bit integer (`i64`).
   - `range_numeric`: Validates that a string parses to a number within `[min, max]`.
@@ -62,7 +62,7 @@ It acts as the single canonical source of truth for:
 - `FormValidator`: Fluent accumulator builder with conditional evaluation (`validate_if`), nested sub-form prefixing (`merge_nested`), error merging (`merge`), and `finish()` returning `Result<(), Vec<FieldError>>`.
 
 ### 4. `field` & `schema` — Field Metadata, Constraints, & Schemas
-- `FieldKind`: Enum covering all HTML5 field kinds.
+- `FieldKind`: Enum covering all standard and rich field kinds (`Text`, `Email`, `Password`, `Number`, `Search`, `Url`, `Tel`, `Date`, `Time`, `Range`, `Color`, `Checkbox`, `Radio`, `File`, `Hidden`, `Textarea`, `Select`, `Switch`, `RichText`, `Custom`).
 - `FieldDescriptor`: Builder pattern configuring name, kind, label, placeholder, constraints, options, disabled state, default values, with `.validate(value)` schema execution.
 - `FieldConstraints`: Builder pattern configuring required, min/max length, numeric range, step, pattern, accept, multiple, with `.validate(field, value)` execution.
 - `FieldOption`: Selectable options for dropdowns, radios, and checkbox groups with disabled state and tuple conversion.
@@ -73,10 +73,10 @@ It acts as the single canonical source of truth for:
 - Methods: `mark()`, `mark_many()`, `unmark()`, `unmark_many()`, `mark_clean()`, `record_change()`, `is_dirty()`, `contains()`, `is_any_of_dirty()`, `are_all_dirty()`, `is_any_dirty()`, `is_empty()`, `count()`, `len()`, `dirty_fields()`, `iter()`, `retain()`, `reset()`, `clear()`.
 
 ### 6. `step` — Multi-Step Wizard State
-- `FormStepTracker`: Manages active step index, completion state per step, boundary navigation (`next_step()`, `prev_step()`, `go_to_step()`), and progress calculation (`progress_percent()`).
+- `FormStepTracker`: Manages active step index, completion state per step, boundary navigation (`next_step()`, `prev_step()`, `go_to_step()`, `complete_and_next()`), and progress calculation (`progress_percentage()`).
 
 ### 7. `sanitize` — Input Value Normalization
-- `form_sanitizer`: Utility functions including `trim()`, `lowercase()`, `uppercase()`, `slugify()`, `normalize_email()`, `normalize_phone()`, `digits_only()`, `alphanumeric_only()`, `strip_tags()`, `clamp_f64()`, and `clamp_i64()`.
+- `form_sanitizer`: Utility functions including `trim()`, `slugify()`, `normalize_email()`, `normalize_phone()`, `collapse_whitespace()`, `clamp_number()`, and `strip_tags()`.
 
 ## Adapters
 
