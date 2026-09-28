@@ -95,7 +95,7 @@ The audit must move slowly enough to discover second-order defects. A phase is n
 The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
 ### FS-22 Subchecks — execute strictly in this order
 
-- [ ] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
+- [x] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
 
 **FS-22.01 WIP audit record — route-graph pre-implementation pass**
 
@@ -105,6 +105,15 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 - Route inventory covers host/base controllers, optional owner-declared Axum providers, webhooks, embedded storefront/admin surfaces, and the generated optional-route composition path.
 - **Root-cause finding:** default `apps/server` composition enables both `embed-admin` and `mod-commerce`. Commerce contributes explicit `/admin/*` routes, while `mount_application_shell()` used `Router::nest("/admin", admin_router)`. With Axum 0.8.9 this is an outer nested route conflicting with existing concrete `/admin/*` registrations and can panic during route composition. The fix must preserve Commerce `/admin/*` precedence while still serving the embedded Admin SPA for otherwise-unmatched `/admin...` paths.
 - No other exact route-prefix collision was confirmed in the inspected optional HTTP providers; remaining FS-22.01 work is the remediation, direct/adjacent re-audit, fresh second pass, and static branch-diff review.
+
+**FS-22.01 closeout**
+
+- Remediation: `mount_application_shell` no longer registers an `/admin` nested wildcard. It installs a final fallback that delegates only unmatched `/admin` and `/admin/...` requests to the embedded Admin router after stripping the host prefix; explicit Commerce `/admin/*` routes remain authoritative.
+- Runtime wiring: the ready Admin router receives a cloned `ServerAuthRuntime` via `with_state`, while the host composition keeps the existing auth runtime for the normal middleware chain.
+- Immediate re-audit: changed imports, mount helper, fallback URI rewriting, Admin build call, and the regression case were re-read after the remediation. The self-review initially caught and corrected the missing `tower::ServiceExt` import.
+- Adjacent-boundary audit: host route composition, generated optional-module Axum registration, default feature matrix, Commerce `/admin/*`, embedded storefront routes, observability/registry outer guards, and Admin asset fallback behavior were rechecked.
+- Fresh second pass: repeated from the composition-root surface without relying on the original finding list; no additional route shadowing or newly introduced fallback bug was found in the inspected scope. `/adminfoo`-style paths are not delegated because the fallback requires an exact `/admin` boundary.
+- Static verification: branch diff contains only `apps/server/src/services/app_router.rs` and this ledger; branch is based directly on `main` SHA `8034b3ecba98c6e84f598a734adb6e264ae50c2e`. No test suite or CI job was executed by the agent under the maintainer-owned test contract.
 
 - [ ] **FS-22.02 Global middleware order:** trace the actual Axum layer nesting and request lifecycle; verify security headers, metrics auth, registry guards, rate limiting, auth context, channel, locale, tenant, and guest-access ordering against trust assumptions.
 - [ ] **FS-22.03 Identity/auth propagation:** trace token parsing, principal construction, optional/required auth, session/refresh behavior, impersonation/agent paths, and transport boundary identity reconstruction.
