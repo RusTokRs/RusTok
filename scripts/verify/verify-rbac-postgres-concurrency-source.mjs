@@ -26,6 +26,7 @@ const forbidText = (source, value, label) => {
 const files = {
   harness: "apps/server/tests/rbac_postgres_concurrency.rs",
   committed: "apps/server/src/services/rbac_committed_mutations.rs",
+  roleMutation: "crates/modules/rustok-rbac/src/role_mutation.rs",
   generation: "crates/modules/rustok-rbac/src/invalidation_generation.rs",
   testDb: "crates/utils/rustok-test-utils/src/db.rs",
   evidence:
@@ -81,12 +82,17 @@ for (const forbidden of [
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
-  "lock_target_user_for_role_mutation",
-  "lock_exclusive().one(db).await?",
-  "ensure_active_super_admin_continuity",
+  "rustok_rbac::replace_persisted_user_role_on(&tx, *tenant_id, *user_id, role)",
   "reserve_rbac_invalidation_generation(&tx)",
   "tx.commit().await?",
 ]) requireText(sources.committed, marker, `${files.committed}: production mutation path`);
+
+for (const marker of [
+  "pub async fn replace_persisted_user_role_on(",
+  "lock_target_authority_on(db, tenant_id, user_id).await?",
+  "ensure_user_authority_continuity_on(",
+  "SELECT status FROM users WHERE id = ? AND tenant_id = ? FOR UPDATE",
+]) requireText(sources.roleMutation, marker, `${files.roleMutation}: role mutation authority`);
 
 for (const marker of [
   "pub async fn reserve_permission_invalidation_generation(",

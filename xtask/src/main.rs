@@ -154,7 +154,9 @@ fn print_usage() {
     println!("  validate-manifest   Validate modules.toml and rustok-module.toml files");
     println!("  install-dev         Bootstrap local non-Docker development install");
     println!("  list-modules        List all configured modules");
-    println!("  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs");
+    println!(
+        "  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs"
+    );
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");
     println!("  module stage-run    Execute a local follow-up validation stage and report it");

@@ -6,7 +6,7 @@ use rmcp::{
     ServerHandler, ServiceExt,
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListToolsResult,
-        ServerInfo,
+        ServerConfig,
     },
     service::{RequestContext, RoleServer},
     transport::stdio,
@@ -749,7 +749,7 @@ impl ServerHandler for RusToKMcpServer {
         })
     }
 
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let mut server_info = Implementation::default();
         server_info.name = "RusToK MCP Server".to_string();
         server_info.version = env!("CARGO_PKG_VERSION").to_string();
@@ -758,7 +758,7 @@ impl ServerHandler for RusToKMcpServer {
             "MCP server for exploring RusToK modules, introspecting MCP identity/policy, and staging/reviewing/applying draft RusToK module scaffolds. Use mcp_whoami for access context and alloy_* scaffold tools for module-authoring assistance.".to_string(),
         );
 
-        let mut info = ServerInfo::default();
+        let mut info = ServerConfig::default();
         info.protocol_version = Self::protocol_version();
         info.capabilities = rmcp::model::ServerCapabilities::default();
         info.server_info = server_info;

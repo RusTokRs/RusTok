@@ -379,6 +379,7 @@ impl InProcessCheckoutPaymentExecutionPort {
 }
 
 
+#[cfg(test)]
 fn capture_provider_amount(collection: &PaymentCollectionResponse) -> Decimal {
     collection.authorized_amount
 }
@@ -400,14 +401,17 @@ mod tests {
             amount: Decimal::new(100, 0),
             authorized_amount: Decimal::new(75, 0),
             captured_amount: Decimal::ZERO,
+            refunded_amount: Decimal::ZERO,
             provider_id: Some("gateway".to_string()),
             cancellation_reason: None,
             metadata: Value::Object(Default::default()),
-            created_at: chrono::Utc::now().fixed_offset(),
-            updated_at: chrono::Utc::now().fixed_offset(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
             authorized_at: None,
             captured_at: None,
             cancelled_at: None,
+            payments: Vec::new(),
+            refunds: Vec::new(),
         };
 
         assert_eq!(capture_provider_amount(&collection), Decimal::new(75, 0));

@@ -45,7 +45,7 @@ jobs:
       - name: Assert exact checked-out SHA
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt

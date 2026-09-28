@@ -163,13 +163,7 @@ fn collect_i18n_api_inventory() -> Result<I18nApiInventoryReport> {
                 .replace('\\', "/");
 
             for alias in &aliases {
-                scan_source_text(
-                    &package.name,
-                    alias,
-                    &display_path,
-                    &content,
-                    &mut findings,
-                );
+                scan_source_text(&package.name, alias, &display_path, &content, &mut findings);
             }
         }
     }
@@ -199,11 +193,11 @@ fn cargo_metadata(root: &Path) -> Result<CargoMetadata> {
 }
 
 fn collect_rust_sources(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
-    let entries =
-        fs::read_dir(dir).with_context(|| format!("Failed to read {}", dir.display()))?;
+    let entries = fs::read_dir(dir).with_context(|| format!("Failed to read {}", dir.display()))?;
 
     for entry in entries {
-        let entry = entry.with_context(|| format!("Failed to read entry under {}", dir.display()))?;
+        let entry =
+            entry.with_context(|| format!("Failed to read entry under {}", dir.display()))?;
         let path = entry.path();
         let file_type = entry
             .file_type()
@@ -308,8 +302,12 @@ use rustok_ui_i18n::{
             &mut findings,
         );
 
-        assert!(findings.iter().any(|finding| finding.symbol == "FluentValue"));
-        assert!(findings.iter().any(|finding| finding.symbol == "module::bundle"));
+        assert!(findings
+            .iter()
+            .any(|finding| finding.symbol == "FluentValue"));
+        assert!(findings
+            .iter()
+            .any(|finding| finding.symbol == "module::bundle"));
         assert!(findings
             .iter()
             .all(|finding| finding.evidence == "same-file-candidate"));
@@ -342,7 +340,10 @@ use rustok_ui_i18n::{
             &mut findings,
         );
 
-        let finding = findings.iter().next().expect("direct usage should be found");
+        let finding = findings
+            .iter()
+            .next()
+            .expect("direct usage should be found");
         assert_eq!(finding.symbol, "FluentCatalog");
         assert_eq!(finding.evidence, "direct-path");
     }

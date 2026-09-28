@@ -34,7 +34,7 @@ pub(crate) struct IggyDlqPublisher {
     client: IggyClient,
     stream: String,
     partitions: u32,
-    replication_factor: u8,
+    _replication_factor: u8,
 }
 
 impl IggyDlqPublisher {
@@ -70,7 +70,7 @@ impl IggyDlqPublisher {
                         client,
                         stream: config.topology.stream_name.clone(),
                         partitions: config.topology.domain_partitions,
-                        replication_factor: config.topology.replication_factor,
+                        _replication_factor: config.topology.replication_factor,
                     });
                 }
                 Err(error) => failures.push(format!("{address}: {error}")),

@@ -41,12 +41,15 @@ async function loadFtlMessages(locale: Locale): Promise<string> {
   const candidatePaths = [
     path.join(process.cwd(), 'messages', `${locale}.ftl`),
     path.resolve(__dirname, '../../messages', `${locale}.ftl`),
-    path.resolve(__dirname, '../messages', `${locale}.ftl`),
+    path.resolve(__dirname, '../messages', `${locale}.ftl`)
   ];
 
   for (const candidate of candidatePaths) {
     try {
-      const content = await fs.readFile(/*turbopackIgnore: true*/ candidate, 'utf8');
+      const content = await fs.readFile(
+        /*turbopackIgnore: true*/ candidate,
+        'utf8'
+      );
       ftlCache.set(locale, content);
       return content;
     } catch {
@@ -54,12 +57,16 @@ async function loadFtlMessages(locale: Locale): Promise<string> {
     }
   }
 
-  console.warn(`[next-admin] Could not find FTL messages for locale: ${locale}`);
+  console.warn(
+    `[next-admin] Could not find FTL messages for locale: ${locale}`
+  );
   return '';
 }
 
 export default setRequestConfig(async (params) => {
-  let locale: Locale | undefined = params?.locale ? matchSupportedLocale(params.locale) : undefined;
+  let locale: Locale | undefined = params?.locale
+    ? matchSupportedLocale(params.locale)
+    : undefined;
 
   if (!locale) {
     try {

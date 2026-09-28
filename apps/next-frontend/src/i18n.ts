@@ -2,23 +2,14 @@ import { setRequestConfig } from "@rustok/next-fluent/server";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export const locales = ["en", "ru"] as const;
-export type Locale = (typeof locales)[number];
-export const defaultLocale = "en";
+import {
+  defaultLocale,
+  locales,
+  resolveLocale,
+  type Locale,
+} from "./i18n-config";
 
-function matchSupportedLocale(value?: string | null): Locale | undefined {
-  const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
-  if (!normalized) return undefined;
-
-  return (
-    locales.find((locale) => locale.toLowerCase() === normalized) ??
-    locales.find((locale) => locale.toLowerCase() === normalized.split("-")[0])
-  );
-}
-
-export function resolveLocale(value?: string | null): Locale {
-  return matchSupportedLocale(value) ?? defaultLocale;
-}
+export { defaultLocale, locales, resolveLocale, type Locale };
 
 const ftlCache = new Map<Locale, string>();
 

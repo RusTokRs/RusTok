@@ -854,7 +854,7 @@ impl IggyConnector for ExternalConnector {
 
         let partitions = *self.partitions.read().await;
         #[cfg(feature = "iggy")]
-        let replication_factor = *self.replication_factor.read().await;
+        let _replication_factor = *self.replication_factor.read().await;
         let partition = calculate_partition(&request.partition_key, partitions);
 
         #[cfg(feature = "iggy")]

@@ -1,3 +1,4 @@
+use super::validate_module_dependency_contract;
 use super::{
     auth_token_argument, auto_approve_argument, build_live_owner_transfer_registry_request,
     build_live_publish_registry_request, build_live_validation_stage_registry_request,
@@ -31,7 +32,6 @@ use super::{
     MODULE_AUTH_TOKEN_ENV, REGISTRY_MUTATION_SCHEMA_VERSION, REGISTRY_YANK_REASON_CODES,
     REMOTE_RUNNER_TOKEN_ENV,
 };
-use super::validate_module_dependency_contract;
 use std::{
     collections::HashMap,
     env,

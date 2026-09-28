@@ -51,16 +51,31 @@ export function ForumModuleSettingsFields({
         };
       }
       return {
-        use_reactions: parsed.use_reactions === true || parsed.useReactions === true,
+        use_reactions:
+          parsed.use_reactions === true || parsed.useReactions === true,
         allow_downvotes: parsed.allow_downvotes !== false,
         allow_anonymous_reading: parsed.allow_anonymous_reading !== false,
         pre_moderation_enabled: parsed.pre_moderation_enabled === true,
-        submodule_subscriptions_enabled: parsed.submodule_subscriptions_enabled !== false,
-        submodule_moderation_enabled: parsed.submodule_moderation_enabled !== false,
-        topics_per_page: typeof parsed.topics_per_page === 'number' ? parsed.topics_per_page : 20,
-        replies_per_page: typeof parsed.replies_per_page === 'number' ? parsed.replies_per_page : 20,
-        min_topic_title_length: typeof parsed.min_topic_title_length === 'number' ? parsed.min_topic_title_length : 5,
-        max_topic_title_length: typeof parsed.max_topic_title_length === 'number' ? parsed.max_topic_title_length : 150
+        submodule_subscriptions_enabled:
+          parsed.submodule_subscriptions_enabled !== false,
+        submodule_moderation_enabled:
+          parsed.submodule_moderation_enabled !== false,
+        topics_per_page:
+          typeof parsed.topics_per_page === 'number'
+            ? parsed.topics_per_page
+            : 20,
+        replies_per_page:
+          typeof parsed.replies_per_page === 'number'
+            ? parsed.replies_per_page
+            : 20,
+        min_topic_title_length:
+          typeof parsed.min_topic_title_length === 'number'
+            ? parsed.min_topic_title_length
+            : 5,
+        max_topic_title_length:
+          typeof parsed.max_topic_title_length === 'number'
+            ? parsed.max_topic_title_length
+            : 150
       };
     } catch {
       return {
@@ -84,9 +99,7 @@ export function ForumModuleSettingsFields({
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return;
       }
-      onSettingsTextChange(
-        JSON.stringify({ ...parsed, ...updates }, null, 2)
-      );
+      onSettingsTextChange(JSON.stringify({ ...parsed, ...updates }, null, 2));
     } catch {
       // The generic JSON editor remains the authority while the document is invalid.
     }
@@ -103,7 +116,9 @@ export function ForumModuleSettingsFields({
             max={100}
             value={values.topics_per_page}
             disabled={disabled}
-            onChange={(e) => updateFields({ topics_per_page: Number(e.target.value) || 20 })}
+            onChange={(e) =>
+              updateFields({ topics_per_page: Number(e.target.value) || 20 })
+            }
             className='h-8 text-xs'
           />
         </div>
@@ -115,7 +130,9 @@ export function ForumModuleSettingsFields({
             max={100}
             value={values.replies_per_page}
             disabled={disabled}
-            onChange={(e) => updateFields({ replies_per_page: Number(e.target.value) || 20 })}
+            onChange={(e) =>
+              updateFields({ replies_per_page: Number(e.target.value) || 20 })
+            }
             className='h-8 text-xs'
           />
         </div>
@@ -130,7 +147,11 @@ export function ForumModuleSettingsFields({
             max={50}
             value={values.min_topic_title_length}
             disabled={disabled}
-            onChange={(e) => updateFields({ min_topic_title_length: Number(e.target.value) || 5 })}
+            onChange={(e) =>
+              updateFields({
+                min_topic_title_length: Number(e.target.value) || 5
+              })
+            }
             className='h-8 text-xs'
           />
         </div>
@@ -142,7 +163,11 @@ export function ForumModuleSettingsFields({
             max={300}
             value={values.max_topic_title_length}
             disabled={disabled}
-            onChange={(e) => updateFields({ max_topic_title_length: Number(e.target.value) || 150 })}
+            onChange={(e) =>
+              updateFields({
+                max_topic_title_length: Number(e.target.value) || 150
+              })
+            }
             className='h-8 text-xs'
           />
         </div>
@@ -153,13 +178,16 @@ export function ForumModuleSettingsFields({
           <div className='space-y-0.5 pr-4'>
             <label className='text-xs font-medium'>Use Shared Reactions</label>
             <p className='text-muted-foreground text-[11px]'>
-              Switch from internal voting to rich emoji reactions via the Reactions module.
+              Switch from internal voting to rich emoji reactions via the
+              Reactions module.
             </p>
           </div>
           <Switch
             checked={values.use_reactions}
             disabled={disabled}
-            onCheckedChange={(checked) => updateFields({ use_reactions: checked })}
+            onCheckedChange={(checked) =>
+              updateFields({ use_reactions: checked })
+            }
           />
         </div>
 
@@ -167,13 +195,16 @@ export function ForumModuleSettingsFields({
           <div className='space-y-0.5 pr-4'>
             <label className='text-xs font-medium'>Allow Downvotes</label>
             <p className='text-muted-foreground text-[11px]'>
-              Permit negative voting on topics and replies. Turn off for like-only mode.
+              Permit negative voting on topics and replies. Turn off for
+              like-only mode.
             </p>
           </div>
           <Switch
             checked={values.allow_downvotes}
             disabled={disabled}
-            onCheckedChange={(checked) => updateFields({ allow_downvotes: checked })}
+            onCheckedChange={(checked) =>
+              updateFields({ allow_downvotes: checked })
+            }
           />
         </div>
 
@@ -181,13 +212,16 @@ export function ForumModuleSettingsFields({
           <div className='space-y-0.5 pr-4'>
             <label className='text-xs font-medium'>Pre-moderation</label>
             <p className='text-muted-foreground text-[11px]'>
-              Hold newly submitted topics and replies for moderator review before publishing.
+              Hold newly submitted topics and replies for moderator review
+              before publishing.
             </p>
           </div>
           <Switch
             checked={values.pre_moderation_enabled}
             disabled={disabled}
-            onCheckedChange={(checked) => updateFields({ pre_moderation_enabled: checked })}
+            onCheckedChange={(checked) =>
+              updateFields({ pre_moderation_enabled: checked })
+            }
           />
         </div>
 
@@ -195,27 +229,35 @@ export function ForumModuleSettingsFields({
           <div className='space-y-0.5 pr-4'>
             <label className='text-xs font-medium'>Anonymous Reading</label>
             <p className='text-muted-foreground text-[11px]'>
-              Allow unauthenticated guest visitors to view public forum categories.
+              Allow unauthenticated guest visitors to view public forum
+              categories.
             </p>
           </div>
           <Switch
             checked={values.allow_anonymous_reading}
             disabled={disabled}
-            onCheckedChange={(checked) => updateFields({ allow_anonymous_reading: checked })}
+            onCheckedChange={(checked) =>
+              updateFields({ allow_anonymous_reading: checked })
+            }
           />
         </div>
 
         <div className='bg-muted/20 flex items-center justify-between rounded-lg border p-3'>
           <div className='space-y-0.5 pr-4'>
-            <label className='text-xs font-medium'>Subscription Levels Submodule</label>
+            <label className='text-xs font-medium'>
+              Subscription Levels Submodule
+            </label>
             <p className='text-muted-foreground text-[11px]'>
-              Enable Watching, Tracking, Normal, and Muted notification levels for categories/topics.
+              Enable Watching, Tracking, Normal, and Muted notification levels
+              for categories/topics.
             </p>
           </div>
           <Switch
             checked={values.submodule_subscriptions_enabled}
             disabled={disabled}
-            onCheckedChange={(checked) => updateFields({ submodule_subscriptions_enabled: checked })}
+            onCheckedChange={(checked) =>
+              updateFields({ submodule_subscriptions_enabled: checked })
+            }
           />
         </div>
       </div>

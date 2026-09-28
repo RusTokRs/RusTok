@@ -34,6 +34,21 @@ impl ManifestManager {
         Self::manifest_path().display().to_string()
     }
 
+    pub fn read_module_package_manifest(
+        path: impl AsRef<Path>,
+    ) -> Result<ModulePackageManifest, ManifestError> {
+        let path = path.as_ref();
+        let raw = std::fs::read_to_string(path).map_err(|error| ManifestError::Read {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        })?;
+
+        toml::from_str(&raw).map_err(|error| ManifestError::ModulePackageParse {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        })
+    }
+
     pub fn load() -> Result<ModulesManifest, ManifestError> {
         Self::load_from_path(Self::manifest_path())
     }

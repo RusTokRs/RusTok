@@ -1,4 +1,4 @@
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,10 +40,11 @@ const baseConfig = {
     '@rustok/iggy-connector-admin',
     '@rustok/richtext'
   ],
-  // Turbopack configuration: set workspace root and resolveAlias so local crate packages
-  // (e.g. @rustok/events-admin at crates/modules/...) can resolve @rustok/next-fluent
   turbopack: {
-    root: path.resolve(__dirname, '../..')
+    root: path.resolve(__dirname, '../..').replace(/\\/g, '/'),
+    resolveAlias: {
+      '@rustok/next-fluent': './node_modules/@rustok/next-fluent'
+    }
   },
   webpack(config) {
     // Allow @rustok/blog-admin (and other local crate UI packages) to resolve

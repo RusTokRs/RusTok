@@ -84,12 +84,11 @@ impl CommandProvider for InstallerCommandProvider {
         }
         let options = &request.args["options"];
         let seed_environment = option(options, "environment")
-            .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?
             .as_deref()
             .map(InstallEnvironment::parse_cli_value)
             .transpose()
             .map_err(input)?
-            .ok_or_else(|| input("seed apply requires an explicit --environment"))?;
+            .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?;
         if seed_environment.is_production() {
             return Err(input(
                 "seed apply is not allowed for production installations; use install apply",

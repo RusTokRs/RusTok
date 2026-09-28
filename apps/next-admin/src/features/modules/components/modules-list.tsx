@@ -1113,14 +1113,14 @@ export function ModulesList({
                   />
                 )
               : settingsDialog.slug === 'blog'
-              ? ({ settingsText, onSettingsTextChange, disabled }) => (
-                  <BlogModuleSettingsFields
-                    settingsText={settingsText}
-                    onSettingsTextChange={onSettingsTextChange}
-                    disabled={disabled}
-                  />
-                )
-              : undefined
+                ? ({ settingsText, onSettingsTextChange, disabled }) => (
+                    <BlogModuleSettingsFields
+                      settingsText={settingsText}
+                      onSettingsTextChange={onSettingsTextChange}
+                      disabled={disabled}
+                    />
+                  )
+                : undefined
           }
         />
       )}

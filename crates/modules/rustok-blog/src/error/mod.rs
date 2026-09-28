@@ -259,21 +259,20 @@ impl BlogError {
 
 impl From<rustok_taxonomy::TaxonomyError> for BlogError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
+        use rustok_taxonomy::TaxonomyError;
         match value {
-            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
-            rustok_taxonomy::TaxonomyError::Internal(message) => {
-                Self::Invariant(format!("Taxonomy dependency failed: {message}"))
-            }
-            rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
-            rustok_taxonomy::TaxonomyError::Validation(message) => Self::Validation(message),
-            rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
-            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Conflict(message),
-            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
+            TaxonomyError::Database(err) => Self::Database(err),
+            TaxonomyError::Internal(message) => Self::Invariant(format!("Taxonomy dependency failed: {message}")),
+            TaxonomyError::Forbidden(message) => Self::Forbidden(message),
+            TaxonomyError::Validation(message) => Self::Validation(message),
+            TaxonomyError::DuplicateCanonicalKey(message)
+            | TaxonomyError::DuplicateSlug(message)
+            | TaxonomyError::DuplicateAlias(message)
+            | TaxonomyError::Conflict(message) => Self::Conflict(message),
+            TaxonomyError::TermNotFound(term_id) => {
                 Self::TaxonomyTermNotFound(term_id)
             }
-            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
+            TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
                 Self::Conflict(format!(
                     "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
                 ))
