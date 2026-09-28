@@ -56,8 +56,8 @@ mod tests {
 
     #[test]
     fn refresh_token_unique() {
-        let t1 = generate_refresh_token();
-        let t2 = generate_refresh_token();
+        let t1 = generate_refresh_token().expect("refresh token");
+        let t2 = generate_refresh_token().expect("refresh token");
         assert_ne!(t1, t2);
     }
 
