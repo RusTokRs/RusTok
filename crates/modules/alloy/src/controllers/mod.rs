@@ -8,7 +8,7 @@ use axum::{
 };
 use chrono::Utc;
 use rustok_api::{
-    Action, AuthContextExtension, HostRuntimeContext, Permission, Resource, TenantContext,
+    Action, AuthContextExtension, HostRuntimeContext, Permission, Resource, SharedModuleEffectivePolicyReader, TenantContext,
     has_any_effective_permission,
 };
 use rustok_web::{HttpError, HttpResult};
@@ -44,6 +44,7 @@ pub struct AlloyHttpRuntime {
     runtime: SharedAlloyRuntime,
     release_governance: AlloyReleaseGovernanceHandle,
     published_rhai_source: AlloyPublishedRhaiSourceProviderHandle,
+    effective_policy_reader: SharedModuleEffectivePolicyReader,
 }
 
 impl AlloyHttpRuntime {
@@ -71,10 +72,18 @@ impl AlloyHttpRuntime {
                     "Alloy HTTP routes require AlloyPublishedRhaiSourceProviderHandle in HostRuntimeContext"
                 )
             })?;
+        let effective_policy_reader = runtime
+            .shared_get::<SharedModuleEffectivePolicyReader>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Alloy HTTP routes require SharedModuleEffectivePolicyReader in HostRuntimeContext"
+                )
+            })?;
         Ok(Self {
             runtime: shared_runtime,
             release_governance,
             published_rhai_source,
+            effective_policy_reader,
         })
     }
 }
@@ -874,6 +883,40 @@ pub async fn pause_script(
     Ok(Json(saved.into()))
 }
 
+async fn require_alloy_module(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let policy = match runtime.effective_policy_reader.0.resolve(tenant.id).await {
+        Ok(policy) => policy,
+        Err(_) => {
+            return HttpError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "MODULE_POLICY_UNAVAILABLE",
+                "Alloy availability policy is unavailable",
+            )
+            .into_response();
+        }
+    };
+
+    if !policy
+        .decisions
+        .iter()
+        .find(|decision| decision.module_slug == "alloy")
+        .is_some_and(|decision| decision.enabled)
+    {
+        return HttpError::forbidden(
+            "MODULE_NOT_ENABLED",
+            "Module 'alloy' is not available for this tenant",
+        )
+        .into_response();
+    }
+
+    next.run(request).await
+}
+
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     let state = AlloyHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
@@ -910,6 +953,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         )
         .route("/api/alloy/scripts/{id}/activate", post(activate_script))
         .route("/api/alloy/scripts/{id}/pause", post(pause_script))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_alloy_module,
+        ))
         .with_state(state))
 }
 

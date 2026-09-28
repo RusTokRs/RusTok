@@ -171,6 +171,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.06 finding in progress — Commerce storefront tenant-level lifecycle bypass.** `/store/*` was protected only by channel-module bindings; when no `ChannelContext` existed, `is_module_enabled_for_request_channel` deliberately returned `true`, so a tenant with Commerce disabled could still reach the compiled storefront API. The `/store` router now uses the same canonical effective `commerce` policy guard as `/admin`; channel-level checks remain in the storefront handlers.
 
+- [ ] **FS-22.09 finding in progress — Alloy HTTP runtime lifecycle bypass.** Alloy HTTP routes were compiled whenever the Alloy feature was present and handlers checked script/module permissions, but no tenant-scoped effective `alloy` policy was enforced before the HTTP surface. Optional artifact installation/security/runtime state could therefore be reflected in the effective policy while the route still executed. Alloy HTTP is now guarded at its router boundary; scheduler lifecycle remains in FS-24.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
