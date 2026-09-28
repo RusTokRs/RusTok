@@ -114,6 +114,9 @@ pub(crate) enum TenantResolutionError {
     InvalidHeaderValue {
         header_name: String,
     },
+    ConflictingHeaderValues {
+        header_name: String,
+    },
     MissingHost,
     InvalidHost {
         value: String,
@@ -147,6 +150,7 @@ impl TenantResolutionError {
             Self::NoBaseDomainMatch { .. } => StatusCode::NOT_FOUND,
             Self::MissingHeader { .. }
             | Self::InvalidHeaderValue { .. }
+            | Self::ConflictingHeaderValues { .. }
             | Self::MissingHost
             | Self::InvalidHost { .. }
             | Self::InvalidIdentifier { .. }
@@ -170,6 +174,12 @@ impl fmt::Display for TenantResolutionError {
                 write!(
                     formatter,
                     "tenant header `{header_name}` is not valid UTF-8"
+                )
+            }
+            Self::ConflictingHeaderValues { header_name } => {
+                write!(
+                    formatter,
+                    "multiple tenant values supplied for header `{header_name}`"
                 )
             }
             Self::MissingHost => formatter.write_str("request host is missing or untrusted"),
@@ -281,9 +291,16 @@ fn header_value<'a>(
     req: &'a Request<Body>,
     header_name: &str,
 ) -> Result<Option<&'a str>, TenantResolutionError> {
-    let Some(value) = req.headers().get(header_name) else {
+    let mut values = req.headers().get_all(header_name).iter();
+    let Some(value) = values.next() else {
         return Ok(None);
     };
+    if values.next().is_some() {
+        return Err(TenantResolutionError::ConflictingHeaderValues {
+            header_name: header_name.to_string(),
+        });
+    }
+
     let value = value
         .to_str()
         .map_err(|_| TenantResolutionError::InvalidHeaderValue {
@@ -313,7 +330,7 @@ fn resolve_subdomain(
     let host = effective_host(req, settings)?;
     let identifier = subdomain_identifier(&host, &settings.tenant.base_domains)?;
     Ok(TenantResolution {
-        identifier: classify_identifier(&identifier)?,
+        identifier: ResolvedTenantIdentifier::Slug(validate_slug(&identifier)?),
         source: TenantResolutionSource::Subdomain,
         asserted_slug: None,
     })
@@ -333,9 +350,12 @@ fn effective_host(
             reason: error.to_string(),
         })?;
     let host_without_port = authority.host();
-    TenantIdentifierValidator::validate_host(host_without_port).map_err(|error| {
+    let canonical_host = host_without_port
+        .strip_suffix('.')
+        .unwrap_or(host_without_port);
+    TenantIdentifierValidator::validate_host(canonical_host).map_err(|error| {
         TenantResolutionError::InvalidHost {
-            value: host_without_port.to_string(),
+            value: canonical_host.to_string(),
             reason: error.to_string(),
         }
     })
@@ -383,7 +403,7 @@ pub(crate) fn resolve_explicit_slug(
 fn validate_slug(value: &str) -> Result<String, TenantResolutionError> {
     TenantIdentifierValidator::validate_slug(value).map_err(|error| {
         TenantResolutionError::InvalidIdentifier {
-            value: value.to_string(),
+            value: bounded_identifier_for_error(value),
             reason: error.to_string(),
         }
     })
@@ -395,6 +415,16 @@ fn classify_identifier(value: &str) -> Result<ResolvedTenantIdentifier, TenantRe
     }
 
     validate_slug(value).map(ResolvedTenantIdentifier::Slug)
+}
+
+fn bounded_identifier_for_error(value: &str) -> String {
+    const MAX_CHARS: usize = 64;
+
+    let mut bounded: String = value.chars().take(MAX_CHARS).collect();
+    if value.chars().nth(MAX_CHARS).is_some() {
+        bounded.push('…');
+    }
+    bounded
 }
 
 #[cfg(test)]
@@ -476,6 +506,117 @@ mod tests {
         assert_eq!(
             resolution.identifier,
             ResolvedTenantIdentifier::Slug("demo".to_string())
+        );
+    }
+
+    #[test]
+    fn duplicate_primary_tenant_header_values_are_rejected() {
+        let mut request = request("/api/users");
+        request
+            .headers_mut()
+            .append("X-Tenant-ID", "first".parse().expect("header"));
+        request
+            .headers_mut()
+            .append("X-Tenant-ID", "second".parse().expect("header"));
+
+        let error = resolve_request(&request, &RustokSettings::default())
+            .expect_err("duplicate tenant header values must fail closed");
+        assert!(matches!(
+            error,
+            TenantResolutionError::ConflictingHeaderValues { ref header_name }
+                if header_name == "X-Tenant-ID"
+        ));
+    }
+
+    #[test]
+    fn duplicate_compatibility_tenant_header_values_are_rejected() {
+        let mut request = request("/api/users");
+        request
+            .headers_mut()
+            .append("X-Tenant-Slug", "first".parse().expect("header"));
+        request
+            .headers_mut()
+            .append("X-Tenant-Slug", "second".parse().expect("header"));
+
+        let error = resolve_request(&request, &RustokSettings::default())
+            .expect_err("duplicate compatibility header values must fail closed");
+        assert!(matches!(
+            error,
+            TenantResolutionError::ConflictingHeaderValues { ref header_name }
+                if header_name == "X-Tenant-Slug"
+        ));
+    }
+
+    #[test]
+    fn overlong_identifier_error_is_bounded_for_logs() {
+        let value = "a".repeat(4_096);
+        let error = validate_slug(&value).expect_err("identifier must be rejected");
+        match error {
+            TenantResolutionError::InvalidIdentifier { value, .. } => {
+                assert_eq!(value.chars().count(), 65);
+                assert!(value.ends_with('…'));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn subdomain_uuid_shaped_label_remains_a_slug() {
+        let domains = vec!["example.test".to_string()];
+        let identifier = subdomain_identifier(
+            "550e8400-e29b-41d4-a716-446655440000.example.test",
+            &domains,
+        )
+        .expect("uuid-shaped tenant slug should be accepted");
+        assert_eq!(identifier, "550e8400-e29b-41d4-a716-446655440000");
+
+        let settings = RustokSettings {
+            tenant: TenantSettings {
+                profile: TenantRuntimeProfile::MultiTenant,
+                enabled: true,
+                resolution: TenantResolutionMode::Subdomain,
+                header_name: "X-Tenant-ID".to_string(),
+                default_id: Uuid::from_u128(1),
+                fallback_mode: TenantFallbackMode::Disabled,
+                base_domains: domains,
+            },
+            ..RustokSettings::default()
+        };
+        let request = Request::builder()
+            .uri("/api/users")
+            .header("Host", "550E8400-E29B-41D4-A716-446655440000.Example.Test")
+            .body(Body::empty())
+            .expect("request");
+        let resolution = resolve_request(&request, &settings).expect("subdomain resolution");
+        assert_eq!(
+            resolution.identifier,
+            ResolvedTenantIdentifier::Slug("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
+    }
+
+    #[test]
+    fn trailing_dot_is_removed_from_effective_host_before_tenant_resolution() {
+        let settings = RustokSettings {
+            tenant: TenantSettings {
+                profile: TenantRuntimeProfile::MultiTenant,
+                enabled: true,
+                resolution: TenantResolutionMode::Subdomain,
+                header_name: "X-Tenant-ID".to_string(),
+                default_id: Uuid::from_u128(1),
+                fallback_mode: TenantFallbackMode::Disabled,
+                base_domains: vec!["example.test".to_string()],
+            },
+            ..RustokSettings::default()
+        };
+        let request = Request::builder()
+            .uri("/api/users")
+            .header("Host", "tenant.example.test.")
+            .body(Body::empty())
+            .expect("request");
+        let resolution = resolve_request(&request, &settings).expect("trailing dot must canonicalize");
+        assert_eq!(
+            resolution.identifier,
+            ResolvedTenantIdentifier::Slug("tenant".to_string())
         );
     }
 
