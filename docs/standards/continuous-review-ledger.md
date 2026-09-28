@@ -208,7 +208,7 @@ Hard limits for every iteration:
 - **Status:** `FS-22.02.30` complete. Next primary module: `FS-22.02.31 — apps/server/src/controllers/swagger.rs`.
 - [x] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit; completed with four metadata-contract remediation findings plus documentation/compatibility reconciliation and a fresh independent post-merge second pass.
 
-- [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
+
 - [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
 - [ ] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit.
 - [ ] **FS-22.03 — identity/auth propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
