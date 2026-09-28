@@ -93,7 +93,7 @@ async fn create_schema(
     Json(input): Json<CreateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::create_schema(
+    let row = flex::create_schema(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -127,7 +127,7 @@ async fn update_schema(
     Json(input): Json<UpdateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::update_schema(
+    let row = flex::update_schema(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -160,7 +160,7 @@ async fn delete_schema(
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<DeleteFlexResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let event = flex::delete_schema(&service, tenant.id, Some(user.user.id), schema_id)
+    flex::delete_schema(&service, tenant.id, Some(user.user.id), schema_id)
         .await
         .map_err(map_flex_rest_error)?;
 
@@ -245,7 +245,7 @@ async fn create_entry(
     Json(input): Json<CreateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::create_entry(
+    let row = flex::create_entry(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -282,7 +282,7 @@ async fn update_entry(
     Json(input): Json<UpdateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let (row, event) = flex::update_entry(
+    let row = flex::update_entry(
         &service,
         tenant.id,
         Some(user.user.id),
@@ -319,8 +319,7 @@ async fn delete_entry(
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<DeleteFlexResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
-    let event =
-        flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
+    flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
             .await
             .map_err(map_flex_rest_error)?;
 
