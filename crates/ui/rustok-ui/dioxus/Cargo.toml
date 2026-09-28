@@ -1,0 +1,12 @@
+[package]
+name = "rustok-ui-dioxus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "Dioxus 0.6 component adapter for RusToK UI"
+
+[dependencies]
+dioxus = { version = "0.6" }
+rustok-ui = { path = ".." }
+serde = { workspace = true, features = ["derive"] }

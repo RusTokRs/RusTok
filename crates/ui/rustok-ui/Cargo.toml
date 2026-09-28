@@ -1,0 +1,11 @@
+[package]
+name = "rustok-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "Framework-agnostic UI component design tokens, variants, props contracts, theme resolution, and headless component state machines"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

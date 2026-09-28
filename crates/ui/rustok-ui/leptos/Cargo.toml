@@ -1,0 +1,21 @@
+[package]
+name = "rustok-ui-leptos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "SSR-first Leptos 0.8 design system adapter for RusToK UI"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["ssr"]
+ssr = ["leptos/ssr"]
+hydrate = ["leptos/hydrate"]
+csr = ["leptos/csr"]
+
+[dependencies]
+leptos = { workspace = true }
+rustok-ui = { path = ".." }
+serde = { workspace = true, features = ["derive"] }
