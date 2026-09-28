@@ -420,7 +420,7 @@ pub fn compose_application_router(
         runtime
             .deployment_surfaces
             .embed_admin
-            .then(|| build_admin_router().with_state(auth_runtime.clone())),
+            .then(build_admin_router),
         runtime
             .deployment_surfaces
             .embed_storefront
