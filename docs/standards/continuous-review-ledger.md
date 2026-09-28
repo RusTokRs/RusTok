@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b79e0cab819493c2a8d975ba2ce33723f82320d0`  
+**Current main SHA:** `c021a0a318495fa1c0b561930da72ed6b5a362ac`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,16 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.15 Iterations 1-2 — `crates/modules/rustok-auth/src/bootstrap.rs`
+
+- **Base:** refreshed `main` at `625773e736fd8d93d2d377b8c380c1968af7fad0`; dedicated branch `codex/audit-fs-22.03.15-auth-bootstrap`.
+- **Iteration 1 — bootstrap identity boundary:** bootstrap email lookup was not canonicalized consistently with identity creation; DB/hash/row diagnostics were returned as internal strings; unsupported backend handling contained process-level `unreachable!`. Remediation canonicalized email to lowercase, introduced stable internal-error redaction, and made backend selection fail closed without panic.
+- **Iteration 2 — fresh re-audit remediation:** re-read the full owner and installer seed boundary, confirmed installer identity + RBAC remain in one caller-owned transaction, removed residual `unreachable!` paths in `find_user_on`, and routed all row-decoding errors through the redaction helper. Unit coverage was added for email normalization, stable error text, and unsupported backends including SeaORM Mock.
+- **Concurrency/non-findings:** `ON CONFLICT (tenant_id,email) DO NOTHING` plus post-conflict reread remains the canonical idempotency strategy; existing-user bootstrap does not reset credentials, matching installer seed idempotency semantics. No status filtering was added because the owner contract describes tenant-scoped identities rather than active-only identities.
+- **Final fresh second pass:** after PR #4267 merged at `c021a0a318495fa1c0b561930da72ed6b5a362ac`, the complete owner file and installer caller were re-read; no additional in-scope bootstrap defect remained.
+- **Verification:** repository source inspection, installer atomicity review, immediate re-audits, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.15` complete. Next primary module: `FS-22.03.16 — crates/modules/rustok-auth/src/admin_mutations.rs`.
 
 ### FS-22.03.14 Iterations 1-3 — `crates/modules/rustok-auth/src/backfill.rs`
 
