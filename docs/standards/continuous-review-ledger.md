@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Initial main SHA:** `7e1d342c1a7bb846cd7bc13443708cc493fe45ce`  
-**Branch:** `audit/fs-21-deep-full-stack-20260928`
+**Initial main SHA:** `8034b3ecba98c6e84f598a734adb6e264ae50c2e`  
+**Branch:** `audit/fs-22.01-route-graph-20260928`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -96,6 +96,16 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 ### FS-22 Subchecks — execute strictly in this order
 
 - [ ] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
+
+**FS-22.01 WIP audit record — route-graph pre-implementation pass**
+
+- Base refreshed from `main` at `8034b3ecba98c6e84f598a734adb6e264ae50c2e` before branch creation.
+- Dedicated phase branch: `audit/fs-22.01-route-graph-20260928`.
+- Repository governance and user execution conditions re-read before implementation; `AGENTS.md` is canonical and lowercase `agents.md` is absent. Maintainer owns tests; no CI/test execution by the agent.
+- Route inventory covers host/base controllers, optional owner-declared Axum providers, webhooks, embedded storefront/admin surfaces, and the generated optional-route composition path.
+- **Root-cause finding:** default `apps/server` composition enables both `embed-admin` and `mod-commerce`. Commerce contributes explicit `/admin/*` routes, while `mount_application_shell()` used `Router::nest("/admin", admin_router)`. With Axum 0.8.9 this is an outer nested route conflicting with existing concrete `/admin/*` registrations and can panic during route composition. The fix must preserve Commerce `/admin/*` precedence while still serving the embedded Admin SPA for otherwise-unmatched `/admin...` paths.
+- No other exact route-prefix collision was confirmed in the inspected optional HTTP providers; remaining FS-22.01 work is the remediation, direct/adjacent re-audit, fresh second pass, and static branch-diff review.
+
 - [ ] **FS-22.02 Global middleware order:** trace the actual Axum layer nesting and request lifecycle; verify security headers, metrics auth, registry guards, rate limiting, auth context, channel, locale, tenant, and guest-access ordering against trust assumptions.
 - [ ] **FS-22.03 Identity/auth propagation:** trace token parsing, principal construction, optional/required auth, session/refresh behavior, impersonation/agent paths, and transport boundary identity reconstruction.
 - [ ] **FS-22.04 Tenant/channel/locale propagation:** follow context from HTTP headers/claims through middleware, GraphQL, REST, server functions, cache keys, DB access, and downstream module calls; specifically test conceptual cross-tenant/channel/locale leakage cases by code inspection.
