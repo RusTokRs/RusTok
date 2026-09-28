@@ -838,8 +838,9 @@ async fn download_publish_artifact(
             std::time::Duration::from_secs(300),
         )
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to create private download URL: {error}"))
+        .map_err(|_| {
+            tracing::error!("Failed to create private registry artifact download URL");
+            Error::InternalServerError
         })?
     {
         return Ok(axum::response::Redirect::temporary(&download_url).into_response());
@@ -851,21 +852,24 @@ async fn download_publish_artifact(
             artifact.storage_key.as_str(),
         ))
         .await
-        .map_err(|error| Error::Message(format!("Failed to read registry artifact: {error}")))?
+        .map_err(|_| {
+            tracing::error!("Failed to read registry artifact");
+            Error::InternalServerError
+        })?
         .bytes()
         .await
-        .map_err(|error| {
-            Error::Message(format!("Failed to read registry artifact body: {error}"))
+        .map_err(|_| {
+            tracing::error!("Failed to read registry artifact body");
+            Error::InternalServerError
         })?;
     Response::builder()
         .status(StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, artifact.content_type)
         .header(CACHE_CONTROL, "private, no-store")
         .body(Body::from(bytes))
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to build artifact download response: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to build registry artifact download response");
+            Error::InternalServerError
         })
 }
 
@@ -2235,13 +2239,15 @@ async fn first_party_catalog_modules(
 ) -> Result<Vec<CatalogManifestModule>, Error> {
     let manifest = PlatformCompositionService::active_manifest(ctx.db())
         .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to load platform composition for catalog: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to load platform composition for registry catalog");
+            Error::InternalServerError
         })?;
     let modules = ManifestManager::catalog_modules(&manifest)
-        .map_err(|error| Error::Message(format!("Failed to build marketplace catalog: {error}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to build marketplace catalog");
+            Error::InternalServerError
+        })?;
 
     let first_party_modules = modules
         .into_iter()
@@ -2255,10 +2261,9 @@ async fn first_party_catalog_modules(
             Some(locale),
         )
         .await
-        .map_err(|error| {
-            Error::Message(format!(
-                "Failed to project registry releases into catalog: {error}"
-            ))
+        .map_err(|_| {
+            tracing::error!("Failed to project registry releases into catalog");
+            Error::InternalServerError
         })
 }
 
@@ -2947,22 +2952,25 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 
     match typed {
         Some(RegistryGovernanceError::Malformed(message)) => Error::BadRequest(message.clone()),
-        Some(RegistryGovernanceError::Unauthorized(message)) => {
-            tracing::warn!(error = %error, "Registry governance unauthorized");
-            Error::Unauthorized(message.clone())
+        Some(RegistryGovernanceError::Unauthorized(_)) => {
+            tracing::warn!("Registry governance authentication rejected");
+            Error::Unauthorized("Registry operation requires valid authentication".to_string())
         }
-        Some(RegistryGovernanceError::Forbidden(message)) => {
-            tracing::warn!(error = %error, "Registry governance forbidden");
-            http_error(HttpError::forbidden("forbidden", message.as_str()))
+        Some(RegistryGovernanceError::Forbidden(_)) => {
+            tracing::warn!("Registry governance authorization denied");
+            http_error(HttpError::forbidden(
+                "forbidden",
+                "You do not have permission to perform this registry operation",
+            ))
         }
         Some(RegistryGovernanceError::NotFound(_)) => Error::NotFound,
-        Some(RegistryGovernanceError::Conflict(message)) => http_error(HttpError::new(
+        Some(RegistryGovernanceError::Conflict(_)) => http_error(HttpError::new(
             StatusCode::CONFLICT,
             "conflict",
-            message.as_str(),
+            "Registry operation conflicts with the current state",
         )),
         Some(RegistryGovernanceError::Internal(_)) | None => {
-            tracing::error!(error = %error, "Registry governance error");
+            tracing::error!("Registry governance operation failed");
             Error::InternalServerError
         }
     }
@@ -2970,13 +2978,16 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 
 /// Maps the stable owner error contract at the HTTP edge. The registry adapter
 /// must not reclassify owner failures into server-local error types.
-fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
+fn map_module_governance_error(error: &ModuleGovernanceError, _source: &anyhow::Error) -> Error {
     match error.category() {
         ModuleGovernanceErrorCategory::InvalidInput => {
             http_error(HttpError::bad_request(error.code(), error.to_string()))
         }
         ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(error.code(), error.to_string()))
+            http_error(HttpError::forbidden(
+                error.code(),
+                "You do not have permission to perform this registry operation",
+            ))
         }
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(error.code(), "Not found"))
@@ -2987,7 +2998,7 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
             error.to_string(),
         )),
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(error = %source, "Registry governance owner error");
+            tracing::error!("Registry governance owner operation failed");
             Error::InternalServerError
         }
     }
@@ -3008,7 +3019,10 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
             http_error(HttpError::bad_request(code, detail))
         }
         ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(code, detail))
+            http_error(HttpError::forbidden(
+                code,
+                "You do not have permission to perform this registry runner operation",
+            ))
         }
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(code, "Not found"))
@@ -3017,7 +3031,7 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
             http_error(HttpError::new(StatusCode::CONFLICT, code, detail))
         }
         ModuleGovernanceErrorCategory::Internal => {
-            tracing::error!(%detail, "Remote validation transition failed");
+            tracing::error!("Remote validation transition failed");
             Error::InternalServerError
         }
     }
