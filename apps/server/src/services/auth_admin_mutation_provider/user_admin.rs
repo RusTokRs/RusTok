@@ -57,6 +57,19 @@ fn status_change_requested(
     requested_status.is_some_and(|status| status != current_status)
 }
 
+fn ensure_custom_field_snapshot_is_current(
+    initial_metadata: &serde_json::Value,
+    locked_metadata: &serde_json::Value,
+    custom_fields_requested: bool,
+) -> Result<(), AuthAdminMutationError> {
+    if custom_fields_requested && initial_metadata != locked_metadata {
+        return Err(AuthAdminMutationError::Conflict(
+            "user custom fields changed concurrently; retry the update".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => {
@@ -405,6 +418,11 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let current_role = self
             .user_role(&tx, context.tenant_id, locked_user.id)
             .await?;
+        ensure_custom_field_snapshot_is_current(
+            &initial_user.metadata,
+            &locked_user.metadata,
+            command.custom_fields.is_some(),
+        )?;
         let user_id = locked_user.id;
         let target_status = locked_user.status.clone();
         let status_changed = status_change_requested(&target_status, requested_status.as_ref());
@@ -688,6 +706,20 @@ mod tests {
         assert!(matches!(
             map_role_mutation_policy_error(RbacRoleMutationPolicyError::LastActiveSuperAdmin),
             AuthAdminMutationError::Conflict(_)
+        ));
+    }
+
+    #[test]
+    fn custom_field_updates_reject_stale_metadata_snapshots() {
+        let initial = serde_json::json!({"tier": "gold"});
+        let changed = serde_json::json!({"tier": "silver"});
+
+        assert!(ensure_custom_field_snapshot_is_current(&initial, &initial, true).is_ok());
+        assert!(ensure_custom_field_snapshot_is_current(&initial, &changed, false).is_ok());
+        assert!(matches!(
+            ensure_custom_field_snapshot_is_current(&initial, &changed, true),
+            Err(AuthAdminMutationError::Conflict(message))
+                if message == "user custom fields changed concurrently; retry the update"
         ));
     }
 
