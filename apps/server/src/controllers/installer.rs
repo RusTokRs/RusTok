@@ -421,7 +421,7 @@ fn job_status_from_session(
         _ => InstallJobState::Running,
     };
     let terminal = matches!(
-        &status,
+        status.clone(),
         InstallJobState::Succeeded | InstallJobState::Failed
     );
 
