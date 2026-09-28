@@ -322,6 +322,9 @@ impl TenantCacheKeyBuilder {
         )
     }
 
+    // Generation is part of the logical key because a DB fill can overlap a generation
+    // rotation. The caller also verifies the same snapshot after the fill; together these
+    // rules make a stale fill unreachable from the current generation.
     fn build(
         &self,
         resource: &str,
@@ -680,6 +683,8 @@ pub(crate) async fn load_tenant_context(
 
     let identifier_value = identifier.value();
 
+    // Keep the complete negative-check/load/fill operation tied to one generation snapshot.
+    // Generation-aware backend I/O alone cannot cover the interval occupied by the DB loader.
     for _attempt in 0..TENANT_CACHE_GENERATION_STABILITY_ATTEMPTS {
         let generation = tenant_cache_generation_snapshot()?;
         let cache_key = infra
