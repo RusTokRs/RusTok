@@ -25,8 +25,8 @@ pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let subpath = route_context.subpath();
     let query_id = route_context
-        .query_param("id")
-        .or_else(|| route_context.query_param("product_id"))
+        .query_value("id")
+        .or_else(|| route_context.query_value("product_id"))
         .map(ToString::to_string);
 
     let edit_id = resolve_product_edit_id(subpath).or(query_id);
@@ -36,7 +36,7 @@ pub fn ProductAdmin() -> impl IntoView {
     } else if route_context.subpath_matches("new") {
         view! { <ProductEditorPage is_new=true /> }.into_any()
     } else if let Some(pid) = edit_id {
-        view! { <ProductEditorPage is_new=false product_id=Some(pid) /> }.into_any()
+        view! { <ProductEditorPage is_new=false product_id=pid /> }.into_any()
     } else {
         view! { <ProductGridPage /> }.into_any()
     };

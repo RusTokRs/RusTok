@@ -2,6 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
@@ -257,7 +258,6 @@ pub fn ProductEditorPage(
                     bootstrap.me.id,
                     pid,
                     draft,
-                    loc,
                 )
                 .await;
 
@@ -273,7 +273,6 @@ pub fn ProductEditorPage(
         let edit_id = product_id.clone();
         let base_token = token;
         let base_tenant = tenant;
-        let base_locale = locale.clone();
         move |image_id: String| {
             let Some(pid) = edit_id.clone() else {
                 return;
@@ -281,7 +280,6 @@ pub fn ProductEditorPage(
             set_is_busy.set(true);
             let tok = base_token.get_untracked();
             let ten = base_tenant.get_untracked();
-            let loc = base_locale.clone();
 
             spawn_local(async move {
                 let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -296,7 +294,6 @@ pub fn ProductEditorPage(
                     bootstrap.me.id,
                     pid,
                     image_id,
-                    loc,
                 )
                 .await;
 
@@ -310,6 +307,7 @@ pub fn ProductEditorPage(
     let is_editing = !is_new && product_id.is_some();
     let current_edit_id = product_id.clone();
     let base_route_for_save = base_route.clone();
+    let navigate = use_navigate();
 
     let save_product = move |target_status: Option<&'static str>| {
         let t_val = title.get_untracked().trim().to_string();
@@ -337,22 +335,23 @@ pub fn ProductEditorPage(
         let base_route = base_route_for_save.clone();
         let edit_id_opt = current_edit_id.clone();
         let kind = active_kind.get_untracked();
+        let nav = navigate.clone();
 
         let draft = ProductDraft {
-            locale: loc.clone(),
+            locale: loc.unwrap_or_else(|| "en".to_string()),
             title: t_val,
             handle: h_val,
-            description: Some(description.get_untracked()).filter(|s| !s.is_empty()),
-            seller_id: Some(seller_id.get_untracked()).filter(|s| !s.is_empty()),
-            vendor: Some(vendor.get_untracked()).filter(|s| !s.is_empty()),
-            product_type: Some(kind.as_str().to_string()),
+            description: description.get_untracked(),
+            seller_id: seller_id.get_untracked(),
+            vendor: vendor.get_untracked(),
+            product_type: kind.as_str().to_string(),
             shipping_profile_slug: Some(shipping_profile_slug.get_untracked()).filter(|s| !s.is_empty()),
             primary_category_id: Some(primary_category_id.get_untracked()).filter(|s| !s.is_empty()),
-            sku: Some(sku.get_untracked()).filter(|s| !s.is_empty()),
-            barcode: Some(barcode.get_untracked()).filter(|s| !s.is_empty()),
+            sku: sku.get_untracked(),
+            barcode: barcode.get_untracked(),
             currency_code: currency_code.get_untracked(),
             amount: amount.get_untracked(),
-            compare_at_amount: Some(compare_at_amount.get_untracked()).filter(|s| !s.is_empty()),
+            compare_at_amount: compare_at_amount.get_untracked(),
             inventory_quantity: inventory_quantity.get_untracked(),
             publish_now: current_status_val.to_uppercase() == "ACTIVE",
         };
@@ -396,10 +395,8 @@ pub fn ProductEditorPage(
                 set_is_busy.set(false);
                 match res {
                     Ok(created) => {
-                        if let Some(window) = web_sys::window() {
-                            let redirect_url = format!("{base_route}/edit/{}", created.id);
-                            let _ = window.location().set_href(&redirect_url);
-                        }
+                        let redirect_url = format!("{base_route}/edit/{}", created.id);
+                        nav(&redirect_url, Default::default());
                     }
                     Err(err) => set_error_msg.set(Some(err.to_string())),
                 }

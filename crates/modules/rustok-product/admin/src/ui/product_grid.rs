@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_grid::prelude::*;
 
@@ -77,9 +78,11 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_bulk_status = {
         let base_token = token;
         let base_tenant = tenant;
-        let base_locale = locale.clone();
+    let on_bulk_status = {
+        let base_token = token;
+        let base_tenant = tenant;
         move |target_status: &'static str| {
-            let selected_ids = selection.get().selected_ids().into_iter().collect::<Vec<_>>();
+            let selected_ids = selection.get().to_vec();
             if selected_ids.is_empty() {
                 return;
             }
@@ -88,7 +91,6 @@ pub fn ProductGridPage() -> impl IntoView {
 
             let tok = base_token.get_untracked();
             let ten = base_tenant.get_untracked();
-            let loc = base_locale.clone();
 
             leptos::task::spawn_local(async move {
                 let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -104,14 +106,13 @@ pub fn ProductGridPage() -> impl IntoView {
                         bootstrap.current_tenant.id.clone(),
                         bootstrap.me.id.clone(),
                         id,
-                        target_status.to_string(),
-                        loc.clone(),
+                        target_status,
                     )
                     .await;
                 }
 
                 set_is_busy.set(false);
-                selection.update(|s| s.deselect_all());
+                selection.update(|s| s.clear());
                 set_refresh_nonce.update(|n| *n += 1);
             });
         }
@@ -120,9 +121,8 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_bulk_delete = {
         let base_token = token;
         let base_tenant = tenant;
-        let base_locale = locale.clone();
         move || {
-            let selected_ids = selection.get().selected_ids().into_iter().collect::<Vec<_>>();
+            let selected_ids = selection.get().to_vec();
             if selected_ids.is_empty() {
                 return;
             }
@@ -131,7 +131,6 @@ pub fn ProductGridPage() -> impl IntoView {
 
             let tok = base_token.get_untracked();
             let ten = base_tenant.get_untracked();
-            let loc = base_locale.clone();
 
             leptos::task::spawn_local(async move {
                 let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -147,13 +146,12 @@ pub fn ProductGridPage() -> impl IntoView {
                         bootstrap.current_tenant.id.clone(),
                         bootstrap.me.id.clone(),
                         id,
-                        loc.clone(),
                     )
                     .await;
                 }
 
                 set_is_busy.set(false);
-                selection.update(|s| s.deselect_all());
+                selection.update(|s| s.clear());
                 set_refresh_nonce.update(|n| *n += 1);
             });
         }
@@ -163,14 +161,12 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_quick_status = {
         let base_token = token;
         let base_tenant = tenant;
-        let base_locale = locale.clone();
         move |id: String, next_status: String| {
             set_is_busy.set(true);
             set_error_msg.set(None);
 
             let tok = base_token.get_untracked();
             let ten = base_tenant.get_untracked();
-            let loc = base_locale.clone();
 
             leptos::task::spawn_local(async move {
                 let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -184,8 +180,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     bootstrap.current_tenant.id,
                     bootstrap.me.id,
                     id,
-                    next_status,
-                    loc,
+                    &next_status,
                 )
                 .await;
 
@@ -199,14 +194,12 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_quick_delete = {
         let base_token = token;
         let base_tenant = tenant;
-        let base_locale = locale.clone();
         move |id: String| {
             set_is_busy.set(true);
             set_error_msg.set(None);
 
             let tok = base_token.get_untracked();
             let ten = base_tenant.get_untracked();
-            let loc = base_locale.clone();
 
             leptos::task::spawn_local(async move {
                 let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
@@ -220,7 +213,6 @@ pub fn ProductGridPage() -> impl IntoView {
                     bootstrap.current_tenant.id,
                     bootstrap.me.id,
                     id,
-                    loc,
                 )
                 .await;
 
@@ -388,11 +380,10 @@ pub fn ProductGridPage() -> impl IntoView {
         }
     });
 
+    let navigate = use_navigate();
     let on_row_click = Callback::new(move |item: ProductListItem| {
         let href = format!("{base_route_for_click}/edit/{}", item.id);
-        if let Some(window) = web_sys::window() {
-            let _ = window.location().set_href(&href);
-        }
+        navigate(&href, Default::default());
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -531,12 +522,12 @@ pub fn ProductGridPage() -> impl IntoView {
             </Show>
 
             // Bulk Actions Bar (Visible when items selected)
-            <Show when=move || selection.get().has_selection()>
+            <Show when=move || !selection.get().is_empty()>
                 <div class="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
                     <div class="flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
                         <span class="text-xs font-semibold text-foreground">
-                            {move || format!("{} {}", selection.get().selected_count(), if is_ru { "выбрано" } else { "selected" })}
+                            {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
                         </span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -580,7 +571,7 @@ pub fn ProductGridPage() -> impl IntoView {
                         <button
                             type="button"
                             class="h-7 px-2 rounded-lg text-[11px] text-muted-foreground hover:text-foreground transition"
-                            on:click=move |_| selection.update(|s| s.deselect_all())
+                            on:click=move |_| selection.update(|s| s.clear())
                         >
                             {if is_ru { "Снять выбор" } else { "Clear" }}
                         </button>
@@ -598,7 +589,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 empty_message=if is_ru { "Товары не найдены" } else { "No products found" }.to_string()
                 selection=selection
                 pagination=pagination
-                on_filters_change=on_filters_change
+                on_filter_change=on_filters_change
                 on_row_click=on_row_click
             />
         </div>

@@ -13805,6 +13805,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-grid-leptos"
+version = "0.1.0"
+dependencies = [
+ "iu-leptos",
+ "leptos",
+ "leptos-use",
+ "rustok-grid",
+ "rustok-ui-core",
+ "serde",
+ "serde_json",
+ "web-sys",
+]
+
+[[package]]
 name = "rustok-groups"
 version = "0.1.0"
 dependencies = [
@@ -15209,6 +15223,7 @@ dependencies = [
  "leptos-auth",
  "leptos-ui-routing",
  "leptos_axum",
+ "leptos_router",
  "rust_decimal",
  "rustok-api",
  "rustok-graphql",

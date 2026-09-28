@@ -109,8 +109,8 @@ pub fn apply_http_edge_stack(
     let sensitive_headers_layer =
         SetSensitiveRequestHeadersLayer::new([header::AUTHORIZATION, header::COOKIE]);
     let timeout_layer = TimeoutLayer::with_status_code(
-        Duration::from_secs(timeout_seconds),
         axum::http::StatusCode::REQUEST_TIMEOUT,
+        Duration::from_secs(timeout_seconds),
     );
     let compression_layer = CompressionLayer::new();
 

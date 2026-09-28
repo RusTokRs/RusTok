@@ -390,7 +390,7 @@ pub fn compose_application_router(
         rustok_cart::guest_access_http::resolve,
     ));
 
-    Ok(router
+    let router = router
         .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx.clone(),
             middleware::mcp_scaffold_workspace::authorize_workspace,

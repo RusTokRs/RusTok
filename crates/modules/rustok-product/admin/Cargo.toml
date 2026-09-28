@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-hydrate = ["leptos/hydrate", "rustok-product-relations-admin/hydrate", "rustok-grid-leptos/hydrate"]
+hydrate = ["leptos/hydrate", "rustok-product-relations-admin/hydrate", "rustok-ui-grid/hydrate"]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
@@ -18,14 +18,14 @@ ssr = [
   "dep:rustok-outbox",
   "rustok-api/server",
   "rustok-product-relations-admin/ssr",
-  "rustok-grid-leptos/ssr",
+  "rustok-ui-grid/ssr",
 ]
 
 [dependencies]
 rustok-ui-core.workspace = true
-rustok-grid.workspace = true
-rustok-grid-leptos.workspace = true
+rustok-ui-grid.workspace = true
 leptos = { workspace = true, features = ["csr"] }
+leptos_router.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
