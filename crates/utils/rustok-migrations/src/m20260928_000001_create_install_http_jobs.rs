@@ -98,7 +98,7 @@ enum InstallHttpJobs {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ConnectionTrait, Database};
+    use sea_orm::Database;
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use super::Migration;

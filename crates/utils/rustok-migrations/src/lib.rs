@@ -449,6 +449,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260723_000001_create_event_delivery_settings::Migration),
             Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
             Box::new(m20260808_000099_create_module_operation_override_states::Migration),
+            Box::new(m20260928_000001_create_install_http_jobs::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
