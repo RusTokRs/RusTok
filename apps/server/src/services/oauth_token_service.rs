@@ -207,7 +207,7 @@ async fn resolve_client(
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
     let client_id = Uuid::parse_str(client_id)
         .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
-    let app = OAuthAppService::find_by_client_id(db, client_id)
+    let app = OAuthAppService::find_by_client_id_for_tenant(db, tenant_id, client_id)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
         .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -44,6 +44,7 @@ fn collect_fields(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<DashboardField>,
+    fragment_stack: &mut HashSet<String>,
 ) {
     for selection in &selection_set.items {
         match &selection.node {
@@ -57,12 +58,16 @@ fn collect_fields(
             Selection::FragmentSpread(fragment) => {
                 if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
                 {
-                    collect_fields(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
+                    if fragment_stack.insert(fragment.node.fragment_name.node.clone()) {
+                        collect_fields(
+                            operation_type,
+                            &definition.node.selection_set.node,
+                            document,
+                            fields,
+                            fragment_stack,
+                        );
+                        fragment_stack.remove(&fragment.node.fragment_name.node);
+                    }
                 }
             }
             Selection::InlineFragment(fragment) => collect_fields(
@@ -70,6 +75,7 @@ fn collect_fields(
                 &fragment.node.selection_set.node,
                 document,
                 fields,
+                fragment_stack,
             ),
         }
     }
@@ -83,11 +89,13 @@ fn classify_document(request: &mut Request) -> ServerResult<()> {
     let document = request.parsed_query()?;
     let mut fields = BTreeSet::new();
     for (_, operation) in document.operations.iter() {
+        let mut fragment_stack = HashSet::new();
         collect_fields(
             operation.node.ty,
             &operation.node.selection_set.node,
             document,
             &mut fields,
+            &mut fragment_stack,
         );
     }
     if !fields.is_empty() {
@@ -155,6 +163,25 @@ impl Extension for GraphqlDashboardSecurityPolicyExtension {
 mod tests {
     use super::{DashboardDocumentPolicy, DashboardField, classify_document};
     use async_graphql::Request;
+
+    #[test]
+    fn cyclic_fragments_are_classified_without_recursive_overflow() {
+        let mut request = Request::new(
+            r#"
+                query Cycle { ...A }
+                fragment A on Query { ...B }
+                fragment B on Query { ...A dashboardStats { totalUsers } }
+            "#,
+        );
+
+        classify_document(&mut request).expect("cyclic query should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<DashboardDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<DashboardDocumentPolicy>())
+            .expect("dashboard policy should be attached");
+        assert_eq!(policy.0, vec![DashboardField::DashboardStats]);
+    }
 
     #[test]
     fn finds_dashboard_fields_inside_fragments() {

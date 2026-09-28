@@ -1,6 +1,7 @@
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, Statement,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -50,18 +51,15 @@ impl ChannelService {
         &self,
         input: CreateChannelInput,
     ) -> ChannelResult<ChannelResponse> {
-        if let Some(_existing) = channel::Entity::find()
-            .filter(channel::Column::TenantId.eq(input.tenant_id))
-            .filter(channel::Column::Slug.eq(&input.slug))
-            .one(&self.db)
-            .await?
-        {
+        let txn = self.db.begin().await?;
+        let existing = self.lock_channels_for_tenant(&txn, input.tenant_id).await?;
+
+        if existing.iter().any(|channel| channel.slug == input.slug) {
             return Err(ChannelError::SlugAlreadyExists(input.slug));
         }
 
-        let is_default = !self
-            .default_channel_exists_for_tenant(input.tenant_id)
-            .await?;
+        let has_active_default = existing.iter().any(|channel| channel.is_active && channel.is_default);
+        let is_default = !existing.is_empty() && !has_active_default;
         let now = chrono::Utc::now().into();
         let model = ChannelActiveModel {
             id: Set(generate_id()),
@@ -75,8 +73,16 @@ impl ChannelService {
             created_at: Set(now),
             updated_at: Set(now),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
+
+        txn.commit().await?;
+
+        let model = if existing.is_empty() {
+            self.ensure_default_channel(input.tenant_id, model.id).await?
+        } else {
+            model
+        };
 
         Ok(to_channel_response(model))
     }
@@ -100,6 +106,23 @@ impl ChannelService {
             .await?
             .ok_or(ChannelError::NotFound(channel_id))?;
         self.build_channel_detail(model).await
+    }
+
+    pub async fn get_channel_detail_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        let model = channel::Entity::find()
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .filter(channel::Column::Id.eq(channel_id))
+            .one(&self.db)
+            .await?;
+
+        match model {
+            Some(model) => Ok(Some(self.build_channel_detail(model).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn get_channel_by_slug(
@@ -248,16 +271,28 @@ impl ChannelService {
 
     #[instrument(skip(self), fields(channel_id = %channel_id))]
     pub async fn set_default_channel(&self, channel_id: Uuid) -> ChannelResult<ChannelResponse> {
-        let channel = channel::Entity::find_by_id(channel_id)
-            .one(&self.db)
-            .await?
+        let txn = self.db.begin().await?;
+        let channels = self.lock_channels_for_channel_target_update(&txn, channel_id).await?;
+        let channel = channels
+            .iter()
+            .find(|channel| channel.id == channel_id)
             .ok_or(ChannelError::NotFound(channel_id))?;
         if !channel.is_active {
             return Err(ChannelError::InactiveChannel(channel_id));
         }
 
-        self.replace_default_channel(channel.tenant_id, channel_id)
-            .await?;
+        for existing in channels {
+            let should_be_default = existing.id == channel_id;
+            if existing.is_default == should_be_default {
+                continue;
+            }
+            let mut active: channel::ActiveModel = existing.into();
+            active.is_default = Set(should_be_default);
+            active.updated_at = Set(chrono::Utc::now().into());
+            active.update(&txn).await?;
+        }
+
+        txn.commit().await?;
         self.get_channel(channel_id).await
     }
 
@@ -357,9 +392,11 @@ impl ChannelService {
         let target_value = normalize_target_value(target_type, &input.value)
             .ok_or_else(|| ChannelError::InvalidTargetValue(input.value.clone()))?;
 
-        let channel = channel::Entity::find_by_id(channel_id)
-            .one(&self.db)
-            .await?
+        let txn = self.db.begin().await?;
+        let channels = self.lock_channels_for_channel_target_update(&txn, channel_id).await?;
+        let channel = channels
+            .iter()
+            .find(|channel| channel.id == channel_id)
             .ok_or(ChannelError::NotFound(channel_id))?;
 
         if target_type.supports_host_resolution()
@@ -376,13 +413,14 @@ impl ChannelService {
         if input.is_primary {
             let existing_targets = channel_target::Entity::find()
                 .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&self.db)
+                .all(&txn)
                 .await?;
             for existing in existing_targets {
                 if existing.is_primary {
                     let mut active: channel_target::ActiveModel = existing.into();
                     active.is_primary = Set(false);
-                    active.update(&self.db).await?;
+                    active.updated_at = Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
                 }
             }
         }
@@ -398,9 +436,10 @@ impl ChannelService {
             created_at: Set(now),
             updated_at: Set(now),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
+        txn.commit().await?;
         Ok(to_channel_target_response(model))
     }
 
@@ -417,13 +456,16 @@ impl ChannelService {
         let target_value = normalize_target_value(target_type, &input.value)
             .ok_or_else(|| ChannelError::InvalidTargetValue(input.value.clone()))?;
 
-        let channel = channel::Entity::find_by_id(channel_id)
-            .one(&self.db)
-            .await?
-            .ok_or(ChannelError::NotFound(channel_id))?;
+        let txn = self.db.begin().await?;
+        let channels = self.lock_channels_for_channel_target_update(&txn, channel_id).await?;
+        let channel = channels
+            .iter()
+            .find(|channel| channel.id == channel_id)
+            .ok_or(ChannelError::NotFound(channel_id))?
+            .clone();
 
         let existing_target = channel_target::Entity::find_by_id(target_id)
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ChannelError::NotFound(target_id))?;
         if existing_target.channel_id != channel_id {
@@ -448,13 +490,14 @@ impl ChannelService {
         if input.is_primary {
             let existing_targets = channel_target::Entity::find()
                 .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&self.db)
+                .all(&txn)
                 .await?;
             for existing in existing_targets {
                 if existing.id != target_id && existing.is_primary {
                     let mut active: channel_target::ActiveModel = existing.into();
                     active.is_primary = Set(false);
-                    active.update(&self.db).await?;
+                    active.updated_at = Set(chrono::Utc::now().into());
+                    active.update(&txn).await?;
                 }
             }
         }
@@ -467,7 +510,10 @@ impl ChannelService {
         active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
         active.updated_at = Set(now);
 
-        Ok(to_channel_target_response(active.update(&self.db).await?))
+        let model = active.update(&txn).await?;
+        txn.commit().await?;
+
+        Ok(to_channel_target_response(model))
     }
 
     #[instrument(skip(self), fields(channel_id = %channel_id, target_id = %target_id))]
@@ -1050,42 +1096,89 @@ impl ChannelService {
             .ok_or(ChannelError::NotFound(channel_id))
     }
 
-    async fn default_channel_exists_for_tenant(&self, tenant_id: Uuid) -> ChannelResult<bool> {
-        let existing = channel::Entity::find()
-            .filter(channel::Column::TenantId.eq(tenant_id))
-            .filter(channel::Column::IsActive.eq(true))
-            .filter(channel::Column::IsDefault.eq(true))
-            .one(&self.db)
-            .await?;
-        Ok(existing.is_some())
+    async fn lock_channels_for_tenant(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+    ) -> ChannelResult<Vec<channel::Model>> {
+        let query = channel::Entity::find().filter(channel::Column::TenantId.eq(tenant_id));
+        match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => Ok(query.lock_exclusive().all(txn).await?),
+            DatabaseBackend::Sqlite => {
+                txn.execute(
+                    Statement::from_sql_and_values(
+                        DatabaseBackend::Sqlite,
+                        "UPDATE channels SET updated_at = updated_at WHERE tenant_id = ?1",
+                        [tenant_id.into()],
+                    ),
+                )
+                .await?;
+                Ok(channel::Entity::find()
+                    .filter(channel::Column::TenantId.eq(tenant_id))
+                    .all(txn)
+                    .await?)
+            }
+            _ => Ok(query.all(txn).await?),
+        }
     }
 
-    async fn replace_default_channel(
+    async fn lock_channels_for_channel_target_update(
+        &self,
+        txn: &DatabaseTransaction,
+        channel_id: Uuid,
+    ) -> ChannelResult<Vec<channel::Model>> {
+        let channel = channel::Entity::find_by_id(channel_id)
+            .one(txn)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))?;
+        self.lock_channels_for_tenant(txn, channel.tenant_id).await
+    }
+
+    async fn ensure_default_channel(
         &self,
         tenant_id: Uuid,
-        channel_id: Uuid,
-    ) -> ChannelResult<()> {
-        let now = chrono::Utc::now().into();
+        preferred_channel_id: Uuid,
+    ) -> ChannelResult<channel::Model> {
         let txn = self.db.begin().await?;
-        let channels = channel::Entity::find()
-            .filter(channel::Column::TenantId.eq(tenant_id))
-            .all(&txn)
-            .await?;
+        let channels = self.lock_channels_for_tenant(&txn, tenant_id).await?;
+        let has_default = channels.iter().any(|channel| channel.is_active && channel.is_default);
 
-        for existing in channels {
-            let should_be_default = existing.id == channel_id;
-            if existing.is_default == should_be_default {
-                continue;
+        if !has_default {
+            let selected = channels
+                .iter()
+                .find(|channel| channel.id == preferred_channel_id && channel.is_active)
+                .or_else(|| {
+                    channels
+                        .iter()
+                        .filter(|channel| channel.is_active)
+                        .min_by_key(|channel| (channel.created_at, channel.id))
+                })
+                .ok_or(ChannelError::NotFound(preferred_channel_id))?;
+
+            for existing in &channels {
+                if !existing.is_default {
+                    continue;
+                }
+                let mut active: channel::ActiveModel = existing.clone().into();
+                active.is_default = Set(false);
+                active.updated_at = Set(chrono::Utc::now().into());
+                active.update(&txn).await?;
             }
 
-            let mut active: channel::ActiveModel = existing.into();
-            active.is_default = Set(should_be_default);
-            active.updated_at = Set(now);
-            active.update(&txn).await?;
+            let mut active: channel::ActiveModel = selected.clone().into();
+            active.is_default = Set(true);
+            active.updated_at = Set(chrono::Utc::now().into());
+            let model = active.update(&txn).await?;
+            txn.commit().await?;
+            return Ok(model);
         }
 
+        let selected = channels
+            .into_iter()
+            .find(|channel| channel.id == preferred_channel_id)
+            .ok_or(ChannelError::NotFound(preferred_channel_id))?;
         txn.commit().await?;
-        Ok(())
+        Ok(selected)
     }
 
     async fn replace_active_policy_set(

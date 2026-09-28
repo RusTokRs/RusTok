@@ -1,5 +1,8 @@
 use axum::routing::{get, post, put};
 use rustok_api::HostRuntimeContext;
+use rustok_modules::{ModuleEffectivePolicyReader, SharedModuleEffectivePolicyReader};
+use rustok_web::{HttpError, HttpResult};
+use uuid::Uuid;
 use sea_orm::DatabaseConnection;
 
 pub mod executions;
@@ -10,6 +13,7 @@ pub mod workflows;
 #[derive(Clone)]
 pub struct WorkflowHttpRuntime {
     db: DatabaseConnection,
+    effective_policy_reader: Option<SharedModuleEffectivePolicyReader>,
 }
 
 impl WorkflowHttpRuntime {
@@ -18,16 +22,49 @@ impl WorkflowHttpRuntime {
     }
 }
 
-impl WorkflowHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> Self {
-        Self {
-            db: runtime.db_clone(),
+    pub(crate) async fn ensure_module_enabled(&self, tenant_id: Uuid) -> HttpResult<()> {
+        let Some(reader) = &self.effective_policy_reader else {
+            return Err(HttpError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "MODULE_POLICY_UNAVAILABLE",
+                "Workflow availability policy is unavailable",
+            ));
+        };
+        let policy = reader.0.resolve(tenant_id).await.map_err(|_| {
+            HttpError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "MODULE_POLICY_UNAVAILABLE",
+                "Workflow availability policy is unavailable",
+            )
+        })?;
+        let enabled = policy
+            .decisions
+            .iter()
+            .find(|decision| decision.module_slug == "workflow")
+            .is_some_and(|decision| decision.enabled);
+        if enabled {
+            Ok(())
+        } else {
+            Err(HttpError::new(
+                axum::http::StatusCode::FORBIDDEN,
+                "MODULE_NOT_ENABLED",
+                "Module 'workflow' is not available for this tenant",
+            ))
         }
+    }
+
+impl WorkflowHttpRuntime {
+    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+        let effective_policy_reader = runtime.shared_get::<SharedModuleEffectivePolicyReader>();
+        Ok(Self {
+            db: runtime.db_clone(),
+            effective_policy_reader,
+        })
     }
 }
 
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
-    let state = WorkflowHttpRuntime::from_host(runtime);
+    let state = WorkflowHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route(
             "/api/workflows/",
@@ -62,7 +99,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 }
 
 pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
-    let state = WorkflowHttpRuntime::from_host(runtime);
+    let state = WorkflowHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route(
             "/webhooks/{tenant_slug}/{webhook_slug}",

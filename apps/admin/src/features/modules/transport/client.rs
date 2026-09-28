@@ -451,8 +451,6 @@ pub async fn validate_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     validate_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         dry_run,
     )
@@ -466,7 +464,7 @@ pub async fn fetch_registry_publish_request_status(
     tenant_slug: Option<String>,
 ) -> Result<RegistryPublishStatus, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
-    fetch_registry_publish_request_status_native(token, tenant_slug.unwrap_or_default(), request_id)
+    fetch_registry_publish_request_status_native(request_id)
         .await
         .map_err(|error| ApiError::Graphql(error.to_string()))
 }
@@ -481,8 +479,6 @@ pub async fn approve_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     approve_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         reason,
         reason_code,
@@ -502,8 +498,6 @@ pub async fn reject_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     reject_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         reason,
         reason_code,
@@ -523,8 +517,6 @@ pub async fn request_changes_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     request_changes_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         reason,
         reason_code,
@@ -544,8 +536,6 @@ pub async fn hold_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     hold_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         reason,
         reason_code,
@@ -565,8 +555,6 @@ pub async fn resume_registry_publish_request(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     resume_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         request_id,
         reason,
         reason_code,
@@ -587,8 +575,6 @@ pub async fn transfer_registry_owner(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     transfer_registry_owner_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         slug,
         new_owner_user_id,
         reason,
@@ -610,8 +596,6 @@ pub async fn yank_registry_release(
 ) -> Result<RegistryMutationResult, ApiError> {
     let token = token.ok_or(ApiError::Unauthorized)?;
     yank_registry_release_native(
-        token,
-        tenant_slug.unwrap_or_default(),
         slug,
         version,
         reason,

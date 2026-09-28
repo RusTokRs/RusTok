@@ -100,6 +100,7 @@ pub async fn add_step(
     Path(id): Path<Uuid>,
     Json(input): Json<CreateWorkflowStepInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());
@@ -117,6 +118,7 @@ pub async fn update_step(
     Path((id, step_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<UpdateWorkflowStepInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());
@@ -135,6 +137,7 @@ pub async fn delete_step(
     auth: AuthContext,
     Path((id, step_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(&auth)?;
 
     let service = WorkflowService::new(runtime.db_clone());
@@ -149,7 +152,7 @@ pub async fn delete_step(
 
 fn ensure_workflow_permission(auth: &AuthContext) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, &[Permission::WORKFLOWS_UPDATE]) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             "Permission denied: workflows:update required".to_string(),
         ));

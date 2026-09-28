@@ -11,7 +11,10 @@ mod reconciliation;
 pub(crate) mod return_completion_operations;
 pub mod store;
 
-use rustok_api::HostRuntimeContext;
+use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
+use rustok_api::{HostRuntimeContext, SharedModuleEffectivePolicyReader};
+use rustok_modules::ModuleEffectivePolicyReader;
+use rustok_web::HttpError;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
@@ -20,6 +23,7 @@ use sea_orm::DatabaseConnection;
 #[derive(Clone)]
 pub struct CommerceHttpRuntime {
     db: DatabaseConnection,
+    effective_policy_reader: Option<SharedModuleEffectivePolicyReader>,
     event_bus: TransactionalEventBus,
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
@@ -101,6 +105,7 @@ impl CommerceHttpRuntime {
 
         Self {
             db,
+            effective_policy_reader: None,
             event_bus,
             payment_provider_registry,
             fulfillment_provider_registry,
@@ -406,6 +411,7 @@ impl CommerceHttpRuntime {
             })?;
         Ok(Self {
             db: runtime.db_clone(),
+            effective_policy_reader: runtime.shared_get::<SharedModuleEffectivePolicyReader>(),
             event_bus,
             payment_provider_registry,
             fulfillment_provider_registry,
@@ -431,27 +437,100 @@ impl CommerceHttpRuntime {
     }
 }
 
+async fn require_commerce_module(
+    State(runtime): State<CommerceHttpRuntime>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let tenant_id = req
+        .extensions()
+        .get::<rustok_api::TenantContextExtension>()
+        .map(|extension| extension.0.id);
+
+    let Some(tenant_id) = tenant_id else {
+        return HttpError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "TENANT_CONTEXT_REQUIRED",
+            "Trusted tenant context is required for Commerce administration",
+        )
+        .into_response();
+    };
+
+    let Some(reader) = runtime.effective_policy_reader.as_ref() else {
+        return HttpError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "MODULE_POLICY_UNAVAILABLE",
+            "Commerce availability policy is unavailable",
+        )
+        .into_response();
+    };
+
+    let policy = match reader.0.resolve(tenant_id).await {
+        Ok(policy) => policy,
+        Err(_) => {
+            return HttpError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "MODULE_POLICY_UNAVAILABLE",
+                "Commerce availability policy is unavailable",
+            )
+            .into_response();
+        }
+    };
+
+    let enabled = policy
+        .decisions
+        .iter()
+        .find(|decision| decision.module_slug == "commerce")
+        .is_some_and(|decision| decision.enabled);
+
+    if !enabled {
+        return HttpError::forbidden(
+            "MODULE_NOT_ENABLED",
+            "Module 'commerce' is not available for this tenant",
+        )
+        .into_response();
+    }
+
+    next.run(req).await
+}
+
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     let state = CommerceHttpRuntime::from_host(runtime)?;
-    let router = axum::Router::new()
-        .nest("/store", store::axum_router())
-        .nest("/admin", admin::axum_router())
+
+    let mut admin_router = admin::axum_router()
         .nest(
-            "/admin/checkout-operations",
+            "/checkout-operations",
             checkout_operations::axum_router(),
         )
         .nest(
-            "/admin/return-completion-operations",
+            "/return-completion-operations",
             return_completion_operations::axum_router(),
         )
         .nest(
-            "/admin/fulfillment-provider-operations",
+            "/fulfillment-provider-operations",
             reconciliation::axum_router(),
         );
+
     #[cfg(feature = "marketplace-financial")]
-    let router = router.nest(
-        "/admin/marketplace-financial",
-        marketplace_financial::axum_router().merge(marketplace_reversal_financial::axum_router()),
-    );
-    Ok(router.with_state(state))
+    {
+        admin_router = admin_router.nest(
+            "/marketplace-financial",
+            marketplace_financial::axum_router().merge(marketplace_reversal_financial::axum_router()),
+        );
+    }
+
+    admin_router = admin_router.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        require_commerce_module,
+    ));
+
+    let store_router = store::axum_router().layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        require_commerce_module,
+    ));
+
+    Ok(axum::Router::new()
+        .nest("/store", store_router)
+        .nest("/admin", admin_router)
+        .with_state(state))
 }

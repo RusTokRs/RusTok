@@ -99,6 +99,7 @@ pub async fn list_executions(
     auth: AuthContext,
     Path(workflow_id): Path<Uuid>,
 ) -> HttpResult<Json<Vec<WorkflowExecutionResponse>>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_execution_permission(
         &auth,
         &[Permission::WORKFLOW_EXECUTIONS_LIST],
@@ -127,6 +128,7 @@ pub async fn get_execution(
     auth: AuthContext,
     Path(execution_id): Path<Uuid>,
 ) -> HttpResult<Json<WorkflowExecutionResponse>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_execution_permission(
         &auth,
         &[Permission::WORKFLOW_EXECUTIONS_READ],
@@ -155,7 +157,7 @@ fn ensure_execution_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "workflow_permission_denied",
             message.to_string(),
         ));

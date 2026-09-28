@@ -14,7 +14,9 @@ use rustok_installer::{
 use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -92,7 +94,14 @@ pub struct InstallStatusResponse {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
+async fn status(
+    headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
+) -> Result<Json<InstallStatusResponse>> {
+    require_setup_token(
+        &headers,
+        crate::common::settings::is_production_environment(),
+    )?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     match persistence.latest_session().await {
         Ok(Some(session)) => {
@@ -128,9 +137,10 @@ async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallS
             lock_expires_at: None,
             completed_at: None,
         })),
-        Err(error) => Err(internal_error(format!(
-            "failed to read installer status: {error}"
-        ))),
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to read installer status");
+            Err(internal_error("failed to read installer status"))
+        }
     }
 }
 
@@ -139,8 +149,14 @@ async fn plan(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    let host_production = crate::common::settings::is_production_environment();
+    require_setup_token(&headers, host_production || plan.environment.is_production())?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
+    if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
     }))
@@ -151,8 +167,14 @@ async fn preflight(
     State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
-    require_setup_token(&headers, plan.environment.is_production())?;
+    let host_production = crate::common::settings::is_production_environment();
+    require_setup_token(&headers, host_production || plan.environment.is_production())?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
+    if host_production && plan.environment != rustok_installer::InstallEnvironment::Production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
         passed: report.passed(),
@@ -166,17 +188,44 @@ async fn apply(
     State(ctx): State<ServerRuntimeContext>,
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
-    require_setup_token(&headers, request.plan.environment.is_production())?;
-    let plan = bind_host_install_plan(&ctx, request.plan).await?;
+    let host_production = crate::common::settings::is_production_environment();
+    let plan_is_production = request.plan.environment.is_production();
+    require_setup_token(&headers, host_production || plan_is_production)?;
+    let InstallApplyRequest {
+        plan: requested_plan,
+        lock_owner,
+        lock_ttl_secs,
+        pg_admin_url: requested_pg_admin_url,
+    } = request;
+    let requested_production = requested_plan.environment.is_production();
+    let plan = bind_host_install_plan(&ctx, requested_plan).await?;
+    if host_production && !requested_production {
+        return Err(bad_request_error(
+            "production installer hosts accept only production install plans",
+        ));
+    }
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
+    let pg_admin_url = if requested_production {
+        configured_value("RUSTOK_INSTALL_PG_ADMIN_URL")
+    } else {
+        requested_pg_admin_url
+    };
+    if requested_production
+        && plan.database.create_if_missing
+        && pg_admin_url.is_none()
+    {
+        return Err(bad_request_error(
+            "production database creation requires a host-selected RUSTOK_INSTALL_PG_ADMIN_URL",
+        ));
+    }
+
     let apply_options = InstallApplyOptions {
-        lock_owner: request
-            .lock_owner
+        lock_owner: lock_owner
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "http".to_string()),
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
-        pg_admin_url: request.pg_admin_url,
+        lock_ttl_secs: lock_ttl_secs.unwrap_or(900),
+        pg_admin_url,
         bootstrap_public_key_base64: configured_value(
             "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
         ),
@@ -220,8 +269,16 @@ async fn apply(
                 job.error = None;
             }
             Err(error) => {
+                tracing::error!(
+                    job_id = %job_id,
+                    error = %error,
+                    "Installer apply job failed"
+                );
                 job.status = InstallJobState::Failed;
-                job.error = Some(error.to_string());
+                job.error = Some(
+                    "installer execution failed; inspect server logs and durable install receipts"
+                        .to_string(),
+                );
             }
         }
         job.finished_at = Some(finished_at);
@@ -355,7 +412,7 @@ async fn job_status(
     headers: HeaderMap,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers, crate::common::settings::is_production_environment())?;
     INSTALL_JOBS
         .lock()
         .await
@@ -370,12 +427,19 @@ async fn receipts(
     State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers, crate::common::settings::is_production_environment())?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
         .list_receipts(session_id)
         .await
-        .map_err(|error| internal_error(format!("failed to read installer receipts: {error}")))?;
+        .map_err(|error| {
+            tracing::error!(
+                session_id = %session_id,
+                error = %error,
+                "Failed to read installer receipts"
+            );
+            internal_error("failed to read installer receipts")
+        })?;
 
     Ok(Json(InstallReceiptsResponse {
         session_id,
@@ -406,10 +470,28 @@ fn require_setup_token(headers: &HeaderMap, production: bool) -> Result<()> {
                 .and_then(|value| value.strip_prefix("Bearer "))
         });
 
-    if provided.is_some_and(|value| value == expected) {
+    if provided.is_some_and(|value| constant_time_setup_token_eq(value, expected.as_str())) {
         Ok(())
     } else {
         Err(forbidden_error("invalid installer setup token"))
+    }
+}
+
+fn constant_time_setup_token_eq(provided: &str, expected: &str) -> bool {
+    let provided_digest = Sha256::digest(provided.as_bytes());
+    let expected_digest = Sha256::digest(expected.as_bytes());
+    bool::from(provided_digest.as_slice().ct_eq(expected_digest.as_slice()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_setup_token_eq;
+
+    #[test]
+    fn setup_token_comparison_matches_only_exact_values() {
+        assert!(constant_time_setup_token_eq("secret-token", "secret-token"));
+        assert!(!constant_time_setup_token_eq("secret-token", "secret-token-2"));
+        assert!(!constant_time_setup_token_eq("secret-token", "secret-token\0"));
     }
 }
 

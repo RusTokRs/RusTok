@@ -13,11 +13,20 @@ fn path_is_or_descendant(path: &str, root: &str) -> bool {
 }
 
 pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
-    if path == "/api/graphql/ws" {
+    if path == "/api/graphql/ws" || path_is_or_descendant(path, "/webhooks") {
         return TenantRouteScope::SelfResolvingHandshake;
     }
 
-    if matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
+    if matches!(
+        path,
+        "/metrics"
+            | "/metrics/"
+            | "/api/openapi.json"
+            | "/api/openapi.yaml"
+            | "/api/fn/admin/active-build"
+            | "/api/fn/admin/build-history"
+            | "/ws/builds"
+    )
         || path == "/api/graphql/schema.graphql"
         || path_is_or_descendant(path, "/api/install")
         || path_is_or_descendant(path, "/catalog")
@@ -31,11 +40,7 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
 }
 
 fn registry_route_is_global(path: &str) -> bool {
-    const REGISTRY_ROOT: &str = "/v2/catalog";
-    const TENANT_SCOPED_PLATFORM_BUILD_SUFFIX: &str = "/platform-build-stage";
-
-    path_is_or_descendant(path, REGISTRY_ROOT)
-        && !path.ends_with(TENANT_SCOPED_PLATFORM_BUILD_SUFFIX)
+    path_is_or_descendant(path, "/v2/catalog/runner")
 }
 
 #[cfg(test)]
@@ -49,11 +54,31 @@ mod tests {
             TenantRouteScope::GlobalOperator
         );
         assert_eq!(
+            tenant_route_scope("/api/fn/admin/active-build"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/api/fn/admin/build-history"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
+            tenant_route_scope("/ws/builds"),
+            TenantRouteScope::GlobalOperator
+        );
+        assert_eq!(
             tenant_route_scope("/healthcare"),
             TenantRouteScope::TenantBound
         );
         assert_eq!(
             tenant_route_scope("/api/graphql/ws"),
+            TenantRouteScope::SelfResolvingHandshake
+        );
+        assert_eq!(
+            tenant_route_scope("/webhooks/demo/order-created"),
+            TenantRouteScope::SelfResolvingHandshake
+        );
+        assert_eq!(
+            tenant_route_scope("/webhooks/demo"),
             TenantRouteScope::SelfResolvingHandshake
         );
         assert_eq!(
@@ -66,7 +91,15 @@ mod tests {
         );
         assert_eq!(
             tenant_route_scope("/v2/catalog/publish"),
-            TenantRouteScope::GlobalOperator
+            TenantRouteScope::TenantBound
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/publish/request-1/approve"),
+            TenantRouteScope::TenantBound
+        );
+        assert_eq!(
+            tenant_route_scope("/v2/catalog/publish/request-1/platform-build-stage"),
+            TenantRouteScope::TenantBound
         );
         assert_eq!(
             tenant_route_scope("/v2/catalog/runner/claim"),

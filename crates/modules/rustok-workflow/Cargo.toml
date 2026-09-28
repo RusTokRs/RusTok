@@ -17,6 +17,7 @@ reqwest = { workspace = true }
 rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-tenant.workspace = true
+rustok-modules.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

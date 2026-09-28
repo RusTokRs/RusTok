@@ -101,6 +101,7 @@ pub async fn list(
     tenant: TenantContext,
     auth: AuthContext,
 ) -> HttpResult<Json<Vec<WorkflowSummary>>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_LIST],
@@ -121,6 +122,7 @@ pub async fn get(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<WorkflowResponse>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_READ],
@@ -141,6 +143,7 @@ pub async fn create(
     auth: AuthContext,
     Json(input): Json<CreateWorkflowInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_CREATE],
@@ -162,6 +165,7 @@ pub async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateWorkflowInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -182,6 +186,7 @@ pub async fn delete_workflow(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_DELETE],
@@ -202,6 +207,7 @@ pub async fn activate(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -230,6 +236,7 @@ pub async fn pause(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_UPDATE],
@@ -267,6 +274,7 @@ pub async fn trigger_manual(
     Path(id): Path<Uuid>,
     Json(input): Json<TriggerManualInput>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    runtime.ensure_module_enabled(tenant.id).await?;
     ensure_workflow_permission(
         &auth,
         &[Permission::WORKFLOWS_EXECUTE],

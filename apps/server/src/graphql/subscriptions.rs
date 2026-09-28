@@ -1,41 +1,66 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
-use sea_orm::DatabaseConnection;
-
-use crate::context::{AuthContext, TenantContext};
+use rustok_api::{HostAuthority, HostAuthorityContext};
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
-use crate::services::rbac_service::RbacService;
-use rustok_api::Permission;
 use rustok_api::graphql::GraphQLError;
 use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;
 
-async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let db = ctx.data::<DatabaseConnection>()?;
-    let tenant = ctx.data::<TenantContext>()?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_graphql::{EmptyMutation, EmptyQuery, Schema};
 
-    let can_read_modules = RbacService::has_any_permission(
-        db,
-        &tenant.id,
-        &auth.user_id,
-        &[
-            Permission::MODULES_READ,
-            Permission::MODULES_LIST,
-            Permission::MODULES_MANAGE,
-        ],
-    )
-    .await
-    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    #[tokio::test]
+    async fn build_subscription_rejects_tenant_only_context() {
+        let schema = Schema::build(EmptyQuery, EmptyMutation, BuildSubscription::default())
+            .finish();
+        let response = schema.execute(
+            async_graphql::Request::new("subscription { buildProgress }")
+                .data(rustok_api::AuthContext {
+                    user_id: uuid::Uuid::new_v4(),
+                    session_id: uuid::Uuid::new_v4(),
+                    tenant_id: uuid::Uuid::new_v4(),
+                    permissions: vec![rustok_api::Permission::MODULES_READ],
+                    client_id: None,
+                    scopes: Vec::new(),
+                    grant_type: "authorization_code".to_string(),
+                })
+                .data(rustok_api::TenantContext {
+                    id: uuid::Uuid::new_v4(),
+                    name: "tenant".to_string(),
+                    slug: "tenant".to_string(),
+                    domain: None,
+                    settings: serde_json::json!({}),
+                    default_locale: "en".to_string(),
+                    is_active: true,
+                }),
+        )
+        .await;
 
-    if !can_read_modules {
+        assert_eq!(response.errors.len(), 1);
+        assert!(
+            response.errors[0]
+                .message
+                .contains("Host-global authority required")
+        );
+    }
+}
+
+
+async fn ensure_host_build_read_authority(ctx: &Context<'_>) -> Result<()> {
+    let authority = ctx
+        .data::<HostAuthorityContext>()
+        .map_err(|_| <FieldError as GraphQLError>::permission_denied(
+            "Host-global authority required",
+        ))?;
+
+    if !authority.allows(HostAuthority::Read) {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: modules:read required",
+            "Host-global read authority required",
         ));
     }
 
@@ -49,7 +74,7 @@ impl BuildSubscription {
         ctx: &Context<'_>,
         build_id: Option<String>,
     ) -> Result<impl futures_util::Stream<Item = BuildProgressEvent>> {
-        ensure_modules_read_permission(ctx).await?;
+        ensure_host_build_read_authority(ctx).await?;
 
         let hub = ctx.data::<std::sync::Arc<BuildEventHub>>()?;
         let receiver = hub.subscribe();

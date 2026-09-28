@@ -1232,17 +1232,43 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
         || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
 }
 
-pub(crate) fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"].iter().any(|key| {
-        std::env::var(key)
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "prod" | "production"
-                )
-            })
-            .unwrap_or(false)
+pub(crate) fn effective_environment_name() -> Result<String, String> {
+    for key in ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"] {
+        match std::env::var(key) {
+            Ok(value) => {
+                let environment = value.trim().to_string();
+                if environment.is_empty() {
+                    continue;
+                }
+                if !environment
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+                {
+                    return Err(
+                        "RUSTOK_ENV/RUST_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
+                            .to_string(),
+                    );
+                }
+                return Ok(environment);
+            }
+            Err(std::env::VarError::NotPresent) => continue,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(format!("{key} must contain valid UTF-8"));
+            }
+        }
+    }
+
+    Ok(if cfg!(debug_assertions) {
+        "development".to_string()
+    } else {
+        "production".to_string()
     })
+}
+
+pub(crate) fn is_production_environment() -> bool {
+    effective_environment_name()
+        .map(|environment| matches!(environment.trim().to_ascii_lowercase().as_str(), "prod" | "production"))
+        .unwrap_or(true)
 }
 
 pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
@@ -1277,6 +1303,7 @@ mod tests {
     const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
+    const RUSTOK_ENV_ENV: &str = "RUSTOK_ENV";
     const RUST_ENV_ENV: &str = "RUST_ENV";
     const APP_ENV_ENV: &str = "APP_ENV";
     const EMAIL_DISABLED_PROD_OVERRIDE_ENV: &str = "RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION";
@@ -1318,6 +1345,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn effective_environment_name_uses_rustok_env_then_rust_env_then_app_env() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "production");
+        let _rust = EnvVarGuard::set(RUST_ENV_ENV, "development");
+        let _app = EnvVarGuard::set(APP_ENV_ENV, "test");
+
+        assert_eq!(
+            super::effective_environment_name().expect("effective environment"),
+            "production"
+        );
+    }
+
+    #[test]
+    fn effective_environment_name_uses_rust_env_when_rustok_env_is_empty() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust = EnvVarGuard::set(RUST_ENV_ENV, "staging");
+        let _app = EnvVarGuard::set(APP_ENV_ENV, "test");
+
+        assert_eq!(
+            super::effective_environment_name().expect("effective environment"),
+            "staging"
+        );
+    }
+
+    #[test]
+    fn effective_environment_name_rejects_invalid_values() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "../production");
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        assert!(super::effective_environment_name().is_err());
+    }
+
+    #[test]
+    fn malformed_environment_fails_closed_for_security_checks() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "prod?");
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        assert!(super::is_production_environment());
+        assert!(super::effective_environment_name().is_err());
+    }
+
+    #[test]
+    fn effective_environment_defaults_to_build_mode_when_environment_is_unset() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        let environment =
+            super::effective_environment_name().expect("default effective environment");
+        assert_eq!(environment, if cfg!(debug_assertions) { "development" } else { "production" });
+        assert_eq!(super::is_production_environment(), !cfg!(debug_assertions));
     }
 
     #[test]

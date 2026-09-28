@@ -394,7 +394,7 @@ async fn validate_authorize_request(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_by_client_id_for_tenant(ctx.db(), tenant_id, client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -702,7 +702,7 @@ async fn revoke_handler_inner(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_by_client_id_for_tenant(ctx.db(), tenant_ctx.id, client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -775,27 +775,58 @@ async fn userinfo_handler(
 async fn userinfo_handler_inner(
     current_user: CurrentUser,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
-    // We already know the token is valid, active, and belongs to a user because
-    // the CurrentUser extractor succeeds only if these conditions are met.
+    if current_user.principal_kind != rustok_api::AuthPrincipalKind::DelegatedUser {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "UserInfo requires an OAuth user access token".to_string(),
+        });
+    }
 
-    // In a full OIDC implementation, we'd check if the token had the `openid` scope specifically.
-    // We assume CurrentUser claims contain the scopes if needed, but since we rely on RBAC
-    // returning the user profile here is generally safe for authenticated apps.
+    if !current_user.scopes.iter().any(|scope| scope == "openid") {
+        return Err(TokenErrorResponse {
+            error: "insufficient_scope".to_string(),
+            error_description: "UserInfo requires the openid scope".to_string(),
+        });
+    }
 
     let user = current_user.user;
     let inferred_role = current_user.inferred_role;
+    let profile_claims = current_user.scopes.iter().any(|scope| scope == "profile");
+    let email_claims = current_user.scopes.iter().any(|scope| scope == "email");
+    let email_verified = user.is_email_verified();
 
-    // standard OIDC claims
-    let userinfo = serde_json::json!({
-        "sub": user.id.to_string(),
-        "name": user.name.unwrap_or_default(),
-        "email": user.email,
-        "email_verified": true, // We assume true for simplicity here, adjust if rustok tracks verification
-        "role": inferred_role.to_string(),
-        "tenant_id": user.tenant_id.to_string(),
-    });
+    let mut userinfo = serde_json::Map::from_iter([(
+        "sub".to_string(),
+        serde_json::Value::String(user.id.to_string()),
+    )]);
 
-    Ok(Json(userinfo))
+    if profile_claims {
+        userinfo.insert(
+            "name".to_string(),
+            serde_json::Value::String(user.name.unwrap_or_default()),
+        );
+        userinfo.insert(
+            "role".to_string(),
+            serde_json::Value::String(inferred_role.to_string()),
+        );
+        userinfo.insert(
+            "tenant_id".to_string(),
+            serde_json::Value::String(user.tenant_id.to_string()),
+        );
+    }
+
+    if email_claims {
+        userinfo.insert(
+            "email".to_string(),
+            serde_json::Value::String(user.email),
+        );
+        userinfo.insert(
+            "email_verified".to_string(),
+            serde_json::Value::Bool(email_verified),
+        );
+    }
+
+    Ok(Json(serde_json::Value::Object(userinfo)))
 }
 
 pub fn router() -> crate::routes::ServerRouter {

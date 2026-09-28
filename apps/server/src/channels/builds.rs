@@ -4,8 +4,8 @@
 //! `BuildEvent` payloads as newline-delimited JSON until the build hub
 //! is dropped or the client disconnects.
 //!
-//! **Authentication**: Bearer token in the `Authorization` header
-//! (standard JWT — same as REST endpoints).
+//! **Authentication**: host-global `x-rustok-host-token` with `HostAuthority::Read`
+//! or `HostAuthority::Manage`. The stream is platform-global and is not tenant-scoped.
 
 use axum::{
     extract::{
@@ -118,6 +118,7 @@ impl From<BuildEvent> for WsBuildMessage {
 pub async fn ws_builds(
     ws: WebSocketUpgrade,
     State(ctx): State<ServerRuntimeContext>,
+    _authority: rustok_api::HostAuthorityContext,
 ) -> impl IntoResponse {
     let hub = build_event_hub_from_context(&ctx);
     ws.on_upgrade(move |socket| handle_socket(socket, hub))
