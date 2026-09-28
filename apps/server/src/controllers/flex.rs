@@ -338,6 +338,10 @@ async fn delete_entry(
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(
+            "/api/v1/flex/schemas",
+            get(list_schemas).post(create_schema),
+        )
+        .route(
             "/api/v1/flex/schemas/",
             get(list_schemas).post(create_schema),
         )
