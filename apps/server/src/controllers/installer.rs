@@ -182,6 +182,8 @@ async fn apply(
 
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let effective_instance_id = submitted_instance_id;
+    let job_id = rustok_core::generate_id();
+    let submitted_at = Utc::now();
     let distribution_release_id = plan
         .topology
         .distribution
