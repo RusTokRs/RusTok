@@ -141,6 +141,7 @@ async fn plan(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
@@ -153,6 +154,7 @@ async fn preflight(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, plan).await?;
     let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
@@ -168,6 +170,7 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers)?;
+    ensure_setup_not_completed(&ctx).await?;
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
@@ -237,6 +240,22 @@ async fn apply(
             status_url: format!("/api/install/jobs/{job_id}"),
         }),
     ))
+}
+
+async fn ensure_setup_not_completed(ctx: &ServerRuntimeContext) -> Result<()> {
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
+    match persistence.latest_session().await {
+        Ok(Some(session)) if setup_is_closed(Some(session.status.as_str())) => Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "installer_completed",
+            "Installer setup is disabled after a completed installation",
+        ))),
+        Ok(_) => Ok(()),
+        Err(error) if installer_schema_missing(&error) => Ok(()),
+        Err(error) => Err(internal_error(format!(
+            "failed to verify installer setup state: {error}"
+        ))),
+    }
 }
 
 async fn bind_host_install_plan(
@@ -363,7 +382,7 @@ async fn job_status(
     headers: HeaderMap,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<InstallJobStatusResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers)?;
     INSTALL_JOBS
         .lock()
         .await
@@ -378,7 +397,7 @@ async fn receipts(
     State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
-    require_setup_token(&headers, false)?;
+    require_setup_token(&headers)?;
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
         .list_receipts(session_id)
@@ -422,6 +441,10 @@ fn require_setup_token(headers: &HeaderMap) -> Result<()> {
     }
 }
 
+fn setup_is_closed(status: Option<&str>) -> bool {
+    status.is_some_and(|value| value == "completed")
+}
+
 fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
     let message = error.to_string();
     message.contains("install_sessions")
@@ -452,6 +475,23 @@ fn internal_error(description: impl Into<String>) -> Error {
         "installer_error",
         description,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::setup_is_closed;
+
+    #[test]
+    fn setup_is_open_before_completion() {
+        assert!(!setup_is_closed(None));
+        assert!(!setup_is_closed(Some("draft")));
+        assert!(!setup_is_closed(Some("recovery_required")));
+    }
+
+    #[test]
+    fn setup_is_closed_after_completion() {
+        assert!(setup_is_closed(Some("completed")));
+    }
 }
 
 pub fn router() -> crate::routes::ServerRouter {
