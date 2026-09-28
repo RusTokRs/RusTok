@@ -130,7 +130,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
 - [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [x] **FS-22.02.10 — `crates/modules/rustok-cart/src/guest_access_http.rs` + native storefront capability adapters** — one-owner boundary audit.
-- [ ] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
+- [x] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
 - [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
 - [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
@@ -175,6 +175,26 @@ Hard limits for every iteration:
 - **Planned remediation units:** rate-limit composition order; bounded report disposition; bounded sanitized origin; exact richtext frame/asset path classification; synchronization of the central CSP inventory with executable truth. Each unit will be independently re-read before the next one.
 - **Fresh finding SEC-22.02.11-06:** after narrowing the richtext boundary against the actual owner, the middleware's current cache override is also shown to overwrite the owner-specified `public, max-age=0, must-revalidate` policy for the unversioned `leptos-adapter.mjs` with `public, max-age=31536000, immutable`. The adapter is copied under a stable filename, so this can retain stale code beyond the owner contract.
 - **Fresh finding SEC-22.02.11-07:** `security_headers` is currently installed inside `apply_http_edge_stack`, so outer edge middleware can synthesize responses without passing through the security-header middleware. In particular, `adaptive_timeout` can return `408 Request Timeout` directly, and edge short-circuits such as CORS handling likewise need to remain covered by the host-wide response security baseline.
+
+### FS-22.02.11 Result — `security_headers.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Audit base:** `main` SHA `a10cfc7982fac9bdaa3013a825c8598869c53442`.
+- **Dedicated branch:** `codex/audit-fs-22.02.11-security-headers`.
+- **Merged:** PR #4179, merge commit `8bd69562d03e711d25502e4d20b771d129a4afae`.
+- **SEC-22.02.11-01 remediation:** CSP report collection is now intercepted below the public `/api/` rate limiter but before tenant/auth middleware, preserving an unauthenticated tenant-independent collector without an abuse-budget bypass.
+- **SEC-22.02.11-02 remediation:** CSP report `disposition` is normalized to the bounded static values `report`, `enforce`, or `other` before logging.
+- **SEC-22.02.11-03 remediation:** logged CSP URL origins are capped at 512 bytes and collapse to `oversized`; paths, queries, and fragments remain excluded.
+- **SEC-22.02.11-04 remediation:** the main-server richtext exception recognizes only the exact frame document, `leptos-adapter.mjs`, and generated 16-hex-digit hashed JS/CSS assets instead of the entire `/richtext/frame/*` prefix.
+- **SEC-22.02.11-05 remediation:** the CSP report-only inventory was synchronized with the current executable strict `style-src-attr 'none'` policy and the removed legacy rollout flag.
+- **SEC-22.02.11-06 remediation:** the host no longer overwrites owner-defined richtext asset cache semantics; only the exact frame document receives host-level `no-store`.
+- **SEC-22.02.11-07 remediation:** security headers now wrap the complete HTTP edge stack, so edge short-circuit responses such as CORS/timeouts retain the host security baseline.
+- **Additional hardening:** production WebSocket CSP policy now reuses the canonical `crate::common::is_production_environment()` helper rather than duplicating environment parsing.
+- **Adjacent finding deferred:** `apps/admin/src/app/security.rs` still has a broad richtext path classifier; this is the standalone-admin security boundary and remains assigned to its own primary module iteration.
+- **Fresh second pass:** independently re-read the complete changed security-header/reporting path, normal and registry/worker host composition, edge-stack order, richtext owner routes/cache contract, CSP verification source, and synchronized security inventory. No remaining repository-owned in-scope defect was found.
+- **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
+- **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
 
 ### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
 
