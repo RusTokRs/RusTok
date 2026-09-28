@@ -83,6 +83,7 @@ pub fn FormInput(
 
     view! {
         <input
+            id=name_attr.clone()
             type=t
             name=name_attr
             placeholder=placeholder
@@ -164,6 +165,7 @@ pub fn FormTextarea(
 
     view! {
         <textarea
+            id=name_attr.clone()
             name=name_attr
             rows=r
             placeholder=placeholder
@@ -241,6 +243,7 @@ pub fn FormSelect(
 
     view! {
         <select
+            id=name_attr.clone()
             name=name_attr
             prop:value=move || value.get()
             on:change=on_change_handler

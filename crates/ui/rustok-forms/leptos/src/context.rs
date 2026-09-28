@@ -48,3 +48,32 @@ impl FieldContext {
         self.form.state.get().is_submitting
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_field_context_queries() {
+        let state = FormState::idle()
+            .with_field_error("username", "Already taken");
+
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+        let field_ctx = FieldContext {
+            name: "username".to_string(),
+            form: form_ctx,
+        };
+
+        assert!(field_ctx.is_invalid());
+        assert_eq!(field_ctx.error_message(), Some("Already taken".to_string()));
+        assert!(!field_ctx.is_submitting());
+
+        let clean_field_ctx = FieldContext {
+            name: "email".to_string(),
+            form: form_ctx,
+        };
+        assert!(!clean_field_ctx.is_invalid());
+        assert_eq!(clean_field_ctx.error_message(), None);
+    }
+}

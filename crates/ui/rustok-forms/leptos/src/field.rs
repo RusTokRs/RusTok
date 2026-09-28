@@ -96,6 +96,7 @@ pub fn FormLabel(
     children: Children,
 ) -> impl IntoView {
     let field = use_context::<FieldContext>();
+    let for_attr = field.as_ref().map(|f| f.name.clone());
 
     let label_class = move || {
         let base = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
@@ -115,8 +116,6 @@ pub fn FormLabel(
             format!("{base}{error_class} {class}")
         }
     };
-
-    let for_attr = field.as_ref().map(|f| f.name.clone());
 
     view! {
         <label for=for_attr data-slot="form-label" class=label_class>

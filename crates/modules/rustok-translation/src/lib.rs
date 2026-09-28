@@ -24,7 +24,7 @@ mod workflow;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use collaboration::{
@@ -105,7 +105,14 @@ pub use workflow::{
     SaveProposalInput, SubmitProposalInput, TranslationWorkflowService, UnassignItemInput,
 };
 
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TranslationModule;
+
+impl TranslationModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl RusToKModule for TranslationModule {
@@ -123,6 +130,10 @@ impl RusToKModule for TranslationModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Core
     }
 
     fn permissions(&self) -> Vec<Permission> {

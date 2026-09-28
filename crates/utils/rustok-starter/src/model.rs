@@ -98,6 +98,16 @@ pub struct BlogPostStarter {
     pub publish: bool,
     #[serde(default)]
     pub featured_image_url: Option<String>,
+    #[serde(default)]
+    pub translations: std::collections::HashMap<String, BlogPostTranslationStarter>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BlogPostTranslationStarter {
+    pub title: String,
+    #[serde(default)]
+    pub excerpt: Option<String>,
+    pub content_markdown: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

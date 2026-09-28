@@ -38,7 +38,9 @@
         "title": "Главная",
         "template": "default",
         "publish": true,
-        "channels": ["web"],
+        "channels": [
+          "web"
+        ],
         "body": {
           "format": "grapesjs",
           "document": {
@@ -64,40 +66,73 @@
                   "id": "root",
                   "type": "wrapper",
                   "tagName": "main",
-                  "classes": ["min-h-screen", "bg-background"],
+                  "classes": [
+                    "min-h-screen",
+                    "bg-background"
+                  ],
                   "components": [
                     {
                       "id": "hero-section",
                       "type": "section",
                       "tagName": "section",
-                      "classes": ["hero-section", "py-20", "px-6", "text-center"],
+                      "classes": [
+                        "hero-section",
+                        "py-20",
+                        "px-6",
+                        "text-center"
+                      ],
                       "components": [
                         {
                           "id": "hero-badge",
                           "type": "text",
                           "tagName": "span",
-                          "classes": ["inline-block", "px-4", "py-1", "mb-4", "rounded-full", "text-sm", "font-medium", "bg-primary/10", "text-primary"],
+                          "classes": [
+                            "inline-block",
+                            "px-4",
+                            "py-1",
+                            "mb-4",
+                            "rounded-full",
+                            "text-sm",
+                            "font-medium",
+                            "bg-primary/10",
+                            "text-primary"
+                          ],
                           "content": "🚀 Первый публичный релиз RusToK"
                         },
                         {
                           "id": "hero-title",
                           "type": "heading",
                           "tagName": "h1",
-                          "classes": ["text-5xl", "font-bold", "tracking-tight", "mb-6"],
+                          "classes": [
+                            "text-5xl",
+                            "font-bold",
+                            "tracking-tight",
+                            "mb-6"
+                          ],
                           "content": "RusToK — современная модульная платформа на Rust"
                         },
                         {
                           "id": "hero-subtitle",
                           "type": "paragraph",
                           "tagName": "p",
-                          "classes": ["text-xl", "text-muted-foreground", "max-w-2xl", "mx-auto", "mb-8"],
+                          "classes": [
+                            "text-xl",
+                            "text-muted-foreground",
+                            "max-w-2xl",
+                            "mx-auto",
+                            "mb-8"
+                          ],
                           "content": "Высокая производительность, модульная архитектура, встроенный блог, форум в стиле Discourse и визуальный конструктор страниц."
                         },
                         {
                           "id": "hero-cta-group",
                           "type": "box",
                           "tagName": "div",
-                          "classes": ["flex", "gap-4", "justify-center"],
+                          "classes": [
+                            "flex",
+                            "gap-4",
+                            "justify-center"
+                          ],
                           "components": [
                             {
                               "id": "hero-btn-blog",
@@ -106,7 +141,15 @@
                               "attributes": {
                                 "href": "/modules/blog"
                               },
-                              "classes": ["px-6", "py-3", "rounded-lg", "bg-primary", "text-primary-foreground", "font-semibold", "hover:opacity-90"],
+                              "classes": [
+                                "px-6",
+                                "py-3",
+                                "rounded-lg",
+                                "bg-primary",
+                                "text-primary-foreground",
+                                "font-semibold",
+                                "hover:opacity-90"
+                              ],
                               "content": "Читать блог"
                             },
                             {
@@ -116,7 +159,15 @@
                               "attributes": {
                                 "href": "/modules/forum"
                               },
-                              "classes": ["px-6", "py-3", "rounded-lg", "border", "border-border", "font-semibold", "hover:bg-muted"],
+                              "classes": [
+                                "px-6",
+                                "py-3",
+                                "rounded-lg",
+                                "border",
+                                "border-border",
+                                "font-semibold",
+                                "hover:bg-muted"
+                              ],
                               "content": "Перейти на форум"
                             }
                           ]
@@ -127,32 +178,53 @@
                       "id": "features-section",
                       "type": "section",
                       "tagName": "section",
-                      "classes": ["py-16", "px-6", "max-w-6xl", "mx-auto"],
+                      "classes": [
+                        "py-16",
+                        "px-6",
+                        "max-w-6xl",
+                        "mx-auto"
+                      ],
                       "components": [
                         {
                           "id": "features-grid",
                           "type": "box",
                           "tagName": "div",
-                          "classes": ["grid", "md:grid-cols-3", "gap-8"],
+                          "classes": [
+                            "grid",
+                            "md:grid-cols-3",
+                            "gap-8"
+                          ],
                           "components": [
                             {
                               "id": "feature-card-1",
                               "type": "box",
                               "tagName": "div",
-                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "classes": [
+                                "p-6",
+                                "rounded-2xl",
+                                "border",
+                                "border-border",
+                                "bg-card"
+                              ],
                               "components": [
                                 {
                                   "id": "card-1-title",
                                   "type": "heading",
                                   "tagName": "h3",
-                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "classes": [
+                                    "text-xl",
+                                    "font-semibold",
+                                    "mb-2"
+                                  ],
                                   "content": "⚡ Быстродействие Rust"
                                 },
                                 {
                                   "id": "card-1-desc",
                                   "type": "paragraph",
                                   "tagName": "p",
-                                  "classes": ["text-muted-foreground"],
+                                  "classes": [
+                                    "text-muted-foreground"
+                                  ],
                                   "content": "Минимальное потребление ресурсов, мгновенный отклик и надежная обработка запросов."
                                 }
                               ]
@@ -161,20 +233,32 @@
                               "id": "feature-card-2",
                               "type": "box",
                               "tagName": "div",
-                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "classes": [
+                                "p-6",
+                                "rounded-2xl",
+                                "border",
+                                "border-border",
+                                "bg-card"
+                              ],
                               "components": [
                                 {
                                   "id": "card-2-title",
                                   "type": "heading",
                                   "tagName": "h3",
-                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "classes": [
+                                    "text-xl",
+                                    "font-semibold",
+                                    "mb-2"
+                                  ],
                                   "content": "🎨 Визуальный конструктор"
                                 },
                                 {
                                   "id": "card-2-desc",
                                   "type": "paragraph",
                                   "tagName": "p",
-                                  "classes": ["text-muted-foreground"],
+                                  "classes": [
+                                    "text-muted-foreground"
+                                  ],
                                   "content": "Создавайте и редактируйте посадочные страницы в визуальном редакторе прямо из панели управления."
                                 }
                               ]
@@ -183,20 +267,32 @@
                               "id": "feature-card-3",
                               "type": "box",
                               "tagName": "div",
-                              "classes": ["p-6", "rounded-2xl", "border", "border-border", "bg-card"],
+                              "classes": [
+                                "p-6",
+                                "rounded-2xl",
+                                "border",
+                                "border-border",
+                                "bg-card"
+                              ],
                               "components": [
                                 {
                                   "id": "card-3-title",
                                   "type": "heading",
                                   "tagName": "h3",
-                                  "classes": ["text-xl", "font-semibold", "mb-2"],
+                                  "classes": [
+                                    "text-xl",
+                                    "font-semibold",
+                                    "mb-2"
+                                  ],
                                   "content": "💬 Сообщество и блог"
                                 },
                                 {
                                   "id": "card-3-desc",
                                   "type": "paragraph",
                                   "tagName": "p",
-                                  "classes": ["text-muted-foreground"],
+                                  "classes": [
+                                    "text-muted-foreground"
+                                  ],
                                   "content": "Форум с категориями, голосованием и Q&A, а также полнофункциональный блог со статьями."
                                 }
                               ]
@@ -222,36 +318,75 @@
           "title": "Добро пожаловать в RusToK: первый публичный релиз",
           "excerpt": "Мы рады представить RusToK — современную высокопроизводительную платформу для контента и сообществ.",
           "category_slug": "news",
-          "tags": ["release", "announcement"],
+          "tags": [
+            "release",
+            "announcement"
+          ],
           "content_markdown": "Мы рады объявить о первом публичном релизе **RusToK**!\n\nRusToK объединяет лучшие практики веб-платформ: масштабируемый модульный монолит, ядро на Rust, транзакционный аутбокс и готовые решения для контента и электронной коммерции.\n\n### Что доступно уже сейчас?\n- **Визуальный конструктор страниц:** создавайте динамические посадочные страницы без кода.\n- **Многоязычный блог:** пишите статьи с поддержкой форматирования и категорий.\n- **Форум нового поколения:** удобное общение и Q&A в стиле Discourse.\n\nПрисоединяйтесь к сообществу и делитесь обратной связью!",
-          "publish": true
+          "publish": true,
+          "translations": {
+            "en": {
+              "title": "Welcome to RusToK: First Public Release",
+              "excerpt": "We are proud to introduce RusToK — a modern, high-performance platform for content and communities.",
+              "content_markdown": "We are excited to announce the first public release of **RusToK**!\n\nRusToK combines modern web platform best practices: a scalable modular monolith, a pure Rust core, transactional outbox, and out-of-the-box solutions for content and commerce.\n\n### What is available today?\n- **Visual Page Builder:** create dynamic landing pages without writing code.\n- **Multilingual Blog:** author articles with rich formatting and category taxonomies.\n- **Modern Community Forum:** seamless discussions and Discourse-style Q&A.\n\nJoin our community and share your feedback!"
+            }
+          }
         },
         {
           "slug": "rustok-modular-architecture",
           "title": "Архитектура RusToK: почему Rust и модульный монолит",
           "excerpt": "Подробный разбор архитектурных решений: гексагональные границы, транзакционный аутбокс и отсутствие легаси.",
           "category_slug": "engineering",
-          "tags": ["rust", "architecture"],
+          "tags": [
+            "rust",
+            "architecture"
+          ],
           "content_markdown": "При проектировании RusToK перед нами стояла задача построить платформу, способную обслуживать миллионы пользователей без усложнения инфраструктуры микросервисами.\n\n### Основные принципы:\n1. **Модульный монолит:** модули изолированы друг от друга через типизированные порты и контракты.\n2. **Надежность данных:** транзакционная целостность и аутбокс событий гарантируют синхронизацию проекций и очередей.\n3. **Zero Legacy:** мы проектируем целевую архитектуру напрямую, устраняя промежуточные костыли.\n\nЧитайте документацию в репозитории проекта и изучайте исходный код!",
-          "publish": true
+          "publish": true,
+          "translations": {
+            "en": {
+              "title": "RusToK Architecture: Why Rust and Modular Monolith",
+              "excerpt": "An in-depth look at our architectural decisions: hexagonal boundaries, transactional outbox, and zero-legacy policy.",
+              "content_markdown": "When designing RusToK, our objective was to build a system capable of handling millions of users without the premature complexity of microservices.\n\n### Core Principles:\n1. **Modular Monolith:** modules are isolated behind strongly-typed ports and contracts.\n2. **Data Integrity:** transactional consistency and transactional outbox guarantee synchronized projections and background queues.\n3. **Zero Legacy:** we implement target architectures directly, eliminating compatibility shims.\n\nExplore our repository documentation and dive into the source code!"
+            }
+          }
         },
         {
           "slug": "quickstart-guide",
           "title": "Быстрый старт: как настроить сообщество за 10 минут",
           "excerpt": "Пошаговое руководство по первому запуску, настройке категорий и подключению витрины.",
           "category_slug": "guides",
-          "tags": ["guide"],
+          "tags": [
+            "guide"
+          ],
           "content_markdown": "Развернуть платформу RusToK можно за несколько простых шагов.\n\n### Шаг 1. Запуск окружения\nУбедитесь, что запущен PostgreSQL, и выполните команду запуска сервера.\n\n### Шаг 2. Вход в панель управления\nОткройте панель управления по адресу `http://localhost:3001` и авторизуйтесь под учётной записью администратора.\n\n### Шаг 3. Управление контентом\nПерейдите в раздел **Страницы** для редактирования лендинга, в **Блог** для публикации новых заметок или на **Форум** для настройки разделов сообщества.",
-          "publish": true
+          "publish": true,
+          "translations": {
+            "en": {
+              "title": "Quickstart Guide: Setting up your community in 10 minutes",
+              "excerpt": "A step-by-step walkthrough for initial launch, category setup, and connecting storefronts.",
+              "content_markdown": "Deploying the RusToK platform takes just a few simple steps.\n\n### Step 1. Environment Setup\nEnsure PostgreSQL is running and start the server process.\n\n### Step 2. Admin Panel Access\nOpen the control panel at `http://localhost:3001` and sign in with the administrator credentials.\n\n### Step 3. Content Management\nNavigate to **Pages** to edit your landing page, **Blog** to publish new articles, or **Forum** to organize community categories."
+            }
+          }
         },
         {
           "slug": "ffa-fluid-frontend-architecture-rust",
           "title": "Fluid Frontend Architecture (FFA): смена UI-фреймворка с нулевым оверхедом",
           "excerpt": "Как подружить монолитный SSR и headless-клиенты, абстрагировать Leptos и Dioxus и почему трехуровневая архитектура с адаптерами в Rust имеет нулевую стоимость в рантайме.",
           "category_slug": "engineering",
-          "tags": ["rust", "architecture"],
+          "tags": [
+            "rust",
+            "architecture"
+          ],
           "content_markdown": "В современной веб-разработке команды часто оказываются перед сложной дилеммой: выбрать классический монолит (быстрый SSR, простой деплой, минимум сетевого оверхеда, но тесная привязка к бэкенду) или headless-архитектуру (автономный клиент, GraphQL/REST API, независимый деплой, но двойная работа и сетевые издержки).\n\nВ RusToK мы пошли по пути **Fluid Frontend Architecture (FFA)** — архитектурной модели, где развертывание не диктует структуру интерфейса, а смена фреймворка рендеринга не требует переписывания доменной логики.\n\n---\n\n### Главный тезис FFA\n\n> **Headless — это топология развертывания, а не идентичность приложения.**\n\nЧто меняется при переходе от монолитного SSR к headless-клиенту? Меняется сетевой транспорт и точка монтирования, но **не должны меняться**:\n- Валидация форм и логика ввода;\n- Конечные автоматы состояний (loading, error, retry, success);\n- Маппинг view-model и правила форматирования;\n- Маршрутизация и структура URL.\n\n---\n\n### Архитектура трех слоев\n\nКаждый UI-пакет модуля в RusToK строится по строгому разделению ответственности:\n\n1. **`core/` (Чистая логика на Rust)**: Не зависит ни от веб-фреймворков, ни от браузерного DOM. Содержит сценарии использования, нормализацию данных, валидацию и типизированные ошибки. Этот слой тестируется молниеносными unit-тестами без браузера.\n2. **`transport/` (Транспортный фасад)**: Скрывает источник данных через функцию `execute_selected_transport`. В зависимости от профиля сборки и окружения он либо вызывает локальную server function (`#[server]`) напрямую внутри процесса, либо отправляет сетевой запрос к GraphQL API.\n3. **`ui/<framework>` (Тонкий адаптер рендеринга)**: Отвечает исключительно за разметку и связывание реактивных сигналов (`view!` в Leptos или `rsx!` в Dioxus). В нем нет тяжелых расчетов, генерации CSS-классов логики или ручной сборки сетевых запросов.\n\n---\n\n### Смена фреймворка: опыт индустрии и аналогия с React → Vue\n\nВ мире JavaScript подобный подход доказал свою эффективность в таких библиотеках, как **TanStack** (`@tanstack/table-core` с адаптерами под React, Vue, Svelte) и **Zag.js** (стейт-машины компонентов для любого фреймворка).\n\nЕсли обычное React-приложение попытаться перевести на Vue, разработчики сталкиваются с необходимостью переписать 90% кодовой базы из-за жесткой связки логики с хуками (`useEffect`, `useMemo`) и вендорными UI-китами.\n\nВ RusToK благодаря FFA переход с одного UI-движка на другой (например, с Leptos на Dioxus) затрагивает исключительно файл адаптера рендеринга. Доменное ядро и транспорт остаются нетронутыми.\n\n---\n\n### Почему это не тормозит? Zero-Cost Abstractions\n\nГлавное опасение при создании многослойных архитектур — потеря производительности. В Rust благодаря архитектуре языка абстракции бесплатны в рантайме:\n\n1. **Мономорфизация (Static Dispatch)**: Все полиморфные вызовы разрешаются во время компиляции под конкретный тип. Никаких таблиц виртуальных функций (`vtable`) и динамического поиска.\n2. **Агрессивный Inlining компилятора LLVM**: Тела тонких адаптеров и замыканий встраиваются напрямую в место вызова. В машинном коде граница между слоями просто исчезает.\n3. **Физическая изоляция по крейтам**: Вынесение адаптеров в отдельные крейты (`crates/ui/*`, `crates/modules/*/admin`) исключает лишние зависимости из дерева сборки и сохраняет Wasm-бандлы ультракомпактными.\n\nFFA позволяет RusToK объединить производительность нативного Rust-монолита с гибкостью современной headless-экосистемы без компромиссов в скорости.",
-          "publish": true
+          "publish": true,
+          "translations": {
+            "en": {
+              "title": "Fluid Frontend Architecture (FFA): Swapping UI Frameworks with Zero Runtime Overhead",
+              "excerpt": "How to unify monolithic SSR and headless clients, abstract Leptos and Dioxus, and why 3-layer architecture with adapters in Rust has zero runtime cost.",
+              "content_markdown": "Modern web development frequently forces teams into a rigid dilemma: choose a classical monolith (fast SSR, straightforward deployment, minimal network overhead, but tight backend coupling) or a headless architecture (autonomous clients, GraphQL/REST APIs, decoupled deployments, but duplicate effort and network roundtrips).\n\nIn RusToK, we introduced **Fluid Frontend Architecture (FFA)** — an architectural model where deployment topology does not dictate frontend component structure, and swapping the UI rendering framework requires zero changes to core domain logic.\n\n---\n\n### The Core Thesis of FFA\n\n> **Headless is a deployment topology, not an application identity.**\n\nWhen transitioning from an embedded monolithic SSR runtime to a headless standalone client, the network transport and host mount point change. However, the following **must remain unchanged**:\n- Form validation and input normalization rules;\n- Finite state machines (idle, loading, error, retry, success);\n- View-model mapping and display policies;\n- Route semantics and query parameter contracts.\n\n---\n\n### The Three-Layer Separation\n\nEvery module-owned UI package in RusToK adheres to strict boundaries:\n\n1. **`core/` (Pure Rust Domain & Presentation Logic)**: Completely agnostic of web frameworks and browser DOM. It encapsulates use-cases, data normalization, validation rules, and strongly-typed error models. This layer is verified via blazing-fast non-DOM unit tests.\n2. **`transport/` (Transport Facade)**: Abstracts data sources via `execute_selected_transport`. Depending on the target build profile and runtime, it either executes an in-process native server function (`#[server]`) or dispatches a remote GraphQL query/mutation.\n3. **`ui/<framework>` (Thin Render Adapter)**: Responsible strictly for markup templates and reactive signal bindings (`view!` in Leptos, or `rsx!` in Dioxus). It contains no business logic, no computed CSS class policies, and no ad-hoc network calls.\n\n---\n\n### Framework Migration: Lessons from the JS World (React → Vue)\n\nIn the JavaScript ecosystem, this pattern was pioneered by libraries like **TanStack** (`@tanstack/table-core` adapted into React, Vue, Svelte, and Solid) and **Zag.js** (UI state machines adapted across frameworks).\n\nWhen migrating a typical React application to Vue, teams often face a 90% codebase rewrite because domain logic is intertwined with React-specific hooks (`useEffect`, `useMemo`) and proprietary component kits.\n\nIn RusToK, thanks to FFA, switching between UI renderers (e.g., from Leptos to Dioxus) touches only the thin view adapter. The entire domain core, validation logic, and transport facades remain untouched.\n\n---\n\n### Why Doesn't This Degrade Performance? Zero-Cost Abstractions\n\nAhead-of-time abstraction overhead is eliminated by Rust's compiler:\n\n1. **Monomorphization (Static Dispatch)**: Generic adapter parameters resolve at compile time. No virtual method tables (`vtable`) or dynamic runtime lookups are incurred.\n2. **Aggressive LLVM Inlining**: Thin wrapper functions and closures are inlined directly into calling sites. In the compiled machine code, the adapter layer ceases to exist as a separate call frame.\n3. **Physical Crate Boundary Isolation**: Splitting adapters into dedicated crates (`crates/ui/*`, `crates/modules/*/admin`) prevents unused dependencies from polluting build graphs, keeping `.wasm` bundle sizes minimal.\n\nFFA allows RusToK to deliver the raw execution speed of a native Rust monolith alongside the agility of a modern headless ecosystem."
+            }
+          }
         }
       ]
     },
@@ -301,7 +436,9 @@
           "slug": "welcome-to-forum",
           "body_markdown": "Приветствуем всех участников сообщества RusToK!\n\nЭтот форум создан для обсуждения разработки, обмена опытом, публикации идей и взаимопомощи.\n\n### Правила сообщества:\n1. Будьте вежливы и уважительны к другим участникам.\n2. Выбирайте подходящую категорию для вашего топика.\n3. Если ваш вопрос был решён, отметьте ответ как принятое решение (Accepted Solution).\n\nПриятного общения!",
           "is_pinned": true,
-          "tags": ["announcement"],
+          "tags": [
+            "announcement"
+          ],
           "replies": []
         },
         {
@@ -333,7 +470,9 @@
           "slug": "first-run-faq",
           "body_markdown": "В этом топике собраны ответы на типовые вопросы при установке и локальной разработке.\n\n**Вопрос:** На каких портах запускаются компоненты платформы по умолчанию?",
           "is_pinned": false,
-          "tags": ["faq"],
+          "tags": [
+            "faq"
+          ],
           "replies": [
             {
               "body_markdown": "По умолчанию RusToK использует следующие порты:\n- **Axum API Server:** `5150`\n- **Leptos Admin:** `3001`\n- **Next.js Frontend:** `3100`\n- **PostgreSQL:** `5432`\n\nДля запуска всех сервисов удобно использовать скрипт `scripts/dev-start.sh`.",
