@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `308bc6199b464be588b7e7e2575a26a7cefeef3d`  
+**Current main SHA:** `788bb31f266696e7b4bd6d1ae0056a4239de3b67`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -135,7 +135,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Marketplace-provider panic handling remains a separate owner-module finding; full detached-worker lifecycle remains deferred to FS-24.
 - [x] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit; completed with five consecutive remediation iterations and a fresh post-merge second pass. Cross-module runtime-fallback candidates remain explicitly deferred to their owner modules.
-- [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
+- [x] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit; completed with six consecutive remediation iterations and a final fresh second pass. Remaining RBAC self-mutation invalidation and full detached WebSocket worker lifecycle are explicitly deferred to their owner/FS-24 tracks.
 - [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
 - [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
 - [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
@@ -195,6 +195,34 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.16 Result — `graphql.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `da0c87002381a73cc45ff63612769f01a06bf220`.
+- **Final main after this module track:** `788bb31f266696e7b4bd6d1ae0056a4239de3b67`.
+- **Iteration 1:** PR #4196, merge commit `a1572e834de39e56f85722416d7ee560d29b0858`.
+  - **Finding:** WebSocket upgrade defaulted to `GraphQLWS` when the server had not negotiated any supported subprotocol.
+  - **Remediation:** no negotiated GraphQL WebSocket subprotocol now returns HTTP 400 before `on_upgrade`; existing frame/message bounds and protocol parsing remain intact.
+- **Iteration 2:** PR #4197, merge commit `b13bf0a3e7d43548717bb176f578b4b108fabf7f`.
+  - **Finding:** persisted-query `sha256Hash` telemetry accepted arbitrary client strings and wrote them directly to tracing.
+  - **Remediation:** telemetry accepts only the canonical 64-hex SHA-256 identifier shape; malformed values are omitted without changing execution semantics.
+- **Iteration 3:** PR #4198, merge commit `87be6f48c334970409c1273808b804f290b1b381`.
+  - **Finding:** Axum `Json` extraction errors did not follow the async-graphql HTTP contract for malformed JSON/content-type failures.
+  - **Remediation:** JSON extractor rejections are normalized to 400, while payload-too-large remains 413, with stable non-internal error messages.
+- **Iteration 4:** PR #4199, merge commit `62cc2f4647536fa7f393cfea97ca97f5f3d3f518`.
+  - **Finding:** WebSocket `connection_init.locale` bypassed tenant locale policy and used only syntactic locale parsing.
+  - **Remediation:** the handshake resolves locale through the tenant-owned `TenantLocalePolicyPort` and preserves tenant policy fallback semantics.
+- **Iteration 5:** PR #4200, merge commit `71157bc3a810d9e14381570bfacde4a8eb6b2d0d`.
+  - **Finding:** WebSocket GraphQL data omitted `RequestContext`, although server GraphQL paths consume it.
+  - **Remediation:** WS handshake now inserts a tenant/user/locale/correlation-bound `RequestContext`; channel dimensions remain unset rather than invented.
+- **Iteration 6:** PR #4201, merge commit `788bb31f266696e7b4bd6d1ae0056a4239de3b67`.
+  - **Finding:** `GraphqlWsAuthLease` was published before the fallible locale-policy check, leaving a partially initialized `OnceLock` when handshake initialization failed.
+  - **Remediation:** lease publication now occurs only after tenant/auth/locale validation succeeds.
+- **Final fresh second pass:** independently re-read the complete HTTP and WebSocket controller path against current `main`, including protocol negotiation, body/error status mapping, APQ telemetry, tenant/locale policy, RequestContext propagation, RBAC lease revalidation, and close/error behavior. No remaining **unblocked controller-owned** defect was found.
+- **Deferred cross-module observations:** self-role/permission mutation should invalidate the task-local `RbacRequestScope` after commit; the scope primitive already supports this but the mutation owner must wire it. Full WebSocket task join/abort and host-managed connection lifecycle remain part of FS-24 worker/lifecycle audit and were not retrofitted here.
+- **Verification:** repository source inspection, direct caller/owner-contract review, immediate re-audits, independent second pass, and branch-diff checks only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.17 — `apps/server/src/controllers/auth.rs`.
 
 ### FS-22.02.15 Result — `graphql_schema.rs`
 
