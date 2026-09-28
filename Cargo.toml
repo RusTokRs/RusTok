@@ -331,6 +331,7 @@ rustok-graphql = { path = "crates/ui/rustok-graphql" }
 rustok-ui-core = { path = "crates/ui/rustok-ui-core" }
 rustok-grid = { path = "crates/ui/rustok-grid" }
 rustok-grid-leptos = { path = "crates/ui/rustok-grid/leptos" }
+rustok-grid-dioxus = { path = "crates/ui/rustok-grid/dioxus" }
 rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
 rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }
 leptos-ui-routing = { path = "crates/ui/leptos-ui-routing" }

@@ -34,3 +34,4 @@ The id of the synthetic selection column is exported as `CHECKBOX_COLUMN_ID` —
 ## Adapters
 
 - [`rustok-grid-leptos`](./leptos): SSR-first Leptos 0.8 `<DataGrid />` UI adapter.
+- [`rustok-grid-dioxus`](./dioxus): Dioxus 0.6 `DataGrid` UI adapter with the same component set, props and markup.
