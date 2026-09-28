@@ -145,20 +145,21 @@ pub struct GraphqlSchemaDependencies {
     #[cfg(feature = "mod-blog")]
     pub blog_rate_limiter: Option<BlogGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-alloy")]
-    pub alloy_runtime: alloy::SharedAlloyRuntime,
+    pub alloy_runtime: Option<alloy::SharedAlloyRuntime>,
     #[cfg(feature = "mod-alloy")]
     pub alloy_release_governance: alloy::AlloyReleaseGovernanceHandle,
     #[cfg(feature = "mod-alloy")]
-    pub alloy_published_rhai_source: alloy::AlloyPublishedRhaiSourceProviderHandle,
+    pub alloy_published_rhai_source: Option<alloy::AlloyPublishedRhaiSourceProviderHandle>,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
         feature = "mod-forum",
         feature = "mod-comments"
     ))]
-    pub content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
+    pub content_orchestration:
+        Option<rustok_content_orchestration::SharedContentOrchestrationService>,
     #[cfg(feature = "mod-media")]
-    pub storage: StorageRuntime,
+    pub storage: Option<StorageRuntime>,
 }
 
 pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
@@ -275,10 +276,18 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     };
 
     #[cfg(feature = "mod-alloy")]
-    let builder = builder
-        .data(alloy_runtime)
-        .data(alloy_release_governance)
-        .data(alloy_published_rhai_source);
+    let builder = if let Some(alloy_runtime) = alloy_runtime {
+        let builder = builder
+            .data(alloy_runtime)
+            .data(alloy_release_governance);
+        if let Some(source) = alloy_published_rhai_source {
+            builder.data(source)
+        } else {
+            builder
+        }
+    } else {
+        builder
+    };
 
     #[cfg(all(
         feature = "mod-content",
@@ -286,10 +295,18 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         feature = "mod-forum",
         feature = "mod-comments"
     ))]
-    let builder = builder.data(content_orchestration);
+    let builder = if let Some(content_orchestration) = content_orchestration {
+        builder.data(content_orchestration)
+    } else {
+        builder
+    };
 
     #[cfg(feature = "mod-media")]
-    let builder = builder.data(storage);
+    let builder = if let Some(storage) = storage {
+        builder.data(storage)
+    } else {
+        builder
+    };
 
     builder.finish()
 }

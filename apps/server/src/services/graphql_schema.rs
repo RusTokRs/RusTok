@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::error::{Error, Result};
+
 #[cfg(feature = "mod-blog")]
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
@@ -26,13 +28,25 @@ struct IndexReplayStopKeepalive {
     _receiver: tokio::sync::watch::Receiver<bool>,
 }
 
-pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
-    #[cfg(feature = "mod-seo")]
-    start_seo_redirect_cache_reconciliation(ctx);
-
+pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>> {
     if let Some(shared) = ctx.shared_get::<SharedGraphqlSchema>() {
-        return shared.0.clone();
+        return Ok(shared.0.clone());
     }
+
+    let registry = ctx.shared_get::<rustok_core::ModuleRegistry>().ok_or_else(|| {
+        Error::Message(
+            "ModuleRegistry is unavailable; GraphQL schema composition requires boot-owned registry state"
+                .to_string(),
+        )
+    })?;
+    let marketplace_catalog = ctx
+        .shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
+        .ok_or_else(|| {
+            Error::Message(
+                "SharedModuleMarketplaceCatalog is unavailable; GraphQL schema composition requires boot-owned catalog state"
+                    .to_string(),
+            )
+        })?;
 
     // Select the public-image provider before any host snapshot is built. The enriched extension
     // registry is stored back in ServerRuntimeContext, so GraphQL and later server-function
@@ -42,16 +56,9 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let event_bus = event_bus_from_context(ctx);
     let transactional_event_bus = transactional_event_bus_from_context(ctx);
     let stop_handle = stop_handle_from_context(ctx);
-    let registry = ctx
-        .shared_get::<rustok_core::ModuleRegistry>()
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "ModuleRegistry not initialized before GraphQL schema build; falling back to build_registry()"
-            );
-            let reg = crate::modules::build_registry();
-            ctx.shared_insert(reg.clone());
-            reg
-        });
+
+    #[cfg(feature = "mod-alloy")]
+    let alloy_runtime = alloy_runtime_from_context(ctx);
     let static_module_registry_reader =
         static_module_registry_reader_from_context(ctx, registry.clone());
     let host_runtime = rustok_api::HostRuntimeContext::new(ctx.db_clone())
@@ -59,20 +66,15 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         .with_shared_value(registry);
     let host_runtime = runtime_extensions.apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
-    let host_runtime =
-        if let Some(catalog) = ctx.shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>() {
-            host_runtime.with_shared_value(catalog)
-        } else {
-            host_runtime
-        };
+    let host_runtime = host_runtime.with_shared_value(marketplace_catalog);
     #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
     let host_runtime = attach_storage_runtime(host_runtime, ctx);
     #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
     let host_runtime = attach_forum_media_asset_read_provider(host_runtime, ctx);
     #[cfg(feature = "mod-alloy")]
-    let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
+    let host_runtime = if let Some(alloy_runtime) = alloy_runtime.as_ref() {
         let storage = ctx.shared_get::<rustok_storage::StorageRuntime>();
-        let host_runtime = host_runtime.with_shared_value(alloy_runtime);
+        let host_runtime = host_runtime.with_shared_value(alloy_runtime.clone());
         let host_runtime = host_runtime.with_shared_value(
             crate::services::registry_governance::alloy_release_governance_handle(ctx.db_clone()),
         );
@@ -113,7 +115,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         #[cfg(feature = "mod-blog")]
         blog_rate_limiter: blog_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]
-        alloy_runtime: alloy_runtime_from_ctx(ctx),
+        alloy_runtime,
         #[cfg(feature = "mod-alloy")]
         alloy_release_governance: alloy_release_governance_from_ctx(ctx),
         #[cfg(feature = "mod-alloy")]
@@ -131,7 +133,10 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
 
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
-    schema
+    #[cfg(feature = "mod-seo")]
+    start_seo_redirect_cache_reconciliation(ctx);
+
+    Ok(schema)
 }
 
 #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
@@ -155,24 +160,48 @@ fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
 }
 
 #[cfg(feature = "mod-alloy")]
-fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRuntime {
-    if let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
-        return runtime;
+fn alloy_runtime_from_context(
+    ctx: &ServerRuntimeContext,
+) -> Option<alloy::SharedAlloyRuntime> {
+    ctx.shared_get::<alloy::SharedAlloyRuntime>()
+}
+
+#[cfg(all(test, feature = "mod-alloy"))]
+mod alloy_runtime_boundary_tests {
+    use sea_orm::Database;
+
+    use super::alloy_runtime_from_context;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_alloy_runtime_remains_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(alloy_runtime_from_context(&ctx).is_none());
     }
-    tracing::warn!(
-        "SharedAlloyRuntime not found in ServerRuntimeContext; creating minimal fallback"
-    );
-    let executors = rustok_sandbox::ExecutorRegistry::new();
-    let sandbox = rustok_sandbox::SandboxRuntime::new(
-        executors,
-        Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
-    );
-    let draft_runtime =
-        alloy::AlloyDraftRuntime::new(sandbox, rustok_sandbox::SandboxPolicy::default());
-    let runtime =
-        alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(ctx.db_clone(), draft_runtime));
-    ctx.shared_insert(runtime.clone());
-    runtime
+}
+
+#[cfg(all(test, feature = "mod-alloy"))]
+mod alloy_published_source_boundary_tests {
+    use sea_orm::Database;
+
+    use super::alloy_published_rhai_source_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_unavailable_for_published_rhai_source() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(alloy_published_rhai_source_from_ctx(&ctx).is_none());
+    }
 }
 
 #[cfg(feature = "mod-alloy")]
@@ -185,20 +214,13 @@ fn alloy_release_governance_from_ctx(
 #[cfg(feature = "mod-alloy")]
 fn alloy_published_rhai_source_from_ctx(
     ctx: &ServerRuntimeContext,
-) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
-    let storage = ctx
-        .shared_get::<rustok_storage::StorageRuntime>()
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "Alloy published-release import requires initialized durable storage; falling back to in-memory storage runtime"
-            );
-            let fallback = rustok_storage::StorageRuntime::in_memory();
-            ctx.shared_insert(fallback.clone());
-            fallback
-        });
-    crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
-        ctx.db_clone(),
-        storage,
+) -> Option<alloy::AlloyPublishedRhaiSourceProviderHandle> {
+    let storage = ctx.shared_get::<rustok_storage::StorageRuntime>()?;
+    Some(
+        crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+            ctx.db_clone(),
+            storage,
+        ),
     )
 }
 
@@ -210,21 +232,8 @@ fn alloy_published_rhai_source_from_ctx(
 ))]
 fn content_orchestration_from_ctx(
     ctx: &ServerRuntimeContext,
-) -> rustok_content_orchestration::SharedContentOrchestrationService {
-    if let Some(service) =
-        ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
-    {
-        return service;
-    }
-    tracing::warn!(
-        "ContentOrchestrationService not initialized; building fallback service for GraphQL schema dependencies"
-    );
-    let service = rustok_content_orchestration::build_content_orchestration_service(
-        ctx.db_clone(),
-        transactional_event_bus_from_context(ctx),
-    );
-    ctx.shared_insert(service.clone());
-    service
+) -> Option<rustok_content_orchestration::SharedContentOrchestrationService> {
+    ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
 }
 
 #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
@@ -303,28 +312,30 @@ mod forum_media_provider_composition_tests {
     }
 }
 
-#[cfg(feature = "mod-media")]
-fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntime {
-    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
-        return storage;
-    }
+#[cfg(all(test, feature = "mod-media"))]
+mod storage_runtime_boundary_tests {
+    use sea_orm::Database;
 
-    let fallback = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
-        base_dir: std::env::temp_dir()
-            .join("rustok-media-fallback")
-            .to_string_lossy()
-            .into_owned(),
-        base_url: "/media".to_string(),
-        fsync: false,
-    })
-    .unwrap_or_else(|err| {
-        tracing::warn!(
-            "Failed to create fallback local storage runtime ({err}); falling back to in-memory store"
-        );
-        rustok_storage::StorageRuntime::in_memory()
-    });
-    ctx.shared_insert(fallback.clone());
-    fallback
+    use super::storage_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(storage_from_ctx(&ctx).is_none());
+    }
+}
+
+#[cfg(feature = "mod-media")]
+fn storage_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Option<rustok_storage::StorageRuntime> {
+    ctx.shared_get::<rustok_storage::StorageRuntime>()
 }
 
 #[cfg(all(test, feature = "mod-translation"))]

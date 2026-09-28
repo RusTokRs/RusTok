@@ -62,8 +62,8 @@ fn validate_compiled_surface_contract(
 pub async fn bootstrap_app_runtime(
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
-    settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
+    let settings = runtime_ctx.settings().clone();
     let cache_service = ensure_cache_service(&runtime_ctx);
 
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
@@ -115,7 +115,7 @@ pub async fn bootstrap_app_runtime(
     let registry = modules::build_registry();
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
-        settings,
+        &settings,
         runtime_ctx.clone(),
         auth_config.clone(),
     )?;
@@ -158,10 +158,14 @@ pub async fn bootstrap_app_runtime(
         );
 
         #[cfg(feature = "mod-workflow")]
-        if settings.runtime.background_workers.workflow_cron_enabled {
+        if workflow_cron_enabled(settings) {
             init_workflow_runtime(&runtime_ctx);
         } else {
-            tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
+            tracing::info!(
+                host_mode = ?settings.runtime.host_mode,
+                configured = settings.runtime.background_workers.workflow_cron_enabled,
+                "Workflow cron scheduler disabled for the current runtime profile"
+            );
         }
 
         init_alloy_runtime(&runtime_ctx, &manifest).await?;
@@ -185,7 +189,7 @@ pub async fn bootstrap_app_runtime(
 
     initialize_module_work_runtime(&runtime_ctx, &registry, runtime_extensions.as_ref()).await?;
 
-    let graphql_schema = init_graphql_schema(&runtime_ctx);
+    let graphql_schema = init_graphql_schema(&runtime_ctx)?;
     let rate_limits =
         init_rate_limit_layers(&runtime_ctx, settings, &cache_service, Some(auth_config))?;
 
@@ -251,14 +255,9 @@ async fn initialize_module_work_runtime(
         .register_all(&host, &scheduler)
         .await
         .map_err(|error| Error::Message(format!("module work registration failed: {error}")))?;
-    if !ctx.shared_contains::<crate::services::app_lifecycle::StopHandle>() {
-        let (stop_handle, _stop_rx) = crate::services::app_lifecycle::StopHandle::new();
-        ctx.shared_insert(stop_handle);
-    }
-    let stop = ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .expect("StopHandle must be registered before module work startup")
-        .subscribe();
+    // StopHandle::ensure uses an atomic insert-if-absent path so concurrent bootstrap
+    // calls cannot create divergent shutdown channels or panic between registration and access.
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
     tokio::spawn(async move {
         scheduler
             .run_until_stopped(stop, std::time::Duration::from_secs(1))
@@ -349,6 +348,12 @@ async fn init_alloy_runtime(
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "mod-workflow")]
+fn workflow_cron_enabled(settings: &RustokSettings) -> bool {
+    settings.runtime.runs_background_workers()
+        && settings.runtime.background_workers.workflow_cron_enabled
 }
 
 #[cfg(feature = "mod-workflow")]
@@ -565,6 +570,41 @@ mod tests {
         assert!(validate_compiled_surface_contract(&contract, false, false).is_ok());
     }
 
+    #[cfg(feature = "mod-workflow")]
+    #[test]
+    fn workflow_cron_requires_a_background_worker_runtime_profile() {
+        for host_mode in [
+            RuntimeHostMode::Api,
+            RuntimeHostMode::AdminSsr,
+            RuntimeHostMode::StorefrontSsr,
+        ] {
+            let settings = RustokSettings {
+                runtime: RuntimeSettings {
+                    host_mode,
+                    ..RuntimeSettings::default()
+                },
+                ..RustokSettings::default()
+            };
+            assert!(
+                !super::workflow_cron_enabled(&settings),
+                "workflow cron must stay disabled for {host_mode:?}"
+            );
+        }
+
+        let settings = RustokSettings {
+            runtime: RuntimeSettings {
+                host_mode: RuntimeHostMode::Worker,
+                background_workers: crate::common::settings::RuntimeBackgroundWorkerSettings {
+                    workflow_cron_enabled: true,
+                    ..Default::default()
+                },
+                ..RuntimeSettings::default()
+            },
+            ..RustokSettings::default()
+        };
+        assert!(super::workflow_cron_enabled(&settings));
+    }
+
     #[test]
     fn dedicated_auth_rate_limit_covers_verification_requests() {
         assert!(AUTH_RATE_LIMIT_PREFIXES
@@ -591,7 +631,7 @@ mod tests {
         let auth_config =
             crate::auth::auth_config_from_host_settings("test-secret".to_string(), 3_600, None)
                 .expect("test auth configuration should be valid");
-        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config, &settings)
+        let runtime = super::bootstrap_app_runtime(runtime_ctx, auth_config)
             .await
             .expect("registry-only runtime should bootstrap");
 

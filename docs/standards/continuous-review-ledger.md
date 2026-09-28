@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `a10cfc7982fac9bdaa3013a825c8598869c53442`  
+**Current main SHA:** `788bb31f266696e7b4bd6d1ae0056a4239de3b67`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -131,11 +131,11 @@ Hard limits for every iteration:
 - [x] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [x] **FS-22.02.10 — `crates/modules/rustok-cart/src/guest_access_http.rs` + native storefront capability adapters** — one-owner boundary audit.
 - [x] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
-- [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
-- [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
-- [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
-- [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
-- [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
+- [x] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Remaining full worker rollback/join/abort lifecycle gaps are explicitly deferred to FS-24.
+- [x] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Marketplace-provider panic handling remains a separate owner-module finding; full detached-worker lifecycle remains deferred to FS-24.
+- [x] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
+- [x] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit; completed with five consecutive remediation iterations and a fresh post-merge second pass. Cross-module runtime-fallback candidates remain explicitly deferred to their owner modules.
+- [x] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit; completed with six consecutive remediation iterations and a final fresh second pass. Remaining RBAC self-mutation invalidation and full detached WebSocket worker lifecycle are explicitly deferred to their owner/FS-24 tracks.
 - [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
 - [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
 - [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
@@ -195,6 +195,115 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.16 Result — `graphql.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `da0c87002381a73cc45ff63612769f01a06bf220`.
+- **Final main after this module track:** `788bb31f266696e7b4bd6d1ae0056a4239de3b67`.
+- **Iteration 1:** PR #4196, merge commit `a1572e834de39e56f85722416d7ee560d29b0858`.
+  - **Finding:** WebSocket upgrade defaulted to `GraphQLWS` when the server had not negotiated any supported subprotocol.
+  - **Remediation:** no negotiated GraphQL WebSocket subprotocol now returns HTTP 400 before `on_upgrade`; existing frame/message bounds and protocol parsing remain intact.
+- **Iteration 2:** PR #4197, merge commit `b13bf0a3e7d43548717bb176f578b4b108fabf7f`.
+  - **Finding:** persisted-query `sha256Hash` telemetry accepted arbitrary client strings and wrote them directly to tracing.
+  - **Remediation:** telemetry accepts only the canonical 64-hex SHA-256 identifier shape; malformed values are omitted without changing execution semantics.
+- **Iteration 3:** PR #4198, merge commit `87be6f48c334970409c1273808b804f290b1b381`.
+  - **Finding:** Axum `Json` extraction errors did not follow the async-graphql HTTP contract for malformed JSON/content-type failures.
+  - **Remediation:** JSON extractor rejections are normalized to 400, while payload-too-large remains 413, with stable non-internal error messages.
+- **Iteration 4:** PR #4199, merge commit `62cc2f4647536fa7f393cfea97ca97f5f3d3f518`.
+  - **Finding:** WebSocket `connection_init.locale` bypassed tenant locale policy and used only syntactic locale parsing.
+  - **Remediation:** the handshake resolves locale through the tenant-owned `TenantLocalePolicyPort` and preserves tenant policy fallback semantics.
+- **Iteration 5:** PR #4200, merge commit `71157bc3a810d9e14381570bfacde4a8eb6b2d0d`.
+  - **Finding:** WebSocket GraphQL data omitted `RequestContext`, although server GraphQL paths consume it.
+  - **Remediation:** WS handshake now inserts a tenant/user/locale/correlation-bound `RequestContext`; channel dimensions remain unset rather than invented.
+- **Iteration 6:** PR #4201, merge commit `788bb31f266696e7b4bd6d1ae0056a4239de3b67`.
+  - **Finding:** `GraphqlWsAuthLease` was published before the fallible locale-policy check, leaving a partially initialized `OnceLock` when handshake initialization failed.
+  - **Remediation:** lease publication now occurs only after tenant/auth/locale validation succeeds.
+- **Final fresh second pass:** independently re-read the complete HTTP and WebSocket controller path against current `main`, including protocol negotiation, body/error status mapping, APQ telemetry, tenant/locale policy, RequestContext propagation, RBAC lease revalidation, and close/error behavior. No remaining **unblocked controller-owned** defect was found.
+- **Deferred cross-module observations:** self-role/permission mutation should invalidate the task-local `RbacRequestScope` after commit; the scope primitive already supports this but the mutation owner must wire it. Full WebSocket task join/abort and host-managed connection lifecycle remain part of FS-24 worker/lifecycle audit and were not retrofitted here.
+- **Verification:** repository source inspection, direct caller/owner-contract review, immediate re-audits, independent second pass, and branch-diff checks only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.17 — `apps/server/src/controllers/auth.rs`.
+
+### FS-22.02.15 Result — `graphql_schema.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `2a4fbb3e9b0a34db3b28779f63e360f173e9684e`.
+- **Final main after this module track:** `308bc6199b464be588b7e7e2575a26a7cefeef3d`.
+- **Iteration 1:** PR #4189, merge commit `fdcec0d9ed5c35f32f8e274567a322f42f03b58c`.
+  - **Finding:** GraphQL schema composition synthesized a missing Alloy runtime; Alloy runtime construction starts a background scheduler, so schema composition could create runtime execution state when the capability was absent.
+  - **Remediation:** Alloy runtime is now consumed only from boot-owned `ServerRuntimeContext`; schema dependency is optional and owner requests fail closed when absent.
+- **Iteration 2:** PR #4190, merge commit `8b9536e07ccd7a1670ae26213df8297d84be5dee`.
+  - **Finding:** schema composition rebuilt a missing `ModuleRegistry`, allowed missing marketplace catalog until a later panic, and started SEO reconciliation before schema construction had succeeded.
+  - **Remediation:** registry/catalog are mandatory preconditions; GraphQL bootstrap returns errors instead of synthesizing topology; SEO reconciliation starts only after successful schema publication.
+- **Iteration 3:** PR #4191, merge commit `8ef01ec57c333ea7fbe542a8605bef2e4237d647`.
+  - **Finding:** missing Content Orchestration runtime was synthesized inside GraphQL composition.
+  - **Remediation:** content orchestration is now an optional boot-owned dependency; owner GraphQL access remains fail closed when absent.
+- **Iteration 4:** PR #4193, merge commit `58668fdcf17b63082d24a4efc984f0362a352be3`.
+  - **Finding:** missing StorageRuntime was replaced by local/in-memory storage, including an indirect in-memory storage fallback for Alloy published-Rhai source handling.
+  - **Remediation:** storage and Alloy published-Rhai source dependencies now consume only boot-owned storage; missing storage remains absent and focused absence tests were added.
+- **Iteration 5:** PR #4194, merge commit `308bc6199b464be588b7e7e2575a26a7cefeef3d`.
+  - **Finding:** required boot-owned registry/catalog state was validated only after side-effectful event/cache/provider composition had already begun.
+  - **Remediation:** cached schema remains the first path; mandatory registry/catalog preconditions now execute before event bus, cache, and provider attachment side effects.
+- **Final fresh post-merge second pass:** independently re-read `graphql_schema.rs` against the current `main`, plus direct schema-builder dependencies and owner contracts. The primary module contains no remaining unblocked repository-owned fallback/topology-duplication defect.
+- **Deferred cross-module observations:** `event_bus_from_context` still owns lazy EventBus/forwarder initialization, and `attach_commerce_provider_registries` contains intentional-or-not in-process provider/runtime fallback construction. These require their own owner-boundary audits; no behavior was silently changed through `graphql_schema.rs`.
+- **Verification:** repository source inspection, direct callsite/owner contract review, immediate re-audits, regression checks, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.16 — `apps/server/src/controllers/graphql.rs`.
+
+### FS-22.02.14 Result — `server_runtime_context.rs`
+
+- **Status:** COMPLETE; no code remediation required.
+- **Fresh main base:** `c800d56cc230fe86495db24b38269222d449c7f6`.
+- **Invariant map:** the server runtime context must provide one immutable settings snapshot, one shared DB handle, type-safe singleton runtime values, atomic first-writer lifecycle registration, clone-safe access across Axum state, and no transport-level leakage of host secrets.
+- **Discovery:** read the complete `ServerRuntimeContext` / `ServerSharedValues` implementation and its direct runtime usage in lifecycle, health, guardrail, bootstrap, auth, and runtime composition paths.
+- **Security check:** `ServerAuthRuntime::auth_config()` is an internal server-state accessor. Actual controller callsites clone/use `AuthConfig` for token operations or public metadata generation; the auth secret is not serialized or emitted by these paths. No client-facing secret exposure was found.
+- **Concurrency check:** `shared_insert_if_absent` uses the map entry API under the write lock, so first-writer ownership is atomic. The known StopHandle bootstrap race therefore does not reappear in this storage primitive.
+- **Type-safety check:** `TypeId` is used consistently as the key and `Any::downcast` as the value boundary. The `expect()` inside the private `get_or_insert_with` invariant is only reachable on an impossible key/type mismatch created internally by the same TypeId insertion path.
+- **Locking check:** synchronous `RwLock` critical sections are short and do not perform async I/O in the current production callsites. `shared_map` executes its inspection callback under the read lock; all reviewed callers use non-reentrant pure accessors such as `is_finished` / `instance_id`.
+- **Fresh second pass:** independently re-read the complete module and reviewed actual `shared_map`, `shared_get`, `shared_insert`, `shared_insert_if_absent`, and `effective_policy_cache` call patterns. No remaining unblocked repository-owned defect was found.
+- **Decision:** no speculative API redesign or cosmetic refactor was introduced merely to create a diff.
+- **Verification:** source inspection, direct-callsite analysis, concurrency/type-boundary reasoning, and fresh second pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`.
+
+### FS-22.02.13 Result — `app_runtime.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `ff30a80f06956499ad2ff228d2660f83f1a565da`.
+- **Final main after this module track:** `69c96eac789507fb70096498bf79c0772b1437ff`.
+- **Iteration 1:** PR #4184, merge commit `6e809ccd7256472bb6f9aa3801eb2d4a3f7d551f`.
+  - **Finding SRV-22.02.13-01:** Workflow cron was started whenever `workflow_cron_enabled=true`, even for `api`, `admin_ssr`, and `storefront_ssr` host profiles that explicitly do not run background workers.
+  - **Remediation:** cron startup now requires both `runtime.runs_background_workers()` and the existing workflow-cron flag; focused profile tests were added.
+- **Iteration 2:** PR #4185, merge commit `b98a666eb038963d28a7de217bb72b4b8cc557c7`.
+  - **Finding SRV-22.02.13-02:** module-work startup used a non-atomic StopHandle check/insert followed by a production `expect()`, duplicating a known bootstrap race.
+  - **Remediation:** module-work startup now uses the canonical atomic `StopHandle::ensure(ctx)` path.
+- **Iteration 3:** PR #4186, merge commit `69c96eac789507fb70096498bf79c0772b1437ff`.
+  - **Finding SRV-22.02.13-03:** `bootstrap_app_runtime` accepted a second `RustokSettings` value while `ServerRuntimeContext` already owned the authoritative immutable settings snapshot. Different callers could therefore construct internally inconsistent runtime policy.
+  - **Remediation:** the bootstrap API now reads settings once from `runtime_ctx.settings()`; the direct server bootstrap caller and local test were updated.
+  - **Regression caught before PR:** the first version of this iteration passed the owned snapshot where the host-provider builder requires `&RustokSettings`; immediate re-audit caught and corrected the mismatch before PR creation.
+- **Final fresh second pass:** independently re-read the complete bootstrap path, runtime-mode gates, registry/manifest composition, module-work scheduling, GraphQL/rate-limit initialization, and direct caller contract. No remaining **unblocked app-runtime-owned** defect was found.
+- **Cross-module finding deferred by the one-primary-module rule:** `init_marketplace_catalog` calls `HardenedRegistryMarketplaceProvider::from_env()`, whose owner implementation currently panics on malformed registry configuration/client construction. The root cause belongs to `marketplace_catalog_cache_base.rs`; it is not patched through an app-runtime catch/panic shim. A dedicated owner-module iteration must handle it.
+- **Explicitly deferred lifecycle debt:** detached Workflow cron, module-work scheduler, and rate-limit cleanup tasks do not yet form one host-managed join/abort lifecycle; this remains under the existing FS-24 worker lifecycle scope.
+- **Production `expect()` retained:** `module_runtime_extensions_from_ctx` has an explicit bootstrap-order invariant and is only used after the runtime extension registry is installed; it is treated as a programming-error guard, consistent with the coding standard's permitted invariant panics.
+- **Verification:** source-level static checks, direct caller/callee inspection, regression re-audit, independent second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`.
+
+### FS-22.02.12 Result — `server_bootstrap.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `51d2ea5508426d7eadc064454fb50b3c1cc11ec7`.
+- **Final main after this module track:** `b94da56d40452b120bf27d8eda6989f439b7d765`.
+- **Iteration 1:** PR #4180, merge commit `e01357b2655022b3719e71670fb408aff92860a3`.
+  - **Finding SRV-22.02.12-01:** production bootstrap errors exposed matched development JWT fragments, sample database credentials, and sample superadmin passwords through `Error::Message`.
+  - **Remediation:** secret matchers remain available for detection, but their matched values are never interpolated into errors. Production validation is explicit and rejects an empty JWT secret. A deterministic test set was added.
+- **Iteration 2:** PR #4181, merge commit `f78f21893afb857aa970d7a8c8c43cb2dd14f403`.
+  - **Finding SRV-22.02.12-02:** bootstrap started multiple background sidecars/workers before the fallible final router composition step.
+  - **Remediation:** complete Axum router composition now occurs before bootstrap-owned sidecar/worker startup; `runtime_ctx` is cloned at the auth-runtime boundary so the context remains available for subsequent startup.
+- **Iteration 3 / regression correction:** PR #4182, merge commit `b94da56d40452b120bf27d8eda6989f439b7d765`.
+  - **Fresh finding:** using only the runtime production env flag would have skipped the bootstrap secret guard for release builds that select the production config by build mode without exporting `RUSTOK_ENV`.
+  - **Remediation:** bootstrap secret validation is enabled when either the runtime explicitly declares production or the binary is a release build, preserving the release-default production guard while still enabling explicit production checks for debug builds.
+- **Final fresh second pass:** re-read `server_bootstrap.rs`, its `host.rs` caller, `app_runtime.rs`/router contracts, worker start paths, and the adjacent security/lifecycle documentation. No remaining **unblocked** repository-owned defect was found in the primary module.
+- **Explicitly deferred lifecycle debt:** `initialize_server_context` and `bootstrap_app_runtime` can start asynchronous components before all later bootstrap steps have become irreversible, and the full worker/runtime lifecycle still lacks one unified join/abort/rollback boundary. This remains explicitly deferred to FS-24 per the existing phase-scope decision; this module track does not claim those lifecycle gaps are fixed.
+- **Verification:** source-level static checks, direct caller/callee inspection, branch-diff review and regression re-audit only. No tests, compiler, clippy, gatekeeper, generator or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.13 — `apps/server/src/services/app_runtime.rs`.
 
 ### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
 
