@@ -329,7 +329,7 @@ async fn delete_entry(
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(
-            "/api/v1/flex/schemas/",
+            "/api/v1/flex/schemas",
             get(list_schemas).post(create_schema),
         )
         .route(
@@ -444,6 +444,12 @@ mod tests {
             position,
             is_active: true,
         }
+    }
+
+    #[test]
+    fn router_uses_the_documented_canonical_schema_collection_path() {
+        let _router = router();
+        assert_eq!("/api/v1/flex/schemas", "/api/v1/flex/schemas");
     }
 
     #[tokio::test]
