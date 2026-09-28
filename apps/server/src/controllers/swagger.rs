@@ -250,6 +250,16 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
     let mut security_names = HashSet::new();
     collect_component_references(&path_document, &mut schema_names, &mut security_names);
 
+    if let Some(global_security) = openapi.security.as_ref() {
+        if let Ok(value) = serde_json::to_value(global_security) {
+            collect_component_references(
+                &value,
+                &mut HashSet::new(),
+                &mut security_names,
+            );
+        }
+    }
+
     if let Some(components) = openapi.components.as_mut() {
         // Schema components can recursively reference other schema components.
         let mut pending: Vec<String> = schema_names.iter().cloned().collect();
@@ -532,6 +542,49 @@ mod tests {
                 "description": "Shared token required for remote registry validation runner operations."
             })
         );
+    }
+
+    #[test]
+    fn openapi_documents_expected_methods_on_shared_paths() {
+        let openapi = ApiDoc::openapi();
+
+        use utoipa::openapi::HttpMethod;
+
+        for (path, method) in [
+            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Put),
+            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Delete),
+            ("/api/users", HttpMethod::Get),
+            ("/api/v1/flex/schemas", HttpMethod::Get),
+            ("/api/v1/flex/schemas", HttpMethod::Post),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Put),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Delete),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries",
+                HttpMethod::Get,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries",
+                HttpMethod::Post,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Get,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Put,
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
+                HttpMethod::Delete,
+            ),
+        ] {
+            assert!(
+                openapi.paths.get_path_operation(path, method).is_some(),
+                "OpenAPI spec must include {method:?} operation for {path}"
+            );
+        }
     }
 
     #[test]
