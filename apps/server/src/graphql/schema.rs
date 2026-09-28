@@ -149,7 +149,7 @@ pub struct GraphqlSchemaDependencies {
     #[cfg(feature = "mod-alloy")]
     pub alloy_release_governance: alloy::AlloyReleaseGovernanceHandle,
     #[cfg(feature = "mod-alloy")]
-    pub alloy_published_rhai_source: alloy::AlloyPublishedRhaiSourceProviderHandle,
+    pub alloy_published_rhai_source: Option<alloy::AlloyPublishedRhaiSourceProviderHandle>,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
@@ -159,7 +159,7 @@ pub struct GraphqlSchemaDependencies {
     pub content_orchestration:
         Option<rustok_content_orchestration::SharedContentOrchestrationService>,
     #[cfg(feature = "mod-media")]
-    pub storage: StorageRuntime,
+    pub storage: Option<StorageRuntime>,
 }
 
 pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
@@ -277,10 +277,14 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
 
     #[cfg(feature = "mod-alloy")]
     let builder = if let Some(alloy_runtime) = alloy_runtime {
-        builder
+        let builder = builder
             .data(alloy_runtime)
-            .data(alloy_release_governance)
-            .data(alloy_published_rhai_source)
+            .data(alloy_release_governance);
+        if let Some(source) = alloy_published_rhai_source {
+            builder.data(source)
+        } else {
+            builder
+        }
     } else {
         builder
     };
@@ -298,7 +302,11 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     };
 
     #[cfg(feature = "mod-media")]
-    let builder = builder.data(storage);
+    let builder = if let Some(storage) = storage {
+        builder.data(storage)
+    } else {
+        builder
+    };
 
     builder.finish()
 }

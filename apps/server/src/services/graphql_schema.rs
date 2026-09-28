@@ -184,6 +184,25 @@ mod alloy_runtime_boundary_tests {
     }
 }
 
+#[cfg(all(test, feature = "mod-alloy"))]
+mod alloy_published_source_boundary_tests {
+    use sea_orm::Database;
+
+    use super::alloy_published_rhai_source_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_unavailable_for_published_rhai_source() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(alloy_published_rhai_source_from_ctx(&ctx).is_none());
+    }
+}
+
 #[cfg(feature = "mod-alloy")]
 fn alloy_release_governance_from_ctx(
     ctx: &ServerRuntimeContext,
@@ -194,20 +213,13 @@ fn alloy_release_governance_from_ctx(
 #[cfg(feature = "mod-alloy")]
 fn alloy_published_rhai_source_from_ctx(
     ctx: &ServerRuntimeContext,
-) -> alloy::AlloyPublishedRhaiSourceProviderHandle {
-    let storage = ctx
-        .shared_get::<rustok_storage::StorageRuntime>()
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "Alloy published-release import requires initialized durable storage; falling back to in-memory storage runtime"
-            );
-            let fallback = rustok_storage::StorageRuntime::in_memory();
-            ctx.shared_insert(fallback.clone());
-            fallback
-        });
-    crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
-        ctx.db_clone(),
-        storage,
+) -> Option<alloy::AlloyPublishedRhaiSourceProviderHandle> {
+    let storage = ctx.shared_get::<rustok_storage::StorageRuntime>()?;
+    Some(
+        crate::services::registry_governance::alloy_published_rhai_source_provider_handle(
+            ctx.db_clone(),
+            storage,
+        ),
     )
 }
 
@@ -299,28 +311,30 @@ mod forum_media_provider_composition_tests {
     }
 }
 
-#[cfg(feature = "mod-media")]
-fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntime {
-    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
-        return storage;
-    }
+#[cfg(all(test, feature = "mod-media"))]
+mod storage_runtime_boundary_tests {
+    use sea_orm::Database;
 
-    let fallback = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
-        base_dir: std::env::temp_dir()
-            .join("rustok-media-fallback")
-            .to_string_lossy()
-            .into_owned(),
-        base_url: "/media".to_string(),
-        fsync: false,
-    })
-    .unwrap_or_else(|err| {
-        tracing::warn!(
-            "Failed to create fallback local storage runtime ({err}); falling back to in-memory store"
-        );
-        rustok_storage::StorageRuntime::in_memory()
-    });
-    ctx.shared_insert(fallback.clone());
-    fallback
+    use super::storage_from_ctx;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn missing_storage_remains_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database should connect");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        assert!(storage_from_ctx(&ctx).is_none());
+    }
+}
+
+#[cfg(feature = "mod-media")]
+fn storage_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Option<rustok_storage::StorageRuntime> {
+    ctx.shared_get::<rustok_storage::StorageRuntime>()
 }
 
 #[cfg(all(test, feature = "mod-translation"))]
