@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `518dc0a06afd8ae3696a887d1dd8805fb4801cf3`  
+**Current main SHA:** `35a80f07bdda94ff3c26b114557aae7143750f8d`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -256,6 +256,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.06 — `apps/server/src/services/oauth_token_service.rs`** — completed with one security/presentation boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.07 — `crates/modules/rustok-auth/src/jwt.rs`** — completed with one input-range remediation and a fresh independent second pass.
 - [x] **FS-22.03.08 — `crates/modules/rustok-auth/src/credentials.rs`** — completed with one RNG-failure remediation and a fresh independent post-merge second pass.
+- [x] **FS-22.03.09 — `crates/modules/rustok-auth/src/config.rs`** — fresh module audit found no remaining owner-level defect requiring code remediation; auth-settings parse-failure handling is deferred to the host adapter track.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -365,6 +366,17 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.09 Iteration 1 — `crates/modules/rustok-auth/src/config.rs`
+
+- **Base:** refreshed `main` at `35a80f07bdda94ff3c26b114557aae7143750f8d`; dedicated branch `codex/audit-fs-22.03.09-config-closeout`.
+- **Invariant map:** authentication configuration must fail closed on invalid TTLs, blank claims, weak HS256 material, incomplete/mismatched RS256 keys, and conflicting algorithm/key material; configured key sources must not expose key contents; public builders and runtime token owners must share the same configuration semantics.
+- **Discovery:** re-read the complete configuration owner, all auth-module configuration tests, JWT signing/validation consumers, server startup configuration assembly, production deployment checks, module documentation, and workspace dependency declarations.
+- **Finding assessment:** no remaining repository-owned owner-level defect was confirmed inside `rustok-auth/src/config.rs`. TTL ranges are bounded; refresh TTL cannot be shorter than access TTL; HS256 enforces a 32-byte minimum and rejects RSA material; RS256 requires and cryptographically verifies a matching private/public pair; key-env values reject empty material; Debug implementations redact secret/key contents.
+- **Boundary observation deferred:** `apps/server/src/auth.rs::auth_config_from_host_settings` currently converts any nested auth-settings deserialization error into `None` and silently falls back to default auth overrides. A malformed `algorithm`, invalid value shape, or future strict-schema failure can therefore be ignored instead of failing startup. The root cause is in the host adapter and is assigned to the next primary module `FS-22.03.10 — apps/server/src/auth.rs`; no compensating config-side behavior was invented here.
+- **Fresh second pass:** independently re-read `config.rs`, `jwt.rs`, host startup assembly, production auth deployment validation, and the deferred adapter boundary. No additional config-owner defect remained.
+- **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.09` complete. Next primary module: `FS-22.03.10 — apps/server/src/auth.rs`.
 
 ### FS-22.03.08 Iteration 1 — `crates/modules/rustok-auth/src/credentials.rs`
 
