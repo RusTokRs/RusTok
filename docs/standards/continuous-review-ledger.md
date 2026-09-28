@@ -167,6 +167,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.05/22.09 finding in progress — raw tenant-module check was weaker than canonical effective policy.** Workflow HTTP previously used only `tenant_modules.enabled`, while the platform owner policy also accounts for dependencies, capability/security state, registry admission, channel binding and maintenance. Workflow HTTP state now consumes the host-composed `SharedModuleEffectivePolicyReader`; absence/unavailability fails closed with `MODULE_POLICY_UNAVAILABLE`.
 
+- [ ] **FS-22.06 finding in progress — Commerce admin had no module-lifecycle boundary.** Commerce admin HTTP handlers checked permissions but the compiled route remained usable when the tenant's effective Commerce module was unavailable or disabled. The admin surface is now wrapped once at its router boundary and resolves the canonical `SharedModuleEffectivePolicyReader`; tenant context is required and policy unavailability fails closed. Storefront remains on its separate channel-aware availability contract.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

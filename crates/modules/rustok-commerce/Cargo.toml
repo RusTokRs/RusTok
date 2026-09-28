@@ -36,6 +36,7 @@ rustok-order.workspace = true
 rustok-payment.workspace = true
 rustok-fulfillment.workspace = true
 rustok-tenant.workspace = true
+rustok-modules.workspace = true
 rustok-marketplace = { path = "../rustok-marketplace", optional = true }
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
