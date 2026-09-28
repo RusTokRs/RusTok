@@ -2360,18 +2360,23 @@ where
 {
     let etag = registry_etag(payload)?;
     let etag_header = HeaderValue::from_str(&etag)
-        .map_err(|err| Error::Message(format!("Failed to build registry ETag header: {err}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to build registry ETag header");
+            Error::InternalServerError
+        })?;
     let total_count_header = total_count.map(registry_total_count_header).transpose()?;
     if request_matches_etag(headers, &etag) {
         let mut builder = Response::builder()
             .status(StatusCode::NOT_MODIFIED)
             .header(CACHE_CONTROL, registry_cache_control())
+            .header("vary", registry_cache_vary())
             .header(ETAG, etag_header.clone());
         if let Some(total_count_header) = total_count_header.as_ref() {
             builder = builder.header(registry_total_count_header_name(), total_count_header);
         }
-        return builder.body(Body::empty()).map_err(|err| {
-            Error::Message(format!("Failed to build registry 304 response: {err}"))
+        return builder.body(Body::empty()).map_err(|_| {
+            tracing::error!("Failed to build registry 304 response");
+            Error::InternalServerError
         });
     }
 
@@ -2379,6 +2384,9 @@ where
     response
         .headers_mut()
         .insert(CACHE_CONTROL, registry_cache_control());
+    response
+        .headers_mut()
+        .insert("vary", registry_cache_vary());
     response.headers_mut().insert(ETAG, etag_header);
     if let Some(total_count_header) = total_count_header {
         response
@@ -2391,6 +2399,10 @@ where
 
 fn registry_cache_control() -> HeaderValue {
     HeaderValue::from_static("public, max-age=60")
+}
+
+fn registry_cache_vary() -> HeaderValue {
+    HeaderValue::from_static("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
 }
 
 fn registry_total_count_header_name() -> HeaderName {
@@ -2410,7 +2422,10 @@ where
     T: serde::Serialize,
 {
     let body = serde_json::to_vec(payload)
-        .map_err(|err| Error::Message(format!("Failed to serialize registry payload: {err}")))?;
+        .map_err(|_| {
+            tracing::error!("Failed to serialize registry payload for ETag");
+            Error::InternalServerError
+        })?;
     let hash = Sha256::digest(body);
     Ok(format!("\"{}\"", hex::encode(hash)))
 }
@@ -2423,7 +2438,10 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
             value
                 .split(',')
                 .map(str::trim)
-                .any(|candidate| candidate == "*" || candidate == etag)
+                .any(|candidate| {
+                    candidate == "*"
+                        || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+                })
         })
         .unwrap_or(false)
 }
@@ -2943,7 +2961,7 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
         .chain()
         .find_map(|cause| cause.downcast_ref::<ModuleGovernanceError>())
     {
-        return map_module_governance_error(owner_error, &error);
+        return map_module_governance_error(owner_error);
     }
 
     let typed = error
@@ -2978,7 +2996,7 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 
 /// Maps the stable owner error contract at the HTTP edge. The registry adapter
 /// must not reclassify owner failures into server-local error types.
-fn map_module_governance_error(error: &ModuleGovernanceError, _source: &anyhow::Error) -> Error {
+fn map_module_governance_error(error: &ModuleGovernanceError) -> Error {
     match error.category() {
         ModuleGovernanceErrorCategory::InvalidInput => {
             http_error(HttpError::bad_request(error.code(), error.to_string()))
@@ -3080,4 +3098,117 @@ fn validate_registry_version(version: &str) -> Result<(), Error> {
         ))
     })?;
     Ok(())
+}
+
+
+#[cfg(test)]
+mod marketplace_registry_tests {
+    use super::{
+        RegistryCatalogListParams, build_registry_response, map_module_governance_error,
+        paginate_catalog_modules, request_matches_etag,
+    };
+    use crate::modules::CatalogManifestModule;
+    use axum::body::to_bytes;
+    use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
+    use rustok_modules::{ModuleGovernanceError, ModuleGovernanceErrorCategory};
+
+    fn module(slug: &str) -> CatalogManifestModule {
+        CatalogManifestModule {
+            slug: slug.to_string(),
+            source: "registry".to_string(),
+            crate_name: format!("rustok-{slug}"),
+            name: Some(slug.to_string()),
+            category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            version: Some("1.0.0".to_string()),
+            description: None,
+            git: None,
+            rev: None,
+            path: None,
+            required: false,
+            depends_on: Vec::new(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: None,
+            checksum_sha256: None,
+            signature: None,
+            versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no-ui".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: std::collections::HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn catalog_pagination_is_bounded_when_limit_is_omitted() {
+        let modules = (0..125).map(|index| module(&format!("module-{index:03}"))).collect();
+        let (page, total) = paginate_catalog_modules(modules, &RegistryCatalogListParams::default());
+
+        assert_eq!(total, 125);
+        assert_eq!(page.len(), 100);
+    }
+
+    #[test]
+    fn if_none_match_accepts_weak_etags() {
+        let etag = ""abc123"";
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_static("W/"abc123", "other""),
+        );
+
+        assert!(request_matches_etag(&headers, etag));
+    }
+
+    #[tokio::test]
+    async fn registry_response_declares_presentation_vary() {
+        let headers = HeaderMap::new();
+        let response = build_registry_response(
+            &headers,
+            &serde_json::json!({"modules": []}),
+            Some(0),
+        )
+        .expect("registry response should build");
+
+        assert_eq!(
+            response.headers().get("cache-control").and_then(|value| value.to_str().ok()),
+            Some("public, max-age=60")
+        );
+        assert_eq!(
+            response.headers().get("vary").and_then(|value| value.to_str().ok()),
+            Some("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
+        assert!(!body.is_empty());
+    }
+
+    #[test]
+    fn permission_denied_mapping_does_not_echo_owner_details() {
+        let error = ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized;
+        assert_eq!(
+            error.category(),
+            ModuleGovernanceErrorCategory::PermissionDenied
+        );
+
+        let mapped = map_module_governance_error(&error);
+        match mapped {
+            crate::error::Error::Http(http) => {
+                assert_eq!(http.status, StatusCode::FORBIDDEN);
+                assert!(!http.message.contains("request"));
+                assert!(!http.message.contains("principal"));
+            }
+            other => panic!("expected HTTP error, got {other:?}"),
+        }
+    }
 }
