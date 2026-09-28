@@ -69,6 +69,10 @@ async fn register(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
+    if !ctx.runtime_ctx().settings().features.registration_enabled {
+        return Err(Error::Forbidden("Registration is disabled".into()));
+    }
+
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
         .auth_config()
