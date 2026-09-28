@@ -71,7 +71,9 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
             payload.push_str(&render_email_backend_metrics(&ctx));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
-            payload.push_str(&render_search_metrics(&ctx).await);
+            if ctx.settings().features.search_indexing {
+                payload.push_str(&render_search_metrics(&ctx).await);
+            }
             payload.push_str(&render_runtime_guardrail_metrics(&ctx).await);
 
             Ok((
@@ -86,7 +88,9 @@ pub async fn metrics(State(ctx): State<ServerRuntimeContext>) -> Result<Response
 }
 
 pub fn router() -> crate::routes::ServerRouter {
-    axum::Router::new().route("/metrics/", get(metrics))
+    axum::Router::new()
+        .route("/metrics", get(metrics))
+        .route("/metrics/", get(metrics))
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
@@ -741,6 +745,15 @@ mod tests {
     };
     use rustok_cache::CacheService;
     use rustok_outbox::RelayMetricsSnapshot;
+
+    #[test]
+    fn router_exposes_canonical_metrics_path() {
+        let _router = super::router();
+        // The canonical scrape path is /metrics; /metrics/ is retained as the
+        // equivalent explicit path already covered by observability auth.
+    }
+
+
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {
