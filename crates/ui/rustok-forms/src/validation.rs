@@ -249,4 +249,43 @@ mod tests {
 
         assert!(validator.finish().is_ok());
     }
+
+    #[test]
+    fn test_whitespace_only_is_invalid_for_required() {
+        let res = rules::required("name", "   \t\n  ", "Name required");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_unicode_char_count_not_byte_count() {
+        // "Привет" is 6 characters, 12 bytes in UTF-8
+        let res = rules::min_length("name", "Привет", 6, "Min 6 chars");
+        assert!(res.is_ok());
+
+        let res_too_short = rules::min_length("name", "Привет", 7, "Min 7 chars");
+        assert!(res_too_short.is_err());
+    }
+
+    #[test]
+    fn test_empty_email_is_allowed_if_not_required() {
+        let res = rules::email("optional_email", "", "Invalid email");
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_range_bounds() {
+        assert!(rules::range("val", 10, Some(10), Some(20), "Range").is_ok());
+        assert!(rules::range("val", 20, Some(10), Some(20), "Range").is_ok());
+        assert!(rules::range("val", 9, Some(10), Some(20), "Range").is_err());
+        assert!(rules::range("val", 21, Some(10), Some(20), "Range").is_err());
+        assert!(rules::range("val", 5, Some(0), None, "Range").is_ok());
+        assert!(rules::range("val", -1, Some(0), None, "Range").is_err());
+    }
+
+    #[test]
+    fn test_custom_rule() {
+        let validator = FormValidator::new()
+            .custom("terms", false, "Must accept terms");
+        assert_eq!(validator.into_errors().len(), 1);
+    }
 }

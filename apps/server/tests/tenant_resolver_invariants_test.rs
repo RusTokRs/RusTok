@@ -32,7 +32,9 @@ async fn setup_tenant_router(
     let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
     let runtime_ctx = ServerRuntimeContext::new(db.clone(), settings);
     let cache_service = CacheService::from_url(None);
-    tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
+    tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service)
+        .await
+        .expect("initialize tenant cache");
 
     let app = Router::new()
         .route("/tenant-probe", get(tenant_probe))

@@ -666,7 +666,9 @@ mod tests {
     async fn graphql_ws_tenant_handshake_fails_closed() {
         let db = rustok_test_utils::db::setup_test_db_with_migrations::<Migrator>().await;
         let runtime = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
-        tenant::init_tenant_cache_infrastructure(&runtime, &CacheService::from_url(None)).await;
+        tenant::init_tenant_cache_infrastructure(&runtime, &CacheService::from_url(None))
+            .await
+            .expect("initialize tenant cache");
 
         let malformed = match tenant::resolve_tenant_context_by_slug(&runtime, "../../other").await
         {

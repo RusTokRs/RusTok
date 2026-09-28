@@ -116,8 +116,10 @@ pub fn FormLabel(
         }
     };
 
+    let for_attr = field.as_ref().map(|f| f.name.clone());
+
     view! {
-        <label data-slot="form-label" class=label_class>
+        <label for=for_attr data-slot="form-label" class=label_class>
             {children()}
             {required.then(|| view! {
                 <span class="ml-1 text-destructive">"*"</span>
