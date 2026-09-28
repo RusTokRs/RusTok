@@ -1,49 +1,90 @@
-//! Leptos context providers for form and field state.
+//! Dioxus context providers for form and field state.
 //!
 //! `FormContext` is provided by [`Form`](crate::Form) and consumed by structural
 //! field components. `FieldContext` is provided by [`FormField`](crate::FormField)
 //! and consumed by [`FormLabel`](crate::FormLabel), [`FormMessage`](crate::FormMessage),
 //! and input controls.
 
-use leptos::prelude::*;
+use dioxus::prelude::*;
 use rustok_forms::{DirtyTracker, FormState};
 
-/// Shared form state provided to all descendant components via Leptos context.
+/// Shared form state provided to all descendant components via Dioxus context.
 ///
 /// Created by `<Form>` and consumed by `<FormField>` and lower-level primitives.
 #[derive(Clone, Copy)]
 pub struct FormContext {
-    /// Reactive read access to the form state.
+    /// Reactive read/write access to the form state.
     pub state: Signal<FormState>,
-    /// Optional direct read-write access to form state for descendant mutating components.
-    pub rw_state: Option<RwSignal<FormState>>,
     /// Optional dirty field tracking signal.
-    pub dirty_tracker: Option<RwSignal<DirtyTracker>>,
+    pub dirty_tracker: Option<Signal<DirtyTracker>>,
 }
 
 impl FormContext {
-    /// Create a FormContext with read-only state signal.
-    pub fn new(state: impl Into<Signal<FormState>>) -> Self {
+    /// Create a `FormContext` wrapping a reactive `Signal<FormState>`.
+    pub fn new(state: Signal<FormState>) -> Self {
         Self {
-            state: state.into(),
-            rw_state: None,
-            dirty_tracker: None,
-        }
-    }
-
-    /// Create a FormContext with read-write access.
-    pub fn from_rw(rw: RwSignal<FormState>) -> Self {
-        Self {
-            state: rw.into(),
-            rw_state: Some(rw),
+            state,
             dirty_tracker: None,
         }
     }
 
     /// Attach a reactive dirty tracker to this form context.
-    pub fn with_dirty_tracker(mut self, tracker: RwSignal<DirtyTracker>) -> Self {
+    pub fn with_dirty_tracker(mut self, tracker: Signal<DirtyTracker>) -> Self {
         self.dirty_tracker = Some(tracker);
         self
+    }
+
+    /// Returns `true` if the form is currently submitting.
+    pub fn is_submitting(&self) -> bool {
+        self.state.read().is_submitting
+    }
+
+    /// Returns `true` if a specific field has a validation error.
+    pub fn is_field_invalid(&self, field: &str) -> bool {
+        self.state.read().is_field_invalid(field)
+    }
+
+    /// Returns `true` if a specific field is marked dirty in the dirty tracker.
+    pub fn is_field_dirty(&self, field: &str) -> bool {
+        if let Some(ref tracker) = self.dirty_tracker {
+            tracker.read().is_dirty(field)
+        } else {
+            false
+        }
+    }
+
+    /// Mark a field as modified in the dirty tracker.
+    pub fn mark_dirty(&self, field: impl Into<String>) {
+        if let Some(mut tracker) = self.dirty_tracker {
+            tracker.write().mark(field);
+        }
+    }
+
+    /// Mark a field as clean in the dirty tracker.
+    pub fn mark_clean(&self, field: &str) {
+        if let Some(mut tracker) = self.dirty_tracker {
+            tracker.write().unmark(field);
+        }
+    }
+
+    /// Get the first validation error message for a field, if any.
+    pub fn field_error(&self, field: &str) -> Option<String> {
+        self.state.read().field_error(field).map(String::from)
+    }
+
+    /// Get all validation error messages for a field.
+    pub fn field_errors_for(&self, field: &str) -> Vec<String> {
+        self.state
+            .read()
+            .field_errors_for(field)
+            .into_iter()
+            .map(String::from)
+            .collect()
+    }
+
+    /// Get the form-level (non-field) error message, if any.
+    pub fn form_error(&self) -> Option<String> {
+        self.state.read().form_error.clone()
     }
 }
 
@@ -70,71 +111,39 @@ impl FieldContext {
         }
     }
 
-    /// Create a standalone FieldContext (with an idle fallback FormContext).
-    pub fn standalone(name: impl Into<String>) -> Self {
-        let n = name.into();
-        Self {
-            id: n.clone(),
-            name: n,
-            form: FormContext {
-                state: Signal::derive(FormState::idle),
-                rw_state: None,
-                dirty_tracker: None,
-            },
-        }
-    }
-
     /// Whether this field currently has a validation error.
     pub fn is_invalid(&self) -> bool {
-        self.form.state.get().is_field_invalid(&self.name)
+        self.form.is_field_invalid(&self.name)
     }
 
     /// Whether this field is marked dirty in the form's dirty tracker.
     pub fn is_dirty(&self) -> bool {
-        if let Some(ref tracker) = self.form.dirty_tracker {
-            tracker.get().is_dirty(&self.name)
-        } else {
-            false
-        }
+        self.form.is_field_dirty(&self.name)
     }
 
     /// Mark this field as modified in the parent form's dirty tracker.
     pub fn mark_dirty(&self) {
-        if let Some(ref tracker) = self.form.dirty_tracker {
-            tracker.update(|t| t.mark(&self.name));
-        }
+        self.form.mark_dirty(&self.name);
     }
 
     /// Mark this field as clean in the parent form's dirty tracker.
     pub fn mark_clean(&self) {
-        if let Some(ref tracker) = self.form.dirty_tracker {
-            tracker.update(|t| t.unmark(&self.name));
-        }
+        self.form.mark_clean(&self.name);
     }
 
     /// The first error message for this field, if any.
     pub fn error_message(&self) -> Option<String> {
-        self.form
-            .state
-            .get()
-            .field_error(&self.name)
-            .map(String::from)
+        self.form.field_error(&self.name)
     }
 
     /// All error messages for this field.
     pub fn all_error_messages(&self) -> Vec<String> {
-        self.form
-            .state
-            .get()
-            .field_errors_for(&self.name)
-            .into_iter()
-            .map(String::from)
-            .collect()
+        self.form.field_errors_for(&self.name)
     }
 
     /// Whether the parent form is currently submitting.
     pub fn is_submitting(&self) -> bool {
-        self.form.state.get().is_submitting
+        self.form.is_submitting()
     }
 }
 
@@ -144,12 +153,12 @@ mod tests {
 
     #[test]
     fn test_field_context_queries() {
-        let state = FormState::idle()
-            .with_field_error("username", "Already taken")
-            .with_field_error("username", "Too short");
-
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let state = Signal::new(
+            FormState::idle()
+                .with_field_error("username", "Already taken")
+                .with_field_error("username", "Too short"),
+        );
+        let form_ctx = FormContext::new(state);
         let field_ctx = FieldContext::new("username", "username", form_ctx);
 
         assert!(field_ctx.is_invalid());
@@ -168,9 +177,9 @@ mod tests {
 
     #[test]
     fn test_field_context_dirty_tracking() {
-        let state_signal = Signal::derive(FormState::idle);
-        let dirty = RwSignal::new(DirtyTracker::new());
-        let form_ctx = FormContext::new(state_signal).with_dirty_tracker(dirty);
+        let state = Signal::new(FormState::idle());
+        let dirty = Signal::new(DirtyTracker::new());
+        let form_ctx = FormContext::new(state).with_dirty_tracker(dirty);
         let field_ctx = FieldContext::new("bio", "bio", form_ctx);
 
         assert!(!field_ctx.is_dirty());
@@ -178,15 +187,5 @@ mod tests {
         assert!(field_ctx.is_dirty());
         field_ctx.mark_clean();
         assert!(!field_ctx.is_dirty());
-    }
-
-    #[test]
-    fn test_standalone_field_context() {
-        let field_ctx = FieldContext::standalone("title");
-        assert_eq!(field_ctx.name, "title");
-        assert_eq!(field_ctx.id, "title");
-        assert!(!field_ctx.is_invalid());
-        assert_eq!(field_ctx.error_message(), None);
-        assert!(!field_ctx.is_submitting());
     }
 }
