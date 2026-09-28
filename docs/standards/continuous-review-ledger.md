@@ -143,7 +143,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit; completed with five remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
-- [ ] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit.
+- [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [ ] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit.
 - [ ] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit.
@@ -239,6 +239,19 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read the complete controller, `host.rs` composition, authentication/principal context, tenant extractor/middleware, artifact binding service, module dispatcher/runtime, API architecture contract, and current AGENTS governance. Rechecked exact route matching, supported-method surface, raw body limits, JSON parsing/error mapping, output bounds, exact installation identity, effective policy/RBAC, idempotency, timeout clamping, cache behavior, and sensitive-data handling. No remaining repository-owned in-scope controller defect was found.
 - **Verification:** repository source inspection, immediate re-audits, cross-boundary contract review, and final source-level regression pass only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`.
+
+
+### FS-22.02.24 Iteration 1 — `apps/server/src/controllers/artifact_permissions.rs`
+
+- **Base:** refreshed `main` at `740ed1a3fbce358e5665a3a00f5bfd36bc157cd2`; dedicated branch `codex/audit-fs-22.02.24-artifact-permissions`.
+- **Invariant map:** the transport must derive tenant and actor identity only from trusted request context; RBAC control-plane admission must require the typed direct-user principal and routed/authenticated tenant equality; `modules:manage` is the explicit artifact-permission management authority; request scope must be explicit and tenant scope must derive from the trusted routed tenant; immutable permission identity must be resolved by exact scope/installation/permission key; idempotency and grant/revoke mutation must remain one owner transaction with typed event publication through the host-composed transactional transport; no static `role_permissions` mutation may occur.
+- **Discovery:** read the complete controller, its OpenAPI declarations, request/response DTOs, error mapping, direct route composition, authentication/principal/tenant extractors, RBAC control-plane policy, artifact permission assignment owner, immutable definition schema and transaction path, event publisher contract, transactional event transport, and the existing RBAC source guardrails.
+- **Finding assessment:** no new repository-owned defect remained. The apparent generic architecture concern that the HTTP request DTO lives in `apps/server` is an intentional host-adapter boundary for this surface: RBAC explicitly owns domain assignment contracts while the server owns authenticated transport adapters, and the existing owner verification script deliberately requires the request DTO and explicit-scope mapping in this controller. No change was made for that resolved concern.
+- **Security/data-flow recheck:** the controller never accepts a second tenant identifier; tenant scope is mapped only to the trusted routed tenant, control-plane admission consumes the separately propagated `AuthPrincipalContext`, delegated/service principals are rejected, cross-tenant authenticated context is rejected, and `modules:manage` is checked before owner mutation.
+- **Transaction/retry recheck:** the controller delegates mutation semantics to `RbacArtifactPermissionAssignmentService`; the owner resolves exact immutable permission identity, records the tenant-scoped idempotency receipt, mutates only the dynamic artifact grant, publishes the sealed event inside the same transaction, and rolls back on publication failure. Exact retries are non-reapplying operations and changed commands conflict.
+- **Fresh second pass:** re-read the complete controller and all direct security/owner boundaries listed above from the dedicated branch. No additional repository-owned defect was found inside `artifact_permissions.rs`.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no test suite, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.24` complete. Next primary module: `FS-22.02.25 — apps/server/src/controllers/admin_events.rs`.
 
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 
