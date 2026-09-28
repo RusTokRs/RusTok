@@ -46,7 +46,7 @@ impl StarterEngine {
         // bootstrap author ID for this tenant.
         let effective_security = if security.user_id.is_none() {
             let mut sec = security.clone();
-            sec.user_id = Some(Uuid::new_v5(&tenant_id, b"rustok-starter-bootstrap-author"));
+            sec.user_id = Some(Uuid::from_u128(tenant_id.as_u128() ^ 0xa5a5_5a5a_3c3c_c3c3));
             sec
         } else {
             security.clone()

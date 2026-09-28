@@ -10,6 +10,7 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-blog.workspace = true
+rustok-channel.workspace = true
 rustok-core.workspace = true
 rustok-forum.workspace = true
 rustok-navigation.workspace = true
@@ -25,5 +26,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+rustok-content.workspace = true
 rustok-test-utils.workspace = true
 sea-orm-migration.workspace = true

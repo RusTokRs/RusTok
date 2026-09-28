@@ -16097,6 +16097,8 @@ dependencies = [
  "chrono",
  "rustok-api",
  "rustok-blog",
+ "rustok-channel",
+ "rustok-content",
  "rustok-core",
  "rustok-forum",
  "rustok-navigation",

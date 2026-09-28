@@ -156,10 +156,10 @@ pub async fn import_forum_topics(
             .await?;
 
         if topic.is_pinned {
-            if let Err(e) = moderation_service
+            let pin_res = moderation_service
                 .pin_topic(tenant_id, created_topic.id, security.clone())
-                .await
-            {
+                .await;
+            if let Err(e) = pin_res {
                 tracing::warn!(error = ?e, "Failed to pin starter forum topic");
             }
         }
@@ -181,15 +181,15 @@ pub async fn import_forum_topics(
                 .await?;
 
             if reply.is_solution {
-                if let Err(e) = moderation_service
+                let solution_res = moderation_service
                     .mark_solution(
                         tenant_id,
                         created_topic.id,
                         created_reply.id,
                         security.clone(),
                     )
-                    .await
-                {
+                    .await;
+                if let Err(e) = solution_res {
                     tracing::warn!(error = ?e, "Failed to mark starter reply as accepted solution");
                 }
             }

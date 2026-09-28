@@ -70,7 +70,7 @@ pub async fn import_pages(
                 "starter-blueprint-landing",
                 serde_json::json!({ "surface": "storefront", "channel": "web" }),
             )
-            .map_err(|e| crate::error::StarterError::Dependency(e.to_string()))?;
+            .map_err(|e| crate::error::StarterError::Validation(e.to_string()))?;
 
             let idempotency_key = format!("starter-publish-{}-{}", page.slug, created_page.id);
 

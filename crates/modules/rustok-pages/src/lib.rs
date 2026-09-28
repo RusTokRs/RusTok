@@ -67,6 +67,9 @@ pub use cache_invalidation::{
     page_cache_namespace, storefront_pages_cache_key,
 };
 pub use dto::*;
+pub use rustok_page_builder::{
+    PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
+};
 pub use entities::{
     Page, PageArtifactBindingReplacementOperation, PageArtifactRebuildOperation,
     PageBuilderScenarioBaseline, PagePublishOperation, PagePublishOperationArtifact,
