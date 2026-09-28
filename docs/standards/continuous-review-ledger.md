@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `0f4aab39179b017a6b751bfb7373fa58b6c82833`  
+**Current main SHA:** `8fcc3c42dfb71c02f6a995045347dfdc7acd33d0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -252,6 +252,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
 - [x] **FS-22.03.04 — `apps/server/src/controllers/oauth.rs`** — completed with one Bearer-parser compatibility remediation and a fresh independent second pass.
+- [x] **FS-22.03.05 — `apps/server/src/models/oauth_apps.rs`** — completed with one exact-grant-policy remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -316,6 +317,21 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` now records the case-insensitive Bearer parsing contract for OAuth browser-session/consent flows.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.04` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.05 Iteration 1 — `apps/server/src/models/oauth_apps.rs`
+
+- **Base:** refreshed `main` at `8fcc3c42dfb71c02f6a995045347dfdc7acd33d0`; dedicated branch `codex/audit-fs-22.03.05-oauth-grants`.
+- **Invariant map:** an OAuth application's persisted `grant_types` is the canonical authority for grant admission; compatibility behavior must not manufacture authority absent from persisted state; manifest-managed producers that require refresh rotation must declare `refresh_token` explicitly before exact membership is enforced; manual and auto-created applications must have identical grant semantics for the same persisted grant set.
+- **Finding AUTHAPP-22.03.05-01:** `Model::supports_grant_type` implicitly admitted `refresh_token` for every auto-created application that declared only `authorization_code`. This expanded persisted OAuth authority and could issue/rotate refresh credentials even though `refresh_token` was absent from the application's recorded grant policy.
+- **Producer reconciliation:** manifest-managed first-party admin and standalone storefront producers were the concrete callers relying on this compatibility expansion. Their persisted grant sets now explicitly include `refresh_token` alongside `authorization_code` and `client_credentials`, preserving the intended refresh flow before exact enforcement.
+- **Remediation:** `supports_grant_type` now performs exact persisted membership with no auto-created compatibility expansion. Regression coverage rejects an undeclared refresh grant for both manual and auto-created applications and accepts an explicitly declared auto-created refresh grant. Token-service coverage repeats the same auto-created boundary at the consumer admission point.
+- **Immediate re-audit:** re-read the OAuth app model, manifest sync producer, token exchange service, access-token auth extractor, authorization controller, and refresh/token tests. Existing authorization-code and client-credentials checks remain exact; refresh tokens are emitted only when the explicit app grant is present.
+- **Adjacent-boundary re-audit:** manifest sync updates existing first-party app grant types during runtime bootstrap, so the two concrete producers converge persisted rows to the new explicit set before traffic. Embedded apps intentionally keep an empty grant set and do not participate in the authorization-code/refresh flow.
+- **Regression audit:** manual and auto-created apps with only `authorization_code` now fail refresh grant admission; explicit `refresh_token` succeeds; manifest-managed admin/storefront app composition retains the same intended three-grant set. No token format, tenant binding, scope restriction, or refresh CAS behavior changed.
+- **Fresh second pass:** independently searched all reachable `supports_grant_type` call sites in the server auth surface and rechecked producer literals, consumer grant gates, and tests. No remaining repository-owned compatibility expansion was found in this primary model contract.
+- **Documentation:** `apps/server/docs/README.md` records exact persisted grant admission and the explicit managed-app grant set; `crates/modules/rustok-auth/docs/implementation-plan.md` closes Open Result #1.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.05` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 
