@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{FromRequestParts, State},
     http::{HeaderValue, Method, Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -9,8 +9,10 @@ use rustok_api::context::{
 };
 use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
 use rustok_core::SecurityActorKind;
+use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
 
-use crate::extractors::auth::resolve_current_user;
+use crate::auth::decode_access_token;
+use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
 use crate::host_authority::{take_host_authority, with_host_authority_scope};
 use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 use crate::services::server_runtime_context::ServerAuthRuntime;
@@ -60,7 +62,17 @@ pub async fn resolve_optional(
     let request_method = parts.method.clone();
     let mut rbac_scope = None;
 
-    match resolve_current_user(&mut parts, &ctx).await {
+    let current_user_result = if parts
+        .extensions
+        .get::<crate::context::TenantContextExtension>()
+        .is_some()
+    {
+        resolve_current_user(&mut parts, &ctx).await
+    } else {
+        resolve_current_user_without_tenant_context(&mut parts, &ctx).await
+    };
+
+    match current_user_result {
         Ok(current_user) => {
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
@@ -163,6 +175,25 @@ pub async fn resolve_optional(
         pages_inline_authoring,
         pages_inline_authoring_surface,
     )
+}
+
+async fn resolve_current_user_without_tenant_context(
+    parts: &mut axum::http::request::Parts,
+    ctx: &ServerAuthRuntime,
+) -> Result<crate::extractors::auth::CurrentUser, (StatusCode, &'static str)> {
+    let TypedHeader(Authorization(bearer)) =
+        TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, ctx)
+            .await
+            .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
+
+    let auth_config = ctx.auth_config().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "JWT secret not configured",
+    ))?;
+    let claims = decode_access_token(auth_config, bearer.token())
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+
+    resolve_current_user_from_access_token(ctx, claims.tenant_id, bearer.token()).await
 }
 
 fn pages_inline_authoring_response(
@@ -285,6 +316,35 @@ mod tests {
     use axum::response::IntoResponse;
     use rustok_api::Permission;
     use uuid::Uuid;
+
+    #[test]
+    fn verified_bearer_claim_contains_the_tenant_used_for_global_auth() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+        let tenant_id = Uuid::new_v4();
+        let token = crate::auth::encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            tenant_id,
+            rustok_core::UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .expect("encode access token");
+
+        let claims =
+            crate::auth::decode_access_token(&config, &token).expect("decode access token");
+        assert_eq!(claims.tenant_id, tenant_id);
+    }
+
+    #[test]
+    fn tampered_bearer_cannot_provide_a_global_tenant_claim() {
+        let config = crate::auth::AuthConfig::new(
+            "test-secret-key-for-auth-context-32bytes-long".to_string(),
+        );
+
+        assert!(crate::auth::decode_access_token(&config, "not-a-jwt").is_err());
+    }
 
     #[test]
     fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {
