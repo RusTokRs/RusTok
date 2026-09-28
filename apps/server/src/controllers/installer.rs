@@ -7,10 +7,12 @@ use axum::{
 use chrono::{DateTime, Utc};
 use rustok_installer::{
     InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
-    InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
-    load_base_distribution_receipt, redact_install_plan,
+    InstallExecutor, InstallPlan, bind_instance_placement, checksum_json,
+    evaluate_preflight_with_deployment, load_base_distribution_receipt, redact_install_plan,
 };
-use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
+use rustok_installer_persistence::{
+    InstallHttpJobAdmission, InstallerPersistenceService, entities::install_step_receipt,
+};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -19,6 +21,15 @@ use crate::common::settings::is_production_environment;
 use crate::error::{Error, Result, http_error};
 use crate::installer_execution::ServerInstallExecutor;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[derive(Debug, Serialize)]
+struct InstallApplyRequestIdentity {
+    plan: serde_json::Value,
+    lock_owner: String,
+    lock_ttl_secs: i64,
+    pg_admin_url: Option<String>,
+    bootstrap_public_key_sha256: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct InstallPlanResponse {
     pub redacted_plan: serde_json::Value,
@@ -161,19 +172,47 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers)?;
+    let submitted_instance_id = request.plan.placement.instance_id;
+    if submitted_instance_id.is_nil() {
+        return Err(bad_request_error(
+            "installer plan instance_id must be a non-nil UUID",
+        ));
+    }
+
     let plan = bind_host_install_plan(&ctx, request.plan).await?;
-    let job_id = rustok_core::generate_id();
-    let submitted_at = Utc::now();
+    let effective_instance_id = submitted_instance_id;
+    let distribution_release_id = plan
+        .topology
+        .distribution
+        .as_ref()
+        .map(|binding| binding.distribution_release_id)
+        .ok_or_else(|| {
+            internal_error("host-bound installer plan has no distribution release identity")
+        })?;
+
+    let lock_owner = request
+        .lock_owner
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|| "http".to_string());
+    let lock_ttl_secs = request.lock_ttl_secs.unwrap_or(900).max(1);
+    let bootstrap_public_key_base64 =
+        configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY");
+    let request_hash = install_apply_request_hash(
+        &plan,
+        submitted_instance_id,
+        &lock_owner,
+        lock_ttl_secs,
+        request.pg_admin_url.as_deref(),
+        bootstrap_public_key_base64.as_deref(),
+    )?;
+    let idempotency_key =
+        format!("instance:{effective_instance_id}:release:{distribution_release_id}");
     let apply_options = InstallApplyOptions {
-        lock_owner: request
-            .lock_owner
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "http".to_string()),
-        lock_ttl_secs: request.lock_ttl_secs.unwrap_or(900),
+        lock_owner,
+        lock_ttl_secs,
         pg_admin_url: request.pg_admin_url,
-        bootstrap_public_key_base64: configured_value(
-            "RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
-        ),
+        bootstrap_public_key_base64,
     };
     let registry = ctx
         .shared_get::<rustok_core::ModuleRegistry>()
@@ -184,55 +223,128 @@ async fn apply(
         })?;
     let executor = ServerInstallExecutor::new(registry);
     let persistence = InstallerPersistenceService::new(ctx.db_clone());
-    persistence
-        .create_http_job(job_id, submitted_at)
+    let admission = persistence
+        .admit_http_job(
+            job_id,
+            &idempotency_key,
+            &request_hash,
+            submitted_at,
+        )
         .await
         .map_err(|error| {
-            tracing::error!(%error, %job_id, "Failed to create durable installer HTTP job");
-            internal_error("failed to create installer job")
+            tracing::error!(
+                %error,
+                %job_id,
+                idempotency_key = %idempotency_key,
+                "Failed to admit durable installer HTTP job"
+            );
+            internal_error("failed to admit installer job")
         })?;
 
-    tokio::spawn(async move {
-        let result = executor.apply(plan, apply_options).await;
-        match result {
-            Ok(output) => {
-                if let Err(error) = persistence
-                    .finish_http_job_succeeded(
-                        job_id,
-                        output.session_id,
-                        output.tenant_id,
-                        &output,
-                    )
-                    .await
-                {
-                    tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
-                }
-            }
-            Err(error) => {
-                tracing::error!(%error, %job_id, "Installer apply job failed");
-                if let Err(update_error) = persistence
-                    .finish_http_job_failed(job_id, "installer apply failed")
-                    .await
-                {
-                    tracing::error!(
-                        %update_error,
-                        %job_id,
-                        "Failed to persist installer HTTP job failure state"
-                    );
-                }
-            }
-        }
-    });
+    let response_for = |job: &rustok_installer_persistence::entities::install_http_job::Model| {
+        Ok((
+            StatusCode::ACCEPTED,
+            Json(InstallApplyJobResponse {
+                job_id: job.id,
+                status: install_job_state(&job.status)?,
+                submitted_at: job.submitted_at,
+                status_url: format!("/api/install/jobs/{}", job.id),
+            }),
+        ))
+    };
 
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(InstallApplyJobResponse {
-            job_id,
-            status: InstallJobState::Running,
-            submitted_at,
-            status_url: format!("/api/install/jobs/{job_id}"),
-        }),
-    ))
+    match admission {
+        InstallHttpJobAdmission::Replay(job) => response_for(&job),
+        InstallHttpJobAdmission::Conflict(_) => Err(http_error(HttpError::new(
+            StatusCode::CONFLICT,
+            "idempotency_conflict",
+            "the installer apply identity is already bound to a different request",
+        ))),
+        InstallHttpJobAdmission::Created(job) => {
+            let job_id = job.id;
+            tokio::spawn(async move {
+                let result = executor.apply(plan, apply_options).await;
+                match result {
+                    Ok(output) => {
+                        if let Err(error) = persistence
+                            .finish_http_job_succeeded(
+                                job_id,
+                                output.session_id,
+                                output.tenant_id,
+                                &output,
+                            )
+                            .await
+                        {
+                            tracing::error!(
+                                %error,
+                                %job_id,
+                                "Failed to finalize durable installer HTTP job"
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, %job_id, "Installer apply job failed");
+                        if let Err(update_error) = persistence
+                            .finish_http_job_failed(job_id, "installer apply failed")
+                            .await
+                        {
+                            tracing::error!(
+                                %update_error,
+                                %job_id,
+                                "Failed to persist installer HTTP job failure state"
+                            );
+                        }
+                    }
+                }
+            });
+
+            Ok((
+                StatusCode::ACCEPTED,
+                Json(InstallApplyJobResponse {
+                    job_id,
+                    status: InstallJobState::Running,
+                    submitted_at: job.submitted_at,
+                    status_url: format!("/api/install/jobs/{job_id}"),
+                }),
+            ))
+        }
+    }
+}
+
+fn install_job_state(status: &str) -> Result<InstallJobState> {
+    match status {
+        "running" => Ok(InstallJobState::Running),
+        "succeeded" => Ok(InstallJobState::Succeeded),
+        "failed" => Ok(InstallJobState::Failed),
+        _ => {
+            tracing::error!(status, "Unknown persisted installer HTTP job state");
+            Err(internal_error("installer job has an invalid persisted state"))
+        }
+    }
+}
+
+fn install_apply_request_hash(
+    plan: &InstallPlan,
+    instance_id: Uuid,
+    lock_owner: &str,
+    lock_ttl_secs: i64,
+    pg_admin_url: Option<&str>,
+    bootstrap_public_key_base64: Option<&str>,
+) -> Result<String> {
+    let mut normalized_plan = plan.clone();
+    normalized_plan.placement.instance_id = instance_id;
+    let identity = InstallApplyRequestIdentity {
+        plan: redact_install_plan(&normalized_plan),
+        lock_owner: lock_owner.to_string(),
+        lock_ttl_secs,
+        pg_admin_url: pg_admin_url.map(str::to_string),
+        bootstrap_public_key_sha256: bootstrap_public_key_base64
+            .map(|value| hex::encode(sha2::Sha256::digest(value.as_bytes()))),
+    };
+    checksum_json(&identity).map_err(|error| {
+        tracing::error!(%error, "Failed to checksum installer apply request identity");
+        internal_error("failed to checksum installer apply request")
+    })
 }
 
 async fn bind_host_install_plan(
