@@ -108,7 +108,9 @@ fn is_form_encoded_content_type(value: &str) -> bool {
         .split(';')
         .next()
         .map(str::trim)
-        .is_some_and(|media_type| media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded"))
+        .is_some_and(|media_type| {
+            media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        })
 }
 async fn authorize_handler(
     State(ctx): State<ServerRuntimeContext>,
