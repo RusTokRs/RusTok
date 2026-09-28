@@ -114,7 +114,7 @@ mod tests {
             .expect("install_http_jobs migration should apply");
 
         assert!(
-            db.get_schema_manager()
+            SchemaManager::new(&db)
                 .has_table("install_http_jobs")
                 .await
                 .expect("table lookup should succeed")
