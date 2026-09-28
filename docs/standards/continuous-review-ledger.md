@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b94da56d40452b120bf27d8eda6989f439b7d765`  
+**Current main SHA:** `69c96eac789507fb70096498bf79c0772b1437ff`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -132,7 +132,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.10 — `crates/modules/rustok-cart/src/guest_access_http.rs` + native storefront capability adapters** — one-owner boundary audit.
 - [x] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
 - [x] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Remaining full worker rollback/join/abort lifecycle gaps are explicitly deferred to FS-24.
-- [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
+- [x] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Marketplace-provider panic handling remains a separate owner-module finding; full detached-worker lifecycle remains deferred to FS-24.
 - [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
 - [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
 - [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
@@ -195,6 +195,28 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.13 Result — `app_runtime.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `ff30a80f06956499ad2ff228d2660f83f1a565da`.
+- **Final main after this module track:** `69c96eac789507fb70096498bf79c0772b1437ff`.
+- **Iteration 1:** PR #4184, merge commit `6e809ccd7256472bb6f9aa3801eb2d4a3f7d551f`.
+  - **Finding SRV-22.02.13-01:** Workflow cron was started whenever `workflow_cron_enabled=true`, even for `api`, `admin_ssr`, and `storefront_ssr` host profiles that explicitly do not run background workers.
+  - **Remediation:** cron startup now requires both `runtime.runs_background_workers()` and the existing workflow-cron flag; focused profile tests were added.
+- **Iteration 2:** PR #4185, merge commit `b98a666eb038963d28a7de217bb72b4b8cc557c7`.
+  - **Finding SRV-22.02.13-02:** module-work startup used a non-atomic StopHandle check/insert followed by a production `expect()`, duplicating a known bootstrap race.
+  - **Remediation:** module-work startup now uses the canonical atomic `StopHandle::ensure(ctx)` path.
+- **Iteration 3:** PR #4186, merge commit `69c96eac789507fb70096498bf79c0772b1437ff`.
+  - **Finding SRV-22.02.13-03:** `bootstrap_app_runtime` accepted a second `RustokSettings` value while `ServerRuntimeContext` already owned the authoritative immutable settings snapshot. Different callers could therefore construct internally inconsistent runtime policy.
+  - **Remediation:** the bootstrap API now reads settings once from `runtime_ctx.settings()`; the direct server bootstrap caller and local test were updated.
+  - **Regression caught before PR:** the first version of this iteration passed the owned snapshot where the host-provider builder requires `&RustokSettings`; immediate re-audit caught and corrected the mismatch before PR creation.
+- **Final fresh second pass:** independently re-read the complete bootstrap path, runtime-mode gates, registry/manifest composition, module-work scheduling, GraphQL/rate-limit initialization, and direct caller contract. No remaining **unblocked app-runtime-owned** defect was found.
+- **Cross-module finding deferred by the one-primary-module rule:** `init_marketplace_catalog` calls `HardenedRegistryMarketplaceProvider::from_env()`, whose owner implementation currently panics on malformed registry configuration/client construction. The root cause belongs to `marketplace_catalog_cache_base.rs`; it is not patched through an app-runtime catch/panic shim. A dedicated owner-module iteration must handle it.
+- **Explicitly deferred lifecycle debt:** detached Workflow cron, module-work scheduler, and rate-limit cleanup tasks do not yet form one host-managed join/abort lifecycle; this remains under the existing FS-24 worker lifecycle scope.
+- **Production `expect()` retained:** `module_runtime_extensions_from_ctx` has an explicit bootstrap-order invariant and is only used after the runtime extension registry is installed; it is treated as a programming-error guard, consistent with the coding standard's permitted invariant panics.
+- **Verification:** source-level static checks, direct caller/callee inspection, regression re-audit, independent second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`.
 
 ### FS-22.02.12 Result — `server_bootstrap.rs`
 
