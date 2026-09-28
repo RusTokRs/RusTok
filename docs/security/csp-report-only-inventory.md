@@ -9,7 +9,7 @@ status: active
 
 ## Purpose
 
-This inventory defines the target browser policy, the report collection boundary and the evidence required before the UI CSP removes its remaining enforced inline-style-attribute allowance. Inline scripts and trusted style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
+This inventory defines the current browser policy, the report collection boundary and the evidence required to preserve the strict default UI CSP while monitoring remaining browser-policy dependencies. Inline scripts and trusted style elements already require a per-response nonce, inline event handlers are blocked, `unsafe-eval` is prohibited and production connections are HTTPS/WSS-only.
 
 No violation in this document is an automatic allowlist request. The preferred resolution is to remove the dependency, move code into a same-origin static asset, attach a per-response nonce/hash to a trusted element, or replace a style attribute with a reviewed CSS class, native element attribute, SVG geometry contract or bounded DOM adapter.
 
