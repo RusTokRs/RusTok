@@ -101,7 +101,7 @@ async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
     }
 
     if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>()
-        && let Err(error) = shared.0.sync_runtime_metrics().await
+        && shared.0.sync_runtime_metrics().await.is_err()
     {
         warn!(namespace = "auth", "failed to sync rate-limit metrics");
     }
@@ -421,6 +421,7 @@ fn format_outbox_metrics(
         Some(pending_lag_seconds),
     )
 }
+
 fn format_outbox_relay_runtime_metrics(snapshot: RelayMetricsSnapshot) -> String {
     format!(
         "rustok_outbox_relay_processed_total {processed_total}\n\
@@ -632,13 +633,6 @@ fn search_metrics_unavailable_payload() -> String {
         .to_string()
 }
 
-fn is_missing_relation_error(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    message.contains("no such table")
-        || message.contains("undefinedtable")
-        || message.contains("relation") && message.contains("does not exist")
-}
-
 fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Sqlite => {
@@ -730,6 +724,9 @@ fn format_rbac_metrics(
     orphan_user_roles_total: Option<i64>,
     orphan_role_permissions_total: Option<i64>,
 ) -> String {
+    let consistency_metrics_available = users_without_roles_total.is_some()
+        && orphan_user_roles_total.is_some()
+        && orphan_role_permissions_total.is_some();
     let consistency_query_failures_total =
         RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.load(Ordering::Relaxed);
     let consistency_query_latency_ms_total =
@@ -778,6 +775,7 @@ fn format_rbac_metrics(
         users_without_roles_total = format_metric_i64(users_without_roles_total),
         orphan_user_roles_total = format_metric_i64(orphan_user_roles_total),
         orphan_role_permissions_total = format_metric_i64(orphan_role_permissions_total),
+        consistency_metrics_available = if consistency_metrics_available { 1 } else { 0 },
         consistency_query_failures_total = consistency_query_failures_total,
         consistency_query_latency_ms_total = consistency_query_latency_ms_total,
         consistency_query_latency_samples = consistency_query_latency_samples,
@@ -885,6 +883,7 @@ mod tests {
     #[test]
     fn unavailable_rbac_consistency_metrics_are_explicit() {
         let payload = format_rbac_metrics(RbacService::metrics_snapshot(), None, None, None);
+        assert!(payload.contains("rustok_rbac_consistency_metrics_collection_status 0"));
         assert!(payload.contains("rustok_rbac_users_without_roles_total NaN"));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total NaN"));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total NaN"));
