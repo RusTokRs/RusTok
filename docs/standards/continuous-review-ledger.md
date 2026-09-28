@@ -226,6 +226,7 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently rechecked route exactness, body size, content type/header handling, auth-extension timing, direct-user versus OAuth principal classification, permission inheritance, dry-run/live divergence, third-party rejection, artifact-origin policy delegation, downstream JSON extraction, and owner atomicity. No remaining repository-owned in-scope defect was found in `registry_publish_policy.rs`.
 - **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned verification rules.
 - **Status:** module-level second pass clean; `FS-22.02.04` complete. Next planned primary module is `FS-22.02.05 — rate_limit.rs`.
+- **Merged:** PR #4171, merge commit `ca7a569a58cb8ebde50efce51de74b2b9123215c`.
 
 ### Deferred owning-module findings discovered during FS-22
 
