@@ -219,21 +219,8 @@ fn alloy_published_rhai_source_from_ctx(
 ))]
 fn content_orchestration_from_ctx(
     ctx: &ServerRuntimeContext,
-) -> rustok_content_orchestration::SharedContentOrchestrationService {
-    if let Some(service) =
-        ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
-    {
-        return service;
-    }
-    tracing::warn!(
-        "ContentOrchestrationService not initialized; building fallback service for GraphQL schema dependencies"
-    );
-    let service = rustok_content_orchestration::build_content_orchestration_service(
-        ctx.db_clone(),
-        transactional_event_bus_from_context(ctx),
-    );
-    ctx.shared_insert(service.clone());
-    service
+) -> Option<rustok_content_orchestration::SharedContentOrchestrationService> {
+    ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
 }
 
 #[cfg(all(feature = "mod-forum", feature = "mod-media"))]
