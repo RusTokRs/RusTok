@@ -276,7 +276,8 @@ Hard limits for every iteration:
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command is executed by the agent.
 - **Fresh second pass:** re-read the complete changed middleware, native wrapper, REST channel controller, ChannelResolver, ChannelReadPort, locale/tenant middleware, and the application-router contract. The remediation preserves explicit selector precedence, tenant scope, trusted host derivation, durable invalidation ownership, and fail-safe cache generation behavior; no additional repository-owned defect was found inside `channel.rs`.
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command was executed by the agent.
-- **Status:** module-level fresh second pass clean; `FS-22.02.07` complete pending integration. Next planned primary module is `FS-22.02.08 — apps/server/src/middleware/locale.rs`.
+- **Status:** module-level fresh second pass clean; `FS-22.02.07` complete and integrated into `main`. Next planned primary module is `FS-22.02.08 — apps/server/src/middleware/locale.rs`.
+- **Merged:** PR #4175, merge commit `545ee456246a0a34c9a8b7f6f2e9284ef213f197`.
 
 ### Deferred owning-module findings discovered during FS-22
 
