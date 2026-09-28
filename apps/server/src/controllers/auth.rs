@@ -21,7 +21,7 @@ use crate::auth::{
     decode_email_verification_token, encode_email_verification_token,
     encode_password_reset_token, hash_refresh_token,
 };
-use crate::common::{RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
+use crate::common::{RustokSettings, RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
@@ -64,14 +64,20 @@ fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> 
 
 #[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
     responses((status = 200, description = "Registration successful", body = AuthResponse),(status = 400, description = "Email already exists")))]
+fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
+    if settings.features.registration_enabled {
+        Ok(())
+    } else {
+        Err(Error::Forbidden("Registration is disabled".into()))
+    }
+}
+
 async fn register(
     State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
-    if !ctx.runtime_ctx().settings().features.registration_enabled {
-        return Err(Error::Forbidden("Registration is disabled".into()));
-    }
+    ensure_registration_enabled(ctx.runtime_ctx().settings())?;
 
     let runtime_ctx = ctx.runtime_ctx();
     let config = ctx
@@ -637,4 +643,22 @@ pub fn router() -> crate::routes::ServerRouter {
 
 fn clamp_session_limit(limit: Option<u64>) -> u64 {
     limit.unwrap_or(50).clamp(1, 100)
+}
+\n#[cfg(test)]
+mod tests {
+    use super::ensure_registration_enabled;
+    use crate::common::RustokSettings;
+
+    #[test]
+    fn registration_policy_respects_feature_flag() {
+        let enabled = RustokSettings::default();
+        assert!(ensure_registration_enabled(&enabled).is_ok());
+
+        let mut disabled = RustokSettings::default();
+        disabled.features.registration_enabled = false;
+        assert!(matches!(
+            ensure_registration_enabled(&disabled),
+            Err(crate::error::Error::Forbidden(message)) if message == "Registration is disabled"
+        ));
+    }
 }
