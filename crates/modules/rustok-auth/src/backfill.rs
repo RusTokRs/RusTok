@@ -6,6 +6,10 @@ use crate::{
     AuthUserBackfillRecord,
 };
 
+const MIN_BACKFILL_USER_READ_LIMIT: u64 = 1;
+const MAX_BACKFILL_USER_READ_LIMIT: u64 = 500;
+
+
 /// Database-backed adapter for the auth-owned, bounded profile-provisioning
 /// identity projection. It is usable by the standalone CLI and does not expose
 /// user persistence models to consumer modules.
@@ -19,12 +23,25 @@ impl AuthUserBackfillDbReader {
     }
 }
 
+fn validate_backfill_user_read_limit(
+    limit: u64,
+) -> Result<u64, AuthLifecycleMutationError> {
+    if !(MIN_BACKFILL_USER_READ_LIMIT..=MAX_BACKFILL_USER_READ_LIMIT).contains(&limit) {
+        return Err(AuthLifecycleMutationError::Validation(format!(
+            "profile backfill user read limit must be between {MIN_BACKFILL_USER_READ_LIMIT} and {MAX_BACKFILL_USER_READ_LIMIT}"
+        )));
+    }
+
+    Ok(limit)
+}
+
 #[async_trait]
 impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
     async fn list_users_for_profile_backfill(
         &self,
         request: AuthUserBackfillReadRequest,
     ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
+        let limit = validate_backfill_user_read_limit(request.limit)?;
         let backend = self.db.get_database_backend();
         let sql = match backend {
             DbBackend::Sqlite => {
@@ -37,7 +54,11 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
         let statement = Statement::from_sql_and_values(
             backend,
             sql,
-            vec![request.tenant_id.into(), (request.limit as i64).into()],
+            vec![request.tenant_id.into(), i64::try_from(limit).map_err(|_| {
+                AuthLifecycleMutationError::Validation(
+                    "profile backfill user read limit is out of range".to_string(),
+                )
+            })?.into()],
         );
 
         self.db
@@ -59,5 +80,20 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
                 })
             })
             .collect()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::validate_backfill_user_read_limit;
+
+    #[test]
+    fn backfill_user_read_limit_is_bounded() {
+        assert!(validate_backfill_user_read_limit(0).is_err());
+        assert_eq!(validate_backfill_user_read_limit(1).unwrap(), 1);
+        assert_eq!(validate_backfill_user_read_limit(500).unwrap(), 500);
+        assert!(validate_backfill_user_read_limit(501).is_err());
+        assert!(validate_backfill_user_read_limit(u64::MAX).is_err());
     }
 }
