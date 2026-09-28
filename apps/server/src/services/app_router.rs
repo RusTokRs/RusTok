@@ -2,6 +2,7 @@ use axum::Extension;
 use axum::Router as AxumRouter;
 use axum::middleware as axum_middleware;
 use axum::routing::post;
+use axum::response::{IntoResponse, Response};
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
@@ -31,8 +32,6 @@ pub(crate) mod routes_codegen {
     include!(concat!(env!("OUT_DIR"), "/app_routes_codegen.rs"));
 }
 
-#[cfg(feature = "embed-admin-assets")]
-use axum::response::IntoResponse;
 #[cfg(feature = "embed-admin-assets")]
 use axum::{
     http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG},
@@ -164,11 +163,14 @@ pub fn build_storefront_router(_runtime: HostRuntimeContext) -> AxumRouter {
 
 pub fn mount_application_shell(
     router: AxumRouter,
-    admin_router: Option<AxumRouter>,
+    admin_router: Option<axum::Router>,
     storefront_router: Option<AxumRouter>,
 ) -> AxumRouter {
     let router = if let Some(admin_router) = admin_router {
-        router.nest("/admin", admin_router)
+        router.fallback(move |request: axum::extract::Request| {
+            let admin_router = admin_router.clone();
+            async move { dispatch_embedded_admin_fallback(admin_router, request).await }
+        })
     } else {
         router
     };
@@ -177,6 +179,45 @@ pub fn mount_application_shell(
         router.merge(storefront_router)
     } else {
         router
+    }
+}
+
+async fn dispatch_embedded_admin_fallback(
+    admin_router: axum::Router,
+    mut request: axum::extract::Request,
+) -> Response {
+    let original_path = request.uri().path();
+    let Some(stripped) = original_path.strip_prefix("/admin") else {
+        return (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response();
+    };
+    if !(stripped.is_empty() || stripped.starts_with('/')) {
+        return (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response();
+    }
+
+    let rewritten_path = if stripped.is_empty() {
+        "/".to_string()
+    } else {
+        stripped.to_string()
+    };
+    let rewritten_uri = match request.uri().query() {
+        Some(query) => format!("{rewritten_path}?{query}").parse::<axum::http::Uri>(),
+        None => rewritten_path.parse::<axum::http::Uri>(),
+    };
+
+    let Ok(rewritten_uri) = rewritten_uri else {
+        tracing::error!(%original_path, "Failed to rewrite embedded admin request URI");
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Admin UI routing failed",
+        )
+            .into_response();
+    };
+
+    *request.uri_mut() = rewritten_uri;
+
+    match admin_router.oneshot(request).await {
+        Ok(response) => response,
+        Err(error) => match error {},
     }
 }
 
@@ -377,7 +418,7 @@ pub fn compose_application_router(
         runtime
             .deployment_surfaces
             .embed_admin
-            .then(build_admin_router),
+            .then(|| build_admin_router().with_state(auth_runtime.clone())),
         runtime
             .deployment_surfaces
             .embed_storefront
@@ -510,6 +551,62 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn embedded_admin_fallback_does_not_conflict_with_existing_admin_routes() {
+        let api_router =
+            AxumRouter::new().route("/admin/orders", get(|| async { "commerce" }));
+        let admin_router = AxumRouter::new().fallback(|| async { "admin-ui" });
+
+        let app = mount_application_shell(api_router, Some(admin_router), None);
+
+        let existing_admin_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/orders")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(existing_admin_response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(existing_admin_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+            "commerce"
+        );
+
+        let embedded_admin_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/missing-route")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(embedded_admin_response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(embedded_admin_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+            "admin-ui"
+        );
+
+        let unrelated_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/unrelated")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unrelated_response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
