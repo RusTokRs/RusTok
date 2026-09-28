@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
-use rustok_ui_grid::prelude::*;
+use rustok_grid_leptos::prelude::*;
 
 use crate::core::{
     filter_products, item_product_kind, product_grid_columns, ProductKind,
@@ -29,7 +29,7 @@ pub fn ProductGridPage() -> impl IntoView {
     let columns = product_grid_columns(locale.as_deref());
     let (filters, set_filters) = signal(ColumnFilters::new());
     let selection = RwSignal::new(RowSelection::new());
-    let pagination = RwSignal::new(GridPagination::new(1, 20));
+    let pagination = RwSignal::new(GridPagination::new(1, 20, 0));
 
     // Load products resource
     let products_resource = LocalResource::new(move || {
@@ -38,7 +38,9 @@ pub fn ProductGridPage() -> impl IntoView {
         let loc = locale.clone();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             let res = transport::fetch_products(
                 tok,
                 ten,
@@ -47,7 +49,8 @@ pub fn ProductGridPage() -> impl IntoView {
                 None,
                 None,
             )
-            .await?;
+            .await
+            .map_err(|e| e.to_string())?;
             Ok::<Vec<ProductListItem>, String>(res.items)
         }
     });

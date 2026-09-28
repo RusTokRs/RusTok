@@ -10,8 +10,9 @@ use crate::model::{ProductDetail, ProductDraft};
 
 pub use crate::legacy_transport::fetch_catalog_search_options;
 pub(crate) use crate::legacy_transport::{
-    fetch_bootstrap, fetch_catalog_categories, fetch_effective_product_form, fetch_product,
-    fetch_product_attribute_values, fetch_product_pricing, fetch_products, fetch_shipping_profiles,
+    create_catalog_category, fetch_bootstrap, fetch_catalog_categories,
+    fetch_effective_product_form, fetch_product, fetch_product_attribute_values,
+    fetch_product_pricing, fetch_products, fetch_shipping_profiles,
 };
 pub(crate) use crate::product_schema_graphql::{
     clear_detached_product_attribute_values, save_product_attribute_values,

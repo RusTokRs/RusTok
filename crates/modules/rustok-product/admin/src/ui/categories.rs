@@ -37,14 +37,17 @@ pub fn CategoriesPage() -> impl IntoView {
         let loc = locale.clone().unwrap_or_default();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             let res = transport::fetch_catalog_categories(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
                 loc,
             )
-            .await?;
+            .await
+            .map_err(|e| e.to_string())?;
             Ok::<Vec<CatalogCategorySummary>, String>(res.items)
         }
     });

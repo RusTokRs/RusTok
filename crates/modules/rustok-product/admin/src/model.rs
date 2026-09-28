@@ -32,7 +32,7 @@ pub struct ProductList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ProductListItem {
     pub id: String,
     pub status: String,
@@ -54,7 +54,7 @@ pub struct ProductListItem {
     pub published_at: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ProductDetail {
     pub id: String,
     pub status: String,

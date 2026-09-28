@@ -1,4 +1,3 @@
-use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -6,13 +5,11 @@ use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_product_image_view_models, build_variant_row_view_models, item_product_kind, slugify,
+    build_product_image_view_models, build_variant_row_view_models, slugify, DraftForm,
     ProductKind,
 };
 use crate::model::{
-    AddProductImageInput, CatalogCategorySummary, CreateVariantInput, DraftForm, ProductDetail,
-    ProductDraft, ProductImage, ProductImageDraft, ProductPrice, ProductVariant,
-    UpdateProductImageDraft, VariantDraft, VariantPriceDraft,
+    CatalogCategorySummary, ProductDetail, ProductDraft, ProductImageDraft,
 };
 use crate::transport;
 
@@ -37,7 +34,7 @@ pub fn ProductEditorPage(
     // Initial product type from prop or query param
     let start_type = initial_type
         .as_deref()
-        .or_else(|| route_context.query_param("type"))
+        .or_else(|| route_context.query.get("type").map(String::as_str))
         .map(ProductKind::parse)
         .unwrap_or(ProductKind::Simple);
 
@@ -101,14 +98,17 @@ pub fn ProductEditorPage(
         let ten = tenant.get();
         let loc = locale.clone().unwrap_or_default();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             let res = transport::fetch_catalog_categories(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
                 loc,
             )
-            .await?;
+            .await
+            .map_err(|e| e.to_string())?;
             Ok::<Vec<CatalogCategorySummary>, String>(res.items)
         }
     });
@@ -118,13 +118,16 @@ pub fn ProductEditorPage(
         let tok = token.get();
         let ten = tenant.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             let res = transport::fetch_shipping_profiles(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
             )
-            .await?;
+            .await
+            .map_err(|e| e.to_string())?;
             Ok::<Vec<crate::model::ShippingProfile>, String>(res.items)
         }
     });
@@ -244,8 +247,7 @@ pub fn ProductEditorPage(
                 };
 
                 let draft = ProductImageDraft {
-                    media_id: uuid::Uuid::new_v4().to_string(),
-                    url,
+                    media_id: if url.is_empty() { uuid::Uuid::new_v4().to_string() } else { url },
                     alt_text: if alt.is_empty() { None } else { Some(alt) },
                     position: None,
                     locale: loc.clone(),

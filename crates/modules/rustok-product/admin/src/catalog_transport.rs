@@ -256,3 +256,17 @@ pub(crate) async fn fetch_product_attribute_values(
         .await
         .map_err(|failure| context.map_error(failure))
 }
+
+pub(crate) async fn create_catalog_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: crate::model::CatalogCategoryDraft,
+) -> Result<bool, GraphqlHttpError> {
+    legacy::create_catalog_category(token, tenant_slug, tenant_id, user_id, locale, draft)
+        .await
+        .map_err(|e| GraphqlHttpError::Network(e.to_string()))
+}
+
