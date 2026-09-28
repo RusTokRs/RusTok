@@ -29,6 +29,7 @@ rustok-ui-i18n.workspace = true
 thiserror.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
