@@ -153,7 +153,6 @@ impl TenantLocaleCache {
         )
     }
 
-    #[cfg(test)]
     fn with_limits(max_weight_bytes: u64, max_tenant_versions: usize) -> Self {
         Self {
             cache: Cache::builder()
@@ -474,6 +473,10 @@ mod tests {
     #[test]
     fn locale_cache_weight_accounts_for_dynamic_strings() {
         let tenant_id = Uuid::new_v4();
+        let key = TenantLocaleCacheKey {
+            tenant_id,
+            version: 1,
+        };
         let short = Arc::new(vec![TenantLocaleRecord {
             locale: "en".to_string(),
             is_enabled: true,
@@ -488,8 +491,8 @@ mod tests {
         }]);
 
         assert!(
-            tenant_locale_entry_weight(&tenant_id, &long)
-                > tenant_locale_entry_weight(&tenant_id, &short)
+            tenant_locale_entry_weight(&key, &long)
+                > tenant_locale_entry_weight(&key, &short)
         );
     }
 
@@ -500,10 +503,11 @@ mod tests {
 
         assert!(cache.get(tenant_id).await.is_none());
         cache.record_db_query();
+        let version = cache.tenant_version(tenant_id).expect("cache should be enabled");
         cache
             .cache
             .insert(
-                tenant_id,
+                cache.cache_key(tenant_id, version),
                 Arc::new(vec![TenantLocaleRecord {
                     locale: "en".to_string(),
                     is_enabled: true,
