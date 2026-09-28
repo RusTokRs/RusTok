@@ -99,7 +99,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 }
 
 pub fn axum_webhook_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
-    let state = WorkflowHttpRuntime::from_host(runtime);
+    let state = WorkflowHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route(
             "/webhooks/{tenant_slug}/{webhook_slug}",
