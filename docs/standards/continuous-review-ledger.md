@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `486a3c3e8c33ee1c4332f318f141d2829a4d40e2`  
+**Current main SHA:** `a10cfc7982fac9bdaa3013a825c8598869c53442`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -161,6 +161,18 @@ Hard limits for every iteration:
 - [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
+
+### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
+
+- **Base:** refreshed `main` at `a10cfc7982fac9bdaa3013a825c8598869c53442`; dedicated branch `codex/audit-fs-22.02.11-security-headers`.
+- **Invariant map:** security headers must be authoritative at the main-host boundary; API/health/operator surfaces must fail closed to the deny CSP; UI scripts/styles must remain nonce-bound; the richtext exception must cover only the owner-declared editor frame/asset surface; HSTS must agree with the host production declaration; CSP reporting must be bounded, privacy-safe and subject to the same abuse controls as other public API traffic.
+- **Confirmed finding SEC-22.02.11-01:** `security_headers` is currently the outermost application middleware, so its direct `POST /api/security/csp-report` interception executes before the configured path-aware rate limiter. The unauthenticated CSP collector can therefore bypass the general `/api/` request budget and directly consume its bounded parsing, telemetry and logging work.
+- **Confirmed finding SEC-22.02.11-02:** `csp_reports::record_report` logs the browser-supplied `disposition` string verbatim. The report body is bounded to 64 KiB, but the logged value is not normalized or bounded, so an unauthenticated caller can inject large/untrusted log content. This violates the repository security/observability requirement for bounded, non-sensitive structured logging.
+- **Confirmed finding SEC-22.02.11-03:** `sanitized_location` removes paths/query/fragment data but does not bound the resulting origin. A syntactically valid attacker-controlled URL can therefore produce a very large origin field in the CSP security log despite the otherwise bounded telemetry contract.
+- **Confirmed finding SEC-22.02.11-04:** `is_richtext_frame_surface` grants the dedicated richtext CSP, `SAMEORIGIN`, referrer policy and cache semantics to every path under `/richtext/frame/`. The actual main-server owner exposes one exact frame path plus a fixed single-segment asset set; broad prefix classification can therefore grant the weaker `style-src-attr 'unsafe-inline'` policy to unrelated/future paths or fallback responses.
+- **Confirmed finding SEC-22.02.11-05:** `docs/security/csp-report-only-inventory.md` describes an opt-in `RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES` rollout mode and says the default enforced UI policy still contains `style-src-attr 'unsafe-inline'`, but the current executable server policy already enforces `style-src-attr 'none'` and contains no such environment-flag path. The verification scripts likewise require the strict policy directly. This is current-state documentation drift at the security-policy boundary.
+- **Adjacent finding deferred:** `apps/admin/src/app/security.rs` reproduces the same broad `/richtext/frame/` prefix classification for the standalone admin host. It belongs to the standalone-admin security boundary and is not the primary module for this iteration; record it for its owning module track rather than widening this patch.
+- **Planned remediation units:** rate-limit composition order; bounded report disposition; bounded sanitized origin; exact richtext frame/asset path classification; synchronization of the central CSP inventory with executable truth. Each unit will be independently re-read before the next one.
 
 ### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
 
