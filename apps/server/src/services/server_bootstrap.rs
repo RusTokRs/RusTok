@@ -142,6 +142,16 @@ pub async fn bootstrap_application_router(
         bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
+    let router = compose_application_router(
+        router,
+        runtime_ctx.clone(),
+        ServerAuthRuntime::new(runtime_ctx.clone(), auth_config),
+        settings_snapshot,
+        runtime,
+        &rustok_settings,
+    )?;
+    tracing::info!("RusTok application router composed");
+
     #[cfg(feature = "mod-comments")]
     crate::services::comments_provider_runtime::start_comments_tcp_listener_if_enabled(
         &runtime_ctx,
@@ -215,16 +225,6 @@ pub async fn bootstrap_application_router(
 
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
     tracing::info!("RusTok runtime workers connected");
-
-    let router = compose_application_router(
-        router,
-        runtime_ctx.clone(),
-        ServerAuthRuntime::new(runtime_ctx, auth_config),
-        settings_snapshot,
-        runtime,
-        &rustok_settings,
-    )?;
-    tracing::info!("RusTok application router composed");
     Ok(router)
 }
 
