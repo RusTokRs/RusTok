@@ -130,7 +130,7 @@ impl ServerAuthLifecycleProvider {
         .await
         {
             tracing::error!(
-                %error,
+                error = ?error,
                 %tenant_id,
                 session_id = %claims.session_id,
                 "Auth token response failed after issuance and issued session compensation failed"
