@@ -97,7 +97,6 @@ impl GuardedOAuthAdminProvider {
         &self,
         context: &AuthAdminMutationContext,
         app_id: Uuid,
-        response_record: OAuthAppMutationRecord,
         authority: &[Permission],
     ) -> Result<OAuthAppSecretResult, AuthAdminMutationError> {
         let tx = self
@@ -121,10 +120,11 @@ impl GuardedOAuthAdminProvider {
         let mut active: oauth_apps::ActiveModel = app.into();
         active.client_secret_hash = Set(Some(secret_hash));
         active.updated_at = Set(Utc::now().into());
-        active
+        let updated_app = active
             .update(&tx)
             .await
             .map_err(|error| internal_oauth_guard_error(error))?;
+        let response_record = build_oauth_app_record(&tx, context, updated_app).await?;
         tx.commit()
             .await
             .map_err(|error| internal_oauth_guard_error(error))?;
