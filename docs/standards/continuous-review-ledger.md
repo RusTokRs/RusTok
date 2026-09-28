@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `53002053d05a113ebd4a756f3d15506cede903b0`  
-**Active branch:** `main`
+**Current main SHA:** `41c0386f1f99bdbdde570b824a217dfbdbcd11c4`  
+**Active branch:** `codex/audit-fs-22.02.07-channel-middleware`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -126,7 +126,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
 - [x] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
 - [x] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
-- [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
+- [x] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
 - [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
 - [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
 - [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
@@ -274,7 +274,9 @@ Hard limits for every iteration:
 - **Adjacent-boundary review:** normal tenant-enabled router order supplies tenant, locale, and auth context before channel resolution; the channel middleware uses the canonical request-trust host helper and owner `ChannelResolver`, whose host/default/policy queries remain tenant-scoped. REST channel mutations call the shared invalidation publisher directly, while native mutations are covered by `channel_native_wrapper`; durable generation remains database-owned.
 - **Remediation:** bound channel selector values at the HTTP parsing boundary to the storage contract, use canonical URL query decoding, and canonicalize the host only for cache-key identity so resolution precedence and owner semantics remain unchanged.
 - **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command is executed by the agent.
-- **Status:** findings recorded; implementation in progress.
+- **Fresh second pass:** re-read the complete changed middleware, native wrapper, REST channel controller, ChannelResolver, ChannelReadPort, locale/tenant middleware, and the application-router contract. The remediation preserves explicit selector precedence, tenant scope, trusted host derivation, durable invalidation ownership, and fail-safe cache generation behavior; no additional repository-owned defect was found inside `channel.rs`.
+- **Verification:** repository-content inspection, static reasoning, and branch diff review only. Per maintainer execution rules, no test suite, clippy, build, or runtime command was executed by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.07` complete pending integration. Next planned primary module is `FS-22.02.08 — apps/server/src/middleware/locale.rs`.
 
 ### Deferred owning-module findings discovered during FS-22
 
