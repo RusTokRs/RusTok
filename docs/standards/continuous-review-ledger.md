@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `36d0a8b18c4d4e4d9507ff5d167128deec887126`  
+**Current main SHA:** `780775b9fccb6dcd2e8668a60190d07669ee89e4`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,19 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.16 Iteration 1 — `crates/modules/rustok-auth/src/admin_mutations.rs`
+
+- **Base:** refreshed `main` at `780775b9fccb6dcd2e8668a60190d07669ee89e4`; dedicated branch `codex/audit-fs-22.03.16-auth-admin-mutations`.
+- **Invariant map:** auth admin ports must remain transport-neutral, preserve tenant/actor context, expose no secret material, distinguish authorization/validation/conflict/not-found/internal categories, and keep user/OAuth mutation contracts separate from concrete server persistence.
+- **Discovery:** re-read the complete admin mutation contract plus GraphQL error mapping, server user-admin provider, OAuth admin provider/guard, OAuth app service, RBAC authoritative role checks, and installer/admin boundaries.
+- **Finding assessment:** no remaining owner-level defect was confirmed inside `rustok-auth/src/admin_mutations.rs`. `OAuthAppSecretResult` has explicit secret-redacted `Debug`; command/record types contain no plaintext secret fields except the deliberate one-time `client_secret` response; the port surface remains framework-neutral.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-01:** `apps/server/src/services/oauth_admin_guard.rs` formats `generate_refresh_token()` results directly into the rotated client secret even though the auth credential API returns `Result<String, AuthError>`. This is a compile-level provider defect assigned to the next concrete OAuth-admin provider track, not the module-owned contract.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-02:** server user/OAuth admin providers still create `AuthAdminMutationError::Internal(String)` from raw DB/service diagnostics, while GraphQL maps `Internal` directly to client-visible internal-error text. This is a server adapter error-boundary issue and will be handled in the concrete provider tracks.
+- **Deferred adjacent finding ADMINPROVIDER-22.03.16-03:** OAuth admin list methods accept raw `u64` limits in the port; transport caps exist in some GraphQL paths but owner/provider enforcement needs a concrete provider audit. This remains separate from the contract-only module.
+- **Fresh second pass:** re-read the contract, secret redaction test, GraphQL mapping and direct provider boundaries. No contract-level secret leak, framework coupling, or malformed error-category defect remained.
+- **Verification:** repository source inspection and branch-diff review only. Adjacent findings are intentionally not patched through the contract layer; no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.16` complete. Next primary module: `FS-22.03.17 — apps/server/src/services/auth_admin_mutation_provider.rs`.
 
 ### FS-22.03.15 Iterations 1-2 — `crates/modules/rustok-auth/src/bootstrap.rs`
 
