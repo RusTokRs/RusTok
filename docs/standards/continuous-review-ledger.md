@@ -145,7 +145,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit; completed with three remediation iterations and a final fresh second pass.
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
-- [ ] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit.
+- [x] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit; completed with one remediation unit and a fresh independent second pass restoring typed HTTP error semantics; OpenAPI aggregation omission deferred to FS-22.02.31.
 - [ ] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit.
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
@@ -268,6 +268,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** re-read the complete changed controller and the adjacent auth/RBAC, error, outbox entity/migration, relay, transactional transport, database-policy and documentation boundaries from the modified branch. No additional repository-owned defect was found inside the primary module.
 - **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no test suite, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.25` complete. Next primary module: `FS-22.02.26 — apps/server/src/controllers/channel.rs`.
+
+
+### FS-22.02.26 Iteration 1 — `apps/server/src/controllers/channel.rs`
+
+- **Base:** refreshed `main` at `29b423d4bf13a91e7b2ff078ee178de023ca5906`; dedicated branch `codex/audit-fs-22.02.26-channel-controller`.
+- **Invariant map:** Channel Admin REST operations must derive tenant scope from trusted `CurrentTenant`; authenticated user authority must be checked against the same tenant before mutation; channel-owned domain errors must preserve their intended HTTP semantics; database/serialization failures must not become client faults or leak backend diagnostics; successful mutations must invoke the shared durable/local channel-cache invalidation boundary.
+- **Confirmed finding CHANNEL-22.02.26-01:** `internal_error` converted every `rustok-channel::ChannelError` into `Error::Message`, causing expected not-found, validation and conflict states to return HTTP 500 instead of their documented client semantics. This affected all ChannelService calls and both tenant-existence helper boundaries.
+- **Remediation CHANNEL-22.02.26-01:** replaced the generic mapper with a typed `map_channel_error`: `NotFound` -> 404; validation/invalid target/policy-operation errors -> 400; inactive and duplicate-resource conditions -> 409; database/serialization variants -> server-logged generic 500. Added focused status-contract regression tests for these mappings. No test suite was executed by the agent.
+- **Adjacent-boundary review:** `CurrentUser` already verifies token tenant equality, user/session tenant ownership, active principal state, and authoritative RBAC permissions; the controller additionally restricts every channel/policy resource to the trusted routed tenant before mutation. Cache invalidation remains after successful service mutation and is backed by the durable generation reconciliation path. Owner service and migration invariants were re-read; no controller-side bypass was found.
+- **Deferred adjacent finding CHANNEL-OPENAPI-26-01:** the public `/api/channels/*` REST surface has no `utoipa` path metadata in the controller and is not currently registered in `controllers/swagger.rs`. The general API architecture requires machine-readable OpenAPI for REST contracts, but the canonical aggregation/registration owner is `apps/server/src/controllers/swagger.rs`; handle this as the dedicated FS-22.02.31 primary module rather than widening the current controller iteration.
+- **Regression audit:** successful service results and cache invalidation behavior are unchanged; cross-tenant checks still return the generic not-found response; only previously misclassified domain failure paths changed status/error classification.
+- **Fresh second pass:** re-read the complete changed controller, `rustok-channel::ChannelError`, `Error::IntoResponse`, auth/RBAC tenant boundaries, ChannelService call sites, route registration and OpenAPI aggregation. No additional repository-owned defect remained inside `channel.rs`.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.26` complete. Next primary module: `FS-22.02.27 — apps/server/src/controllers/flex.rs`.
 
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 
