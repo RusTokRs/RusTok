@@ -22,6 +22,8 @@ pub enum FormSubmissionStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormState {
     pub is_submitting: bool,
+    #[serde(default)]
+    pub is_success: bool,
     pub form_error: Option<String>,
     pub field_errors: Vec<FieldError>,
 }
@@ -35,33 +37,51 @@ impl Default for FormState {
 impl FormState {
     // ── Constructors ────────────────────────────────────────────────
 
+    /// Create an initial idle form state.
     pub fn idle() -> Self {
         Self {
             is_submitting: false,
+            is_success: false,
             form_error: None,
             field_errors: Vec::new(),
         }
     }
 
+    /// Create a form state in the submitting lifecycle phase.
     pub fn submitting() -> Self {
         Self {
             is_submitting: true,
+            is_success: false,
             form_error: None,
             field_errors: Vec::new(),
         }
     }
 
+    /// Create a form state in the successful submission phase.
+    pub fn success() -> Self {
+        Self {
+            is_submitting: false,
+            is_success: true,
+            form_error: None,
+            field_errors: Vec::new(),
+        }
+    }
+
+    /// Create a form state pre-populated with a form-level error message.
     pub fn with_form_error(message: impl Into<String>) -> Self {
         Self {
             is_submitting: false,
+            is_success: false,
             form_error: Some(message.into()),
             field_errors: Vec::new(),
         }
     }
 
+    /// Create a form state pre-populated with a list of field validation errors.
     pub fn with_field_errors(field_errors: Vec<FieldError>) -> Self {
         Self {
             is_submitting: false,
+            is_success: false,
             form_error: None,
             field_errors,
         }
@@ -69,7 +89,9 @@ impl FormState {
 
     // ── Builder ─────────────────────────────────────────────────────
 
+    /// Builder method to append a field error.
     pub fn with_field_error(mut self, field: impl Into<String>, message: impl Into<String>) -> Self {
+        self.is_success = false;
         self.field_errors.push(FieldError {
             field: field.into(),
             message: message.into(),
@@ -79,41 +101,74 @@ impl FormState {
 
     // ── Transitions ─────────────────────────────────────────────────
 
+    /// Mark the form as currently submitting.
     pub fn set_submitting(&mut self) {
         self.is_submitting = true;
+        self.is_success = false;
         self.form_error = None;
     }
 
+    /// Mark the form submission as successful and clear all errors.
     pub fn set_submitted_success(&mut self) {
         self.is_submitting = false;
+        self.is_success = true;
         self.form_error = None;
         self.field_errors.clear();
     }
 
+    /// Mark the form submission as failed with a top-level error message.
     pub fn set_submitted_failure(&mut self, message: impl Into<String>) {
         self.is_submitting = false;
+        self.is_success = false;
         self.form_error = Some(message.into());
     }
 
+    /// Replace all field errors and reset submitting state.
     pub fn set_field_errors(&mut self, errors: Vec<FieldError>) {
         self.is_submitting = false;
+        self.is_success = false;
         self.field_errors = errors;
+    }
+
+    /// Add a single field error.
+    pub fn add_field_error(&mut self, field: impl Into<String>, message: impl Into<String>) {
+        self.is_success = false;
+        self.field_errors.push(FieldError::new(field, message));
+    }
+
+    /// Add multiple field errors from an iterator.
+    pub fn add_field_errors(&mut self, errors: impl IntoIterator<Item = FieldError>) {
+        self.is_success = false;
+        self.field_errors.extend(errors);
+    }
+
+    /// Replace or set an error for a specific field name.
+    pub fn set_field_error(&mut self, field: &str, message: impl Into<String>) {
+        self.is_success = false;
+        self.clear_field_error(field);
+        self.field_errors.push(FieldError::new(field, message));
     }
 
     // ── Queries ─────────────────────────────────────────────────────
 
+    /// Calculate the current high-level submission status.
     pub fn submission_status(&self) -> FormSubmissionStatus {
         if self.is_submitting {
             FormSubmissionStatus::Submitting
         } else if let Some(ref err) = self.form_error {
             FormSubmissionStatus::Failure(err.clone())
+        } else if let Some(first_field_err) = self.field_errors.first() {
+            FormSubmissionStatus::Failure(first_field_err.message.clone())
+        } else if self.is_success {
+            FormSubmissionStatus::Success
         } else {
             FormSubmissionStatus::Idle
         }
     }
 
+    /// Whether the form submission has completed successfully.
     pub fn is_success(&self) -> bool {
-        !self.is_submitting && self.form_error.is_none() && self.field_errors.is_empty()
+        self.is_success && !self.is_submitting && !self.has_errors()
     }
 
     /// Whether the form currently has no form-level error and no field-level errors.
@@ -121,6 +176,7 @@ impl FormState {
         !self.has_errors()
     }
 
+    /// First error message for a specific field name, if any.
     pub fn field_error(&self, field: &str) -> Option<&str> {
         self.field_errors
             .iter()
@@ -137,12 +193,45 @@ impl FormState {
             .collect()
     }
 
+    /// Check whether a specific field has validation errors.
     pub fn is_field_invalid(&self, field: &str) -> bool {
         self.field_errors.iter().any(|fe| fe.field == field)
     }
 
+    /// Whether the form has any form-level or field-level errors.
     pub fn has_errors(&self) -> bool {
         self.form_error.is_some() || !self.field_errors.is_empty()
+    }
+
+    /// Whether the form has a form-level error.
+    pub fn has_form_error(&self) -> bool {
+        self.form_error.is_some()
+    }
+
+    /// Whether the form has any field-level errors.
+    pub fn has_field_errors(&self) -> bool {
+        !self.field_errors.is_empty()
+    }
+
+    /// Return the first error message available (form-level error, or first field-level error).
+    pub fn first_error(&self) -> Option<&str> {
+        if let Some(ref err) = self.form_error {
+            Some(err.as_str())
+        } else {
+            self.field_errors.first().map(|fe| fe.message.as_str())
+        }
+    }
+
+    /// Collect all error messages into a vector of strings.
+    pub fn all_errors(&self) -> Vec<String> {
+        let mut list = Vec::new();
+        if let Some(ref err) = self.form_error {
+            list.push(err.clone());
+        }
+        for fe in &self.field_errors {
+            list.push(fe.message.clone());
+        }
+        list
     }
 
     /// Clear all validation errors for a specific field name.
@@ -150,13 +239,16 @@ impl FormState {
         self.field_errors.retain(|fe| fe.field != field);
     }
 
+    /// Clear all form-level and field-level errors.
     pub fn clear_errors(&mut self) {
         self.form_error = None;
         self.field_errors.clear();
     }
 
+    /// Reset form state back to clean idle.
     pub fn reset(&mut self) {
         self.is_submitting = false;
+        self.is_success = false;
         self.clear_errors();
     }
 }
@@ -170,15 +262,18 @@ mod tests {
         let mut state = FormState::idle();
         assert!(!state.is_submitting);
         assert!(!state.has_errors());
+        assert!(!state.is_success());
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
 
         state.set_submitting();
         assert!(state.is_submitting);
+        assert!(!state.is_success());
         assert_eq!(state.submission_status(), FormSubmissionStatus::Submitting);
 
         state.set_submitted_success();
         assert!(!state.is_submitting);
         assert!(state.is_success());
-        assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Success);
     }
 
     #[test]
@@ -186,11 +281,13 @@ mod tests {
         let mut state = FormState::submitting();
         state.set_submitted_failure("Network error");
         assert!(!state.is_submitting);
+        assert!(!state.is_success());
         assert!(state.has_errors());
         assert_eq!(
             state.submission_status(),
             FormSubmissionStatus::Failure("Network error".to_string())
         );
+        assert_eq!(state.first_error(), Some("Network error"));
     }
 
     #[test]
@@ -202,6 +299,8 @@ mod tests {
         assert_eq!(state.field_error("email"), Some("Invalid email"));
         assert!(!state.is_field_invalid("password"));
         assert_eq!(state.field_error("password"), None);
+        assert_eq!(state.first_error(), Some("Invalid email"));
+        assert_eq!(state.all_errors(), vec!["Invalid email", "Required"]);
     }
 
     #[test]
@@ -212,7 +311,12 @@ mod tests {
             message: "Already taken".into(),
         }]);
         assert!(!state.is_submitting);
+        assert!(!state.is_success());
         assert!(state.is_field_invalid("slug"));
+        assert_eq!(
+            state.submission_status(),
+            FormSubmissionStatus::Failure("Already taken".to_string())
+        );
     }
 
     #[test]
@@ -223,7 +327,8 @@ mod tests {
         assert!(!state.is_submitting);
         assert!(!state.has_errors());
         assert!(state.is_valid());
-        assert!(state.is_success());
+        assert!(!state.is_success());
+        assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
     }
 
     #[test]
@@ -242,5 +347,24 @@ mod tests {
 
         state.clear_field_error("username");
         assert!(state.is_valid());
+    }
+
+    #[test]
+    fn add_and_set_field_error() {
+        let mut state = FormState::idle();
+        state.add_field_error("title", "Too short");
+        state.add_field_error("title", "Must not contain swear words");
+        assert_eq!(state.field_errors_for("title").len(), 2);
+
+        state.set_field_error("title", "New error");
+        assert_eq!(state.field_errors_for("title"), vec!["New error"]);
+    }
+
+    #[test]
+    fn serde_backward_compatibility() {
+        let json = r#"{"is_submitting":false,"form_error":null,"field_errors":[]}"#;
+        let deserialized: FormState = serde_json::from_str(json).unwrap();
+        assert_eq!(deserialized, FormState::idle());
+        assert!(!deserialized.is_success());
     }
 }

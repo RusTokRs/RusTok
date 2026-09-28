@@ -1,10 +1,11 @@
 //! Structural field components: `FormField`, `FormItem`, `FormLabel`,
-//! `FormControl`, `FormMessage`, `FormDescription`.
+//! `FormControl`, `FormMessage`, `FormDescription`, `FormHelperText`, `FormError`.
 //!
 //! These are the building blocks for consistent form layout with automatic
 //! error display and accessibility attributes.
 
 use leptos::prelude::*;
+use rustok_forms::FormState;
 
 use crate::context::{FieldContext, FormContext};
 
@@ -21,7 +22,7 @@ use crate::context::{FieldContext, FormContext};
 /// ```rust,ignore
 /// <FormField name="title">
 ///     <FormLabel required=true>"Title"</FormLabel>
-///     <Input value=title set_value=set_title />
+///     <FormInput value=title on_input=set_title />
 ///     <FormDescription>"Enter the post title"</FormDescription>
 ///     <FormMessage />
 /// </FormField>
@@ -36,8 +37,11 @@ pub fn FormField(
     class: String,
     children: Children,
 ) -> impl IntoView {
-    let form_ctx = use_context::<FormContext>()
-        .expect("FormField must be used inside <Form>");
+    let form_ctx = use_context::<FormContext>().unwrap_or_else(|| {
+        FormContext {
+            state: Signal::derive(FormState::idle),
+        }
+    });
 
     provide_context(FieldContext {
         name,
@@ -124,7 +128,7 @@ pub fn FormLabel(
         <label for=for_attr data-slot="form-label" class=label_class>
             {children()}
             {required.then(|| view! {
-                <span class="ml-1 text-destructive">"*"</span>
+                <span class="ml-1 text-destructive" aria-hidden="true">"*"</span>
             })}
         </label>
     }
@@ -132,11 +136,7 @@ pub fn FormLabel(
 
 // ─── FormControl ────────────────────────────────────────────────────────────
 
-/// Wrapper that sets `aria-invalid` and `aria-describedby` on its children.
-///
-/// In Leptos, this renders a `<div>` wrapper (unlike React's Slot). For most
-/// cases, you can skip this and use `<FormField>` directly — the aria
-/// attributes are primarily useful for screen-reader accessibility.
+/// Wrapper that sets `aria-invalid` on its container for accessibility slot coordination.
 #[component]
 pub fn FormControl(
     #[prop(optional, into)]
@@ -174,6 +174,9 @@ pub fn FormMessage(
     /// Optional explicit message override. If omitted, reads from `FieldContext` or `FormContext`.
     #[prop(optional, into)]
     message: Option<String>,
+    /// Whether to show all error messages if multiple errors exist for this field. Defaults to false (shows first error).
+    #[prop(default = false)]
+    show_all: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -183,15 +186,19 @@ pub fn FormMessage(
 
     let msg_id = field_ctx.as_ref().map(|f| format!("{}-message", f.name));
 
-    let error_text = move || -> Option<String> {
+    let errors_list = move || -> Vec<String> {
         if let Some(ref m) = message {
-            Some(m.clone())
+            vec![m.clone()]
         } else if let Some(ref field) = field_ctx {
-            field.error_message()
+            if show_all {
+                field.all_error_messages()
+            } else {
+                field.error_message().into_iter().collect()
+            }
         } else if let Some(ref form) = form_ctx {
-            form.state.get().form_error.clone()
+            form.state.get().form_error.into_iter().collect()
         } else {
-            None
+            Vec::new()
         }
     };
 
@@ -203,15 +210,25 @@ pub fn FormMessage(
     };
 
     view! {
-        {move || error_text().map(|msg| view! {
-            <p id=msg_id.clone() role="alert" data-slot="form-message" class=merged.clone()>
-                {msg}
-            </p>
-        })}
+        {move || {
+            let errs = errors_list();
+            (!errs.is_empty()).then(|| {
+                view! {
+                    <div id=msg_id.clone() role="alert" data-slot="form-message" class="space-y-1">
+                        {errs.into_iter().map(|msg| {
+                            let c = merged.clone();
+                            view! {
+                                <p class=c>{msg}</p>
+                            }
+                        }).collect_view()}
+                    </div>
+                }
+            })
+        }}
     }
 }
 
-// ─── FormDescription ────────────────────────────────────────────────────────
+// ─── FormDescription / FormHelperText ───────────────────────────────────────
 
 /// Help text below a form field.
 #[component]
@@ -236,6 +253,9 @@ pub fn FormDescription(
     }
 }
 
+/// Alias for [`FormDescription`].
+pub type FormHelperText = FormDescription;
+
 // ─── FormError ──────────────────────────────────────────────────────────────
 
 /// Displays the form-level (non-field) error from `FormState`.
@@ -243,13 +263,24 @@ pub fn FormDescription(
 /// Renders nothing when there is no form-level error.
 #[component]
 pub fn FormError(
+    /// Optional header title above the error message.
+    #[prop(optional, into)]
+    title: Option<String>,
+    /// Optional explicit error message override.
+    #[prop(optional, into)]
+    message: Option<String>,
+    /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
 ) -> impl IntoView {
     let form_ctx = use_context::<FormContext>();
 
     let error_text = move || -> Option<String> {
-        form_ctx.as_ref().and_then(|ctx| ctx.state.get().form_error.clone())
+        if let Some(ref m) = message {
+            Some(m.clone())
+        } else {
+            form_ctx.as_ref().and_then(|ctx| ctx.state.get().form_error.clone())
+        }
     };
 
     let base = "rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive text-sm";
@@ -262,7 +293,10 @@ pub fn FormError(
     view! {
         {move || error_text().map(|msg| view! {
             <div role="alert" data-slot="form-error" class=merged.clone()>
-                {msg}
+                {title.as_ref().map(|t| view! {
+                    <div class="font-semibold mb-1">{t.clone()}</div>
+                })}
+                <div>{msg}</div>
             </div>
         })}
     }
@@ -295,6 +329,7 @@ mod tests {
         assert!(html.contains("id=\"email-description\""));
         assert!(html.contains("Email"));
         assert!(html.contains("*"));
+        assert!(html.contains("aria-hidden=\"true\""));
         // No error message since form state has no error
         assert!(!html.contains("data-slot=\"form-message\""));
     }
@@ -323,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn test_form_error_renders_form_level_message() {
+    fn test_form_error_renders_form_level_message_and_title() {
         let state = FormState::with_form_error("Server unavailable");
         let state_signal = Signal::derive(move || state.clone());
         let form_ctx = FormContext { state: state_signal };
@@ -331,12 +366,13 @@ mod tests {
         let html = view! {
             <div>
                 {provide_context(form_ctx)}
-                <FormError />
+                <FormError title="Submission Failed" />
             </div>
         }
         .to_html();
 
         assert!(html.contains("role=\"alert\""));
+        assert!(html.contains("Submission Failed"));
         assert!(html.contains("Server unavailable"));
     }
 }

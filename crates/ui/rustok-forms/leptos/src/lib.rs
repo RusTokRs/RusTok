@@ -53,12 +53,14 @@ pub mod field;
 pub mod form;
 pub mod inputs;
 
-pub use button::{ResetButton, SubmitButton};
+pub use button::{ButtonSize, ButtonVariant, ResetButton, SubmitButton};
 pub use context::{FieldContext, FormContext};
 pub use field::{
-    FormControl, FormDescription, FormError, FormField, FormItem, FormLabel, FormMessage,
+    FormControl, FormDescription, FormError, FormField, FormHelperText, FormItem, FormLabel,
+    FormMessage,
 };
 pub use form::Form;
 pub use inputs::{
-    FormCheckbox, FormFileInput, FormInput, FormRadioGroup, FormSelect, FormSwitch, FormTextarea,
+    FormCheckbox, FormFileInput, FormHiddenInput, FormInput, FormNumberInput, FormPasswordInput,
+    FormRadioGroup, FormSelect, FormSwitch, FormTextarea,
 };

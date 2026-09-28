@@ -42,6 +42,7 @@ pub struct FieldOption {
 }
 
 impl FieldOption {
+    /// Create a new enabled `FieldOption`.
     pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             value: value.into(),
@@ -50,9 +51,25 @@ impl FieldOption {
         }
     }
 
+    /// Mark this option as disabled (builder pattern).
     pub fn disabled(mut self) -> Self {
         self.disabled = true;
         self
+    }
+
+    /// Create a new `FieldOption` specifying disabled explicitly.
+    pub fn with_disabled(value: impl Into<String>, label: impl Into<String>, disabled: bool) -> Self {
+        Self {
+            value: value.into(),
+            label: label.into(),
+            disabled,
+        }
+    }
+}
+
+impl<V: Into<String>, L: Into<String>> From<(V, L)> for FieldOption {
+    fn from((value, label): (V, L)) -> Self {
+        Self::new(value, label)
     }
 }
 
@@ -72,6 +89,69 @@ pub struct FieldConstraints {
     /// Whether the field accepts multiple values (file, select).
     #[serde(default)]
     pub multiple: bool,
+}
+
+impl FieldConstraints {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn required(mut self, required: bool) -> Self {
+        self.required = required;
+        self
+    }
+
+    pub fn min_length(mut self, min: usize) -> Self {
+        self.min_length = Some(min);
+        self
+    }
+
+    pub fn max_length(mut self, max: usize) -> Self {
+        self.max_length = Some(max);
+        self
+    }
+
+    pub fn length_range(mut self, min: usize, max: usize) -> Self {
+        self.min_length = Some(min);
+        self.max_length = Some(max);
+        self
+    }
+
+    pub fn min(mut self, min: f64) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    pub fn max(mut self, max: f64) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        self.min = Some(min);
+        self.max = Some(max);
+        self
+    }
+
+    pub fn step(mut self, step: f64) -> Self {
+        self.step = Some(step);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.pattern = Some(pattern.into());
+        self
+    }
+
+    pub fn accept(mut self, accept: impl Into<String>) -> Self {
+        self.accept = Some(accept.into());
+        self
+    }
+
+    pub fn multiple(mut self, multiple: bool) -> Self {
+        self.multiple = multiple;
+        self
+    }
 }
 
 /// Complete descriptor for a form field.
@@ -126,8 +206,18 @@ impl FieldDescriptor {
         self
     }
 
+    pub fn constraints(mut self, constraints: FieldConstraints) -> Self {
+        self.constraints = constraints;
+        self
+    }
+
     pub fn required(mut self) -> Self {
         self.constraints.required = true;
+        self
+    }
+
+    pub fn set_required(mut self, required: bool) -> Self {
+        self.constraints.required = required;
         self
     }
 
@@ -137,6 +227,12 @@ impl FieldDescriptor {
     }
 
     pub fn max_length(mut self, max: usize) -> Self {
+        self.constraints.max_length = Some(max);
+        self
+    }
+
+    pub fn length_range(mut self, min: usize, max: usize) -> Self {
+        self.constraints.min_length = Some(min);
         self.constraints.max_length = Some(max);
         self
     }
@@ -151,8 +247,29 @@ impl FieldDescriptor {
         self
     }
 
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        self.constraints.min = Some(min);
+        self.constraints.max = Some(max);
+        self
+    }
+
+    pub fn step(mut self, step: f64) -> Self {
+        self.constraints.step = Some(step);
+        self
+    }
+
     pub fn pattern(mut self, pat: impl Into<String>) -> Self {
         self.constraints.pattern = Some(pat.into());
+        self
+    }
+
+    pub fn accept(mut self, accept: impl Into<String>) -> Self {
+        self.constraints.accept = Some(accept.into());
+        self
+    }
+
+    pub fn multiple(mut self, multiple: bool) -> Self {
+        self.constraints.multiple = multiple;
         self
     }
 
@@ -168,6 +285,11 @@ impl FieldDescriptor {
 
     pub fn options(mut self, opts: Vec<FieldOption>) -> Self {
         self.options = opts;
+        self
+    }
+
+    pub fn add_option(mut self, opt: impl Into<FieldOption>) -> Self {
+        self.options.push(opt.into());
         self
     }
 }
@@ -200,16 +322,37 @@ mod tests {
     }
 
     #[test]
+    fn constraints_builder() {
+        let constraints = FieldConstraints::new()
+            .required(true)
+            .length_range(3, 20)
+            .range(0.0, 100.0)
+            .step(0.5)
+            .multiple(true);
+
+        assert!(constraints.required);
+        assert_eq!(constraints.min_length, Some(3));
+        assert_eq!(constraints.max_length, Some(20));
+        assert_eq!(constraints.min, Some(0.0));
+        assert_eq!(constraints.max, Some(100.0));
+        assert_eq!(constraints.step, Some(0.5));
+        assert!(constraints.multiple);
+    }
+
+    #[test]
     fn select_with_options() {
         let field = FieldDescriptor::new("locale", FieldKind::Select)
             .label("Locale")
             .options(vec![
                 FieldOption::new("en", "English"),
                 FieldOption::new("ru", "Русский").disabled(),
-            ]);
+            ])
+            .add_option(("fr", "Français"));
 
-        assert_eq!(field.options.len(), 2);
+        assert_eq!(field.options.len(), 3);
         assert!(!field.options[0].disabled);
         assert!(field.options[1].disabled);
+        assert_eq!(field.options[2].value, "fr");
+        assert_eq!(field.options[2].label, "Français");
     }
 }

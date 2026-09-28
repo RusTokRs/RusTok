@@ -2,7 +2,8 @@
 //!
 //! All controls automatically detect when rendered inside a [`FormField`](crate::FormField)
 //! via [`FieldContext`](crate::context::FieldContext), inheriting the field name,
-//! accessibility attributes (`aria-invalid`, `aria-describedby`), and error state styling (`border-destructive`).
+//! accessibility attributes (`aria-invalid`, `aria-describedby`, `aria-errormessage`),
+//! and error state styling (`border-destructive`).
 
 use leptos::ev::Event;
 use leptos::prelude::*;
@@ -21,6 +22,15 @@ pub fn FormInput(
     /// Callback on input.
     #[prop(optional, into)]
     on_input: Option<Callback<String>>,
+    /// Callback on change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
+    /// Callback on focus.
+    #[prop(optional, into)]
+    on_focus: Option<Callback<()>>,
     /// Input type (e.g. "text", "email", "password", "number", "search", "url"). Defaults to "text".
     #[prop(optional)]
     input_type: Option<&'static str>,
@@ -36,12 +46,42 @@ pub fn FormInput(
     /// Disabled state. If omitted, disables automatically during form submission.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Read-only state.
     #[prop(optional)]
     readonly: bool,
+    /// Autofocus state.
+    #[prop(optional)]
+    autofocus: bool,
+    /// Minimum value (for numbers, dates).
+    #[prop(optional, into)]
+    min: Option<String>,
+    /// Maximum value (for numbers, dates).
+    #[prop(optional, into)]
+    max: Option<String>,
+    /// Step value (for numbers).
+    #[prop(optional, into)]
+    step: Option<String>,
+    /// Minimum text length.
+    #[prop(optional)]
+    minlength: Option<usize>,
+    /// Maximum text length.
+    #[prop(optional)]
+    maxlength: Option<usize>,
+    /// Regex pattern for client-side hint.
+    #[prop(optional, into)]
+    pattern: Option<String>,
     /// Autocomplete attribute.
     #[prop(optional, into)]
     autocomplete: Option<String>,
+    /// Explicit ARIA label.
+    #[prop(optional, into)]
+    aria_label: Option<String>,
+    /// Explicit ARIA describedby override.
+    #[prop(optional, into)]
+    aria_describedby: Option<String>,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -69,7 +109,10 @@ pub fn FormInput(
     });
 
     let name_for_desc = name_attr.clone();
-    let aria_describedby = move || {
+    let aria_describedby_signal = move || {
+        if let Some(ref explicit) = aria_describedby {
+            return Some(explicit.clone());
+        }
         name_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
@@ -77,6 +120,15 @@ pub fn FormInput(
                 format!("{n}-description")
             }
         })
+    };
+
+    let name_for_err = name_attr.clone();
+    let aria_errormessage_signal = move || {
+        if is_invalid.get() {
+            name_for_err.as_ref().map(|n| format!("{n}-message"))
+        } else {
+            None
+        }
     };
 
     let input_class = move || {
@@ -99,6 +151,24 @@ pub fn FormInput(
         }
     };
 
+    let on_change_handler = move |ev: Event| {
+        if let Some(cb) = on_change {
+            cb.run(event_target_value(&ev));
+        }
+    };
+
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
+    let on_focus_handler = move |_| {
+        if let Some(cb) = on_focus {
+            cb.run(());
+        }
+    };
+
     view! {
         <input
             id=input_id
@@ -107,12 +177,281 @@ pub fn FormInput(
             placeholder=placeholder
             prop:value=move || value.get()
             on:input=on_input_handler
+            on:change=on_change_handler
+            on:blur=on_blur_handler
+            on:focus=on_focus_handler
             disabled=move || is_disabled.get()
+            required=required
             readonly=readonly
+            autofocus=autofocus
+            min=min
+            max=max
+            step=step
+            minlength=minlength
+            maxlength=maxlength
+            pattern=pattern
             autocomplete=autocomplete
+            aria-label=aria_label
             aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
-            aria-describedby=aria_describedby
+            aria-describedby=aria_describedby_signal
+            aria-errormessage=aria_errormessage_signal
             class=input_class
+        />
+    }
+}
+
+// ─── FormPasswordInput ─────────────────────────────────────────────────────
+
+/// Specialized password input with show/hide password toggle.
+#[component]
+pub fn FormPasswordInput(
+    /// Value signal.
+    #[prop(into)]
+    value: Signal<String>,
+    /// Callback on input.
+    #[prop(optional, into)]
+    on_input: Option<Callback<String>>,
+    /// Callback on change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
+    /// Field name. Defaults to the enclosing `FormField` name if omitted.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID. Defaults to `name` if omitted.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Placeholder text.
+    #[prop(optional, into)]
+    placeholder: Option<String>,
+    /// Disabled state.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
+    /// Read-only state.
+    #[prop(optional)]
+    readonly: bool,
+    /// Autocomplete attribute (e.g. "current-password", "new-password").
+    #[prop(optional, into)]
+    autocomplete: Option<String>,
+    /// Extra CSS classes on the input container.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let field = use_context::<FieldContext>();
+
+    let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
+    let input_id = id.or_else(|| name_attr.clone());
+
+    let show_password = RwSignal::new(false);
+
+    let field_for_disabled = field.clone();
+    let is_disabled = Signal::derive(move || {
+        if let Some(sig) = disabled {
+            sig.get()
+        } else if let Some(ref f) = field_for_disabled {
+            f.is_submitting()
+        } else {
+            false
+        }
+    });
+
+    let field_for_invalid = field;
+    let is_invalid = Signal::derive(move || {
+        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+    });
+
+    let name_for_desc = name_attr.clone();
+    let aria_describedby_signal = move || {
+        name_for_desc.as_ref().map(|n| {
+            if is_invalid.get() {
+                format!("{n}-message")
+            } else {
+                format!("{n}-description")
+            }
+        })
+    };
+
+    let on_input_handler = move |ev| {
+        if let Some(cb) = on_input {
+            cb.run(event_target_value(&ev));
+        }
+    };
+
+    let on_change_handler = move |ev: Event| {
+        if let Some(cb) = on_change {
+            cb.run(event_target_value(&ev));
+        }
+    };
+
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
+    let toggle_visibility = move |_| {
+        show_password.update(|v| *v = !*v);
+    };
+
+    let input_class = move || {
+        let base = "w-full rounded-xl border bg-background pl-3 pr-10 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition disabled:cursor-not-allowed disabled:opacity-50";
+        let state_border = if is_invalid.get() {
+            "border-destructive text-destructive focus:border-destructive focus:ring-1 focus:ring-destructive/30"
+        } else {
+            "border-border focus:border-primary focus:ring-1 focus:ring-primary/20"
+        };
+        if class.is_empty() {
+            format!("{base} {state_border}")
+        } else {
+            format!("{base} {state_border} {class}")
+        }
+    };
+
+    view! {
+        <div class="relative flex items-center">
+            <input
+                id=input_id
+                type=move || if show_password.get() { "text" } else { "password" }
+                name=name_attr
+                placeholder=placeholder
+                prop:value=move || value.get()
+                on:input=on_input_handler
+                on:change=on_change_handler
+                on:blur=on_blur_handler
+                disabled=move || is_disabled.get()
+                required=required
+                readonly=readonly
+                autocomplete=autocomplete
+                aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
+                aria-describedby=aria_describedby_signal
+                class=input_class
+            />
+            <button
+                type="button"
+                tabindex="-1"
+                on:click=toggle_visibility
+                aria-label=move || if show_password.get() { "Hide password" } else { "Show password" }
+                class="absolute right-2.5 p-1 text-muted-foreground hover:text-foreground transition rounded outline-none"
+            >
+                {move || if show_password.get() {
+                    view! {
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                        </svg>
+                    }.into_any()
+                } else {
+                    view! {
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                    }.into_any()
+                }}
+            </button>
+        </div>
+    }
+}
+
+// ─── FormNumberInput ───────────────────────────────────────────────────────
+
+/// Dedicated number input component with numeric constraints.
+#[component]
+pub fn FormNumberInput(
+    /// Numeric string value signal.
+    #[prop(into)]
+    value: Signal<String>,
+    /// Callback on input.
+    #[prop(optional, into)]
+    on_input: Option<Callback<String>>,
+    /// Callback on change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
+    /// Field name.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Placeholder.
+    #[prop(optional, into)]
+    placeholder: Option<String>,
+    /// Minimum value constraint.
+    #[prop(optional)]
+    min: Option<f64>,
+    /// Maximum value constraint.
+    #[prop(optional)]
+    max: Option<f64>,
+    /// Step interval.
+    #[prop(optional)]
+    step: Option<f64>,
+    /// Disabled state.
+    #[prop(optional, into)]
+    disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
+    /// Read-only state.
+    #[prop(optional)]
+    readonly: bool,
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let min_str = min.map(|v| v.to_string());
+    let max_str = max.map(|v| v.to_string());
+    let step_str = step.map(|v| v.to_string());
+
+    view! {
+        <FormInput
+            value=value
+            on_input=on_input
+            on_change=on_change
+            on_blur=on_blur
+            input_type="number"
+            name=name
+            id=id
+            placeholder=placeholder
+            min=min_str
+            max=max_str
+            step=step_str
+            disabled=disabled
+            required=required
+            readonly=readonly
+            class=class
+        />
+    }
+}
+
+// ─── FormHiddenInput ───────────────────────────────────────────────────────
+
+/// Hidden form input for IDs, tokens, or fixed metadata.
+#[component]
+pub fn FormHiddenInput(
+    /// Value signal.
+    #[prop(into)]
+    value: Signal<String>,
+    /// Field name.
+    #[prop(into)]
+    name: String,
+    /// Input ID.
+    #[prop(optional, into)]
+    id: Option<String>,
+) -> impl IntoView {
+    let input_id = id.unwrap_or_else(|| name.clone());
+    view! {
+        <input
+            type="hidden"
+            id=input_id
+            name=name
+            prop:value=move || value.get()
         />
     }
 }
@@ -128,6 +467,12 @@ pub fn FormTextarea(
     /// Callback on input.
     #[prop(optional, into)]
     on_input: Option<Callback<String>>,
+    /// Callback on change.
+    #[prop(optional, into)]
+    on_change: Option<Callback<String>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
@@ -140,9 +485,30 @@ pub fn FormTextarea(
     /// Number of rows. Defaults to 3.
     #[prop(optional)]
     rows: Option<u32>,
+    /// Number of columns.
+    #[prop(optional)]
+    cols: Option<u32>,
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
+    /// Read-only attribute.
+    #[prop(optional)]
+    readonly: bool,
+    /// Autofocus attribute.
+    #[prop(optional)]
+    autofocus: bool,
+    /// Minimum text length.
+    #[prop(optional)]
+    minlength: Option<usize>,
+    /// Maximum text length.
+    #[prop(optional)]
+    maxlength: Option<usize>,
+    /// Explicit ARIA describedby override.
+    #[prop(optional, into)]
+    aria_describedby: Option<String>,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -170,7 +536,10 @@ pub fn FormTextarea(
     });
 
     let name_for_desc = name_attr.clone();
-    let aria_describedby = move || {
+    let aria_describedby_signal = move || {
+        if let Some(ref explicit) = aria_describedby {
+            return Some(explicit.clone());
+        }
         name_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
@@ -178,6 +547,15 @@ pub fn FormTextarea(
                 format!("{n}-description")
             }
         })
+    };
+
+    let name_for_err = name_attr.clone();
+    let aria_errormessage_signal = move || {
+        if is_invalid.get() {
+            name_for_err.as_ref().map(|n| format!("{n}-message"))
+        } else {
+            None
+        }
     };
 
     let textarea_class = move || {
@@ -200,17 +578,38 @@ pub fn FormTextarea(
         }
     };
 
+    let on_change_handler = move |ev: Event| {
+        if let Some(cb) = on_change {
+            cb.run(event_target_value(&ev));
+        }
+    };
+
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
     view! {
         <textarea
             id=textarea_id
             name=name_attr
             rows=r
+            cols=cols
             placeholder=placeholder
             prop:value=move || value.get()
             on:input=on_input_handler
+            on:change=on_change_handler
+            on:blur=on_blur_handler
             disabled=move || is_disabled.get()
+            required=required
+            readonly=readonly
+            autofocus=autofocus
+            minlength=minlength
+            maxlength=maxlength
             aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
-            aria-describedby=aria_describedby
+            aria-describedby=aria_describedby_signal
+            aria-errormessage=aria_errormessage_signal
             class=textarea_class
         />
     }
@@ -229,6 +628,9 @@ pub fn FormSelect(
     /// Callback on value change.
     #[prop(optional, into)]
     on_change: Option<Callback<String>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
@@ -241,6 +643,15 @@ pub fn FormSelect(
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
+    /// Multiple selection support.
+    #[prop(optional)]
+    multiple: bool,
+    /// Explicit ARIA describedby override.
+    #[prop(optional, into)]
+    aria_describedby: Option<String>,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -267,7 +678,10 @@ pub fn FormSelect(
     });
 
     let name_for_desc = name_attr.clone();
-    let aria_describedby = move || {
+    let aria_describedby_signal = move || {
+        if let Some(ref explicit) = aria_describedby {
+            return Some(explicit.clone());
+        }
         name_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
@@ -297,6 +711,12 @@ pub fn FormSelect(
         }
     };
 
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
     let is_placeholder_selected = {
         let val = value.clone();
         Signal::derive(move || val.get().is_empty())
@@ -308,9 +728,12 @@ pub fn FormSelect(
             name=name_attr
             prop:value=move || value.get()
             on:change=on_change_handler
+            on:blur=on_blur_handler
             disabled=move || is_disabled.get()
+            required=required
+            multiple=multiple
             aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
-            aria-describedby=aria_describedby
+            aria-describedby=aria_describedby_signal
             class=select_class
         >
             {placeholder.map(|ph| view! {
@@ -348,6 +771,9 @@ pub fn FormCheckbox(
     /// Callback on toggle.
     #[prop(optional, into)]
     on_change: Option<Callback<bool>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
@@ -360,6 +786,9 @@ pub fn FormCheckbox(
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -369,7 +798,7 @@ pub fn FormCheckbox(
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
     let input_id = id.or_else(|| name_attr.clone());
 
-    let field_for_disabled = field;
+    let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
         if let Some(sig) = disabled {
             sig.get()
@@ -380,11 +809,43 @@ pub fn FormCheckbox(
         }
     });
 
+    let field_for_invalid = field;
+    let is_invalid = Signal::derive(move || {
+        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+    });
+
+    let name_for_desc = name_attr.clone();
+    let aria_describedby_signal = move || {
+        name_for_desc.as_ref().map(|n| {
+            if is_invalid.get() {
+                format!("{n}-message")
+            } else {
+                format!("{n}-description")
+            }
+        })
+    };
+
     let on_change_handler = move |ev: Event| {
         let is_chk = event_target_checked(&ev);
         if let Some(cb) = on_change {
             cb.run(is_chk);
         }
+    };
+
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
+    let checkbox_class = move || {
+        let base = "w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition";
+        let state_border = if is_invalid.get() {
+            "border-destructive ring-1 ring-destructive/30"
+        } else {
+            "border-border"
+        };
+        format!("{base} {state_border}")
     };
 
     view! {
@@ -396,8 +857,12 @@ pub fn FormCheckbox(
                 checked=move || checked.get()
                 prop:checked=move || checked.get()
                 on:change=on_change_handler
+                on:blur=on_blur_handler
                 disabled=move || is_disabled.get()
-                class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                required=required
+                aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
+                aria-describedby=aria_describedby_signal
+                class=checkbox_class
             />
             {label.map(|lbl| view! { <span>{lbl}</span> })}
         </label>
@@ -427,6 +892,9 @@ pub fn FormSwitch(
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -436,7 +904,7 @@ pub fn FormSwitch(
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
     let switch_id = id.or_else(|| name_attr.clone());
 
-    let field_for_disabled = field;
+    let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
         if let Some(sig) = disabled {
             sig.get()
@@ -446,6 +914,22 @@ pub fn FormSwitch(
             false
         }
     });
+
+    let field_for_invalid = field;
+    let is_invalid = Signal::derive(move || {
+        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+    });
+
+    let name_for_desc = name_attr.clone();
+    let aria_describedby_signal = move || {
+        name_for_desc.as_ref().map(|n| {
+            if is_invalid.get() {
+                format!("{n}-message")
+            } else {
+                format!("{n}-description")
+            }
+        })
+    };
 
     let on_toggle = move |_| {
         if !is_disabled.get() {
@@ -466,15 +950,21 @@ pub fn FormSwitch(
                 role="switch"
                 name=name_attr
                 aria-checked=move || if checked.get() { "true" } else { "false" }
+                aria-required=if required { "true" } else { "false" }
+                aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
+                aria-describedby=aria_describedby_signal
                 disabled=move || is_disabled.get()
                 on:click=on_toggle
                 class=move || {
                     let base = "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50";
-                    if checked.get() {
-                        format!("{base} bg-primary")
+                    let state_color = if checked.get() {
+                        "bg-primary"
+                    } else if is_invalid.get() {
+                        "bg-destructive/30"
                     } else {
-                        format!("{base} bg-muted")
-                    }
+                        "bg-muted"
+                    };
+                    format!("{base} {state_color}")
                 }
             >
                 <span
@@ -519,6 +1009,9 @@ pub fn FormRadioGroup(
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -529,7 +1022,7 @@ pub fn FormRadioGroup(
         .or_else(|| field.as_ref().map(|f| f.name.clone()))
         .unwrap_or_else(|| "radio_group".to_string());
 
-    let field_for_disabled = field;
+    let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
         if let Some(sig) = disabled {
             sig.get()
@@ -540,6 +1033,20 @@ pub fn FormRadioGroup(
         }
     });
 
+    let field_for_invalid = field;
+    let is_invalid = Signal::derive(move || {
+        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+    });
+
+    let group_name_for_desc = group_name.clone();
+    let aria_describedby_signal = move || {
+        if is_invalid.get() {
+            Some(format!("{group_name_for_desc}-message"))
+        } else {
+            Some(format!("{group_name_for_desc}-description"))
+        }
+    };
+
     let layout_class = if horizontal {
         "flex flex-wrap items-center gap-4"
     } else {
@@ -547,10 +1054,16 @@ pub fn FormRadioGroup(
     };
 
     view! {
-        <div class=format!("{layout_class} {class}")>
+        <div
+            role="radiogroup"
+            aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
+            aria-describedby=aria_describedby_signal
+            class=format!("{layout_class} {class}")
+        >
             {options.into_iter().map(|opt| {
                 let opt_val = opt.value.clone();
                 let opt_val_for_click = opt.value.clone();
+                let opt_id = format!("{}-{}", group_name, opt.value);
                 let is_checked = {
                     let opt_v = opt_val.clone();
                     let val = value.clone();
@@ -567,14 +1080,19 @@ pub fn FormRadioGroup(
                 };
 
                 view! {
-                    <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground">
+                    <label
+                        for=opt_id.clone()
+                        class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground"
+                    >
                         <input
+                            id=opt_id
                             type="radio"
                             name=group_name.clone()
                             value=opt_val
                             checked=move || is_checked.get()
                             prop:checked=move || is_checked.get()
                             on:change=on_click
+                            required=required
                             disabled=move || is_disabled.get() || opt_disabled
                             class="w-4 h-4 border-border text-primary focus:ring-primary/20 accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         />
@@ -597,6 +1115,9 @@ pub fn FormFileInput(
     /// Callback executed when files are selected.
     #[prop(optional, into)]
     on_change: Option<Callback<Event>>,
+    /// Callback on blur.
+    #[prop(optional, into)]
+    on_blur: Option<Callback<()>>,
     /// Accepted file types/extensions (e.g. `image/*`, `.pdf,.docx`).
     #[prop(optional, into)]
     accept: Option<String>,
@@ -612,6 +1133,9 @@ pub fn FormFileInput(
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
+    /// Required attribute.
+    #[prop(optional)]
+    required: bool,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -668,6 +1192,12 @@ pub fn FormFileInput(
         }
     };
 
+    let on_blur_handler = move |_| {
+        if let Some(cb) = on_blur {
+            cb.run(());
+        }
+    };
+
     view! {
         <input
             id=input_id
@@ -675,8 +1205,10 @@ pub fn FormFileInput(
             name=name_attr
             accept=accept
             multiple=multiple
+            required=required
             disabled=move || is_disabled.get()
             on:change=on_change_handler
+            on:blur=on_blur_handler
             aria-invalid=move || if is_invalid.get() { "true" } else { "false" }
             aria-describedby=aria_describedby
             class=file_class
@@ -705,6 +1237,7 @@ mod tests {
                     name="username"
                     placeholder="Enter username"
                     class="custom-input"
+                    required=true
                 />
             </div>
         }
@@ -715,7 +1248,66 @@ mod tests {
         assert!(html.contains("placeholder=\"Enter username\""));
         assert!(html.contains("aria-invalid=\"false\""));
         assert!(html.contains("aria-describedby=\"username-description\""));
+        assert!(html.contains("required"));
         assert!(html.contains("custom-input"));
+    }
+
+    #[test]
+    fn test_form_password_input_renders() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let val = Signal::derive(|| "secret".to_string());
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormPasswordInput
+                    value=val
+                    name="password"
+                    placeholder="Enter password"
+                />
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("type=\"password\""));
+        assert!(html.contains("id=\"password\""));
+        assert!(html.contains("aria-label=\"Show password\""));
+    }
+
+    #[test]
+    fn test_form_number_and_hidden_inputs() {
+        let state = FormState::idle();
+        let state_signal = Signal::derive(move || state.clone());
+        let form_ctx = FormContext { state: state_signal };
+
+        let num_val = Signal::derive(|| "42".to_string());
+        let id_val = Signal::derive(|| "uuid-123".to_string());
+
+        let html = view! {
+            <div>
+                {provide_context(form_ctx)}
+                <FormNumberInput
+                    value=num_val
+                    name="quantity"
+                    min=1.0
+                    max=100.0
+                    step=1.0
+                />
+                <FormHiddenInput
+                    value=id_val
+                    name="entity_id"
+                />
+            </div>
+        }
+        .to_html();
+
+        assert!(html.contains("type=\"number\""));
+        assert!(html.contains("min=\"1\""));
+        assert!(html.contains("max=\"100\""));
+        assert!(html.contains("type=\"hidden\""));
+        assert!(html.contains("name=\"entity_id\""));
     }
 
     #[test]
@@ -746,7 +1338,6 @@ mod tests {
         assert!(html.contains("id=\"locale\""));
         assert!(html.contains("name=\"locale\""));
         assert!(html.contains("value=\"ru\""));
-        // Check that Russian option has selected attribute in SSR
         assert!(html.contains("value=\"ru\" selected"));
         assert!(html.contains("Русский"));
     }
@@ -809,7 +1400,9 @@ mod tests {
         }
         .to_html();
 
+        assert!(html.contains("role=\"radiogroup\""));
         assert!(html.contains("name=\"theme\""));
+        assert!(html.contains("id=\"theme-dark\""));
         assert!(html.contains("value=\"dark\" checked"));
         assert!(html.contains("Dark"));
     }
