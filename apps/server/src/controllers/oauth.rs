@@ -535,13 +535,17 @@ async fn issue_authorization_code(
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
+    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    let mut parts = value.split_ascii_whitespace();
+
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(scheme), Some(token), None)
+            if scheme.eq_ignore_ascii_case("Bearer") && !token.is_empty() =>
+        {
+            Some(token.to_string())
+        }
+        _ => None,
+    }
 }
 
 fn extract_browser_access_token(headers: &HeaderMap) -> Option<String> {
@@ -975,6 +979,28 @@ mod tests {
         ));
         assert!(!is_form_encoded_content_type("application/json"));
     }
+    #[test]
+    fn bearer_scheme_is_case_insensitive_and_requires_exactly_one_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("bearer token-1"));
+        assert_eq!(extract_bearer_token(&headers).as_deref(), Some("token-1"));
+
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("BEARER token-2"));
+        assert_eq!(extract_bearer_token(&headers).as_deref(), Some("token-2"));
+
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Basic token-3"),
+        );
+        assert!(extract_bearer_token(&headers).is_none());
+
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer token-4 extra"),
+        );
+        assert!(extract_bearer_token(&headers).is_none());
+    }
+
     #[test]
     fn browser_cookie_is_parsed_and_authorization_header_wins() {
         let mut headers = HeaderMap::new();

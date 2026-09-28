@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `a3b710661bc98fb48b5637843762b22731197b0e`  
+**Current main SHA:** `0f4aab39179b017a6b751bfb7373fa58b6c82833`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -251,6 +251,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.01 — `apps/server/src/extractors/auth/mod.rs`** — completed with one security-boundary remediation and a fresh independent second pass.
 - [x] **FS-22.03.02 — `apps/server/src/middleware/auth_context.rs`** — completed with one principal-admission remediation and a fresh independent second pass.
 - [x] **FS-22.03.03 — `apps/server/src/controllers/auth.rs`** — completed with one account-enumeration remediation and a fresh independent second pass.
+- [x] **FS-22.03.04 — `apps/server/src/controllers/oauth.rs`** — completed with one Bearer-parser compatibility remediation and a fresh independent second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -301,6 +302,20 @@ Hard limits for every iteration:
 - **Documentation:** `apps/server/docs/README.md` now records the generic public response contract for reset/verification request delivery failures.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.03` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.04 Iteration 1 — `apps/server/src/controllers/oauth.rs`
+
+- **Base:** refreshed `main` at `0f4aab39179b017a6b751bfb7373fa58b6c82833`; dedicated branch `codex/audit-fs-22.03.04-oauth-controller`.
+- **Invariant map:** OAuth HTTP transport must preserve RFC-style Bearer authentication semantics across all browser-session paths; authentication parsing must agree with the canonical Axum extractor; malformed/multi-token authorization values must fail closed; PKCE, exact redirect URI, tenant, scope, consent, and no-store token response boundaries must remain unchanged.
+- **Finding OAUTHCTRL-22.03.04-01:** `extract_bearer_token` used a case-sensitive `strip_prefix("Bearer ")` parser and accepted only that exact spacing form. The same controller's `CurrentUser` extractor uses the typed HTTP authorization parser. A valid authorization header using another casing of the `Bearer` scheme could therefore authenticate the request but then be rejected by `/api/oauth/browser-session`, producing an inconsistent protocol boundary.
+- **Remediation:** replaced the custom parser with bounded ASCII-whitespace tokenization that requires exactly two fields, compares the authentication scheme case-insensitively, and rejects Basic/multi-token values. Browser authorization and browser-session creation now share the same local Bearer parsing behavior.
+- **Immediate re-audit:** re-read token, authorize, browser authorize, consent, browser-session, userinfo, revoke, redirect, PKCE and cookie helpers. Exact redirect URI matching, mandatory S256 PKCE, tenant binding, consent-scope checks, no-store token responses and RFC 7009 revocation semantics are unchanged.
+- **Adjacent-boundary re-audit:** canonical `auth_context` still performs bearer extraction/CurrentUser resolution independently; the typed `Authorization<Bearer>` path remains the source of authenticated principal state, while the controller parser is used only where the raw token must be copied into the browser-session cookie. No second authentication authority was introduced.
+- **Regression audit:** lower/upper mixed-case Bearer schemes now work consistently; non-Bearer and extra-token values are rejected; cookie fallback still works for browser authorize/consent; Secure/HttpOnly/SameSite cookie attributes remain unchanged.
+- **Fresh second pass:** independently checked browser-session header parsing, cookie fallback, redirect construction/clearing, consent form flow, userinfo scope gating, revoke semantics, token cache headers, exact redirect registration, and PKCE method enforcement. No additional repository-owned defect remained in the primary `oauth.rs` module requiring another remediation unit.
+- **Documentation:** `apps/server/docs/README.md` now records the case-insensitive Bearer parsing contract for OAuth browser-session/consent flows.
+- **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.03.04` complete after merge; continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.02.11 Iteration 1 — `security_headers.rs` pre-implementation findings
 

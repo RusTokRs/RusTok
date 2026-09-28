@@ -220,6 +220,9 @@ remain separate unfinished control-plane work.
 - Password-reset and email-verification request endpoints keep their public response generic even when
   email transport setup or URL preparation fails for an existing account; delivery/preparation failures
   are server-observable but must not become account-enumeration signals.
+- OAuth browser-session and consent flows use the same case-insensitive Bearer authentication scheme
+  parsing as the HTTP authentication boundary; the browser-session helper requires exactly one Bearer
+  token and does not silently accept Basic or multi-token authorization values.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
