@@ -413,7 +413,7 @@ fn job_status_from_session(
         _ => InstallJobState::Running,
     };
     let terminal = matches!(
-        status,
+        &status,
         InstallJobState::Succeeded | InstallJobState::Failed
     );
 
@@ -517,7 +517,10 @@ fn internal_error(description: impl Into<String>) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::setup_is_closed;
+    use super::{job_status_from_session, setup_is_closed};
+    use chrono::Utc;
+    use rustok_installer_persistence::entities::install_session;
+
 
     #[test]
     fn setup_is_open_before_completion() {
@@ -529,6 +532,33 @@ mod tests {
     #[test]
     fn setup_is_closed_after_completion() {
         assert!(setup_is_closed(Some("completed")));
+    }
+
+    #[test]
+    fn durable_completed_session_maps_to_succeeded_job_state() {
+        let now = Utc::now();
+        let session = install_session::Model {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: Some(uuid::Uuid::new_v4()),
+            status: "completed".to_string(),
+            profile: "monolith".to_string(),
+            environment: "production".to_string(),
+            database_engine: "postgres".to_string(),
+            seed_profile: "minimal".to_string(),
+            plan_snapshot: serde_json::json!({}),
+            lock_owner: Some("installer".to_string()),
+            lock_expires_at: Some(now),
+            error_message: None,
+            created_by: None,
+            created_at: now - chrono::Duration::seconds(20),
+            updated_at: now,
+            completed_at: Some(now),
+        };
+
+        let job = job_status_from_session(session.id, session);
+        assert!(matches!(job.status, super::InstallJobState::Succeeded));
+        assert_eq!(job.session_id, Some(job.job_id));
+        assert!(job.finished_at.is_some());
     }
 }
 
