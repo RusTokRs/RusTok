@@ -148,9 +148,14 @@ mod tests {
 #[test]
 fn duplicate_header_capabilities_fail_closed() {
     let mut headers = HeaderMap::new();
-    let mut values = headers.get_all_mut(crate::GUEST_CART_TOKEN_HEADER);
-    values.append(token('a').parse().expect("header token"));
-    values.append(token('a').parse().expect("duplicate header token"));
+    headers.append(
+        crate::GUEST_CART_TOKEN_HEADER,
+        token('a').parse().expect("header token"),
+    );
+    headers.append(
+        crate::GUEST_CART_TOKEN_HEADER,
+        token('a').parse().expect("duplicate header token"),
+    );
 
     assert_eq!(
         extract_presented_token(&headers),
@@ -158,8 +163,9 @@ fn duplicate_header_capabilities_fail_closed() {
     );
 }
 
-#[test]
-fn duplicate_cookie_capabilities_fail_closed() {
+
+    #[test]
+    fn duplicate_cookie_capabilities_fail_closed() {
     let token = token('a');
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -181,8 +187,9 @@ fn duplicate_cookie_capabilities_fail_closed() {
     );
 }
 
-#[test]
-fn invalid_header_does_not_fall_back_to_cookie_capability() {
+
+    #[test]
+    fn invalid_header_does_not_fall_back_to_cookie_capability() {
     let token = token('a');
     let mut headers = HeaderMap::new();
     headers.insert(
