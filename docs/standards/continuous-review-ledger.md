@@ -146,7 +146,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit; completed with two remediation units and a fresh independent second pass protecting DLQ database error/status semantics and replay claim ownership.
 - [x] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit; completed with one remediation unit and a fresh independent second pass restoring typed HTTP error semantics; OpenAPI aggregation omission deferred to FS-22.02.31.
-- [ ] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit.
+- [x] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit; completed with one root-cause remediation slice and a fresh independent second pass restoring atomic mutation+outbox consistency.
 - [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
 - [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
 - [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
@@ -282,6 +282,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** re-read the complete changed controller, `rustok-channel::ChannelError`, `Error::IntoResponse`, auth/RBAC tenant boundaries, ChannelService call sites, route registration and OpenAPI aggregation. No additional repository-owned defect remained inside `channel.rs`.
 - **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
 - **Status:** module-level fresh second pass clean; `FS-22.02.26` complete. Next primary module: `FS-22.02.27 — apps/server/src/controllers/flex.rs`.
+
+
+### FS-22.02.27 Iteration 1 — `apps/server/src/controllers/flex.rs`
+
+- **Base:** refreshed `main` at `61fdeb9c348123348f5676bd01d5ec06b165a2a6`; dedicated branch `codex/audit-fs-22.02.27-flex-controller`.
+- **Invariant map:** every authenticated Flex mutation must remain tenant-scoped and permission-gated; owner business state and its durable domain event must commit atomically through the canonical outbox; transport code must not use the in-memory event bus as a replacement for transactional delivery; read/write DTOs and OpenAPI paths remain owner/contract based; storage failures must roll back the mutation and surface only stable client-safe diagnostics.
+- **Confirmed finding FLEX-22.02.27-01:** the REST controller called `flex::*_with_event`, committed the Flex mutation inside `FlexStandaloneSeaOrmService`, and only afterward published the returned `EventEnvelope` through the server `EventBus`. The in-memory bus can reject delivery when no forwarder subscriber is present or when backpressure is active; the database mutation could therefore commit without a durable event, violating the canonical event-flow contract and allowing CQRS/read-side drift.
+- **Remediation FLEX-22.02.27-01:** removed post-commit `EventBus` publication from the controller. The canonical SeaORM adapter now constructs each corresponding Flex domain event and writes it with `TransactionalEventBus::publish_root_in_tx` before its existing database transaction commits for schema/entry create, update and delete. If the outbox write fails, the surrounding transaction returns an error and the Flex mutation is rolled back. The standalone service test harness now installs the canonical outbox schema and includes regression coverage for event persistence and rollback on missing outbox storage.
+- **Adjacent-boundary review:** `docs/architecture/event-flow-contract.md` requires business state + outbox in one transaction; `rustok-outbox` provides the owner-transaction write primitive; the server event bus remains only for asynchronous forwarding/legacy producer paths and is no longer on the Flex REST mutation path. RBAC extractor + trusted `CurrentTenant` continue to gate all ten endpoints. The Swagger composition already registers all Flex paths/schemas, so no OpenAPI change was needed.
+- **Regression audit:** success response shapes, tenant filtering, field validation, localization semantics and delete behavior remain unchanged. The only changed failure state is that event persistence is now part of the mutation transaction, so an unavailable outbox fails closed instead of silently leaving committed state without a corresponding durable event.
+- **Fresh second pass:** re-read the complete controller, all six mutating SeaORM methods, transactional outbox primitive, Flex event constructors, RBAC/tenant extractors, router/OpenAPI composition and event-flow contract after the remediation. No additional repository-owned defect remained inside the primary controller path.
+- **Deferred owner-level concern:** `flex::standalone::*_with_event` helper APIs still construct post-mutation event envelopes for generic callers. No production server call site remains after this remediation; changing/removing that public API belongs to a dedicated `flex` owner iteration rather than widening the server controller audit.
+- **Verification:** repository-content inspection, source-level reasoning and branch-diff review only. Per maintainer-owned execution policy, no tests, clippy, build, gatekeeper, migration execution, or runtime command was run by the agent.
+- **Status:** module-level fresh second pass clean; `FS-22.02.27` complete. Next primary module: `FS-22.02.28 — apps/server/src/controllers/installer.rs`.
 
 ### FS-22.02.21 Result — `controllers/metrics.rs`
 

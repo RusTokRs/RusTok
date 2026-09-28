@@ -17,6 +17,7 @@ use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
 use rustok_core::field_schema::FlexError;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
@@ -255,6 +256,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         )
         .await
         .map_err(journal_error)?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_created_event(tenant_id, actor_id, row.id, row.slug.clone()),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -335,6 +341,16 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         }
 
         let translation = select_schema_translation(&translations_after, &locale).cloned();
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_updated_event(
+                tenant_id,
+                actor_id,
+                updated.id,
+                updated.slug.clone(),
+            ),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -383,6 +399,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         )
         .await
         .map_err(journal_error)?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_schema_deleted_event(tenant_id, actor_id, schema_id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -506,6 +527,18 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         .map_err(|error| FlexError::Database(error.to_string()))?;
         let localized_data =
             upsert_entry_localization_on(&txn, row.id, tenant_id, &locale, localized_data).await?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_created_event(
+                tenant_id,
+                actor_id,
+                row.schema_id,
+                row.id,
+                row.entity_type.clone(),
+                row.entity_id,
+            ),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -599,6 +632,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .and_then(|items| Self::select_exact_entry_localization(items, &locale))
                 .map(|item| item.data.clone());
         }
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_updated_event(tenant_id, actor_id, updated.schema_id, updated.id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -647,11 +685,34 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .exec(&txn)
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
+        persist_event_in_tx(
+            &txn,
+            flex::flex_entry_deleted_event(tenant_id, actor_id, row.schema_id, row.id),
+        )
+        .await?;
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok(())
     }
+}
+
+async fn persist_event_in_tx(
+    txn: &sea_orm::DatabaseTransaction,
+    event: rustok_events::EventEnvelope,
+) -> Result<(), FlexError> {
+    let event_type = event.event_type.clone();
+    TransactionalEventBus::publish_root_in_tx(
+        txn,
+        event.tenant_id,
+        event.actor_id,
+        event.event,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, event_type, "Failed to persist Flex domain event");
+        FlexError::Database(format!("failed to persist Flex domain event: {error}"))
+    })
 }
 
 async fn tenant_default_locale_on<C>(db: &C, tenant_id: Uuid) -> Result<String, FlexError>
@@ -929,6 +990,12 @@ mod tests {
         .await
         .expect("create tables for standalone flex tests");
 
+        let manager = sea_orm_migration::SchemaManager::new(&db);
+        rustok_outbox::SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("create canonical outbox tables for standalone flex tests");
+
         db
     }
 
@@ -1038,6 +1105,130 @@ mod tests {
         );
 
         assert_eq!(merged, json!({"slug": "landing", "title": "Hello"}));
+    }
+
+    async fn seed_test_schema(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        schema_id: Uuid,
+    ) {
+        let now = Utc::now().fixed_offset();
+        tenants::ActiveModel {
+            id: Set(tenant_id),
+            name: Set("Flex Tenant".to_string()),
+            slug: Set(format!("flex-tenant-{tenant_id}")),
+            domain: Set(None),
+            settings: Set(json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(db)
+        .await
+        .expect("tenant should insert");
+
+        flex_schemas::ActiveModel {
+            id: Set(schema_id),
+            tenant_id: Set(tenant_id),
+            slug: Set("landing".to_string()),
+            fields_config: Set(
+                flex::serialize_standalone_fields_config(vec![FieldDefinition {
+                    field_key: "title".to_string(),
+                    field_type: FieldType::Text,
+                    label: HashMap::from([("en".to_string(), "Title".to_string())]),
+                    description: None,
+                    is_localized: false,
+                    is_required: false,
+                    default_value: None,
+                    validation: None,
+                    position: 0,
+                    is_active: true,
+                }])
+                .expect("schema fields should serialize"),
+            ),
+            settings: Set(json!({})),
+            is_active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(db)
+        .await
+        .expect("schema should insert");
+    }
+
+    #[tokio::test]
+    async fn create_entry_persists_domain_event_in_same_transaction() {
+        let db = setup_standalone_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        seed_test_schema(&db, tenant_id, schema_id).await;
+
+        let service = FlexStandaloneSeaOrmService::new(db.clone());
+        let created = service
+            .create_entry(
+                tenant_id,
+                Some(Uuid::new_v4()),
+                flex::CreateFlexEntryCommand {
+                    schema_id,
+                    entity_type: None,
+                    entity_id: None,
+                    data: json!({"title": "Atomic"}),
+                    status: Some("draft".to_string()),
+                },
+            )
+            .await
+            .expect("entry create should succeed");
+
+        let events = rustok_outbox::SysEvents::find()
+            .filter(rustok_outbox::entity::Column::EventType.eq("flex.entry.created"))
+            .all(&db)
+            .await
+            .expect("outbox events should load");
+        assert_eq!(events.len(), 1);
+
+        let event_entry_id = events[0]
+            .payload
+            .get("event")
+            .and_then(|value| value.get("data"))
+            .and_then(|value| value.get("entry_id"))
+            .and_then(|value| value.as_str())
+            .map(str::to_owned);
+        assert_eq!(event_entry_id, Some(created.id.to_string()));
+    }
+
+    #[tokio::test]
+    async fn create_entry_rolls_back_when_outbox_write_fails() {
+        let db = setup_standalone_test_db().await;
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        seed_test_schema(&db, tenant_id, schema_id).await;
+        db.execute_unprepared("DROP TABLE sys_events")
+            .await
+            .expect("test must be able to remove outbox table");
+
+        let service = FlexStandaloneSeaOrmService::new(db.clone());
+        let result = service
+            .create_entry(
+                tenant_id,
+                None,
+                flex::CreateFlexEntryCommand {
+                    schema_id,
+                    entity_type: None,
+                    entity_id: None,
+                    data: json!({"title": "Must Roll Back"}),
+                    status: Some("draft".to_string()),
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        let entries = flex_entries::Entity::find()
+            .filter(flex_entries::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await
+            .expect("entry lookup should succeed");
+        assert!(entries.is_empty());
     }
 
     #[tokio::test]
