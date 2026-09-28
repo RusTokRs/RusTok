@@ -145,7 +145,9 @@ fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
     let Value::String(hash) = obj.get("sha256Hash")? else {
         return None;
     };
-    Some(hash.as_ref())
+
+    let hash = hash.as_ref();
+    (hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(hash)
 }
 
 async fn graphql_playground() -> impl axum::response::IntoResponse {
@@ -443,6 +445,35 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn persisted_query_telemetry_accepts_only_sha256_hex_identifiers() {
+        let valid = serde_json::json!({
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": "a".repeat(64),
+            }
+        });
+        let request = async_graphql::Request::new("{ __typename }");
+        let mut request = request;
+        request.extensions = async_graphql::Extensions::default();
+        request
+            .extensions
+            .insert("persistedQuery".to_string(), async_graphql::Value::from_json(valid["persistedQuery"].clone()).expect("json value"));
+
+        assert_eq!(super::persisted_query_hash(&request), Some("a".repeat(64).as_str()));
+
+        let mut request = async_graphql::Request::new("{ __typename }");
+        request.extensions = async_graphql::Extensions::default();
+        request.extensions.insert(
+            "persistedQuery".to_string(),
+            async_graphql::Value::from_json(serde_json::json!({
+                "version": 1,
+                "sha256Hash": "b".repeat(65)
+            })).expect("json value"),
+        );
+        assert!(super::persisted_query_hash(&request).is_none());
+    }
 
     #[test]
     fn graphql_ws_protocols_are_not_defaulted_without_negotiation() {
