@@ -217,7 +217,7 @@ fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
         crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
         crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
         crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
-        other => AuthAdminMutationError::Internal(other.to_string()),
+        other => internal_admin_error(other),
     }
 }
 
@@ -242,7 +242,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let apps = query
             .all(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         let mut records = Vec::with_capacity(apps.len());
         for app in apps {
             records.push(self.record(context, app).await?);
@@ -260,7 +260,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         match app {
             Some(app) => Ok(Some(self.record(context, app).await?)),
             None => Ok(None),
@@ -281,7 +281,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .find_also_related(oauth_apps::Entity)
             .all(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+            .map_err(|error| internal_admin_error(error))?;
         let mut records = Vec::with_capacity(consents.len());
         for (consent, app) in consents {
             if let Some(app) = app.filter(|app| app.is_active()) {
@@ -371,7 +371,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let app = oauth_apps::Entity::find_by_id(app_id)
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         let result = OAuthAppService::rotate_secret(&self.db, app.id)
@@ -392,7 +392,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let app = oauth_apps::Entity::find_by_id(app_id)
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         let revoked = OAuthAppService::revoke_app(&self.db, app.id)
@@ -411,7 +411,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .filter(oauth_apps::Column::TenantId.eq(context.tenant_id))
             .one(&self.db)
             .await
-            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
+            .map_err(|error| internal_admin_error(error))?
             .filter(|app| app.is_active())
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
         OAuthAppService::grant_consent(
