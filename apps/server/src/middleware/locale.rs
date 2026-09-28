@@ -140,10 +140,21 @@ struct TenantLocaleCache {
 
 impl TenantLocaleCache {
     fn new() -> Self {
-        Self::with_max_weight(TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES)
+        Self::with_limits(
+            TENANT_LOCALE_CACHE_MAX_WEIGHT_BYTES,
+            TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
+        )
     }
 
     fn with_max_weight(max_weight_bytes: u64) -> Self {
+        Self::with_limits(
+            max_weight_bytes,
+            TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
+        )
+    }
+
+    #[cfg(test)]
+    fn with_limits(max_weight_bytes: u64, max_tenant_versions: usize) -> Self {
         Self {
             cache: Cache::builder()
                 .time_to_live(TENANT_LOCALE_CACHE_TTL)
@@ -543,26 +554,19 @@ mod tests {
 
     #[tokio::test]
     async fn tenant_cache_version_registry_is_bounded_and_fails_closed_on_exhaustion() {
-        let cache = TenantLocaleCache::with_max_weight(1024 * 1024);
+        let cache = TenantLocaleCache::with_limits(1024 * 1024, 2);
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
         let third = Uuid::new_v4();
 
-        let versions = cache
-            .versions
-            .clone();
-        {
-            let mut state = versions
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state.next_version = u64::MAX - 1;
-        }
-
         cache.invalidate(first).await;
-        assert!(cache.tenant_version(first).is_some());
         cache.invalidate(second).await;
+        assert_eq!(cache.tracked_tenant_versions(), 2);
+
         cache.invalidate(third).await;
-        assert!(cache.tracked_tenant_versions() <= TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS);
+        assert!(cache.tracked_tenant_versions() <= 2);
+        assert!(cache.tenant_version(third).is_some());
+        assert!(cache.tenant_version(first).is_some());
 
         cache.exhaust_versions();
         cache.invalidate(first).await;
