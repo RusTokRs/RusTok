@@ -125,7 +125,7 @@ async fn resolve_active_oauth_app(
     required_grant_type: &'static str,
     token_scopes: &[String],
 ) -> Result<oauth_apps::Model, (StatusCode, &'static str)> {
-    let app = OAuthApps::find_active_by_client_id(db, client_id)
+    let app = OAuthApps::find_active_security_by_client_id(db, client_id)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or((StatusCode::UNAUTHORIZED, "OAuth app not found or inactive"))?;
