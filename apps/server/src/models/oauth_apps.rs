@@ -582,11 +582,9 @@ impl Model {
     }
 
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {
-        let grants = self.grant_types_list();
-        grants.iter().any(|value| value == grant_type)
-            || (grant_type == "refresh_token"
-                && self.auto_created
-                && grants.iter().any(|value| value == "authorization_code"))
+        self.grant_types_list()
+            .iter()
+            .any(|value| value == grant_type)
     }
 
     pub fn can_edit(&self) -> bool {
@@ -649,8 +647,14 @@ mod tests {
     }
 
     #[test]
-    fn legacy_manifest_apps_preserve_authorization_code_refresh() {
+    fn auto_created_apps_require_explicit_refresh_grant() {
         let app = app(true, serde_json::json!(["authorization_code"]));
+        assert!(!app.supports_grant_type("refresh_token"));
+
+        let app = app(
+            true,
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
         assert!(app.supports_grant_type("refresh_token"));
     }
 }
