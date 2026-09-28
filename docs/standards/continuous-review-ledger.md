@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `788bb31f266696e7b4bd6d1ae0056a4239de3b67`  
+**Current main SHA:** `c1b808e1766fdadc89f8b5d986c5cc0726b53cbd`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -136,7 +136,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
 - [x] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit; completed with five consecutive remediation iterations and a fresh post-merge second pass. Cross-module runtime-fallback candidates remain explicitly deferred to their owner modules.
 - [x] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit; completed with six consecutive remediation iterations and a final fresh second pass. Remaining RBAC self-mutation invalidation and full detached WebSocket worker lifecycle are explicitly deferred to their owner/FS-24 tracks.
-- [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
+- [x] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit; completed with two remediation iterations and a final fresh second pass. Registration-policy and invite-consumption boundaries are now enforced.
 - [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
 - [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
 - [ ] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit.
@@ -195,6 +195,24 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.17 Result — `controllers/auth.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base before track:** `ed50feb2e7316a8d943c946528815a52851d1d01`.
+- **Final main after this module track:** `c1b808e1766fdadc89f8b5d986c5cc0726b53cbd`.
+- **Iteration 1:** PR #4203, merge commit `7fa75d62074fb38b7dfcc4bd9bfe38c514d210ba`.
+  - **Finding:** `accept_invite` decoded a stateless invite and called `create_user_runtime` directly, bypassing the existing durable `auth_invite_consumptions` serialization point and making invite tokens replayable until expiry.
+  - **Remediation:** controller now delegates to `AuthLifecycleService::accept_invite_once_runtime`, which hashes/reserves the token and creates the user in the same transaction.
+- **Iteration 2:** PR #4204, merge commit `c1b808e1766fdadc89f8b5d986c5cc0726b53cbd`.
+  - **Finding:** `features.registration_enabled` existed but `/api/auth/register` ignored it, so self-registration remained available when the feature was disabled.
+  - **Remediation:** controller now enforces a server-owned `ensure_registration_enabled` guard before auth config lookup or account creation; focused unit coverage was added.
+- **Final fresh second pass:** independently re-read the complete controller and its identity/session/recovery owner boundaries. No remaining unblocked controller-owned auth defect was found.
+- **Verified non-findings:** `CurrentUser` resolves authoritative permissions/role from current DB state; refresh and password reset use transactional/session-safe owner services; session list/revoke predicates are tenant+user scoped; public recovery token exposure remains limited to non-production demo mode.
+- **Explicitly deferred lifecycle debt:** password-reset and email-verification delivery use detached `tokio::spawn` tasks; their join/abort lifecycle remains under FS-24 rather than being changed locally in the controller.
+- **Explicitly deferred owner-layer debt:** session creation can persist a session before later role/token creation completes; this belongs to `AuthLifecycleService::create_session_and_tokens_db` and is not patched through the controller.
+- **Verification:** repository source inspection, owner-callsite review, immediate re-audits, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.18 — `apps/server/src/controllers/oauth.rs`.
 
 ### FS-22.02.16 Result — `graphql.rs`
 
