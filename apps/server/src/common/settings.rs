@@ -1303,6 +1303,7 @@ mod tests {
     const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
+    const RUSTOK_ENV_ENV: &str = "RUSTOK_ENV";
     const RUST_ENV_ENV: &str = "RUST_ENV";
     const APP_ENV_ENV: &str = "APP_ENV";
     const EMAIL_DISABLED_PROD_OVERRIDE_ENV: &str = "RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION";
@@ -1344,6 +1345,55 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn effective_environment_name_uses_rustok_env_then_rust_env_then_app_env() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "production");
+        let _rust = EnvVarGuard::set(RUST_ENV_ENV, "development");
+        let _app = EnvVarGuard::set(APP_ENV_ENV, "test");
+
+        assert_eq!(
+            super::effective_environment_name().expect("effective environment"),
+            "production"
+        );
+    }
+
+    #[test]
+    fn effective_environment_name_uses_rust_env_when_rustok_env_is_empty() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust = EnvVarGuard::set(RUST_ENV_ENV, "staging");
+        let _app = EnvVarGuard::set(APP_ENV_ENV, "test");
+
+        assert_eq!(
+            super::effective_environment_name().expect("effective environment"),
+            "staging"
+        );
+    }
+
+    #[test]
+    fn effective_environment_name_rejects_invalid_values() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::set(RUSTOK_ENV_ENV, "../production");
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        assert!(super::effective_environment_name().is_err());
+    }
+
+    #[test]
+    fn effective_environment_defaults_to_build_mode_when_environment_is_unset() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _rustok = EnvVarGuard::clear(RUSTOK_ENV_ENV);
+        let _rust = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app = EnvVarGuard::clear(APP_ENV_ENV);
+
+        let environment =
+            super::effective_environment_name().expect("default effective environment");
+        assert_eq!(environment, if cfg!(debug_assertions) { "development" } else { "production" });
+        assert_eq!(super::is_production_environment(), !cfg!(debug_assertions));
     }
 
     #[test]
