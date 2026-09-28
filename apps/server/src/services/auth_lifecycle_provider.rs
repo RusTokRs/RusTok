@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use rustok_api::AuthPrincipalKind;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
@@ -138,6 +139,24 @@ impl ServerAuthLifecycleProvider {
         }
     }
 
+    fn require_direct_user_id(
+        context: &AuthLifecycleContext,
+    ) -> Result<uuid::Uuid, AuthLifecycleMutationError> {
+        if context.principal_kind != Some(AuthPrincipalKind::DirectUser) {
+            return Err(AuthLifecycleMutationError::Unauthorized);
+        }
+        Self::require_user_id(context)
+    }
+
+    fn require_direct_session_id(
+        context: &AuthLifecycleContext,
+    ) -> Result<uuid::Uuid, AuthLifecycleMutationError> {
+        if context.principal_kind != Some(AuthPrincipalKind::DirectUser) {
+            return Err(AuthLifecycleMutationError::Unauthorized);
+        }
+        Self::require_session_id(context)
+    }
+
     fn require_user_id(
         context: &AuthLifecycleContext,
     ) -> Result<uuid::Uuid, AuthLifecycleMutationError> {
@@ -161,7 +180,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         &self,
         context: &AuthLifecycleContext,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         let user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(context.tenant_id))
             .one(self.runtime_ctx.db())
@@ -192,7 +211,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         limit: u64,
     ) -> Result<Vec<AuthSessionRecord>, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         AuthLifecycleService::list_sessions_runtime(
             &self.runtime_ctx,
             context.tenant_id,
@@ -346,7 +365,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         name: Option<String>,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError> {
-        let user_id = Self::require_user_id(context)?;
+        let user_id = Self::require_direct_user_id(context)?;
         let updated = AuthLifecycleService::update_profile_runtime(
             &self.runtime_ctx,
             context.tenant_id,
@@ -383,8 +402,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::change_password_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
-            Self::require_session_id(context)?,
+            Self::require_direct_user_id(context)?,
+            Self::require_direct_session_id(context)?,
             &current_password,
             &new_password,
         )
@@ -416,7 +435,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::logout_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_session_id(context)?,
+            Self::require_direct_session_id(context)?,
         )
         .await
         .map_err(map_lifecycle_error)
@@ -430,7 +449,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::revoke_session_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
+            Self::require_direct_user_id(context)?,
             session_id,
         )
         .await
@@ -444,8 +463,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         AuthLifecycleService::revoke_all_other_sessions_runtime(
             &self.runtime_ctx,
             context.tenant_id,
-            Self::require_user_id(context)?,
-            Self::require_session_id(context)?,
+            Self::require_direct_user_id(context)?,
+            Self::require_direct_session_id(context)?,
         )
         .await
         .map_err(map_lifecycle_error)
@@ -478,3 +497,43 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
 
 #[async_trait]
 impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
+#[cfg(test)]
+mod tests {
+    use super::ServerAuthLifecycleProvider;
+    use rustok_api::AuthPrincipalKind;
+    use rustok_auth::{AuthLifecycleContext, AuthLifecycleMutationError};
+
+    fn context(kind: Option<AuthPrincipalKind>) -> AuthLifecycleContext {
+        AuthLifecycleContext {
+            tenant_id: uuid::Uuid::new_v4(),
+            user_id: Some(uuid::Uuid::new_v4()),
+            session_id: Some(uuid::Uuid::new_v4()),
+            principal_kind: kind,
+            permissions: Vec::new(),
+            locale: rustok_core::Locale::default(),
+        }
+    }
+
+    #[test]
+    fn direct_self_service_requires_canonical_direct_user_principal() {
+        let direct = context(Some(AuthPrincipalKind::DirectUser));
+        assert!(ServerAuthLifecycleProvider::require_direct_user_id(&direct).is_ok());
+        assert!(ServerAuthLifecycleProvider::require_direct_session_id(&direct).is_ok());
+
+        for kind in [
+            None,
+            Some(AuthPrincipalKind::DelegatedUser),
+            Some(AuthPrincipalKind::Service),
+        ] {
+            let context = context(kind);
+            assert!(matches!(
+                ServerAuthLifecycleProvider::require_direct_user_id(&context),
+                Err(AuthLifecycleMutationError::Unauthorized)
+            ));
+            assert!(matches!(
+                ServerAuthLifecycleProvider::require_direct_session_id(&context),
+                Err(AuthLifecycleMutationError::Unauthorized)
+            ));
+        }
+    }
+}

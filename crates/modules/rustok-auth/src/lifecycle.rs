@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rustok_api::Permission;
+use rustok_api::{AuthPrincipalKind, Permission};
 use rustok_core::{Locale, UserRole};
 use uuid::Uuid;
 
@@ -11,6 +11,7 @@ pub struct AuthLifecycleContext {
     pub tenant_id: Uuid,
     pub user_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
+    pub principal_kind: Option<AuthPrincipalKind>,
     pub permissions: Vec<Permission>,
     pub locale: Locale,
 }

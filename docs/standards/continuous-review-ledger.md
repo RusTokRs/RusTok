@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `7b817f47d408d94d01751e332c0bb926343d8637`  
+**Current main SHA:** `b79e0cab819493c2a8d975ba2ce33723f82320d0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -367,6 +367,31 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.14 Iterations 1-3 — `crates/modules/rustok-auth/src/backfill.rs`
+
+- **Base:** refreshed `main` at `2b99979f1aceb2cbd9538822dc82c9953a08abaa`; dedicated branch `codex/audit-fs-22.03.14-auth-backfill`.
+- **Iteration 1 — bounded owner read contract:** `AuthUserBackfillDbReader` accepted arbitrary `u64` limits and cast them to `i64`. The owner now enforces `1..=500`, matching the Profiles CLI default, and rejects invalid values before query construction. Boundary tests cover `0`, `1`, `500`, `501`, and `u64::MAX`.
+- **Iteration 2 — error redaction:** DB query and row-decoding failures previously became raw `Internal(String)` diagnostics. They now pass through one stable `Auth user backfill read failed` error while retaining server-side error logging. Regression coverage verifies the external message.
+- **Iteration 3 — deterministic batch order and conversion hardening:** the SQL selection order now uses `created_at ASC, id ASC`; the SQL LIMIT binding uses checked `i64::try_from` after validation, eliminating lossy integer conversion. A fresh pass caught and corrected the intermediate invalid `i64::from(u64)` conversion before integration.
+- **Consumer reconciliation:** the Profiles CLI already defaults to `500` and supplies an explicit tenant UUID; no consumer runtime change was required. The reader returns only auth-owned identity projection fields `id/email/name` and does not import Profiles storage.
+- **Final fresh second pass:** re-read the complete owner reader after PR #4264 merged at `c608b07bd7f5df1a14232ea4c9a2f55fa14a9f75`. Rechecked tenant predicate, batch bounds, SQL parameter conversion, ordering stability, raw row parsing and error redaction. No remaining in-scope owner defect was found.
+- **Verification:** repository source inspection, direct consumer review, immediate re-audits after each remediation, and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.14` complete. Next primary module: `FS-22.03.15 — crates/modules/rustok-auth/src/bootstrap.rs`.
+
+### FS-22.03.13 Iterations 1-5 — `apps/server/src/services/auth_lifecycle_provider.rs`
+
+- **Iteration 1 — password-reset privacy:** Base `3240a5b3b2497d7773dc2bfb4801d5debb3d2a30`. `forgot_password` no longer reveals account existence when reset-token encoding, email-service resolution, or reset-URL preparation fails; preparation failures return the same generic success result as the unknown-account path. PR #4257 merged at `817e87a2d40fb96066bfd9cf180821483dfde28a`.
+- **Iteration 2 — registration-policy parity:** Base `817e87a2d40fb96066bfd9cf180821483dfde28a`. Provider `sign_up` now enforces the same host-owned `features.registration_enabled` policy already enforced by REST. Delegated/service/anonymous contexts cannot bypass the disabled-registration state. PR #4258 merged at `ddcfe94d90ad117cc55a3162a20ca9ac0c49e861`.
+- **Iteration 3 — internal error redaction:** Base `ddcfe94d90ad117cc55a3162a20ca9ac0c49e861`. Unified provider DB/lifecycle/invite error mapping now logs server-side and exposes only stable `Auth lifecycle operation failed` text, preventing GraphQL from receiving raw diagnostic strings. Regression coverage verifies the stable external message. PR #4259 merged at `f190dc0c109bf614c83dbce78239626da85130d5`.
+- **Iteration 4 — token-response consistency:** Base `f190dc0c109bf614c83dbce78239626da85130d5`. When sign-in/sign-up/refresh successfully issue a session but provider RBAC projection fails, the freshly-issued session is compensatorily revoked using the signed access-token session claim before the error is returned. Tenant mismatch and compensation failure are logged without token material. PR #4260 merged at `e0585ed77e3a9685bced4392a859b5bd4c7e475e`. The follow-up pass also corrected compensation logging to use debug formatting because `AuthLifecycleError` does not implement `Display`.
+- **Iteration 5 — typed principal parity:** Base `e0585ed77e3a9685bced4392a859b5bd4c7e475e`. `AuthLifecycleContext` now carries the canonical optional `AuthPrincipalKind`; GraphQL populates it from the trusted `AuthPrincipalContext` extension; provider self-service operations require `DirectUser`. This closes the delegated-OAuth path that previously could reach current-user/session/profile/revoke operations outside HTTP middleware. Provider regression coverage covers direct, delegated, service and anonymous contexts. PR #4261 merged at `c0591e1332b407dd2c7b8e76603b2b8c37880938`.
+- **Immediate/adjacent/fresh second passes:** after every remediation, re-read direct callers/callees and relevant auth/GraphQL/RBAC context boundaries; the final post-merge pass rechecked all five fixes together and found no remaining provider-owned defect.
+- **Explicit cross-owner follow-up:** the provider still performs a post-issuance RBAC projection; compensation is fail-closed when the DB remains writable, but an outage that prevents compensation can leave the newly issued session persisted while the response fails. A fully atomic token-plus-permission projection would require reopening the lifecycle-service owner track and is not patched through the provider.
+- **Explicit deferred owner finding:** `AuthUserBackfillDbReader` still casts its caller-supplied `limit: u64` to `i64`; the root owner is `rustok-auth/src/backfill.rs`, not this provider. It remains for a dedicated future owner-module iteration.
+- **Event non-finding:** canonical `UserAccountRegistered`/`UserLoggedIn` event types were reviewed against current consumers and no active repository-owned consumer requiring provider publication was identified; no speculative event producer was added.
+- **Verification:** repository source inspection and branch-diff review only. Per maintainer-owned policy, no tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Status:** `FS-22.03.13` complete. Next primary module: `FS-22.03.14 — crates/modules/rustok-auth/src/backfill.rs`.
 
 ### FS-22.03.12 Iterations 1-6 — `apps/server/src/services/auth_lifecycle.rs`
 
