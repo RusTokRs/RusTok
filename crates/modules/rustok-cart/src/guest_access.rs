@@ -213,6 +213,20 @@ mod tests {
         assert!(metadata.get(GUEST_CART_TOKEN_HASH_METADATA_KEY).is_none());
     }
 
+
+#[tokio::test]
+async fn current_guest_cart_access_uses_request_scoped_token() {
+    let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
+    let token = token.expect("guest token");
+
+    assert!(!verify_current_guest_cart_access(&metadata));
+
+    with_guest_cart_request_scope(Some(token), async {
+        assert!(verify_current_guest_cart_access(&metadata));
+    })
+    .await;
+}
+
     #[test]
     fn sanitization_removes_reserved_security_fields() {
         let sanitized = sanitize_guest_cart_metadata(json!({
