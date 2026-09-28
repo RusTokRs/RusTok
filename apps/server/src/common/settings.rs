@@ -1232,22 +1232,43 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
         || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
 }
 
-pub(crate) fn is_production_environment() -> bool {
+pub(crate) fn effective_environment_name() -> Result<String, String> {
     for key in ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"] {
         match std::env::var(key) {
             Ok(value) => {
-                let value = value.trim().to_ascii_lowercase();
-                if value.is_empty() {
+                let environment = value.trim().to_string();
+                if environment.is_empty() {
                     continue;
                 }
-                return matches!(value.as_str(), "prod" | "production");
+                if !environment
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+                {
+                    return Err(
+                        "RUSTOK_ENV/RUST_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
+                            .to_string(),
+                    );
+                }
+                return Ok(environment);
             }
             Err(std::env::VarError::NotPresent) => continue,
-            Err(std::env::VarError::NotUnicode(_)) => return true,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(format!("{key} must contain valid UTF-8"));
+            }
         }
     }
 
-    !cfg!(debug_assertions)
+    Ok(if cfg!(debug_assertions) {
+        "development".to_string()
+    } else {
+        "production".to_string()
+    })
+}
+
+pub(crate) fn is_production_environment() -> bool {
+    effective_environment_name()
+        .map(|environment| matches!(environment.trim().to_ascii_lowercase().as_str(), "prod" | "production"))
+        .unwrap_or(!cfg!(debug_assertions))
 }
 
 pub(crate) fn demo_mode_token_exposure_enabled() -> bool {
