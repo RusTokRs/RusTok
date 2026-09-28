@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `35a80f07bdda94ff3c26b114557aae7143750f8d`  
+**Current main SHA:** `10642934e162ede0f542fd3c182c49f10c60e0d0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -257,6 +257,7 @@ Hard limits for every iteration:
 - [x] **FS-22.03.07 — `crates/modules/rustok-auth/src/jwt.rs`** — completed with one input-range remediation and a fresh independent second pass.
 - [x] **FS-22.03.08 — `crates/modules/rustok-auth/src/credentials.rs`** — completed with one RNG-failure remediation and a fresh independent post-merge second pass.
 - [x] **FS-22.03.09 — `crates/modules/rustok-auth/src/config.rs`** — fresh module audit found no remaining owner-level defect requiring code remediation; auth-settings parse-failure handling is deferred to the host adapter track.
+- [x] **FS-22.03.10 — `apps/server/src/auth.rs`** — completed with one fail-closed configuration parsing remediation and a fresh post-merge second pass.
 - [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
@@ -366,6 +367,20 @@ Hard limits for every iteration:
 - **Documentation:** `crates/modules/rustok-auth/docs/README.md` now records the checked JWT expiration boundary.
 - **Verification:** repository-content/static inspection and branch-diff review only. No test suite, clippy, build, gatekeeper, migration, or runtime command was executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.03.07` complete after merge; continue to the next unchecked primary module in FS-22.03.
+
+### FS-22.03.10 Iteration 1 — `apps/server/src/auth.rs`
+
+- **Base:** refreshed `main` at `10642934e162ede0f542fd3c182c49f10c60e0d0`; dedicated branch `codex/audit-fs-22.03.10-server-auth-adapter`.
+- **Invariant map:** the server auth adapter must preserve auth-owner error semantics, fail closed on malformed startup auth configuration, avoid alternate token/credential implementations, preserve tenant/user binding for server-owned token adapters, and never expose secrets or internal diagnostics through transport responses.
+- **Discovery:** re-read the complete adapter, its direct host startup caller, server error boundary, auth lifecycle consumer paths, auth owner configuration/JWT contracts, and adjacent documentation.
+- **Finding AUTH-ADAPTER-22.03.10-01:** `auth_config_from_host_settings` converted `serde_json::from_value::<AppSettings>` failures to `None` and then used default `AuthSettingsOverrides`. A malformed nested auth configuration, including an invalid `JwtAlgorithm` value or invalid setting shape, could therefore be silently ignored and replaced by unintended defaults.
+- **Remediation:** nested auth-settings deserialization errors now propagate through the server `Error` boundary. A focused regression test requires malformed `algorithm` input to return `Error::Json`; valid absent auth settings retain the existing default behavior.
+- **Adjacent-boundary review:** `host::run` already propagates the adapter result before server traffic is accepted and separately applies production auth deployment checks; `Error::Json` has the generic HTTP 500 response mapping, while startup diagnostics remain available to the operator. Token/credential wrapper functions continue to delegate directly to `rustok-auth` without a second implementation.
+- **Regression audit:** malformed auth settings can no longer downgrade to HS256/default claims silently; successful configuration assembly and existing token wrappers are unchanged; no secret material is included in the new error path.
+- **Fresh post-merge second pass:** after PR #4242 merged at `10642934e162ede0f542fd3c182c49f10c60e0d0`, the complete adapter and direct host boundary were re-read. No additional repository-owned defect remained in the primary adapter surface.
+- **Verification:** repository source inspection, direct caller/callee review, regression reasoning and branch-diff review only. No tests, clippy, build, gatekeeper, migrations, or runtime commands were executed by the agent.
+- **Integration:** PR #4242 merged into `main` at `10642934e162ede0f542fd3c182c49f10c60e0d0`. This closeout entry is maintained in the canonical ledger; the post-closeout SHA is reconciled separately after its merge.
+- **Status:** `FS-22.03.10` complete. Next primary module: `FS-22.03.11 — crates/modules/rustok-auth/src/lifecycle.rs`.
 
 ### FS-22.03.09 Iteration 1 — `crates/modules/rustok-auth/src/config.rs`
 
