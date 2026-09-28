@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `c800d56cc230fe86495db24b38269222d449c7f6`  
+**Current main SHA:** `308bc6199b464be588b7e7e2575a26a7cefeef3d`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -134,7 +134,7 @@ Hard limits for every iteration:
 - [x] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Remaining full worker rollback/join/abort lifecycle gaps are explicitly deferred to FS-24.
 - [x] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit; completed with three consecutive remediation iterations and a final fresh second pass. Marketplace-provider panic handling remains a separate owner-module finding; full detached-worker lifecycle remains deferred to FS-24.
 - [x] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit; fresh discovery and independent second pass found no repository-owned in-scope defect requiring code remediation.
-- [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
+- [x] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit; completed with five consecutive remediation iterations and a fresh post-merge second pass. Cross-module runtime-fallback candidates remain explicitly deferred to their owner modules.
 - [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
 - [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
 - [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
@@ -195,6 +195,31 @@ Hard limits for every iteration:
 - **Regression correction during implementation:** the first edge-layer rearrangement temporarily duplicated rate limiting in the registry/worker branch; later re-read caught and corrected it. A second temporary inner `security_headers` layer that would have produced two CSP nonces was also caught and removed before PR creation.
 - **Verification:** repository source inspection, static reasoning, cross-file contract review, and branch-diff review only. No tests, cargo check/clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Next primary module:** FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`.
+
+### FS-22.02.15 Result — `graphql_schema.rs`
+
+- **Status:** COMPLETE and integrated into `main`.
+- **Fresh main base:** `2a4fbb3e9b0a34db3b28779f63e360f173e9684e`.
+- **Final main after this module track:** `308bc6199b464be588b7e7e2575a26a7cefeef3d`.
+- **Iteration 1:** PR #4189, merge commit `fdcec0d9ed5c35f32f8e274567a322f42f03b58c`.
+  - **Finding:** GraphQL schema composition synthesized a missing Alloy runtime; Alloy runtime construction starts a background scheduler, so schema composition could create runtime execution state when the capability was absent.
+  - **Remediation:** Alloy runtime is now consumed only from boot-owned `ServerRuntimeContext`; schema dependency is optional and owner requests fail closed when absent.
+- **Iteration 2:** PR #4190, merge commit `8b9536e07ccd7a1670ae26213df8297d84be5dee`.
+  - **Finding:** schema composition rebuilt a missing `ModuleRegistry`, allowed missing marketplace catalog until a later panic, and started SEO reconciliation before schema construction had succeeded.
+  - **Remediation:** registry/catalog are mandatory preconditions; GraphQL bootstrap returns errors instead of synthesizing topology; SEO reconciliation starts only after successful schema publication.
+- **Iteration 3:** PR #4191, merge commit `8ef01ec57c333ea7fbe542a8605bef2e4237d647`.
+  - **Finding:** missing Content Orchestration runtime was synthesized inside GraphQL composition.
+  - **Remediation:** content orchestration is now an optional boot-owned dependency; owner GraphQL access remains fail closed when absent.
+- **Iteration 4:** PR #4193, merge commit `58668fdcf17b63082d24a4efc984f0362a352be3`.
+  - **Finding:** missing StorageRuntime was replaced by local/in-memory storage, including an indirect in-memory storage fallback for Alloy published-Rhai source handling.
+  - **Remediation:** storage and Alloy published-Rhai source dependencies now consume only boot-owned storage; missing storage remains absent and focused absence tests were added.
+- **Iteration 5:** PR #4194, merge commit `308bc6199b464be588b7e7e2575a26a7cefeef3d`.
+  - **Finding:** required boot-owned registry/catalog state was validated only after side-effectful event/cache/provider composition had already begun.
+  - **Remediation:** cached schema remains the first path; mandatory registry/catalog preconditions now execute before event bus, cache, and provider attachment side effects.
+- **Final fresh post-merge second pass:** independently re-read `graphql_schema.rs` against the current `main`, plus direct schema-builder dependencies and owner contracts. The primary module contains no remaining unblocked repository-owned fallback/topology-duplication defect.
+- **Deferred cross-module observations:** `event_bus_from_context` still owns lazy EventBus/forwarder initialization, and `attach_commerce_provider_registries` contains intentional-or-not in-process provider/runtime fallback construction. These require their own owner-boundary audits; no behavior was silently changed through `graphql_schema.rs`.
+- **Verification:** repository source inspection, direct callsite/owner contract review, immediate re-audits, regression checks, fresh second pass, and branch-diff review only. No tests, compiler, clippy, gatekeeper, generator, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Next primary module:** FS-22.02.16 — `apps/server/src/controllers/graphql.rs`.
 
 ### FS-22.02.14 Result — `server_runtime_context.rs`
 
