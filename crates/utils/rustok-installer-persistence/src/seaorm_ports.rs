@@ -25,8 +25,6 @@ use uuid::Uuid;
 
 use crate::{InstallerPersistenceService, entities::install_session};
 
-const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
-
 async fn import_base_distribution(
     runtime: &DatabaseConnection,
     plan: &InstallPlan,
@@ -649,14 +647,12 @@ impl InstallDatabasePort for SeaOrmInstallerPorts {
                     "--create-database is only supported for postgres install plans",
                 ));
             }
-            created_database = ensure_postgres_database(
-                options
-                    .pg_admin_url
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PG_ADMIN_URL),
-                &target,
-            )
-            .await?;
+            let admin_url = options.pg_admin_url.as_deref().ok_or_else(|| {
+                InstallExecutionError::new(
+                    "pg_admin_url is required when create_if_missing is enabled",
+                )
+            })?;
+            created_database = ensure_postgres_database(admin_url, &target).await?;
         }
         let runtime = Database::connect(database_url)
             .await
@@ -910,4 +906,31 @@ fn quote_ident(value: &str) -> String {
 }
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{DatabaseTarget, parse_database_target};
+    use rustok_installer::{DatabaseEngine, InstallExecutionError};
+
+    #[test]
+    fn postgres_target_parse_never_provides_admin_password_fallback() {
+        let result = parse_database_target(
+            &DatabaseEngine::Postgres,
+            "postgres://app:secret@example.test:5432/rustok",
+        );
+        assert!(result.is_ok());
+        let target: DatabaseTarget = result.expect("valid postgres target");
+        assert_eq!(target.username.as_deref(), Some("app"));
+        assert_eq!(target.password.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn missing_admin_url_is_an_explicit_apply_error() {
+        let error = InstallExecutionError::new(
+            "pg_admin_url is required when create_if_missing is enabled",
+        );
+        assert!(error.to_string().contains("pg_admin_url is required"));
+    }
 }
