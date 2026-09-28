@@ -513,6 +513,76 @@ mod tests {
         assert_eq!(stats.invalidations, 1);
     }
 
+    #[tokio::test]
+    async fn tenant_cache_version_rotates_on_tenant_invalidation() {
+        let cache = TenantLocaleCache::with_max_weight(1024 * 1024);
+        let tenant_id = Uuid::new_v4();
+        let initial = cache.tenant_version(tenant_id).expect("cache should be enabled");
+        let key = cache.cache_key(tenant_id, initial);
+
+        cache
+            .cache
+            .insert(
+                key.clone(),
+                Arc::new(vec![TenantLocaleRecord {
+                    locale: "en".to_string(),
+                    is_enabled: true,
+                    is_default: true,
+                    fallback_locale: None,
+                }]),
+            )
+            .await;
+        assert!(cache.get(tenant_id).await.is_some());
+
+        cache.invalidate(tenant_id).await;
+
+        let next = cache.tenant_version(tenant_id).expect("cache should remain enabled");
+        assert_ne!(initial, next);
+        assert!(cache.get(tenant_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn tenant_cache_version_registry_is_bounded_and_fails_closed_on_exhaustion() {
+        let cache = TenantLocaleCache::with_max_weight(1024 * 1024);
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let third = Uuid::new_v4();
+
+        let versions = cache
+            .versions
+            .clone();
+        {
+            let mut state = versions
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.next_version = u64::MAX - 1;
+        }
+
+        cache.invalidate(first).await;
+        assert!(cache.tenant_version(first).is_some());
+        cache.invalidate(second).await;
+        cache.invalidate(third).await;
+        assert!(cache.tracked_tenant_versions() <= TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS);
+
+        cache.exhaust_versions();
+        cache.invalidate(first).await;
+        assert!(cache.tenant_version(first).is_none());
+        assert_eq!(cache.tracked_tenant_versions(), 0);
+    }
+
+    #[test]
+    fn empty_tenant_locale_policy_never_accepts_requested_locale() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("ru".to_string()),
+            effective_locale: "ru".to_string(),
+        };
+
+        assert_eq!(
+            constrain_locale_to_tenant(&resolved, &[], "en"),
+            "en"
+        );
+    }
+
     #[test]
     fn prefers_requested_enabled_locale() {
         let resolved = ResolvedRequestLocale {
