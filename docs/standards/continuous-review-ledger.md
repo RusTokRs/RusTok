@@ -109,6 +109,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.02 finding in progress — registry publish/governance tenant-boundary review.** Initial trace found `tenant_route_scope` classifying almost all `/v2/catalog/*` routes as global even though those controllers require `AuthContextExtension`; the remediation narrows the global exception to the dedicated remote-runner transport and adds route-policy coverage. This item stays open until immediate and independent re-audits are complete.
 
+- [ ] **FS-22.02 finding in progress — observability bearer/JWT middleware collision.** Protected observability uses `Authorization: Bearer <token>`, but JWT `auth_context` also consumes that header. The fix moves observability authentication to the outer composition edge and removes the observability credential before downstream JWT processing, including the readiness path.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |

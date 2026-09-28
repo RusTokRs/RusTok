@@ -22,6 +22,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path();
     if path == "/health/ready" {
         let reveal_details = request_is_authorized(&request);
+        request.headers_mut().remove(header::AUTHORIZATION);
         let response = next.run(request).await;
         return normalize_readiness_response(response, reveal_details).await;
     }
@@ -32,6 +33,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
 
     let Some(expected) = configured_token() else {
         if cfg!(debug_assertions) {
+            request.headers_mut().remove(header::AUTHORIZATION);
             return next.run(request).await;
         }
         return (
@@ -42,6 +44,7 @@ pub async fn require_bearer(request: Request<Body>, next: Next) -> Response {
     };
 
     if supplied_token(&request).is_some_and(|supplied| constant_time_eq(supplied, &expected)) {
+        request.headers_mut().remove(header::AUTHORIZATION);
         return next.run(request).await;
     }
 
@@ -200,5 +203,15 @@ mod tests {
     fn token_comparison_is_exact() {
         assert!(constant_time_eq("metrics-secret", "metrics-secret"));
         assert!(!constant_time_eq("metrics-secret", "metrics-secret-2"));
+    }
+
+    #[test]
+    fn observability_authorization_uses_the_authorization_header_contract() {
+        let request = axum::http::Request::builder()
+            .uri("/metrics")
+            .header(header::AUTHORIZATION, "Bearer observability-token")
+            .body(())
+            .expect("request");
+        assert_eq!(supplied_token(&request), Some("observability-token"));
     }
 }

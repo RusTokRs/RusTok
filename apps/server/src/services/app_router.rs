@@ -192,9 +192,6 @@ pub fn compose_application_router(
     // deployment profile. Install them before profile-specific middleware
     // diverges so registry-only cannot bypass the same guards.
     let router = router
-        .layer(axum_middleware::from_fn(
-            middleware::metrics_auth::require_bearer,
-        ))
         .layer(axum_middleware::from_fn_with_state(
             middleware_runtime_ctx.clone(),
             middleware::registry_artifact_access::enforce,
@@ -221,6 +218,9 @@ pub fn compose_application_router(
             ))
             .layer(axum_middleware::from_fn(
                 middleware::security_headers::security_headers,
+            ))
+            .layer(axum_middleware::from_fn(
+                middleware::metrics_auth::require_bearer,
             )));
     }
 
@@ -401,6 +401,9 @@ pub fn compose_application_router(
         ))
         .layer(axum_middleware::from_fn(
             middleware::security_headers::security_headers,
+        ))
+        .layer(axum_middleware::from_fn(
+            middleware::metrics_auth::require_bearer,
         )))
 }
 
