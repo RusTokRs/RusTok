@@ -187,7 +187,7 @@ where
                 .await
                 .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
             if let Some(user) = user.as_ref() {
-                users::Entity::update_many()
+                let result = users::Entity::update_many()
                     .col_expr(
                         users::Column::UpdatedAt,
                         Expr::col(users::Column::UpdatedAt),
@@ -197,10 +197,24 @@ where
                     .exec(db)
                     .await
                     .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+                if result.rows_affected() != 1 {
+                    return Err(AuthAdminMutationError::Internal(
+                        "user mutation lock fence could not be acquired".to_string(),
+                    ));
+                }
+
+                return query()
+                    .one(db)
+                    .await
+                    .map_err(|error| AuthAdminMutationError::Internal(error.to_string()));
             }
-            user
+            None
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        _ => {
+            return Err(AuthAdminMutationError::Internal(
+                "unsupported SeaORM database backend".to_string(),
+            ));
+        }
     };
 
     user.ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()))
