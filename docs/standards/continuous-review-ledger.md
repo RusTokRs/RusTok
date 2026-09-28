@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Initial main SHA:** `8034b3ecba98c6e84f598a734adb6e264ae50c2e`  
-**Branch:** `audit/fs-22.01-route-graph-20260928`
+**Current main SHA:** `e9c2f35d62831311a8b979695895bf44adf404cf`  
+**Active branch:** `audit/plan-granularity-one-module-20260928`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -93,7 +93,73 @@ The audit must move slowly enough to discover second-order defects. A phase is n
 ### Phase Granularity Rule
 
 The numbered FS phases define architectural ownership, not a permission to inspect an entire subsystem in one pass. Before implementation, the active phase must be decomposed in the ledger into ordered subchecks small enough that each production path can be read end-to-end and re-audited after each fix. A subcheck may cover one bounded flow (for example: one middleware chain, one auth/session path, one tenant-resolution path, one route family, or one persistence boundary). Do not advance to the next subcheck while an introduced regression or unexplained invariant violation remains.
-### FS-22 Subchecks — execute strictly in this order
+**Phase Granularity Rule — one production module per iteration**
+
+The numbered FS phases define architectural ownership, not permission to audit a subsystem, route family, or collection of modules in one pass.
+
+A single audit iteration has exactly **one primary production module/component**. The primary unit is normally one Rust module/file such as `apps/server/src/middleware/metrics_auth.rs`, or one similarly bounded owner module elsewhere in the repository.
+
+The iteration may read direct callers/callees, contracts, configuration, persistence, tests, and adjacent boundaries only as necessary to prove the primary module's invariants. Those surrounding reads are evidence for the primary module, not additional audit scope.
+
+Hard limits for every iteration:
+
+1. Do not audit multiple sibling modules as primary scope.
+2. Do not make unrelated fixes discovered outside the primary module; record them for their own later iteration.
+3. Do not close an iteration until the primary module has completed discovery, invariant mapping, implementation, immediate re-audit, adjacent-boundary re-audit, regression audit, and a fresh second pass.
+4. One iteration produces one small coherent branch/PR/merge. After merge, refresh `main` and select exactly one next primary module.
+5. When a module exposes several flows, audit those flows sequentially inside that one module rather than expanding to neighboring modules.
+6. Finding counts do not justify widening the scope. If the module reveals a large cross-module defect, isolate the root cause and create a later dedicated iteration for the owning module.
+7. The phrase `реализуй план аудита` means: take the **next unchecked primary module only**.
+
+### Current module-by-module execution queue
+
+**FS-22 — apps/server composition root**
+
+- [ ] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — one-module audit: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence.
+- [ ] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
+- [ ] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
+- [ ] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
+- [ ] **FS-22.02.05 — `apps/server/src/middleware/rate_limit.rs`** — one-module audit.
+- [ ] **FS-22.02.06 — `apps/server/src/middleware/auth_context.rs`** — one-module audit.
+- [ ] **FS-22.02.07 — `apps/server/src/middleware/channel.rs`** — one-module audit.
+- [ ] **FS-22.02.08 — `apps/server/src/middleware/locale.rs`** — one-module audit.
+- [ ] **FS-22.02.09 — `apps/server/src/middleware/tenant.rs`** — one-module audit.
+- [ ] **FS-22.02.10 — `apps/server/src/middleware/guest_access_http.rs` or its host adapter** — one-module audit.
+- [ ] **FS-22.02.11 — `apps/server/src/middleware/security_headers.rs`** — one-module audit.
+- [ ] **FS-22.02.12 — `apps/server/src/services/server_bootstrap.rs`** — one-module audit.
+- [ ] **FS-22.02.13 — `apps/server/src/services/app_runtime.rs`** — one-module audit.
+- [ ] **FS-22.02.14 — `apps/server/src/services/server_runtime_context.rs`** — one-module audit.
+- [ ] **FS-22.02.15 — `apps/server/src/services/graphql_schema.rs`** — one-module audit.
+- [ ] **FS-22.02.16 — `apps/server/src/controllers/graphql.rs`** — one-module audit.
+- [ ] **FS-22.02.17 — `apps/server/src/controllers/auth.rs`** — one-module audit.
+- [ ] **FS-22.02.18 — `apps/server/src/controllers/oauth.rs`** — one-module audit.
+- [ ] **FS-22.02.19 — `apps/server/src/controllers/users.rs`** — one-module audit.
+- [ ] **FS-22.02.20 — `apps/server/src/controllers/health.rs`** — one-module audit.
+- [ ] **FS-22.02.21 — `apps/server/src/controllers/metrics.rs`** — one-module audit.
+- [ ] **FS-22.02.22 — `apps/server/src/controllers/marketplace_registry.rs`** — one-module audit.
+- [ ] **FS-22.02.23 — `apps/server/src/controllers/artifact_http.rs`** — one-module audit.
+- [ ] **FS-22.02.24 — `apps/server/src/controllers/artifact_permissions.rs`** — one-module audit.
+- [ ] **FS-22.02.25 — `apps/server/src/controllers/admin_events.rs`** — one-module audit.
+- [ ] **FS-22.02.26 — `apps/server/src/controllers/channel.rs`** — one-module audit.
+- [ ] **FS-22.02.27 — `apps/server/src/controllers/flex.rs`** — one-module audit.
+- [ ] **FS-22.02.28 — `apps/server/src/controllers/installer.rs`** — one-module audit.
+- [ ] **FS-22.02.29 — `apps/server/src/controllers/mcp.rs`** — one-module audit.
+- [ ] **FS-22.02.30 — `apps/server/src/controllers/oauth_metadata.rs`** — one-module audit.
+- [ ] **FS-22.02.31 — `apps/server/src/controllers/swagger.rs`** — one-module audit.
+- [ ] **FS-22.02.32 — `apps/server/src/channels/builds.rs`** — one-module audit.
+- [ ] **FS-22.03 — identity/auth propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.04 — tenant/channel/locale propagation:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+- [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
+
+### FS-22 Legacy Phase Index
+
+The earlier FS-22.01 route-graph pass is retained as historical evidence and is already closed. The detailed module queue above is now the authoritative execution granularity for all remaining FS-22 work.
 
 - [x] **FS-22.01 Route graph:** enumerate every server route family and fallback; prove which host modes expose which routes, detect accidental shadowing/overlap, and reconcile route documentation.
 
