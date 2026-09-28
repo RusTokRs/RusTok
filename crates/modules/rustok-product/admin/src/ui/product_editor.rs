@@ -85,13 +85,6 @@ pub fn ProductEditorPage(
     // Product state in edit mode
     let (loaded_product, set_loaded_product) = signal(Option::<ProductDetail>::None);
 
-    // Bootstrap resource
-    let bootstrap = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        async move { transport::fetch_bootstrap(tok, ten).await }
-    });
-
     // Categories list resource
     let cat_locale = locale.clone();
     let categories_resource = LocalResource::new(move || {
@@ -417,7 +410,6 @@ pub fn ProductEditorPage(
 
     let save_product_cb_draft = save_product.clone();
     let save_product_cb_active = save_product.clone();
-    let save_product_cb_main = save_product.clone();
 
     view! {
         <div class="flex flex-col gap-6 w-full max-w-6xl mx-auto pb-12 animate-in fade-in duration-150">

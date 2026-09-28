@@ -33,10 +33,11 @@ pub fn ProductGridPage() -> impl IntoView {
     let pagination = RwSignal::new(GridPagination::new(1, 20, 0));
 
     // Load products resource
+    let res_locale = locale.clone();
     let products_resource = LocalResource::new(move || {
         let tok = token.get();
         let ten = tenant.get();
-        let loc = locale.clone();
+        let loc = res_locale.clone();
         let _ = refresh_nonce.get();
         async move {
             let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
@@ -229,6 +230,7 @@ pub fn ProductGridPage() -> impl IntoView {
     let on_quick_delete_cb = StoredValue::new(on_quick_delete);
 
     // Cell renderer callback
+    let cell_locale = locale.clone();
     let cell_renderer = Callback::new(move |(item, col_id): (ProductListItem, String)| {
         let base_route = base_route_for_cell.clone();
         let edit_href = format!("{base_route}/edit/{}", item.id);
@@ -255,7 +257,7 @@ pub fn ProductGridPage() -> impl IntoView {
                             class="font-medium text-foreground hover:text-primary transition-colors truncate text-xs"
                             title=item.title.clone()
                         >
-                            {item.title}
+                            {item.title.clone()}
                         </a>
                         <div class="flex items-center gap-1.5 flex-wrap">
                             <span class="font-mono text-[10px] text-muted-foreground/70 truncate">
@@ -278,7 +280,7 @@ pub fn ProductGridPage() -> impl IntoView {
                 view! {
                     <div class="flex items-center">
                         <span class=kind.badge_class()>
-                            {kind.label(locale.as_deref())}
+                            {kind.label(cell_locale.as_deref())}
                         </span>
                     </div>
                 }
