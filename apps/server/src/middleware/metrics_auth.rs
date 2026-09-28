@@ -199,7 +199,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn token_comparison_is_exact() {
         assert!(constant_time_eq("metrics-secret", "metrics-secret"));
         assert!(!constant_time_eq("metrics-secret", "metrics-secret-2"));
