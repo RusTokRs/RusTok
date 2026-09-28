@@ -11,8 +11,8 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `e9c2f35d62831311a8b979695895bf44adf404cf`  
-**Active branch:** `audit/plan-granularity-one-module-20260928`
+**Current main SHA:** `fc092d993bf455c0f591d4b622f4001c3b0eaa4b`  
+**Active branch:** `audit/fs-22.02.01-i1-refresh-20260928`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
 
@@ -120,7 +120,7 @@ Hard limits for every iteration:
 
 **FS-22 — apps/server composition root**
 
-- [ ] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — module track: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence. **This module may take multiple consecutive iterations; do not advance to FS-22.02.02 until its module-level second pass is clean or remaining issues are explicitly blocked.**
+- [x] **FS-22.02.01 — `apps/server/src/middleware/metrics_auth.rs`** — module track: observability authentication, readiness sanitization, bearer parsing, production/development fail-closed behavior, response status contract, and direct middleware placement evidence. **This module may take multiple consecutive iterations; do not advance to FS-22.02.02 until its module-level second pass is clean or remaining issues are explicitly blocked.**
 - [ ] **FS-22.02.02 — `apps/server/src/middleware/registry_artifact_access.rs`** — one-module audit.
 - [ ] **FS-22.02.03 — `apps/server/src/middleware/registry_remote_claim.rs`** — one-module audit.
 - [ ] **FS-22.02.04 — `apps/server/src/middleware/registry_publish_policy.rs`** — one-module audit.
@@ -161,6 +161,19 @@ Hard limits for every iteration:
 - [ ] **FS-22.09 — Feature/config interaction matrix:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.10 — Error/observability boundary:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.11 — Fresh second-pass composition audit:** perform this only after the module queue above has been completed, still one primary module per iteration.
+
+### FS-22.02.01 Iteration 1 — `metrics_auth.rs`
+
+- **Base:** refreshed `main` at `fc092d993bf455c0f591d4b622f4001c3b0eaa4b` before the refreshed iteration branch was created.
+- **Dedicated iteration branch:** `audit/fs-22.02.01-i1-refresh-20260928`. The previous branch was not merged because `main` advanced after its creation; no stale branch was merged.
+- **Invariant map:** observability endpoints must not expose detailed runtime/module diagnostics without a valid bearer token in production; development/non-production must retain local unauthenticated observability; readiness must expose only the aggregate status publicly; valid authenticated requests may receive the diagnostic body; protected paths must return stable 401/503 contracts; auth must remain independent of tenant resolution and must execute across all host profiles.
+- **Finding OBS-22.02.01-01:** `metrics_auth.rs` used compile-time `cfg!(debug_assertions)` to decide whether a missing observability token was allowed. Server production semantics are runtime-derived from `RUSTOK_ENV`/`RUST_ENV`/`APP_ENV`. A debug build launched with `RUSTOK_ENV=production` therefore bypassed the documented production fail-closed behavior and could expose unauthenticated detailed observability/runtime/module endpoints and readiness details.
+- **Implementation:** replaced the compile-profile check with the runtime production predicate from `crate::common::is_production_environment()`, evaluated once per request and shared by protected observability and readiness authorization. Added a focused policy test covering production/non-production behavior.
+- **Immediate/adjacent re-audit:** re-read the complete changed module and direct registration in `services/app_router.rs`; rechecked `health.rs`, `metrics.rs`, `http_stack.rs`, and runtime settings. No introduced panic, header, bearer parsing, response-status, body-bound, token-precedence, or middleware-placement defect was found.
+- **Deferred cross-module finding:** public `/health/ready` is not covered by the current path-rate-limit policies (which are limited to `/api/`) while performing multiple database/network/runtime checks per request. This is recorded for the dedicated `FS-22.02.05` rate-limit module audit rather than changing a sibling module here.
+- **Fresh second pass:** independently rechecked path coverage, fail-closed policy, bearer parsing, constant-time comparison, readiness sanitization/status normalization, body-size bound, header behavior, environment fallback, direct placement, and adjacent health/metrics/HTTP-edge contracts. No remaining repository-owned in-scope defect was found in `metrics_auth.rs`.
+- **Verification:** repository-content/static inspection and branch-diff review only. No tests, clippy, gatekeeper, build, or runtime commands were executed by the agent, per maintainer-owned verification rules.
+- **Status:** module-level second pass clean; `FS-22.02.01` is complete and the next audit trigger should start `FS-22.02.02`.
 
 ### FS-22 Legacy Phase Index
 
