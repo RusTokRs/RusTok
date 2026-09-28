@@ -1,7 +1,7 @@
 //! `<Form>` — top-level form wrapper providing [`FormContext`] to descendants.
 
 use leptos::prelude::*;
-use rustok_forms::FormState;
+use rustok_forms::{DirtyTracker, FormState};
 
 use crate::context::FormContext;
 
@@ -29,6 +29,10 @@ pub fn Form(
     /// Reactive form state. `<Form>` reads this to prevent double-submit
     /// and provides it as context. The caller owns write access.
     state: RwSignal<FormState>,
+    /// Optional dirty field tracker. If provided, inputs automatically mark
+    /// modified fields and `<ResetButton>` resets the tracker.
+    #[prop(optional, into)]
+    dirty_tracker: Option<RwSignal<DirtyTracker>>,
     /// Called when the form is submitted.
     #[prop(into)]
     on_submit: Callback<()>,
@@ -62,8 +66,11 @@ pub fn Form(
     aria_describedby: Option<String>,
     children: Children,
 ) -> impl IntoView {
-    let read_state: Signal<FormState> = state.into();
-    provide_context(FormContext { state: read_state });
+    let mut form_ctx = FormContext::from_rw(state);
+    if let Some(tracker) = dirty_tracker {
+        form_ctx = form_ctx.with_dirty_tracker(tracker);
+    }
+    provide_context(form_ctx);
 
     let handle_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -82,6 +89,9 @@ pub fn Form(
             cb.run(());
         }
         state.update(|s| s.reset());
+        if let Some(tracker) = dirty_tracker {
+            tracker.update(|t| t.reset());
+        }
     };
 
     view! {

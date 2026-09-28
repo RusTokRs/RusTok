@@ -3,7 +3,7 @@
 //! All controls automatically detect when rendered inside a [`FormField`](crate::FormField)
 //! via [`FieldContext`](crate::context::FieldContext), inheriting the field name,
 //! accessibility attributes (`aria-invalid`, `aria-describedby`, `aria-errormessage`),
-//! and error state styling (`border-destructive`).
+//! error state styling (`border-destructive`), and dirty tracking integration.
 
 use leptos::ev::Event;
 use leptos::prelude::*;
@@ -37,7 +37,7 @@ pub fn FormInput(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Input ID. Defaults to `name` if omitted.
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Placeholder text.
@@ -90,7 +90,7 @@ pub fn FormInput(
 
     let t = input_type.unwrap_or("text");
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| name_attr.clone());
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -103,17 +103,17 @@ pub fn FormInput(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = input_id.clone();
     let aria_describedby_signal = move || {
         if let Some(ref explicit) = aria_describedby {
             return Some(explicit.clone());
         }
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -122,10 +122,10 @@ pub fn FormInput(
         })
     };
 
-    let name_for_err = name_attr.clone();
+    let id_for_err = input_id.clone();
     let aria_errormessage_signal = move || {
         if is_invalid.get() {
-            name_for_err.as_ref().map(|n| format!("{n}-message"))
+            id_for_err.as_ref().map(|n| format!("{n}-message"))
         } else {
             None
         }
@@ -145,9 +145,14 @@ pub fn FormInput(
         }
     };
 
+    let field_for_dirty = field;
     let on_input_handler = move |ev| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_input {
-            cb.run(event_target_value(&ev));
+            cb.run(val);
         }
     };
 
@@ -220,7 +225,7 @@ pub fn FormPasswordInput(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Input ID. Defaults to `name` if omitted.
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Placeholder text.
@@ -245,7 +250,7 @@ pub fn FormPasswordInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| name_attr.clone());
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let show_password = RwSignal::new(false);
 
@@ -260,14 +265,14 @@ pub fn FormPasswordInput(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = input_id.clone();
     let aria_describedby_signal = move || {
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -276,9 +281,14 @@ pub fn FormPasswordInput(
         })
     };
 
+    let field_for_dirty = field;
     let on_input_handler = move |ev| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_input {
-            cb.run(event_target_value(&ev));
+            cb.run(val);
         }
     };
 
@@ -430,6 +440,76 @@ pub fn FormNumberInput(
     }
 }
 
+// ─── FormSearchInput ───────────────────────────────────────────────────────
+
+/// Specialized search input with search icon and optional clear button.
+#[component]
+pub fn FormSearchInput(
+    /// Value signal.
+    #[prop(into)]
+    value: Signal<String>,
+    /// Callback on input.
+    #[prop(optional, into)]
+    on_input: Option<Callback<String>>,
+    /// Callback on clear button click.
+    #[prop(optional, into)]
+    on_clear: Option<Callback<()>>,
+    /// Field name.
+    #[prop(optional, into)]
+    name: Option<String>,
+    /// Input ID.
+    #[prop(optional, into)]
+    id: Option<String>,
+    /// Placeholder text. Defaults to "Search...".
+    #[prop(optional, into)]
+    placeholder: Option<String>,
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+) -> impl IntoView {
+    let ph = placeholder.unwrap_or_else(|| "Search...".to_string());
+
+    let val = value.clone();
+    let has_value = Signal::derive(move || !val.get().is_empty());
+
+    let on_clear_click = move |_| {
+        if let Some(cb) = on_clear {
+            cb.run(());
+        }
+    };
+
+    view! {
+        <div class="relative flex items-center">
+            <span class="absolute left-3 text-muted-foreground pointer-events-none">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </span>
+            <FormInput
+                value=value
+                on_input=on_input
+                input_type="search"
+                name=name
+                id=id
+                placeholder=ph
+                class=format!("pl-8 pr-8 {class}")
+            />
+            {move || has_value.get().then(|| view! {
+                <button
+                    type="button"
+                    on:click=on_clear_click
+                    aria-label="Clear search"
+                    class="absolute right-2.5 p-1 text-muted-foreground hover:text-foreground transition rounded"
+                >
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            })}
+        </div>
+    }
+}
+
 // ─── FormHiddenInput ───────────────────────────────────────────────────────
 
 /// Hidden form input for IDs, tokens, or fixed metadata.
@@ -476,7 +556,7 @@ pub fn FormTextarea(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Textarea ID. Defaults to `name` if omitted.
+    /// Textarea ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Placeholder text.
@@ -516,7 +596,7 @@ pub fn FormTextarea(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let textarea_id = id.or_else(|| name_attr.clone());
+    let textarea_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
     let r = rows.unwrap_or(3);
 
     let field_for_disabled = field.clone();
@@ -530,17 +610,17 @@ pub fn FormTextarea(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = textarea_id.clone();
     let aria_describedby_signal = move || {
         if let Some(ref explicit) = aria_describedby {
             return Some(explicit.clone());
         }
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -549,10 +629,10 @@ pub fn FormTextarea(
         })
     };
 
-    let name_for_err = name_attr.clone();
+    let id_for_err = textarea_id.clone();
     let aria_errormessage_signal = move || {
         if is_invalid.get() {
-            name_for_err.as_ref().map(|n| format!("{n}-message"))
+            id_for_err.as_ref().map(|n| format!("{n}-message"))
         } else {
             None
         }
@@ -572,9 +652,14 @@ pub fn FormTextarea(
         }
     };
 
+    let field_for_dirty = field;
     let on_input_handler = move |ev| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_input {
-            cb.run(event_target_value(&ev));
+            cb.run(val);
         }
     };
 
@@ -634,7 +719,7 @@ pub fn FormSelect(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Select ID. Defaults to `name` if omitted.
+    /// Select ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Optional placeholder / empty label (e.g. "Select an option...").
@@ -659,7 +744,7 @@ pub fn FormSelect(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let select_id = id.or_else(|| name_attr.clone());
+    let select_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -672,17 +757,17 @@ pub fn FormSelect(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = select_id.clone();
     let aria_describedby_signal = move || {
         if let Some(ref explicit) = aria_describedby {
             return Some(explicit.clone());
         }
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -705,9 +790,14 @@ pub fn FormSelect(
         }
     };
 
+    let field_for_dirty = field;
     let on_change_handler = move |ev: Event| {
+        let val = event_target_value(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_change {
-            cb.run(event_target_value(&ev));
+            cb.run(val);
         }
     };
 
@@ -777,12 +867,15 @@ pub fn FormCheckbox(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Input ID. Defaults to `name` if omitted.
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Label text rendered next to checkbox.
     #[prop(optional, into)]
     label: Option<String>,
+    /// Subdued description text below the label.
+    #[prop(optional, into)]
+    description: Option<String>,
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
@@ -796,7 +889,7 @@ pub fn FormCheckbox(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| name_attr.clone());
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -809,14 +902,14 @@ pub fn FormCheckbox(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = input_id.clone();
     let aria_describedby_signal = move || {
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -825,8 +918,12 @@ pub fn FormCheckbox(
         })
     };
 
+    let field_for_dirty = field;
     let on_change_handler = move |ev: Event| {
         let is_chk = event_target_checked(&ev);
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_change {
             cb.run(is_chk);
         }
@@ -849,7 +946,7 @@ pub fn FormCheckbox(
     };
 
     view! {
-        <label class=format!("inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground {class}")>
+        <label class=format!("inline-flex items-start gap-2.5 cursor-pointer select-none text-xs text-foreground {class}")>
             <input
                 id=input_id
                 type="checkbox"
@@ -864,7 +961,10 @@ pub fn FormCheckbox(
                 aria-describedby=aria_describedby_signal
                 class=checkbox_class
             />
-            {label.map(|lbl| view! { <span>{lbl}</span> })}
+            <div class="flex flex-col">
+                {label.map(|lbl| view! { <span class="font-medium leading-none">{lbl}</span> })}
+                {description.map(|desc| view! { <span class="text-muted-foreground text-[11px] mt-0.5">{desc}</span> })}
+            </div>
         </label>
     }
 }
@@ -883,12 +983,15 @@ pub fn FormSwitch(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Switch button ID. Defaults to `name` if omitted.
+    /// Switch button ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Label text rendered next to the switch.
     #[prop(optional, into)]
     label: Option<String>,
+    /// Subdued description text below the label.
+    #[prop(optional, into)]
+    description: Option<String>,
     /// Disabled state.
     #[prop(optional, into)]
     disabled: Option<Signal<bool>>,
@@ -902,7 +1005,7 @@ pub fn FormSwitch(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let switch_id = id.or_else(|| name_attr.clone());
+    let switch_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -915,14 +1018,14 @@ pub fn FormSwitch(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = switch_id.clone();
     let aria_describedby_signal = move || {
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -931,9 +1034,13 @@ pub fn FormSwitch(
         })
     };
 
+    let field_for_dirty = field;
     let on_toggle = move |_| {
         if !is_disabled.get() {
             let next = !checked.get();
+            if let Some(ref f) = field_for_dirty {
+                f.mark_dirty();
+            }
             if let Some(cb) = on_change {
                 cb.run(next);
             }
@@ -943,7 +1050,7 @@ pub fn FormSwitch(
     let on_label_toggle = on_toggle;
 
     view! {
-        <div class=format!("inline-flex items-center gap-2.5 {class}")>
+        <div class=format!("inline-flex items-start gap-2.5 {class}")>
             <button
                 id=switch_id
                 type="button"
@@ -978,11 +1085,10 @@ pub fn FormSwitch(
                     }
                 />
             </button>
-            {label.map(|lbl| view! {
-                <span class="text-xs text-foreground cursor-pointer select-none" on:click=on_label_toggle>
-                    {lbl}
-                </span>
-            })}
+            <div class="flex flex-col cursor-pointer select-none" on:click=on_label_toggle>
+                {label.map(|lbl| view! { <span class="text-xs font-medium text-foreground leading-none">{lbl}</span> })}
+                {description.map(|desc| view! { <span class="text-muted-foreground text-[11px] mt-0.5">{desc}</span> })}
+            </div>
         </div>
     }
 }
@@ -1033,7 +1139,7 @@ pub fn FormRadioGroup(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
@@ -1053,6 +1159,8 @@ pub fn FormRadioGroup(
         "flex flex-col gap-2"
     };
 
+    let field_for_dirty = field;
+
     view! {
         <div
             role="radiogroup"
@@ -1071,8 +1179,12 @@ pub fn FormRadioGroup(
                 };
                 let opt_disabled = opt.disabled;
 
+                let field_dirty = field_for_dirty.clone();
                 let on_click = move |_| {
                     if !opt_disabled && !is_disabled.get() {
+                        if let Some(ref f) = field_dirty {
+                            f.mark_dirty();
+                        }
                         if let Some(cb) = on_change {
                             cb.run(opt_val_for_click.clone());
                         }
@@ -1127,7 +1239,7 @@ pub fn FormFileInput(
     /// Field name. Defaults to the enclosing `FormField` name if omitted.
     #[prop(optional, into)]
     name: Option<String>,
-    /// Input ID. Defaults to `name` if omitted.
+    /// Input ID. Defaults to enclosing `FormField` ID if omitted.
     #[prop(optional, into)]
     id: Option<String>,
     /// Disabled state.
@@ -1143,7 +1255,7 @@ pub fn FormFileInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| name_attr.clone());
+    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1156,14 +1268,14 @@ pub fn FormFileInput(
         }
     });
 
-    let field_for_invalid = field;
+    let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
         field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
     });
 
-    let name_for_desc = name_attr.clone();
+    let id_for_desc = input_id.clone();
     let aria_describedby = move || {
-        name_for_desc.as_ref().map(|n| {
+        id_for_desc.as_ref().map(|n| {
             if is_invalid.get() {
                 format!("{n}-message")
             } else {
@@ -1186,7 +1298,11 @@ pub fn FormFileInput(
         }
     };
 
+    let field_for_dirty = field;
     let on_change_handler = move |ev: Event| {
+        if let Some(ref f) = field_for_dirty {
+            f.mark_dirty();
+        }
         if let Some(cb) = on_change {
             cb.run(ev);
         }
@@ -1226,7 +1342,7 @@ mod tests {
     fn test_form_input_renders_attributes_and_aria() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let val = Signal::derive(|| "Initial".to_string());
         let html = view! {
@@ -1256,7 +1372,7 @@ mod tests {
     fn test_form_password_input_renders() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let val = Signal::derive(|| "secret".to_string());
         let html = view! {
@@ -1277,13 +1393,13 @@ mod tests {
     }
 
     #[test]
-    fn test_form_number_and_hidden_inputs() {
+    fn test_form_number_and_search_inputs() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let num_val = Signal::derive(|| "42".to_string());
-        let id_val = Signal::derive(|| "uuid-123".to_string());
+        let q_val = Signal::derive(|| "query".to_string());
 
         let html = view! {
             <div>
@@ -1295,9 +1411,9 @@ mod tests {
                     max=100.0
                     step=1.0
                 />
-                <FormHiddenInput
-                    value=id_val
-                    name="entity_id"
+                <FormSearchInput
+                    value=q_val
+                    name="q"
                 />
             </div>
         }
@@ -1306,15 +1422,15 @@ mod tests {
         assert!(html.contains("type=\"number\""));
         assert!(html.contains("min=\"1\""));
         assert!(html.contains("max=\"100\""));
-        assert!(html.contains("type=\"hidden\""));
-        assert!(html.contains("name=\"entity_id\""));
+        assert!(html.contains("type=\"search\""));
+        assert!(html.contains("name=\"q\""));
     }
 
     #[test]
     fn test_form_select_renders_selected_option_in_ssr() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let val = Signal::derive(|| "ru".to_string());
         let opts = vec![
@@ -1346,7 +1462,7 @@ mod tests {
     fn test_form_checkbox_and_switch_render_checked() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let checked = Signal::derive(|| true);
         let html = view! {
@@ -1380,7 +1496,7 @@ mod tests {
     fn test_form_radio_group_renders_active_item() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let val = Signal::derive(|| "dark".to_string());
         let opts = vec![
@@ -1411,7 +1527,7 @@ mod tests {
     fn test_form_file_input_renders_safely() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>

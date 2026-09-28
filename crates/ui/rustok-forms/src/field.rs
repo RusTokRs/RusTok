@@ -4,10 +4,13 @@
 //! without depending on any UI framework. They enable shared schema
 //! construction, dynamic form generation, and cross-framework parity checks.
 
+use std::hash::Hash;
 use serde::{Deserialize, Serialize};
 
+use crate::FieldError;
+
 /// The kind of a form field, driving rendering hints and input behavior.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldKind {
     Text,
@@ -16,6 +19,7 @@ pub enum FieldKind {
     Number,
     Url,
     Tel,
+    Search,
     Textarea,
     Select,
     Checkbox,
@@ -25,6 +29,9 @@ pub enum FieldKind {
     Date,
     DateTime,
     Time,
+    Month,
+    Week,
+    Range,
     Color,
     Hidden,
     RichText,
@@ -32,8 +39,35 @@ pub enum FieldKind {
     Custom { type_name: String },
 }
 
+impl FieldKind {
+    /// Return the corresponding standard HTML5 `<input type="...">` string attribute if applicable.
+    pub fn html_input_type(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Email => "email",
+            Self::Password => "password",
+            Self::Number => "number",
+            Self::Url => "url",
+            Self::Tel => "tel",
+            Self::Search => "search",
+            Self::Date => "date",
+            Self::DateTime => "datetime-local",
+            Self::Time => "time",
+            Self::Month => "month",
+            Self::Week => "week",
+            Self::Range => "range",
+            Self::Color => "color",
+            Self::Checkbox => "checkbox",
+            Self::Radio => "radio",
+            Self::File => "file",
+            Self::Hidden => "hidden",
+            Self::Textarea | Self::Select | Self::Switch | Self::RichText | Self::Custom { .. } => "text",
+        }
+    }
+}
+
 /// A selectable option for Select, Radio, CheckboxGroup, and similar fields.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FieldOption {
     pub value: String,
     pub label: String,
@@ -151,6 +185,64 @@ impl FieldConstraints {
     pub fn multiple(mut self, multiple: bool) -> Self {
         self.multiple = multiple;
         self
+    }
+
+    /// Validate a value against these constraints.
+    pub fn validate(&self, field: &str, value: &str) -> Result<(), Vec<FieldError>> {
+        let mut errors = Vec::new();
+        let trimmed = value.trim();
+
+        if self.required && trimmed.is_empty() {
+            errors.push(FieldError::new(field, format!("{field} is required")));
+            return Err(errors);
+        }
+
+        if !trimmed.is_empty() {
+            let char_count = trimmed.chars().count();
+            if let Some(min_len) = self.min_length {
+                if char_count < min_len {
+                    errors.push(FieldError::new(
+                        field,
+                        format!("{field} must be at least {min_len} characters"),
+                    ));
+                }
+            }
+            if let Some(max_len) = self.max_length {
+                if char_count > max_len {
+                    errors.push(FieldError::new(
+                        field,
+                        format!("{field} must be at most {max_len} characters"),
+                    ));
+                }
+            }
+
+            if self.min.is_some() || self.max.is_some() {
+                if let Ok(num) = trimmed.parse::<f64>() {
+                    if let Some(min_val) = self.min {
+                        if num < min_val {
+                            errors.push(FieldError::new(
+                                field,
+                                format!("{field} must be at least {min_val}"),
+                            ));
+                        }
+                    }
+                    if let Some(max_val) = self.max {
+                        if num > max_val {
+                            errors.push(FieldError::new(
+                                field,
+                                format!("{field} must be at most {max_val}"),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 }
 
@@ -292,6 +384,11 @@ impl FieldDescriptor {
         self.options.push(opt.into());
         self
     }
+
+    /// Validate a value using this descriptor's constraints.
+    pub fn validate(&self, value: &str) -> Result<(), Vec<FieldError>> {
+        self.constraints.validate(&self.name, value)
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +409,7 @@ mod tests {
 
         assert_eq!(field.name, "email");
         assert_eq!(field.kind, FieldKind::Email);
+        assert_eq!(field.kind.html_input_type(), "email");
         assert!(field.constraints.required);
         assert_eq!(field.constraints.min_length, Some(5));
         assert_eq!(field.constraints.max_length, Some(100));
@@ -322,21 +420,19 @@ mod tests {
     }
 
     #[test]
-    fn constraints_builder() {
+    fn constraints_builder_and_validate() {
         let constraints = FieldConstraints::new()
             .required(true)
-            .length_range(3, 20)
-            .range(0.0, 100.0)
-            .step(0.5)
-            .multiple(true);
+            .length_range(3, 10)
+            .range(0.0, 100.0);
 
-        assert!(constraints.required);
-        assert_eq!(constraints.min_length, Some(3));
-        assert_eq!(constraints.max_length, Some(20));
-        assert_eq!(constraints.min, Some(0.0));
-        assert_eq!(constraints.max, Some(100.0));
-        assert_eq!(constraints.step, Some(0.5));
-        assert!(constraints.multiple);
+        assert!(constraints.validate("age", "").is_err());
+        assert!(constraints.validate("age", "ab").is_err());
+        assert!(constraints.validate("age", "abc").is_ok());
+
+        let descriptor = FieldDescriptor::new("score", FieldKind::Number)
+            .constraints(constraints);
+        assert!(descriptor.validate("50").is_ok());
     }
 
     #[test]

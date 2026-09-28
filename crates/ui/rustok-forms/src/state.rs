@@ -1,11 +1,12 @@
 //! Form submission lifecycle and state tracking.
 
+use std::hash::Hash;
 use serde::{Deserialize, Serialize};
 
 use crate::FieldError;
 
 /// Submission lifecycle of a form.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum FormSubmissionStatus {
     #[default]
     Idle,
@@ -213,6 +214,17 @@ impl FormState {
         !self.field_errors.is_empty()
     }
 
+    /// Total count of errors (form-level + field-level).
+    pub fn error_count(&self) -> usize {
+        let form_err_count = if self.form_error.is_some() { 1 } else { 0 };
+        form_err_count + self.field_errors.len()
+    }
+
+    /// Count of errors specifically for a given field name.
+    pub fn field_error_count(&self, field: &str) -> usize {
+        self.field_errors.iter().filter(|fe| fe.field == field).count()
+    }
+
     /// Return the first error message available (form-level error, or first field-level error).
     pub fn first_error(&self) -> Option<&str> {
         if let Some(ref err) = self.form_error {
@@ -239,6 +251,19 @@ impl FormState {
         self.field_errors.retain(|fe| fe.field != field);
     }
 
+    /// Clear the form-level error.
+    pub fn clear_form_error(&mut self) {
+        self.form_error = None;
+    }
+
+    /// Retain only field errors that satisfy the given predicate.
+    pub fn retain_field_errors<F>(&mut self, f: F)
+    where
+        F: FnMut(&FieldError) -> bool,
+    {
+        self.field_errors.retain(f);
+    }
+
     /// Clear all form-level and field-level errors.
     pub fn clear_errors(&mut self) {
         self.form_error = None;
@@ -263,6 +288,7 @@ mod tests {
         assert!(!state.is_submitting);
         assert!(!state.has_errors());
         assert!(!state.is_success());
+        assert_eq!(state.error_count(), 0);
         assert_eq!(state.submission_status(), FormSubmissionStatus::Idle);
 
         state.set_submitting();
@@ -283,6 +309,7 @@ mod tests {
         assert!(!state.is_submitting);
         assert!(!state.is_success());
         assert!(state.has_errors());
+        assert_eq!(state.error_count(), 1);
         assert_eq!(
             state.submission_status(),
             FormSubmissionStatus::Failure("Network error".to_string())
@@ -301,6 +328,7 @@ mod tests {
         assert_eq!(state.field_error("password"), None);
         assert_eq!(state.first_error(), Some("Invalid email"));
         assert_eq!(state.all_errors(), vec!["Invalid email", "Required"]);
+        assert_eq!(state.error_count(), 2);
     }
 
     #[test]
@@ -355,9 +383,11 @@ mod tests {
         state.add_field_error("title", "Too short");
         state.add_field_error("title", "Must not contain swear words");
         assert_eq!(state.field_errors_for("title").len(), 2);
+        assert_eq!(state.field_error_count("title"), 2);
 
         state.set_field_error("title", "New error");
         assert_eq!(state.field_errors_for("title"), vec!["New error"]);
+        assert_eq!(state.field_error_count("title"), 1);
     }
 
     #[test]

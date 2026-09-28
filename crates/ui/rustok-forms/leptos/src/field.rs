@@ -32,6 +32,9 @@ pub fn FormField(
     /// The field name. Must match the key used in `FormState::field_error`.
     #[prop(into)]
     name: String,
+    /// Explicit target HTML id. If omitted, defaults to `name`.
+    #[prop(optional, into)]
+    id: Option<String>,
     /// Extra CSS classes on the wrapper `<div>`.
     #[prop(optional, into)]
     class: String,
@@ -40,11 +43,16 @@ pub fn FormField(
     let form_ctx = use_context::<FormContext>().unwrap_or_else(|| {
         FormContext {
             state: Signal::derive(FormState::idle),
+            rw_state: None,
+            dirty_tracker: None,
         }
     });
 
+    let field_id = id.unwrap_or_else(|| name.clone());
+
     provide_context(FieldContext {
         name,
+        id: field_id,
         form: form_ctx,
     });
 
@@ -91,7 +99,7 @@ pub fn FormItem(
 /// Renders a `<label>` with a required-indicator when `required` is set.
 #[component]
 pub fn FormLabel(
-    /// Explicit target input ID. If omitted, defaults to the enclosing `FormField` name.
+    /// Explicit target input ID. If omitted, defaults to the enclosing `FormField` ID.
     #[prop(optional, into)]
     html_for: Option<String>,
     /// Show a required indicator (`*`).
@@ -103,7 +111,7 @@ pub fn FormLabel(
     children: Children,
 ) -> impl IntoView {
     let field = use_context::<FieldContext>();
-    let for_attr = html_for.or_else(|| field.as_ref().map(|f| f.name.clone()));
+    let for_attr = html_for.or_else(|| field.as_ref().map(|f| f.id.clone()));
 
     let label_class = move || {
         let base = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
@@ -128,7 +136,7 @@ pub fn FormLabel(
         <label for=for_attr data-slot="form-label" class=label_class>
             {children()}
             {required.then(|| view! {
-                <span class="ml-1 text-destructive" aria-hidden="true">"*"</span>
+                <span class="ml-1 text-destructive font-bold" aria-hidden="true">"*"</span>
             })}
         </label>
     }
@@ -184,7 +192,7 @@ pub fn FormMessage(
     let field_ctx = use_context::<FieldContext>();
     let form_ctx = use_context::<FormContext>();
 
-    let msg_id = field_ctx.as_ref().map(|f| format!("{}-message", f.name));
+    let msg_id = field_ctx.as_ref().map(|f| format!("{}-message", f.id));
 
     let errors_list = move || -> Vec<String> {
         if let Some(ref m) = message {
@@ -202,7 +210,7 @@ pub fn FormMessage(
         }
     };
 
-    let base = "text-destructive text-sm";
+    let base = "text-destructive text-sm font-medium";
     let merged = if class.is_empty() {
         base.to_string()
     } else {
@@ -238,7 +246,7 @@ pub fn FormDescription(
     children: Children,
 ) -> impl IntoView {
     let field_ctx = use_context::<FieldContext>();
-    let desc_id = field_ctx.as_ref().map(|f| format!("{}-description", f.name));
+    let desc_id = field_ctx.as_ref().map(|f| format!("{}-description", f.id));
 
     let base = "text-muted-foreground text-sm";
     let merged = if class.is_empty() {
@@ -269,6 +277,9 @@ pub fn FormError(
     /// Optional explicit error message override.
     #[prop(optional, into)]
     message: Option<String>,
+    /// Optional callback fired when the dismiss button is clicked.
+    #[prop(optional, into)]
+    on_dismiss: Option<Callback<()>>,
     /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
@@ -283,20 +294,47 @@ pub fn FormError(
         }
     };
 
-    let base = "rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive text-sm";
+    let base = "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive text-sm relative flex items-start justify-between gap-3";
     let merged = if class.is_empty() {
         base.to_string()
     } else {
         format!("{base} {class}")
     };
 
+    let on_dismiss_click = move |_| {
+        if let Some(cb) = on_dismiss {
+            cb.run(());
+        }
+        if let Some(ctx) = form_ctx {
+            if let Some(rw) = ctx.rw_state {
+                rw.update(|s| s.clear_form_error());
+            }
+        }
+    };
+
+    let has_dismiss = on_dismiss.is_some() || form_ctx.and_then(|c| c.rw_state).is_some();
+
     view! {
         {move || error_text().map(|msg| view! {
             <div role="alert" data-slot="form-error" class=merged.clone()>
-                {title.as_ref().map(|t| view! {
-                    <div class="font-semibold mb-1">{t.clone()}</div>
+                <div class="flex-1">
+                    {title.as_ref().map(|t| view! {
+                        <div class="font-semibold mb-0.5">{t.clone()}</div>
+                    })}
+                    <div>{msg}</div>
+                </div>
+                {has_dismiss.then(|| view! {
+                    <button
+                        type="button"
+                        aria-label="Dismiss error"
+                        on:click=on_dismiss_click
+                        class="text-destructive/80 hover:text-destructive p-0.5 rounded transition outline-none"
+                    >
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 })}
-                <div>{msg}</div>
             </div>
         })}
     }
@@ -311,7 +349,7 @@ mod tests {
     fn test_form_field_renders_label_and_for_attr() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>
@@ -338,7 +376,7 @@ mod tests {
     fn test_form_field_renders_error_message_when_invalid() {
         let state = FormState::idle().with_field_error("email", "Email is required");
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>
@@ -361,7 +399,7 @@ mod tests {
     fn test_form_error_renders_form_level_message_and_title() {
         let state = FormState::with_form_error("Server unavailable");
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>

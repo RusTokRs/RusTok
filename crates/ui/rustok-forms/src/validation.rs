@@ -59,6 +59,34 @@ pub mod rules {
         }
     }
 
+    /// Validates minimum byte length.
+    pub fn min_length_bytes(
+        field: impl Into<String>,
+        value: &str,
+        min: usize,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value.len() < min {
+            Err(FieldError::new(field, message))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Validates maximum byte length.
+    pub fn max_length_bytes(
+        field: impl Into<String>,
+        value: &str,
+        max: usize,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value.len() > max {
+            Err(FieldError::new(field, message))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Validates basic email syntax (non-empty local part and domain, valid domain dots, no whitespace).
     pub fn email(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
         let v = value.trim();
@@ -82,7 +110,12 @@ pub mod rules {
             && !domain.ends_with('.')
             && !domain.contains("..")
             && domain.contains('.')
-            && domain.split('.').all(|seg| !seg.is_empty() && seg.chars().all(|c| c.is_alphanumeric() || c == '-'));
+            && domain.split('.').all(|seg| {
+                !seg.is_empty()
+                    && !seg.starts_with('-')
+                    && !seg.ends_with('-')
+                    && seg.chars().all(|c| c.is_alphanumeric() || c == '-')
+            });
 
         if is_valid {
             Ok(())
@@ -311,6 +344,147 @@ pub mod rules {
         }
     }
 
+    /// Validates standard YYYY-MM-DD date format with basic calendar validation.
+    pub fn date_ymd(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        let parts: Vec<&str> = v.split('-').collect();
+        if parts.len() == 3 && parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 {
+            if let (Ok(year), Ok(month), Ok(day)) = (
+                parts[0].parse::<u32>(),
+                parts[1].parse::<u32>(),
+                parts[2].parse::<u32>(),
+            ) {
+                if (1..=9999).contains(&year) && (1..=12).contains(&month) && (1..=31).contains(&day) {
+                    return Ok(());
+                }
+            }
+        }
+        Err(FieldError::new(field, message))
+    }
+
+    /// Validates HH:MM or HH:MM:SS 24-hour time format.
+    pub fn time_hhmm(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        let parts: Vec<&str> = v.split(':').collect();
+        if parts.len() == 2 || parts.len() == 3 {
+            if let (Ok(h), Ok(m)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                if h < 24 && m < 60 {
+                    if parts.len() == 3 {
+                        if let Ok(s) = parts[2].parse::<u32>() {
+                            if s < 60 {
+                                return Ok(());
+                            }
+                        }
+                    } else {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(FieldError::new(field, message))
+    }
+
+    /// Validates standard IPv4 address format (4 decimal octets 0-255).
+    pub fn ipv4(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        let parts: Vec<&str> = v.split('.').collect();
+        if parts.len() == 4 {
+            let all_valid = parts.iter().all(|part| {
+                if part.is_empty() || (part.len() > 1 && part.starts_with('0')) {
+                    false
+                } else if let Ok(n) = part.parse::<u16>() {
+                    n <= 255
+                } else {
+                    false
+                }
+            });
+            if all_valid {
+                return Ok(());
+            }
+        }
+        Err(FieldError::new(field, message))
+    }
+
+    /// Validates hex color code format (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`).
+    pub fn hex_color(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        if let Some(rest) = v.strip_prefix('#') {
+            if (rest.len() == 3 || rest.len() == 6 || rest.len() == 8)
+                && rest.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                return Ok(());
+            }
+        }
+        Err(FieldError::new(field, message))
+    }
+
+    /// Validates that a string is valid JSON syntax.
+    pub fn json(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        if serde_json::from_str::<serde_json::Value>(v).is_ok() {
+            Ok(())
+        } else {
+            Err(FieldError::new(field, message))
+        }
+    }
+
+    /// Validates that a string contains a specific substring.
+    pub fn contains(
+        field: impl Into<String>,
+        value: &str,
+        needle: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value.contains(needle) {
+            Ok(())
+        } else {
+            Err(FieldError::new(field, message))
+        }
+    }
+
+    /// Validates that a string starts with a specific prefix.
+    pub fn starts_with(
+        field: impl Into<String>,
+        value: &str,
+        prefix: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value.starts_with(prefix) {
+            Ok(())
+        } else {
+            Err(FieldError::new(field, message))
+        }
+    }
+
+    /// Validates that a string ends with a specific suffix.
+    pub fn ends_with(
+        field: impl Into<String>,
+        value: &str,
+        suffix: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value.ends_with(suffix) {
+            Ok(())
+        } else {
+            Err(FieldError::new(field, message))
+        }
+    }
+
     /// Validates that a collection or list has at least `min` items.
     pub fn min_items(field: impl Into<String>, len: usize, min: usize, message: impl Into<String>) -> Result<(), FieldError> {
         if len < min {
@@ -387,6 +561,28 @@ impl FormValidator {
         message: impl Into<String>,
     ) -> Self {
         self.check(rules::length_between(field, value, min, max, message))
+    }
+
+    /// Validates minimum byte length.
+    pub fn min_length_bytes(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        min: usize,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::min_length_bytes(field, value, min, message))
+    }
+
+    /// Validates maximum byte length.
+    pub fn max_length_bytes(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        max: usize,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::max_length_bytes(field, value, max, message))
     }
 
     /// Validates email address format.
@@ -491,6 +687,64 @@ impl FormValidator {
         self.check(rules::uuid(field, value, message))
     }
 
+    /// Validates date YYYY-MM-DD format.
+    pub fn date_ymd(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::date_ymd(field, value, message))
+    }
+
+    /// Validates time HH:MM format.
+    pub fn time_hhmm(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::time_hhmm(field, value, message))
+    }
+
+    /// Validates IPv4 address.
+    pub fn ipv4(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::ipv4(field, value, message))
+    }
+
+    /// Validates hex color code.
+    pub fn hex_color(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::hex_color(field, value, message))
+    }
+
+    /// Validates JSON string.
+    pub fn json(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+        self.check(rules::json(field, value, message))
+    }
+
+    /// Validates string contains substring.
+    pub fn contains(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        needle: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::contains(field, value, needle, message))
+    }
+
+    /// Validates string starts with prefix.
+    pub fn starts_with(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        prefix: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::starts_with(field, value, prefix, message))
+    }
+
+    /// Validates string ends with suffix.
+    pub fn ends_with(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        suffix: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        self.check(rules::ends_with(field, value, suffix, message))
+    }
+
     /// Validates minimum item count in collection.
     pub fn min_items(
         self,
@@ -572,6 +826,19 @@ impl FormValidator {
         self
     }
 
+    /// Merge a sub-form validator's errors by prepending `{prefix}.` to all nested field names.
+    pub fn merge_nested(mut self, prefix: &str, other: FormValidator) -> Self {
+        for err in other.errors {
+            let field_path = if err.field.is_empty() {
+                prefix.to_string()
+            } else {
+                format!("{prefix}.{}", err.field)
+            };
+            self.errors.push(FieldError::new(field_path, err.message));
+        }
+        self
+    }
+
     /// Returns true if no errors were accumulated.
     pub fn is_valid(&self) -> bool {
         self.errors.is_empty()
@@ -593,6 +860,15 @@ impl FormValidator {
             .iter()
             .find(|fe| fe.field == field)
             .map(|fe| fe.message.as_str())
+    }
+
+    /// Returns all error messages for a specific field name.
+    pub fn field_errors_for(&self, field: &str) -> Vec<&str> {
+        self.errors
+            .iter()
+            .filter(|fe| fe.field == field)
+            .map(|fe| fe.message.as_str())
+            .collect()
     }
 
     /// Returns a slice of all accumulated errors.
@@ -665,6 +941,46 @@ mod tests {
             .range("age", 25, Some(18), Some(120), "Age between 18 and 120");
 
         assert!(validator.finish().is_ok());
+    }
+
+    #[test]
+    fn test_date_time_and_ipv4_rules() {
+        assert!(rules::date_ymd("date", "2026-09-28", "Invalid date").is_ok());
+        assert!(rules::date_ymd("date", "2026-13-01", "Invalid date").is_err());
+
+        assert!(rules::time_hhmm("time", "14:30", "Invalid time").is_ok());
+        assert!(rules::time_hhmm("time", "14:30:45", "Invalid time").is_ok());
+        assert!(rules::time_hhmm("time", "25:00", "Invalid time").is_err());
+
+        assert!(rules::ipv4("ip", "192.168.1.1", "Invalid IP").is_ok());
+        assert!(rules::ipv4("ip", "256.0.0.1", "Invalid IP").is_err());
+
+        assert!(rules::hex_color("color", "#ff00aa", "Invalid hex").is_ok());
+        assert!(rules::hex_color("color", "red", "Invalid hex").is_err());
+
+        assert!(rules::json("meta", r#"{"key": "val"}"#, "Invalid JSON").is_ok());
+        assert!(rules::json("meta", "{bad json}", "Invalid JSON").is_err());
+    }
+
+    #[test]
+    fn test_string_helpers() {
+        assert!(rules::contains("text", "hello world", "world", "Must contain world").is_ok());
+        assert!(rules::starts_with("text", "admin-panel", "admin", "Must start with admin").is_ok());
+        assert!(rules::ends_with("file", "image.png", ".png", "Must end with .png").is_ok());
+    }
+
+    #[test]
+    fn test_merge_nested() {
+        let address_val = FormValidator::new()
+            .required("city", "", "City required")
+            .required("zip", "12345", "ZIP required");
+
+        let main_val = FormValidator::new()
+            .required("name", "John", "Name required")
+            .merge_nested("address", address_val);
+
+        assert_eq!(main_val.error_count(), 1);
+        assert_eq!(main_val.field_error("address.city"), Some("City required"));
     }
 
     #[test]

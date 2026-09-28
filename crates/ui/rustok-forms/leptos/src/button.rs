@@ -55,6 +55,9 @@ pub fn SubmitButton(
     /// Size preset. Defaults to `Md`.
     #[prop(default = ButtonSize::Md)]
     size: ButtonSize,
+    /// Whether the button occupies 100% of the container width.
+    #[prop(optional)]
+    full_width: bool,
     /// Optional text displayed during submission (e.g. "Saving..." or "Сохранение...").
     #[prop(optional, into)]
     submitting_text: Option<String>,
@@ -81,13 +84,14 @@ pub fn SubmitButton(
     };
 
     let base_class = move || {
-        let base = "inline-flex items-center justify-center font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
+        let base = "inline-flex items-center justify-center font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-60";
         let var_cls = variant.class_names();
         let size_cls = size.class_names();
+        let width_cls = if full_width { "w-full" } else { "" };
         if class.is_empty() {
-            format!("{base} {var_cls} {size_cls}")
+            format!("{base} {var_cls} {size_cls} {width_cls}")
         } else {
-            format!("{base} {var_cls} {size_cls} {class}")
+            format!("{base} {var_cls} {size_cls} {width_cls} {class}")
         }
     };
 
@@ -137,6 +141,9 @@ pub fn ResetButton(
     /// Size preset. Defaults to `Md`.
     #[prop(default = ButtonSize::Md)]
     size: ButtonSize,
+    /// Whether the button occupies 100% of the container width.
+    #[prop(optional)]
+    full_width: bool,
     /// Callback executed on reset.
     #[prop(optional, into)]
     on_reset: Option<Callback<()>>,
@@ -163,13 +170,14 @@ pub fn ResetButton(
     };
 
     let base_class = move || {
-        let base = "inline-flex items-center justify-center font-medium transition disabled:cursor-not-allowed disabled:opacity-60";
+        let base = "inline-flex items-center justify-center font-medium transition select-none disabled:cursor-not-allowed disabled:opacity-60";
         let var_cls = variant.class_names();
         let size_cls = size.class_names();
+        let width_cls = if full_width { "w-full" } else { "" };
         if class.is_empty() {
-            format!("{base} {var_cls} {size_cls}")
+            format!("{base} {var_cls} {size_cls} {width_cls}")
         } else {
-            format!("{base} {var_cls} {size_cls} {class}")
+            format!("{base} {var_cls} {size_cls} {width_cls} {class}")
         }
     };
 
@@ -177,6 +185,14 @@ pub fn ResetButton(
         if !is_disabled() {
             if let Some(cb) = on_reset {
                 cb.run(());
+            }
+            if let Some(ctx) = form_ctx {
+                if let Some(rw) = ctx.rw_state {
+                    rw.update(|s| s.reset());
+                }
+                if let Some(tracker) = ctx.dirty_tracker {
+                    tracker.update(|t| t.reset());
+                }
             }
         }
     };
@@ -202,7 +218,7 @@ mod tests {
     fn test_submit_button_idle_renders_children() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>
@@ -223,7 +239,7 @@ mod tests {
     fn test_submit_button_submitting_shows_spinner_and_disabled() {
         let state = FormState::submitting();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>
@@ -243,12 +259,12 @@ mod tests {
     fn test_reset_button_renders_type_button() {
         let state = FormState::idle();
         let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext { state: state_signal };
+        let form_ctx = FormContext::new(state_signal);
 
         let html = view! {
             <div>
                 {provide_context(form_ctx)}
-                <ResetButton variant=ButtonVariant::Destructive>"Cancel"</ResetButton>
+                <ResetButton variant=ButtonVariant::Destructive full_width=true>"Cancel"</ResetButton>
             </div>
         }
         .to_html();
@@ -256,5 +272,6 @@ mod tests {
         assert!(html.contains("type=\"button\""));
         assert!(html.contains("Cancel"));
         assert!(html.contains("bg-destructive"));
+        assert!(html.contains("w-full"));
     }
 }

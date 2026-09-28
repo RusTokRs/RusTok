@@ -6,11 +6,12 @@
 //! last reset.
 
 use std::collections::BTreeSet;
+use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 
 /// Tracks which form fields have been modified since last reset.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirtyTracker {
     fields: BTreeSet<String>,
 }
@@ -88,6 +89,16 @@ impl DirtyTracker {
         self.is_dirty(field)
     }
 
+    /// Check whether any of the specified fields are dirty.
+    pub fn is_any_of_dirty(&self, fields: &[&str]) -> bool {
+        fields.iter().any(|f| self.is_dirty(f))
+    }
+
+    /// Check whether all of the specified fields are dirty.
+    pub fn are_all_dirty(&self, fields: &[&str]) -> bool {
+        !fields.is_empty() && fields.iter().all(|f| self.is_dirty(f))
+    }
+
     /// Check whether any field is dirty.
     pub fn is_any_dirty(&self) -> bool {
         !self.fields.is_empty()
@@ -116,6 +127,14 @@ impl DirtyTracker {
     /// Iterate over dirty field names in sorted order.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.fields.iter().map(String::as_str)
+    }
+
+    /// Retain only the dirty fields that satisfy the predicate.
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&str) -> bool,
+    {
+        self.fields.retain(|field| f(field.as_str()));
     }
 
     /// Reset all fields to clean.
@@ -194,6 +213,15 @@ mod tests {
 
         tracker.unmark_many(["a", "c"]);
         assert_eq!(tracker.dirty_fields(), vec!["b"]);
+    }
+
+    #[test]
+    fn is_any_of_and_are_all_dirty() {
+        let tracker = DirtyTracker::from_fields(["title", "slug"]);
+        assert!(tracker.is_any_of_dirty(&["title", "content"]));
+        assert!(!tracker.is_any_of_dirty(&["author", "content"]));
+        assert!(tracker.are_all_dirty(&["title", "slug"]));
+        assert!(!tracker.are_all_dirty(&["title", "content"]));
     }
 
     #[test]
