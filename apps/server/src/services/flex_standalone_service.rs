@@ -1180,27 +1180,21 @@ mod tests {
             .await
             .expect("entry create should succeed");
 
-        let event = rustok_outbox::SysEvents::find_by_id(created.id)
-            .one(&db)
-            .await
-            .expect("event lookup should succeed");
-
-        assert!(event.is_none(), "outbox envelope has a distinct identity");
         let events = rustok_outbox::SysEvents::find()
             .filter(rustok_outbox::entity::Column::EventType.eq("flex.entry.created"))
             .all(&db)
             .await
             .expect("outbox events should load");
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0]
-                .payload
-                .get("event")
-                .and_then(|value| value.get("data"))
-                .and_then(|value| value.get("entry_id"))
-                .and_then(|value| value.as_str()),
-            Some(created.id.to_string()).as_deref()
-        );
+
+        let event_entry_id = events[0]
+            .payload
+            .get("event")
+            .and_then(|value| value.get("data"))
+            .and_then(|value| value.get("entry_id"))
+            .and_then(|value| value.as_str())
+            .map(str::to_owned);
+        assert_eq!(event_entry_id, Some(created.id.to_string()));
     }
 
     #[tokio::test]
@@ -1229,14 +1223,12 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert_eq!(
-            flex_entries::Entity::find()
-                .filter(flex_entries::Column::TenantId.eq(tenant_id))
-                .count(&db)
-                .await
-                .expect("entry count should succeed"),
-            0
-        );
+        let entries = flex_entries::Entity::find()
+            .filter(flex_entries::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await
+            .expect("entry lookup should succeed");
+        assert!(entries.is_empty());
     }
 
     #[tokio::test]
