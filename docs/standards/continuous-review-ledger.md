@@ -115,6 +115,8 @@ The numbered FS phases define architectural ownership, not a permission to inspe
 
 - [ ] **FS-22.01 finding in progress — REST/OpenAPI route canonicalization (Flex + Users).** OpenAPI annotations declared `/api/v1/flex/schemas` and `/api/users`, but runtime routers exposed only their trailing-slash variants. Both canonical paths are now registered while explicit trailing-slash aliases remain for compatibility; this item stays open until the immediate and independent route re-audit is clean.
 
+- [ ] **FS-22.04 finding in progress — workflow webhook tenant-context contradiction.** `/webhooks/{tenant_slug}/{webhook_slug}` selected a tenant from the URL inside the Workflow handler, but host middleware classified the route as tenant-bound and could inject a different `TenantContext` from headers/host first. This could make request-level rate/auth/locale context refer to tenant A while the signed workflow execution targeted tenant B. The route is now classified as a self-resolving handshake so the workflow's own tenant lookup is authoritative; the change stays open until the adjacent auth/channel/locale audit is clean.
+
 ### Phase Order
 
 | Phase | Scope | Audit focus | Status |
