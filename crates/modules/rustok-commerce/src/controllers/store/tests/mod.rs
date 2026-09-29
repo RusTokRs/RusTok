@@ -426,10 +426,11 @@ fn store_cart_ownership_distinguishes_authentication_from_authorization() {
         scopes: Vec::new(),
         grant_type: "direct".to_string(),
     };
-    cart.customer_id = Some(Uuid::new_v4());
-    // Customer-id equality is the transport's source of ownership truth; this
-    // test intentionally covers the helper's HTTP classification only.
-    assert!(super::ensure_store_cart_access(&cart, None, Some(&owner_auth)).is_err());
+    cart.customer_id = Some(owner_id);
+    assert!(
+        super::ensure_store_cart_access(&cart, Some(owner_id), Some(&owner_auth)).is_ok(),
+        "the actual customer owner must retain access"
+    );
 }
 
 
