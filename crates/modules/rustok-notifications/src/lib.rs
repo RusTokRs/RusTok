@@ -175,10 +175,11 @@ impl MigrationSource for NotificationsModule {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
     use rustok_notifications_api::{
-    notification_source_registry_from_extensions,
-    NotificationInboxReconciliationInspectPortFactory,
+    notification_source_registry_from_extensions, NotificationInboxReconciliationInspectPortFactory,
 };
 
 
