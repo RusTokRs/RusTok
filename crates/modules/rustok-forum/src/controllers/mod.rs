@@ -6,12 +6,12 @@ use axum::{
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
+};
 use rustok_api::{
     HostRuntimeContext, SharedStaticModuleSettingsReader,
-    SharedStaticModuleSettingsTransactionReader,
+    SharedStaticModuleSettingsTransactionReader, TenantContext,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_api::TenantContext;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 
@@ -371,6 +371,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
 mod tests {
     use super::ensure_forum_module_enabled;
     use super::ForumHttpRuntime;
+    use axum::http::StatusCode;
     use sea_orm::{ConnectionTrait, Database};
     use uuid::Uuid;
 
