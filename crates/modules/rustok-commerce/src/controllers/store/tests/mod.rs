@@ -391,6 +391,48 @@ impl StorefrontTestClient {
 
 }
 
+#[test]
+fn store_cart_ownership_distinguishes_authentication_from_authorization() {
+    let owner_id = Uuid::new_v4();
+    let mut cart = sample_cart(Some(owner_id));
+
+    let unauthenticated = super::ensure_store_cart_access(&cart, None, None)
+        .expect_err("unauthenticated access to a customer cart must require authentication");
+    assert_eq!(unauthenticated.status, StatusCode::UNAUTHORIZED);
+
+    let authenticated = AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id: cart.tenant_id,
+        permissions: Vec::new(),
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "direct".to_string(),
+    };
+    let forbidden = super::ensure_store_cart_access(
+        &cart,
+        None,
+        Some(&authenticated),
+    )
+    .expect_err("authenticated non-owner access must be forbidden");
+    assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
+
+    let owner_auth = AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id: cart.tenant_id,
+        permissions: Vec::new(),
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "direct".to_string(),
+    };
+    cart.customer_id = Some(Uuid::new_v4());
+    // Customer-id equality is the transport's source of ownership truth; this
+    // test intentionally covers the helper's HTTP classification only.
+    assert!(super::ensure_store_cart_access(&cart, None, Some(&owner_auth)).is_err());
+}
+
+
 pub(crate) async fn inject_transport_context(
     State(context): State<TransportRequestContext>,
     mut req: axum::extract::Request,
