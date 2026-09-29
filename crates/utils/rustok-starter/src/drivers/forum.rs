@@ -43,8 +43,7 @@ pub async fn import_forum_categories(
                 ..Default::default()
             },
         )
-        .await
-        .ok();
+        .await?;
 
     let mut existing_map: HashMap<String, Uuid> = HashMap::new();
     if let Some(tree) = existing_tree {
@@ -120,9 +119,8 @@ pub async fn import_forum_topics(
                     ..Default::default()
                 },
             )
-            .await
-            .map(|(items, _)| items)
-            .unwrap_or_default();
+            .await?
+            .0;
 
         let exists = existing_topics.iter().any(|item| {
             item.title == topic.title
@@ -156,12 +154,9 @@ pub async fn import_forum_topics(
             .await?;
 
         if topic.is_pinned {
-            let pin_res = moderation_service
+            moderation_service
                 .pin_topic(tenant_id, created_topic.id, security.clone())
-                .await;
-            if let Err(e) = pin_res {
-                tracing::warn!(error = ?e, "Failed to pin starter forum topic");
-            }
+                .await?;
         }
 
         topics_created += 1;
@@ -181,17 +176,14 @@ pub async fn import_forum_topics(
                 .await?;
 
             if reply.is_solution {
-                let solution_res = moderation_service
+                moderation_service
                     .mark_solution(
                         tenant_id,
                         created_topic.id,
                         created_reply.id,
                         security.clone(),
                     )
-                    .await;
-                if let Err(e) = solution_res {
-                    tracing::warn!(error = ?e, "Failed to mark starter reply as accepted solution");
-                }
+                    .await?;
             }
 
             replies_created += 1;

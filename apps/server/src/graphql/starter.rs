@@ -2,6 +2,7 @@ use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
@@ -39,6 +40,13 @@ impl From<rustok_starter::StarterExecutionReport> for StarterExecutionReportPayl
     }
 }
 
+const MAX_STARTER_BLUEPRINT_NAME_LEN: usize = 64;
+
+fn graphql_starter_internal_error(error: impl Display) -> FieldError {
+    tracing::error!(%error, "Starter blueprint import failed");
+    <FieldError as GraphQLError>::internal_error("Starter blueprint import failed")
+}
+
 #[derive(Default)]
 pub struct StarterMutation;
 
@@ -63,25 +71,40 @@ impl StarterMutation {
             ));
         }
 
-        let tenant = ctx.data::<TenantContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?.clone();
+        let tenant = ctx
+            .data::<TenantContext>()
+            .map_err(|_| {
+                <FieldError as GraphQLError>::internal_error("Starter import is not configured")
+            })?;
+        let db = ctx
+            .data::<DatabaseConnection>()
+            .map_err(|_| {
+                <FieldError as GraphQLError>::internal_error("Starter import is not configured")
+            })?
+            .clone();
 
-        let starter_name = name.unwrap_or_else(|| "default".to_string());
-        let blueprint = if starter_name == "default" {
-            rustok_starter::default_starter()
-        } else {
-            return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
-                "Unknown starter blueprint `{starter_name}`"
-            )));
+        let starter_name = name.as_deref().unwrap_or("default");
+        if starter_name.len() > MAX_STARTER_BLUEPRINT_NAME_LEN {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Starter blueprint name is too long",
+            ));
+        }
+
+        let blueprint = match starter_name {
+            "default" => rustok_starter::default_starter(),
+            _ => {
+                return Err(<FieldError as GraphQLError>::bad_user_input(
+                    "Unknown starter blueprint",
+                ));
+            }
         };
 
-        let event_bus = if let Ok(bus) = ctx.data::<TransactionalEventBus>() {
-            bus.clone()
-        } else {
-            rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
-                rustok_outbox::OutboxTransport::new(db.clone()),
-            ))
-        };
+        let event_bus = ctx
+            .data::<TransactionalEventBus>()
+            .map_err(|_| {
+                <FieldError as GraphQLError>::internal_error("Starter import is not configured")
+            })?
+            .clone();
 
         let engine = rustok_starter::StarterEngine::new(db, event_bus);
         let mut security = rustok_core::SecurityContext::system();
@@ -90,7 +113,7 @@ impl StarterMutation {
         let report = engine
             .import_blueprint(tenant.id, &security, &blueprint)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(graphql_starter_internal_error)?;
 
         Ok(report.into())
     }
@@ -100,6 +123,20 @@ impl StarterMutation {
 mod tests {
     use super::*;
     use rustok_api::Permission;
+
+    #[test]
+    fn unknown_blueprint_error_does_not_echo_client_input() {
+        let error = <FieldError as GraphQLError>::bad_user_input("Unknown starter blueprint");
+        assert_eq!(error.message, "Unknown starter blueprint");
+    }
+
+    #[test]
+    fn starter_internal_error_does_not_expose_backend_diagnostics() {
+        let error = graphql_starter_internal_error(
+            "database connection string, table name, and sensitive backend details",
+        );
+        assert_eq!(error.message, "Starter blueprint import failed");
+    }
 
     #[test]
     fn permission_checks_require_modules_or_tenants_manage() {
