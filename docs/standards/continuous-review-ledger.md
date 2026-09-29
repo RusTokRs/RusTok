@@ -421,6 +421,20 @@ Hard limits for every iteration:
 - **Verification:** repository source inspection, owner contract tracing, changed-area re-audit, and base-to-head diff review only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Implementation status:** complete and integrated into `main`; post-merge verification confirmed the expected merge commit and all five changed files on the refreshed `main`.
 
+- [ ] **FS-22.05.26 — `apps/server/src/graphql/dashboard_security.rs`** — primary module selected from the refreshed GraphQL composition tree after FS-22.05.25; pending implementation/assessment closeout.
+
+### FS-22.05.26 Assessment — `apps/server/src/graphql/dashboard_security.rs`
+
+- **Base:** refreshed `main` at `76975a27fbabc105568f52df40601ea4b9d90dc9`; dedicated branch `codex/audit-fs-22.05.26-graphql-dashboard-security` created from that exact SHA.
+- **Discovery:** reviewed the complete dashboard security extension, GraphQL schema registration/order, dashboard resolver call path in `queries.rs`, the tenant-scoped dashboard read service, GraphQL HTTP transport limits, and the canonical GraphQL security contract.
+- **Invariant map:** dashboard analytics fields must be recognized through aliases/fragments without relying on client labels; authorization must be enforced before resolver execution; tenant identity comes from the trusted `TenantContext`; request parsing performed by the security extension must remain bounded and cancellation/stack-safe; fragment traversal must terminate on cyclic documents and must not bypass dashboard classification.
+- **Finding DASHBOARD-22.05.26-01:** `collect_fields` recursively traversed fragment spreads without a visited-fragment guard. GraphQL parsing accepts cyclic fragment definitions, so the security extension could recurse indefinitely before normal schema validation, creating a request-level stack-exhaustion/availability risk.
+- **Remediation:** replaced recursive fragment/inline-fragment traversal with an explicit work stack and a visited fragment set. The traversal now terminates on cycles and does not consume the call stack proportional to fragment depth while preserving dashboard-field detection.
+- **Authorization/tenant non-findings:** `dashboardStats` and `recentActivity` are both classified only for query operations; the extension requires authenticated `analytics:read` before resolver execution; the resolvers themselves read only the trusted tenant UUID from `TenantContext`; the dashboard read service applies `tenant_id` filters for both aggregate and recent-user queries. No repository-owned bypass was found in this primary boundary.
+- **Immediate second pass:** re-read the modified traversal, classification, execute hook, schema extension placement, dashboard resolvers, and dashboard read service. Searched for residual direct recursion, missing fragment termination, client-selected tenant use, and permission bypass. No additional repository-owned defect attributable to this primary module remained.
+- **Verification:** repository source inspection, adjacent-boundary tracing, changed-module second pass, and base/main concurrency reconciliation only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Implementation status:** complete on the dedicated branch; pending PR integration and post-merge ledger closeout.
+
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
 ### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
