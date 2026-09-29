@@ -15181,7 +15181,6 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-notifications-api",
- "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
