@@ -2848,4 +2848,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Diff review:** branch contains only the Commerce Admin child-controller status mappings, shared permission helper + test, Commerce README contract, and this ledger entry relative to exact main base. No unrelated production behavior was changed.
 - **Verification:** repository source inspection, complete handler inventory, adjacent authorization/tenant/idempotency review, immediate reread, independent second pass, and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Implementation status:** complete on dedicated branch. Implementation consists of the per-file remediation commits plus regression/documentation updates.
-- **Status:** complete pending PR/merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4344, squash merge `54bb76647800dd79b66a3bafd9d5bead7218edae`.
+- **Post-merge reconciliation:** refreshed `main` at `54bb76647800dd79b66a3bafd9d5bead7218edae`; comparing recorded base `9ee8c70335067a4ff7c59d06f358f9f84642eee8` to the merge is exactly one merged commit with the expected Commerce Admin transport, documentation and ledger change set. The shared permission helper now returns 403 for authenticated denials, representative owner mapping remains 403, and protected OpenAPI operations advertise 401+403 on `main`.
+- **Status:** `FS-22.06.05` complete.
