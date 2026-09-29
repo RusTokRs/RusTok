@@ -2,7 +2,7 @@
 
 - Date: 2026-09-29
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented via PR #4333, squash merge `9bf5c48a18f6b27f54f86ed4e878ef43193bb31d`.
 - Owners: Forum and Notifications module owners
 - Extends: [Port contract ownership and runtime feature boundary](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md), [ModuleRuntimeExtensions for runtime capabilities](./2026-04-20-module-runtime-extensions-for-capabilities.md)
 - Supersedes: None
