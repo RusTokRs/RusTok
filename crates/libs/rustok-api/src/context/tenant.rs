@@ -25,30 +25,6 @@ impl TenantContext {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum TenantError {
-    #[error("Tenant not found")]
-    NotFound,
-    #[error("Tenant is disabled")]
-    Disabled,
-    #[error("Missing tenant identifier")]
-    MissingIdentifier,
-    #[error("Invalid tenant identifier")]
-    InvalidIdentifier,
-    #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
-}
-
-impl TenantError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::NotFound => StatusCode::NOT_FOUND,
-            Self::Disabled => StatusCode::FORBIDDEN,
-            Self::MissingIdentifier | Self::InvalidIdentifier => StatusCode::BAD_REQUEST,
-            Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct TenantContextExtension(pub TenantContext);
