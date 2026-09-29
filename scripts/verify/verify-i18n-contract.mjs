@@ -133,6 +133,17 @@ expectContains(
   "preferred_catalog_locale_from_accept_language as extract_locale_tag_from_header",
   "rustok-api compatibility API to delegate Accept-Language parsing to rustok-ui-i18n",
 );
+
+expectContains(
+  "crates/libs/rustok-api/src/locale.rs",
+  "rustok_ui_i18n::normalize_locale_tag",
+  "rustok-api locale canonicalization to delegate Unicode/CLDR normalization to rustok-ui-i18n",
+);
+expectNotContains(
+  "crates/libs/rustok-api/src/locale.rs",
+  'let candidate = raw.trim().replace(\'_\', "-")',
+  "legacy hand-written locale normalization in rustok-api",
+);
 expectNotContains(
   "crates/modules/rustok-page-builder/src/locale.rs",
   "fn parse_accept_language(",
