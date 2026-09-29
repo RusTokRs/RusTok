@@ -219,6 +219,8 @@ const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
 
 pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
     let mut openapi = ApiDoc::openapi();
+    #[cfg(not(feature = "mod-flex"))]
+    prune_disabled_flex_surface(&mut openapi);
     #[cfg(feature = "mod-blog")]
     openapi.merge(rustok_blog::openapi::openapi_document());
     #[cfg(feature = "mod-forum")]
@@ -232,16 +234,25 @@ pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
             .paths
             .paths
             .retain(|path, _| REGISTRY_ONLY_OPENAPI_PATHS.contains(&path.as_str()));
-        prune_unused_registry_components(&mut openapi);
+        prune_unused_components(&mut openapi);
     }
     openapi
 }
 
-fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
+#[cfg(not(feature = "mod-flex"))]
+fn prune_disabled_flex_surface(openapi: &mut OpenApiDoc) {
+    openapi
+        .paths
+        .paths
+        .retain(|path, _| !path.starts_with("/api/v1/flex/"));
+    prune_unused_components(openapi);
+}
+
+fn prune_unused_components(openapi: &mut OpenApiDoc) {
     let path_document = match serde_json::to_value(&openapi.paths) {
         Ok(value) => value,
         Err(error) => {
-            tracing::error!(%error, "Failed to serialize registry-only OpenAPI paths for component pruning");
+            tracing::error!(%error, "Failed to serialize OpenAPI paths for component pruning");
             return;
         }
     };
@@ -286,7 +297,7 @@ fn prune_unused_registry_components(openapi: &mut OpenApiDoc) {
                     tracing::error!(
                         %error,
                         schema = %name,
-                        "Failed to serialize OpenAPI schema during registry-only pruning"
+                        "Failed to serialize OpenAPI schema during component pruning"
                     );
                     continue;
                 }
