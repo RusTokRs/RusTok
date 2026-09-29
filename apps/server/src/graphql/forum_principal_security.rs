@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
@@ -67,6 +67,7 @@ fn selection_policy(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     inside_forum_response: bool,
+    visited_fragments: &mut BTreeSet<(String, bool)>,
 ) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
     for selection in &selection_set.items {
@@ -82,22 +83,30 @@ fn selection_policy(
                     &field.node.selection_set.node,
                     document,
                     next_inside_forum,
+                    visited_fragments,
                 ));
             }
             Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
-                    policy.merge(selection_policy(
-                        &definition.node.selection_set.node,
-                        document,
-                        inside_forum_response,
-                    ));
+                let name = fragment.node.fragment_name.node.as_str();
+                let Some(definition) = document.fragments.get(name) else {
+                    continue;
+                };
+                let visit_key = (name.to_owned(), inside_forum_response);
+                if !visited_fragments.insert(visit_key) {
+                    continue;
                 }
+                policy.merge(selection_policy(
+                    &definition.node.selection_set.node,
+                    document,
+                    inside_forum_response,
+                    visited_fragments,
+                ));
             }
             Selection::InlineFragment(fragment) => policy.merge(selection_policy(
                 &fragment.node.selection_set.node,
                 document,
                 inside_forum_response,
+                visited_fragments,
             )),
         }
     }
@@ -106,11 +115,13 @@ fn selection_policy(
 
 fn document_policy(document: &ExecutableDocument) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
+    let mut visited_fragments = BTreeSet::new();
     for (_, operation) in document.operations.iter() {
         policy.merge(selection_policy(
             &operation.node.selection_set.node,
             document,
             false,
+            &mut visited_fragments,
         ));
     }
     policy
@@ -264,6 +275,53 @@ mod tests {
             policy(r#"mutation { deleteForumReply(id: "00000000-0000-0000-0000-000000000001") }"#);
         assert!(reply.reply_moderation);
         assert!(!reply.topic_moderation);
+    }
+
+    #[test]
+    fn reused_fragment_is_reclassified_for_forum_context() {
+        let forum_policy = policy(
+            r#"
+                query {
+                    someOtherModule {
+                        ...SharedFields
+                    }
+                    forumTopics {
+                        nodes {
+                            ...SharedFields
+                        }
+                    }
+                }
+                fragment SharedFields on Query {
+                    isSubscribed
+                }
+            "#,
+        );
+
+        assert!(forum_policy.personal_projection);
+    }
+
+    #[test]
+    fn cyclic_fragments_are_bounded_and_classified() {
+        let forum_policy = policy(
+            r#"
+                query {
+                    forumTopics {
+                        nodes {
+                            ...A
+                        }
+                    }
+                }
+                fragment A on Query {
+                    ...B
+                    isSubscribed
+                }
+                fragment B on Query {
+                    ...A
+                }
+            "#,
+        );
+
+        assert!(forum_policy.personal_projection);
     }
 
     #[test]
