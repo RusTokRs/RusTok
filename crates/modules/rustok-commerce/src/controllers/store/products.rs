@@ -632,7 +632,8 @@ pub async fn list_regions(
     tag = "store",
     params(StoreContextQuery),
     responses(
-        (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>)
+        (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>),
+        (status = 403, description = "Guest cart access token is missing or invalid")
     )
 )]
 pub async fn list_shipping_options(
