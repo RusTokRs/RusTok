@@ -1,4 +1,7 @@
-use std::{sync::{Arc, OnceLock}, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use async_graphql::Data;
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
@@ -258,18 +261,21 @@ async fn handle_graphql_ws(
     let (incoming_tx, incoming_rx) =
         tokio::sync::mpsc::channel::<String>(WS_INCOMING_QUEUE_CAPACITY);
     let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
+    let connection_init_received = Arc::new(OnceLock::<()>::new());
 
     let schema_for_stream = schema.as_ref().clone();
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
     let auth_lease_for_init = Arc::clone(&auth_lease);
+    let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
         ReceiverStream::new(incoming_rx),
         protocol,
     )
     .on_connection_init(move |payload| {
+        let _ = connection_init_received_for_init.set(());
         build_ws_connection_data(
             runtime_ctx_for_init.clone(),
             auth_runtime_for_init.clone(),
@@ -302,6 +308,8 @@ async fn handle_graphql_ws(
         }
     });
 
+    let mut connection_init_deadline = Box::pin(tokio::time::sleep(WS_CONNECTION_INIT_TIMEOUT));
+
     loop {
         let scope_before_poll = match auth_lease.get() {
             Some(lease) => match revalidate_ws_auth(&auth_runtime, lease).await {
@@ -315,14 +323,10 @@ async fn handle_graphql_ws(
         };
 
         let next_message = if auth_lease.get().is_none() {
-            match tokio::time::timeout(
-                WS_CONNECTION_INIT_TIMEOUT,
-                with_rbac_request_scope(None, graphql_stream.next()),
-            )
-            .await
-            {
-                Ok(message) => message,
-                Err(_) => {
+            tokio::select! {
+                _ = &mut connection_init_deadline,
+                    if connection_init_received.get().is_none() =>
+                {
                     let _ = close_ws(
                         &mut sink,
                         WS_CONNECTION_INIT_TIMEOUT_CLOSE,
@@ -331,6 +335,7 @@ async fn handle_graphql_ws(
                     .await;
                     break;
                 }
+                message = with_rbac_request_scope(None, graphql_stream.next()) => message,
             }
         } else {
             with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await
