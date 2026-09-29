@@ -392,7 +392,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant argument traversal/bypass resistance reverified and invalid tenant identifiers no longer echo raw input. Next primary module: `apps/server/src/graphql/principal_tenant_security.rs`.
 - [x] **FS-22.05.11 — `apps/server/src/graphql/principal_tenant_security.rs`** — one-module audit; principal/request tenant binding, context assembly, and extension ordering reverified; no repository-owned defect required remediation. Next primary module: `apps/server/src/graphql/observability.rs`.
 - [x] **FS-22.05.12 — `apps/server/src/graphql/observability.rs`** — one-module audit; resolver telemetry contains only bounded schema metadata, list cardinality is normalized to `indexed`, and resolver completion is moved to debug-level logging. Next primary module: `apps/server/src/graphql/persisted.rs`.
-- [ ] **FS-22.05.13 — `apps/server/src/graphql/persisted.rs`** — one-module audit; persisted-query trust boundary, hash validation, catalog bypasses, operation binding, and error handling.
+- [x] **FS-22.05.13 — `apps/server/src/graphql/persisted.rs`** — one-module audit; persisted hash catalog is telemetry-only, fixed-format hash validation is bounded, and no authorization/allowlist bypass exists. Next primary module: `apps/server/src/graphql/rbac_runtime.rs`.
+- [ ] **FS-22.05.14 — `apps/server/src/graphql/rbac_runtime.rs`** — one-module audit; GraphQL RBAC runtime injection, permission snapshot authority, cache/request-scope interaction, and drift semantics.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -432,6 +433,19 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.13 Assessment — `apps/server/src/graphql/persisted.rs`
+
+- **Base:** post-merge `main` refreshed at `2ebe3c8c6eb848d1027ad49ebc7e70b71ea0f3d7`; dedicated branch `codex/audit-fs-22.05.13-graphql-persisted` was created from that exact SHA.
+- **Discovery:** reviewed the complete persisted-hash module and its actual server consumer `apps/server/src/controllers/graphql.rs`, plus the request extension parsing path.
+- **Invariant map:** a telemetry catalog must never become an authorization source accidentally; hash identifiers must be bounded/format-validated before logging; malformed persisted-query extension data must not trigger unsafe fallback behavior; catalog membership must not change resolver access.
+- **Assessment:** `ADMIN_PERSISTED_QUERY_HASHES` is explicitly documented as telemetry-only and its only consumer records `cataloged_admin_hash` as a debug boolean. The request is not rejected or granted based on catalog membership. `persisted_query_hash` accepts only a 64-character ASCII hexadecimal `sha256Hash`, otherwise returns `None` with no side effect.
+- **Trust-boundary audit:** the catalog contains static hashes only and exposes a boolean membership test; there is no dynamic insertion, user-controlled catalog mutation, permission check, resolver dispatch, or tenant selection through this module.
+- **Error/telemetry audit:** malformed `persistedQuery` extension values are ignored by the telemetry helper; the actual GraphQL request continues through ordinary GraphQL parsing/authorization. The hash is bounded to 64 characters before it enters structured logging, and no query text/variables are logged by this path.
+- **Consumer audit:** `graphql_handler` uses `persisted_query_hash` only for debug telemetry. The security extensions and normal GraphQL schema remain the sole authorization path, so persisted hash presence cannot bypass tenant/RBAC checks.
+- **Fresh second pass:** independently re-read `persisted.rs`, `persisted_query_hash`, the only repository consumer found by source-tree search, and the surrounding request construction. No repository-owned defect attributable to this telemetry module was confirmed.
+- **Verification:** repository source/static inspection, consumer tracing, bounded-input review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.13` closed without code remediation. Next primary module: `FS-22.05.14 — apps/server/src/graphql/rbac_runtime.rs`.
+
 ### FS-22.05.12 Assessment — `apps/server/src/graphql/observability.rs`
 
 - **Base:** post-merge `main` refreshed at `a3da6f8092c8b91a1a7d7aef090b5626f1f7c62f`; dedicated branch `codex/audit-fs-22.05.12-graphql-observability` was created from that exact SHA.
