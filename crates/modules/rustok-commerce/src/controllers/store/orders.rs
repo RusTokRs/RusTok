@@ -396,7 +396,7 @@ fn map_storefront_payment_port_error(
                 "provider_invalid_response",
             ),
             PortErrorKind::Forbidden => (
-                StatusCode::UNAUTHORIZED,
+                StatusCode::FORBIDDEN,
                 "commerce_store_order_access_denied",
                 "Order does not belong to the current customer",
                 "forbidden",
@@ -691,6 +691,7 @@ pub async fn create_order_return(
     responses(
         (status = 200, description = "Order returns", body = PaginatedResponse<OrderReturnResponse>),
         (status = 401, description = "Authentication required"),
+        (status = 403, description = "Order access denied for the current customer"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -769,6 +770,7 @@ pub async fn list_order_returns(
     responses(
         (status = 200, description = "Order refunds", body = PaginatedResponse<RefundResponse>),
         (status = 401, description = "Authentication required"),
+        (status = 403, description = "Order access denied for the current customer"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -846,6 +848,7 @@ pub async fn list_order_refunds(
     responses(
         (status = 200, description = "Order changes", body = PaginatedResponse<OrderChangeResponse>),
         (status = 401, description = "Authentication required"),
+        (status = 403, description = "Order access denied for the current customer"),
         (status = 404, description = "Order not found")
     )
 )]
