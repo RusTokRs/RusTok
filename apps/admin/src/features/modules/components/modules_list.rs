@@ -16,6 +16,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_query_map};
+#[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
@@ -454,6 +455,7 @@ pub fn ModulesList(
     let (recovery_refreshing, set_recovery_refreshing) = signal(false);
     let (recovery_action_operation_id, set_recovery_action_operation_id) =
         signal::<Option<String>>(None);
+    #[allow(unused_variables)]
     let (live_subscription_connected, set_live_subscription_connected) = signal(false);
     let token = use_token();
     let tenant = use_tenant();
@@ -677,6 +679,7 @@ pub fn ModulesList(
             });
         };
 
+    #[cfg(target_arch = "wasm32")]
     let refresh_live_state = move || {
         let token_value = token.get();
         let tenant_value = tenant.get();
@@ -687,9 +690,13 @@ pub fn ModulesList(
         );
         refresh_module_recovery_plans(token_value, tenant_value);
     };
+    #[cfg(target_arch = "wasm32")]
     let live_polling = use_interval_fn(refresh_live_state, 5000);
+    #[cfg(target_arch = "wasm32")]
     (live_polling.pause)();
+    #[cfg(target_arch = "wasm32")]
     let pause_live_polling = live_polling.pause.clone();
+    #[cfg(target_arch = "wasm32")]
     let resume_live_polling = live_polling.resume.clone();
     #[cfg(target_arch = "wasm32")]
     let apply_build_progress_event =
@@ -735,6 +742,7 @@ pub fn ModulesList(
         }
     });
 
+    #[cfg(target_arch = "wasm32")]
     Effect::new(move |_| {
         if active_build_state
             .get()

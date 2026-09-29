@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+#[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
@@ -192,6 +193,7 @@ pub fn InstallerPage() -> impl IntoView {
         });
     };
 
+    #[cfg(target_arch = "wasm32")]
     let refresh_job = move || {
         let Some(current_job_id) = job_id.get_untracked() else {
             return;
@@ -205,23 +207,26 @@ pub fn InstallerPage() -> impl IntoView {
         );
     };
 
-    let poller = use_interval_fn(refresh_job, 3000);
-    (poller.pause)();
-    let pause_polling = poller.pause.clone();
-    let resume_polling = poller.resume.clone();
-    Effect::new(move |_| {
-        if matches!(
-            job_status.get(),
-            Some(Ok(transport::InstallJobStatusResponse {
-                status: transport::InstallJobState::Running,
-                ..
-            }))
-        ) {
-            resume_polling();
-        } else {
-            pause_polling();
-        }
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        let poller = use_interval_fn(refresh_job, 3000);
+        (poller.pause)();
+        let pause_polling = poller.pause.clone();
+        let resume_polling = poller.resume.clone();
+        Effect::new(move |_| {
+            if matches!(
+                job_status.get(),
+                Some(Ok(transport::InstallJobStatusResponse {
+                    status: transport::InstallJobState::Running,
+                    ..
+                }))
+            ) {
+                resume_polling();
+            } else {
+                pause_polling();
+            }
+        });
+    }
 
     let apply_disabled = Signal::derive(move || {
         busy.get()
