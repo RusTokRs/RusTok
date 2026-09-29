@@ -30,15 +30,15 @@ impl Extension for GraphqlObservabilityExtension {
         let return_type = info.return_type;
         let field_name = info.path_node.field_name().to_string();
         let cardinality = match info.path_node.segment {
-            QueryPathSegment::Index(idx) => idx.to_string(),
-            QueryPathSegment::Name(_) => "single".to_string(),
+            QueryPathSegment::Index(_) => "indexed",
+            QueryPathSegment::Name(_) => "single",
         };
 
         let result = next.run(_ctx, info).await;
         let duration_ms = started_at.elapsed().as_secs_f64() * 1000.0;
         let status = if result.is_ok() { "ok" } else { "error" };
 
-        tracing::info!(
+        tracing::debug!(
             target: "graphql.resolver",
             parent_type,
             return_type,
