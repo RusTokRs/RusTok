@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `7aaccd42c711c71df5d1a9a05c80b7e7dfcc843e`  
+**Current main SHA:** `d79545be8c44bf5e6e7530f92fe45fcdfb074454`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -301,7 +301,21 @@ Hard limits for every iteration:
 - **Verification:** GitHub source inspection, cross-file contract reasoning, branch diff review, and post-merge source reconciliation only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.06` complete after PR #4290 merge (`a9ca6020415e7a6c5b911d8bc1092b91f63231fc`); next primary module is `FS-22.04.07 — apps/server/src/middleware/channel_native_wrapper.rs`.
 
-- [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
+- [x] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary; completed after PR #4293 and post-merge reconciliation.
+
+### FS-22.04.07 Iteration 1 — `apps/server/src/middleware/channel_native_wrapper.rs`
+
+- **Base:** refreshed `main` at `fbdee42911aa19279a227fcac4566e7e087a47a9`; dedicated branch `codex/audit-fs-22.04.07-channel-native-wrapper`; integrated by PR #4293.
+- **Invariant map:** native `/api/fn/*` channel mutations must use the same trusted tenant context as handler authorization; successful native mutations must invalidate the tenant-local channel resolution cache and publish durable generation; REST/native paths must retain transport parity; wildcard server-function classification must not drift from the owner endpoint inventory.
+- **Discovery:** re-read the wrapper, base channel middleware, application-router ordering, tenant/auth context extension, all Channel Admin native server functions, REST channel controller, cache invalidation service/listener, durable channel generation migration, and the channel cache architecture guard.
+- **Confirmed current contract:** all 15 native channel mutations are tenant/auth gated; the wrapper executes on the wildcard server-function route after tenant context is available and delegates channel resolution to the base middleware; successful native mutations call the shared `invalidate_tenant_channel_cache` facade (local cache invalidation plus durable-generation publication fast path); REST mutations use the same facade; durable reconciliation recovers missed or remote publication and generation regression.
+- **Finding FS-22.04.07-01:** the existing architecture guard only checked that every owner server-function mutation endpoint appeared as a substring in the wrapper source. That allowed stale, extra, or duplicate wrapper entries to evade detection even while the current inventory happened to be complete.
+- **Remediation:** documented the host ownership of wildcard-route classification and strengthened `channel_cache_architecture_guard` to parse both endpoint inventories, normalize them to exact `/api/fn/...` paths, sort, and require exact equality; non-channel paths and the read-only bootstrap route are rejected. Runtime invalidation behavior was left unchanged.
+- **Fresh second pass:** re-read the merged wrapper and architecture guard, re-compared all 15 native mutation endpoints with the wrapper inventory, and rechecked REST invalidation, tenant/auth admission, router ordering, and durable generation recovery. No additional repository-owned defect remained inside this primary module.
+- **Adjacent findings:** ChannelService multi-statement transaction/invariant concerns remain within the existing channel owner work and are not patched from the middleware wrapper. No owner-level ChannelContext/tenant/locale propagation drift was found in this iteration, so FS-22.04.08–10 remain conditional on a concrete finding in their own primary-module audits.
+- **Verification:** GitHub source inspection, cross-file static reasoning, branch review, and post-merge source reconciliation only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.07` complete after PR #4293 merge (`d79545be8c44bf5e6e7530f92fe45fcdfb074454`); next primary module is `FS-22.04.08 — crates/libs/rustok-api/src/context/channel.rs`.
+
 - [ ] **FS-22.04.08 — `crates/libs/rustok-api/src/context/channel.rs`** — shared ChannelContext shape/source propagation if the preceding middleware audit exposes owner-level contract drift.
 - [ ] **FS-22.04.09 — `crates/libs/rustok-api/src/context/tenant.rs`** — shared TenantContext/extension contract if the preceding tenant middleware audit exposes owner-level contract drift.
 - [ ] **FS-22.04.10 — `crates/libs/rustok-api/src/locale.rs`** — shared typed locale normalization/runtime-vs-storage boundary if request/middleware audits expose owner-level propagation drift.
