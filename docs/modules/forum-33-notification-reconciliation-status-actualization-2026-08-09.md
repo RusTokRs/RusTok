@@ -52,10 +52,9 @@ forumNotificationReconciliationStatus(
 )
 ```
 
-Its canonical GraphQL implementation is now part of the manifest-owned
-`rustok-notifications::graphql::NotificationsQuery`. The executable server only
-composes the declared owner query root; it does not carry a Forum notification
-reconciliation shim.
+Its canonical GraphQL implementation belongs to the manifest-owned
+`rustok-forum::graphql::ForumReconciliationQuery`. Forum owns the operator admission policy;
+the executable server only composes the declared module query root.
 
 Admission requires:
 
@@ -66,14 +65,16 @@ Admission requires:
 - effective `forum_topics:manage`;
 - non-nil recipient UUID.
 
-The Notifications owner resolves the already host-composed `NotificationSourceRegistry`
-and `NotificationRecipientPolicyRuntime` from `ModuleRuntimeExtensions`, constructs
-the existing Notifications owner service, and calls only `inspect_page`. Missing registry
-or recipient-policy composition fails closed.
+Forum resolves the optional
+`NotificationInboxReconciliationInspectPort` from its manifest-attached GraphQL runtime data.
+That port is published by Notifications through `ModuleRuntimeExtensions` and materialized from
+the immutable host runtime context. Forum passes tenant, actor, locale, correlation and deadline
+context through the neutral port and receives only the bounded inspection page.
 
-This keeps durable reconciliation ownership in Notifications while keeping the
-Forum-specific operator admission at the GraphQL transport boundary. No Notifications
-private table is read from server/Forum composition.
+Notifications remains Forum-agnostic: it owns the durable reconciliation implementation and the
+neutral read contract, but contains no Forum-specific GraphQL field or Forum RBAC rule. Forum does
+not read Notifications private persistence or instantiate `NotificationInboxReconcileService`
+directly.
 
 ## Report semantics
 
@@ -95,7 +96,7 @@ FORUM-33G performs no:
 
 The existing Notifications `reconcile_page` remains the durable archive owner. Delivery-time target authorization and tenant-wide scheduled reconciliation remain Notifications product work and are not claimed by this slice.
 
-Platform module entrypoint/span/error telemetry is reused for the Forum operator query; no duplicate metric family is introduced.
+Platform module entrypoint/span/error telemetry is emitted by the Forum GraphQL owner; the Notifications neutral port does not add a Forum-specific metric family.
 
 ## Canonical-plan drift
 
