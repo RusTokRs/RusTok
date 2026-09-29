@@ -221,7 +221,7 @@ fn map_storefront_order_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_store_order_access_denied",
             "Order does not belong to the current customer",
             "forbidden",
@@ -293,7 +293,7 @@ fn map_storefront_order_command_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_store_order_access_denied",
             "Order does not belong to the current customer",
             "forbidden",
@@ -516,7 +516,7 @@ async fn ensure_customer_owns_order(
     .await?;
 
     if order.customer_id != Some(customer_id) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "commerce_store_order_access_denied",
             "Order does not belong to the current customer",
         ));
@@ -567,6 +567,7 @@ pub async fn get_me(
     responses(
         (status = 200, description = "Order details", body = OrderResponse),
         (status = 401, description = "Authentication required"),
+        (status = 403, description = "Order access denied for the current customer"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -619,6 +620,7 @@ pub async fn get_order(
     responses(
         (status = 201, description = "Return created", body = OrderReturnResponse),
         (status = 401, description = "Authentication required"),
+        (status = 403, description = "Order access denied for the current customer"),
         (status = 404, description = "Order not found")
     )
 )]
