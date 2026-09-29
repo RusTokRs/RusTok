@@ -811,6 +811,38 @@ mod tests {
         assert!(!openapi.paths.paths.contains_key("/api/v1/flex/schemas"));
     }
 
+    #[cfg(not(feature = "mod-flex"))]
+    #[test]
+    fn disabled_flex_openapi_surface_is_not_advertised() {
+        let settings = RustokSettings::default();
+        let openapi = build_openapi_document(&settings);
+
+        assert!(!openapi.paths.paths.contains_key("/api/v1/flex/schemas"));
+        assert!(
+            !openapi
+                .paths
+                .paths
+                .keys()
+                .any(|path| path.starts_with("/api/v1/flex/")),
+            "disabled Flex must not appear in the public OpenAPI path set"
+        );
+
+        let components = openapi
+            .components
+            .as_ref()
+            .expect("OpenAPI components must exist");
+        assert!(
+            !components.schemas.contains_key("CreateFlexSchemaRequest"),
+            "disabled Flex request schemas must not remain publicly advertised"
+        );
+        assert!(
+            !components
+                .schemas
+                .contains_key("FlexSchemaResponse"),
+            "disabled Flex response schemas must not remain publicly advertised"
+        );
+    }
+
     #[cfg(feature = "mod-blog")]
     #[test]
     fn blog_openapi_document_builds_independently() {
