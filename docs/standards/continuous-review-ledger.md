@@ -2790,6 +2790,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** refreshed `main` at `83154edd68b6e03a6c61236e5398cc8b41d51a1f`; comparison against the recorded base `4a2520ceec81c82541e4cd14eaae44cbebda1791` is exactly one merged commit with the expected four-file change set. The merged host/OpenAPI gate remains present on `main`.
 
 
+### FS-22.06.03 Assessment — `apps/server/src/services/app_router.rs` shell/profile composition
+
+- **Base:** refreshed `main` at `101cc9781cbea9d7bb087ec4eaf025ba16865d56`; dedicated branch `codex/audit-fs-22.06.03-app-router-composition` was created from that exact SHA.
+- **Discovery:** re-read the complete application router, host/bootstrap caller, runtime/deployment-surface contract, `apps/server/Cargo.toml` feature definitions, module build/role-plan wiring, security/auth/tenant middleware ordering, admin and storefront router entrypoints, and the existing application-router regression tests.
+- **Invariant map:** runtime deployment surfaces must agree with compile-time embed features; disabled UI must report the feature that actually enables its owner crate; embedded shell fallback must remain behind the validated deployment surface and preserve the global security middleware contract; API/server-function/module routes must remain composed before their global middleware is layered.
+- **Finding APPROUTER-22.06.03-01:** the compile-disabled Admin fallback in `build_admin_router()` tells operators to rebuild with feature `embed-admin-assets`, but that feature only enables `rust-embed`; the actual server surface switch is `embed-admin`, which in turn enables both `rustok-admin` and `embed-admin-assets`. Enabling `embed-admin-assets` alone does not change `build_admin_router()` and therefore cannot make the Admin UI available. The remediation message is therefore operationally incorrect and can lead to a repeated failed deployment.
+- **Adjacent review before implementation:** `bootstrap_app_runtime()` validates the runtime deployment surface against `cfg!(feature = "embed-admin")`; `role_build_plan()` emits `embed-admin` for `AdminSsr`; `build_execution_plan()` derives the same feature from the manifest. Storefront uses the correct `embed-storefront` wording. No second confirmed defect was found in the feature/profile composition boundary during this pass.
+- **Status:** implementation pending on this dedicated iteration branch.
+
 ### FS-22.06.02 Result — `crates/modules/rustok-forum/src/controllers/mod.rs` REST admission
 
 - **Base:** refreshed `main` at `ae1d00792aa341f4cf21a3401f937d76af2e1b09`; dedicated branch `codex/audit-fs-22.06.02-forum-http-composition` was created from that exact SHA.
