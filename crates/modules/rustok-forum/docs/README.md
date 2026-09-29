@@ -14,6 +14,7 @@ notifications module, and cross-module release gates.
 - publish the canonical Forum runtime contract for categories, topics, replies and moderation;
 - keep Forum-owned transport surfaces, Q&A capabilities and UI packages inside the module;
 - keep REST handlers on a narrow `ForumHttpRuntime` with explicit DB/event bus handles;
+- enforce tenant-module lifecycle admission once at the Forum REST router boundary before handler dispatch;
 - resolve selected merged-source topic IDs through the immutable merge receipt ledger;
 - own deterministic localized topic route identity plus immutable redirect/tombstone history;
 - own locale-aware category route identity plus immutable localized slug history without conflating identity and visibility authorization;
