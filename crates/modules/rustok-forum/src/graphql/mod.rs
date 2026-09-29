@@ -60,7 +60,8 @@ pub use quote_commands::{
 pub use read_state::*;
 pub use reconciliation_query::{
     GqlForumAttachmentHoldDrift, GqlForumAttachmentHoldReconciliationReport,
-    GqlForumCounterDrift, GqlForumCounterReconciliationReport, GqlForumSolutionDrift,
+    GqlForumCounterDrift, GqlForumCounterReconciliationReport,
+    GqlForumNotificationReconciliationStatus, GqlForumSolutionDrift,
     GqlForumSolutionReconciliationReport,
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};

@@ -59,10 +59,15 @@ impl GuardedCartPort {
 }
 
 fn authorize_guest_cart(context: &PortContext, cart: &CartResponse) -> Result<(), PortError> {
-    if cart.customer_id.is_some()
-        || context.actor.kind == rustok_api::PortActorKind::Service
-        || context.actor.kind == rustok_api::PortActorKind::System
-    {
+    // Customer-owned carts are already protected by authenticated customer
+    // ownership at the Store transport boundary and remain available to trusted
+    // internal Service/System callers through this guarded port.
+    //
+    // Guest carts are different: their only persisted access capability is the
+    // guest token hash. Actor kind alone must never grant access to them,
+    // because an anonymous HTTP request is intentionally represented as a
+    // service actor by the Store transport adapter.
+    if cart.customer_id.is_some() {
         return Ok(());
     }
 
@@ -296,6 +301,52 @@ mod tests {
             adjustments: Vec::new(),
             tax_lines: Vec::new(),
             delivery_groups: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn trusted_service_and_system_actors_still_require_guest_capability() {
+        let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
+        let token = token.expect("guest token");
+        for actor in [PortActor::service("internal"), PortActor::system()] {
+            let base = PortContext::new(
+                Uuid::new_v4().to_string(),
+                actor,
+                "en",
+                "request",
+            );
+
+            assert!(
+                authorize_guest_cart(&base, &cart(metadata.clone())).is_err(),
+                "trusted actor kind must not bypass a guest cart capability"
+            );
+            assert!(
+                authorize_guest_cart(
+                    &base.with_claim(guest_cart_claim(&token).expect("claim")),
+                    &cart(metadata.clone()),
+                )
+                .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn customer_owned_carts_remain_available_to_trusted_internal_actors() {
+        let metadata = json!({});
+        for actor in [PortActor::service("internal"), PortActor::system()] {
+            let context = PortContext::new(
+                Uuid::new_v4().to_string(),
+                actor,
+                "en",
+                "request",
+            );
+            let mut customer_cart = cart(metadata.clone());
+            customer_cart.customer_id = Some(Uuid::new_v4());
+
+            assert!(
+                authorize_guest_cart(&context, &customer_cart).is_ok(),
+                "trusted internal actor should retain access to customer-owned carts"
+            );
         }
     }
 

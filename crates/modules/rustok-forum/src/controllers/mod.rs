@@ -1,12 +1,18 @@
 use anyhow::Context;
 use axum::routing::get;
-use axum::{Router, http::StatusCode};
+use axum::{
+    Router,
+    extract::{Request, State},
+    http::StatusCode,
+    middleware::{self, Next},
+    response::Response,
+};
 use rustok_api::{
     HostRuntimeContext, SharedStaticModuleSettingsReader,
-    SharedStaticModuleSettingsTransactionReader,
+    SharedStaticModuleSettingsTransactionReader, TenantContext,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_web::HttpError;
+use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 
 use crate::{ForumSettingsProviders, SharedForumAudienceFactsPort};
@@ -107,6 +113,42 @@ impl ForumHttpRuntime {
             audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
             settings_providers,
         })
+    }
+}
+
+async fn ensure_forum_module_enabled(
+    runtime: &ForumHttpRuntime,
+    tenant_id: uuid::Uuid,
+) -> HttpResult<()> {
+    match rustok_api::is_tenant_module_enabled(&runtime.db_clone(), tenant_id, "forum").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(HttpError::new(
+            StatusCode::FORBIDDEN,
+            "MODULE_NOT_ENABLED",
+            "Module 'forum' is not enabled for this tenant",
+        )),
+        Err(error) => {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                error = %error,
+                "failed to verify Forum tenant-module lifecycle state"
+            );
+            Err(HttpError::internal("The Forum operation could not be completed"))
+        }
+    }
+}
+
+/// Enforces tenant-module lifecycle admission once at the owner HTTP entrypoint,
+/// before any Forum handler performs authorization or domain work.
+async fn enforce_forum_module_enabled(
+    State(runtime): State<ForumHttpRuntime>,
+    tenant: TenantContext,
+    request: Request,
+    next: Next,
+) -> Response {
+    match ensure_forum_module_enabled(&runtime, tenant.id).await {
+        Ok(()) => next.run(request).await,
+        Err(error) => error.into_response(),
     }
 }
 
@@ -316,5 +358,132 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             "/api/forum/users/{user_id}/stats",
             get(users::get_user_stats),
         )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            enforce_forum_module_enabled,
+        ))
         .with_state(state))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_forum_module_enabled;
+    use super::ForumHttpRuntime;
+    use axum::http::StatusCode;
+    use sea_orm::{ConnectionTrait, Database};
+    use uuid::Uuid;
+
+    async fn runtime_with_module_table() -> ForumHttpRuntime {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("Forum HTTP lifecycle evidence DB should connect");
+        db.execute_unprepared(
+            "CREATE TABLE tenant_modules (             tenant_id TEXT NOT NULL,             module_slug TEXT NOT NULL,             enabled INTEGER NOT NULL,             settings TEXT NOT NULL DEFAULT '{}',             PRIMARY KEY (tenant_id, module_slug))",
+        )
+        .await
+        .expect("tenant module evidence table should exist");
+
+        let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+            rustok_outbox::OutboxTransport::new(db.clone()),
+        ));
+
+        ForumHttpRuntime {
+            db,
+            event_bus,
+            audience_facts: None,
+            settings_providers: crate::ForumSettingsProviders::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_rejects_disabled_tenant() {
+        let runtime = runtime_with_module_table().await;
+        let tenant_id = Uuid::new_v4();
+        runtime
+            .db_clone()
+            .execute_unprepared(&format!(
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ('{tenant_id}', 'forum', 0)"
+            ))
+            .await
+            .expect("disabled Forum row should insert");
+
+        let error = ensure_forum_module_enabled(&runtime, tenant_id)
+            .await
+            .expect_err("disabled Forum must reject REST admission");
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "MODULE_NOT_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_rejects_missing_tenant_module() {
+        let runtime = runtime_with_module_table().await;
+        let error = ensure_forum_module_enabled(&runtime, Uuid::new_v4())
+            .await
+            .expect_err("missing Forum lifecycle state must fail closed");
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "MODULE_NOT_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_does_not_cross_tenant() {
+        let runtime = runtime_with_module_table().await;
+        let enabled_tenant_id = Uuid::new_v4();
+        let requested_tenant_id = Uuid::new_v4();
+        runtime
+            .db_clone()
+            .execute_unprepared(&format!(
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ('{enabled_tenant_id}', 'forum', 1)"
+            ))
+            .await
+            .expect("enabled Forum row should insert");
+
+        let error = ensure_forum_module_enabled(&runtime, requested_tenant_id)
+            .await
+            .expect_err("Forum lifecycle state must remain tenant-scoped");
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "MODULE_NOT_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_maps_storage_failure_to_generic_500() {
+        let runtime = {
+            let db = Database::connect("sqlite::memory:")
+                .await
+                .expect("Forum HTTP lifecycle failure DB should connect");
+            let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            ForumHttpRuntime {
+                db,
+                event_bus,
+                audience_facts: None,
+                settings_providers: crate::ForumSettingsProviders::default(),
+            }
+        };
+
+        let error = ensure_forum_module_enabled(&runtime, Uuid::new_v4())
+            .await
+            .expect_err("missing lifecycle table must fail closed");
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.code, "internal_error");
+        assert_eq!(error.message, "The Forum operation could not be completed");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_accepts_enabled_tenant() {
+        let runtime = runtime_with_module_table().await;
+        let tenant_id = Uuid::new_v4();
+        runtime
+            .db_clone()
+            .execute_unprepared(&format!(
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ('{tenant_id}', 'forum', 1)"
+            ))
+            .await
+            .expect("enabled Forum row should insert");
+
+        ensure_forum_module_enabled(&runtime, tenant_id)
+            .await
+            .expect("enabled Forum should admit REST dispatch");
+    }
 }

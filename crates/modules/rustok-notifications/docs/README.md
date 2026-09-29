@@ -250,6 +250,22 @@ return an empty page without notification identity.
 SQLite source evidence is `tests/inbox_group_state_sqlite.rs`; the static contract is
 `scripts/verify/verify-forum-notification-inbox-group-state.mjs`.
 
+### Cross-module reconciliation inspection port
+
+`NotificationInboxReconciliationInspectPort` is the neutral read boundary for another owner that
+needs bounded current-policy notification reconciliation evidence. Notifications implements the
+port over `NotificationInboxReconcileService::inspect_page`; it does not expose inbox persistence
+or source-private tables.
+
+The request carries tenant identity only through `PortContext`, plus one exact recipient UUID and
+the existing bounded `i1` cursor/limit contract. Read admission requires normal `PortContext`
+deadline semantics. The response exposes only scanned/unavailable counts and continuation metadata.
+
+`NotificationsModule::register_runtime_extensions` publishes a deferred
+`NotificationInboxReconciliationInspectPortFactory`. The factory is materialized with the
+immutable host runtime context after source and recipient-policy capabilities are composed. Missing
+owner capabilities fail closed; consumers do not construct the owner service directly.
+
 ### Authenticated storefront ports, transports, and UI
 
 `NotificationInboxStorefrontPort` derives owner scope from a human-user `PortContext` and

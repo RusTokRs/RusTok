@@ -45,32 +45,33 @@ fn collect_fields(
     document: &ExecutableDocument,
     fields: &mut BTreeSet<DashboardField>,
 ) {
-    for selection in &selection_set.items {
-        match &selection.node {
-            Selection::Field(field) => {
-                if let Some(field) =
-                    DashboardField::classify(operation_type, field.node.name.node.as_str())
-                {
-                    fields.insert(field);
+    let mut pending = vec![selection_set];
+    let mut visited_fragments = BTreeSet::new();
+
+    while let Some(selection_set) = pending.pop() {
+        for selection in &selection_set.items {
+            match &selection.node {
+                Selection::Field(field) => {
+                    if let Some(field) =
+                        DashboardField::classify(operation_type, field.node.name.node.as_str())
+                    {
+                        fields.insert(field);
+                    }
+                }
+                Selection::FragmentSpread(fragment) => {
+                    let fragment_name = fragment.node.fragment_name.node.as_str();
+                    if !visited_fragments.insert(fragment_name.to_owned()) {
+                        continue;
+                    }
+
+                    if let Some(definition) = document.fragments.get(fragment_name) {
+                        pending.push(&definition.node.selection_set.node);
+                    }
+                }
+                Selection::InlineFragment(fragment) => {
+                    pending.push(&fragment.node.selection_set.node);
                 }
             }
-            Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
-                    collect_fields(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
-                }
-            }
-            Selection::InlineFragment(fragment) => collect_fields(
-                operation_type,
-                &fragment.node.selection_set.node,
-                document,
-                fields,
-            ),
         }
     }
 }
@@ -155,6 +156,34 @@ impl Extension for GraphqlDashboardSecurityPolicyExtension {
 mod tests {
     use super::{DashboardDocumentPolicy, DashboardField, classify_document};
     use async_graphql::Request;
+
+    #[test]
+    fn cyclic_fragments_are_bounded_and_dashboard_fields_are_still_detected() {
+        let mut request = Request::new(
+            r#"
+                query Dashboard {
+                    ...A
+                }
+
+                fragment A on Query {
+                    ...B
+                }
+
+                fragment B on Query {
+                    ...A
+                    dashboardStats { totalUsers }
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("cyclic dashboard document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<DashboardDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<DashboardDocumentPolicy>())
+            .expect("dashboard policy should be attached");
+        assert_eq!(policy.0, vec![DashboardField::DashboardStats]);
+    }
 
     #[test]
     fn finds_dashboard_fields_inside_fragments() {

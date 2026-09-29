@@ -5,6 +5,7 @@ use rustok_api::{
     SharedStaticModuleSettingsTransactionReader,
 };
 use rustok_media::MediaAssetReadPort;
+use rustok_notifications_api::{NotificationInboxReconciliationInspectPort, NotificationInboxReconciliationInspectPortFactory};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
@@ -26,6 +27,7 @@ pub struct ForumGraphqlRuntimeData {
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings_providers: ForumSettingsProviders,
     attachment_hold_media: Option<Arc<dyn MediaAssetReadPort>>,
+    notification_reconciliation: Option<Arc<dyn NotificationInboxReconciliationInspectPort>>,
 }
 
 pub fn attach_schema_data(
@@ -42,11 +44,15 @@ pub fn attach_schema_data(
     };
 
     let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
+    let notification_reconciliation = inputs
+        .shared_get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
+        .and_then(|factory| factory.build(inputs.host()).ok());
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
         settings_providers,
         attachment_hold_media,
+        notification_reconciliation,
     })
 }
 
@@ -55,6 +61,12 @@ impl ForumGraphqlRuntimeData {
         &self,
     ) -> Option<Arc<dyn MediaAssetReadPort>> {
         self.attachment_hold_media.clone()
+    }
+
+    pub(crate) fn notification_reconciliation_port(
+        &self,
+    ) -> Option<Arc<dyn NotificationInboxReconciliationInspectPort>> {
+        self.notification_reconciliation.clone()
     }
 
     pub(crate) fn read_model_service(&self, db: DatabaseConnection) -> ForumReadModelService {
@@ -210,6 +222,7 @@ mod tests {
             attach_schema_data(&inputs).expect("Forum GraphQL runtime should materialize");
         assert!(runtime.audience_facts.is_none());
         assert!(runtime.attachment_hold_media.is_none());
+        assert!(runtime.notification_reconciliation.is_none());
     }
 
     #[tokio::test]

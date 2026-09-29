@@ -294,7 +294,7 @@ fn map_admin_shipping_option_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -366,7 +366,7 @@ async fn validate_shipping_option_profile_inputs(
     params(ListShippingProfilesParams),
     responses(
         (status = 200, description = "Shipping profiles", body = PaginatedResponse<ShippingProfileResponse>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_shipping_profiles(
@@ -413,7 +413,7 @@ pub async fn list_shipping_profiles(
     request_body = CreateShippingProfileInput,
     responses(
         (status = 201, description = "Shipping profile created successfully", body = ShippingProfileResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_shipping_profile(
@@ -444,7 +444,7 @@ pub async fn create_shipping_profile(
     params(("id" = Uuid, Path, description = "Shipping profile ID")),
     responses(
         (status = 200, description = "Shipping profile details", body = ShippingProfileResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping profile not found")
     )
 )]
@@ -483,7 +483,7 @@ pub async fn show_shipping_profile(
     request_body = UpdateShippingProfileInput,
     responses(
         (status = 200, description = "Shipping profile updated successfully", body = ShippingProfileResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping profile not found")
     )
 )]
@@ -516,7 +516,7 @@ pub async fn update_shipping_profile(
     params(("id" = Uuid, Path, description = "Shipping profile ID")),
     responses(
         (status = 200, description = "Shipping profile deactivated successfully", body = ShippingProfileResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping profile not found")
     )
 )]
@@ -548,7 +548,7 @@ pub async fn deactivate_shipping_profile(
     params(("id" = Uuid, Path, description = "Shipping profile ID")),
     responses(
         (status = 200, description = "Shipping profile reactivated successfully", body = ShippingProfileResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping profile not found")
     )
 )]
@@ -580,7 +580,7 @@ pub async fn reactivate_shipping_profile(
     params(ListShippingOptionsParams),
     responses(
         (status = 200, description = "Shipping options", body = PaginatedResponse<ShippingOptionResponse>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_shipping_options(
@@ -658,7 +658,7 @@ pub async fn list_shipping_options(
     request_body = CreateShippingOptionInput,
     responses(
         (status = 201, description = "Shipping option created successfully", body = ShippingOptionResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_shipping_option(
@@ -721,7 +721,7 @@ pub async fn create_shipping_option(
     params(("id" = Uuid, Path, description = "Shipping option ID")),
     responses(
         (status = 200, description = "Shipping option details", body = ShippingOptionResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping option not found")
     )
 )]
@@ -777,7 +777,7 @@ pub async fn show_shipping_option(
     request_body = UpdateShippingOptionInput,
     responses(
         (status = 200, description = "Shipping option updated successfully", body = ShippingOptionResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping option not found")
     )
 )]
@@ -845,7 +845,7 @@ pub async fn update_shipping_option(
     params(("id" = Uuid, Path, description = "Shipping option ID")),
     responses(
         (status = 200, description = "Shipping option deactivated successfully", body = ShippingOptionResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping option not found")
     )
 )]
@@ -908,7 +908,7 @@ pub async fn deactivate_shipping_option(
     params(("id" = Uuid, Path, description = "Shipping option ID")),
     responses(
         (status = 200, description = "Shipping option reactivated successfully", body = ShippingOptionResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Shipping option not found")
     )
 )]

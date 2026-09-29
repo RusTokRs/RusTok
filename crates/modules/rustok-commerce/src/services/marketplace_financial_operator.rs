@@ -299,36 +299,42 @@ impl MarketplaceFinancialOperatorService {
         }
 
         let now = Utc::now().fixed_offset();
-        marketplace_financial_operation::Entity::update_many()
-            .col_expr(
-                marketplace_financial_operation::Column::Status,
-                Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
-            )
-            .col_expr(
-                marketplace_financial_operation::Column::LastErrorCode,
-                Expr::value(Option::<String>::None),
-            )
-            .col_expr(
-                marketplace_financial_operation::Column::LastErrorMessage,
-                Expr::value(Option::<String>::None),
-            )
-            .col_expr(
-                marketplace_financial_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
-            .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
-            .filter(
-                marketplace_financial_operation::Column::CheckoutOperationId
-                    .eq(event.checkout_operation_id),
-            )
-            .filter(
-                marketplace_financial_operation::Column::Status
-                    .eq(MarketplaceFinancialOperationStatus::OperatorReview.as_str()),
-            )
-            .filter(marketplace_financial_operation::Column::Stage.eq("admitted"))
-            .filter(marketplace_financial_operation::Column::LedgerTransactionId.is_null())
-            .exec(&transaction)
-            .await?;
+        let operation_update =
+            marketplace_financial_operation::Entity::update_many()
+                .col_expr(
+                    marketplace_financial_operation::Column::Status,
+                    Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
+                )
+                .col_expr(
+                    marketplace_financial_operation::Column::LastErrorCode,
+                    Expr::value(Option::<String>::None),
+                )
+                .col_expr(
+                    marketplace_financial_operation::Column::LastErrorMessage,
+                    Expr::value(Option::<String>::None),
+                )
+                .col_expr(
+                    marketplace_financial_operation::Column::UpdatedAt,
+                    Expr::value(now),
+                )
+                .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
+                .filter(
+                    marketplace_financial_operation::Column::CheckoutOperationId
+                        .eq(event.checkout_operation_id),
+                )
+                .filter(
+                    marketplace_financial_operation::Column::Status
+                        .eq(MarketplaceFinancialOperationStatus::OperatorReview.as_str()),
+                )
+                .filter(marketplace_financial_operation::Column::Stage.eq("admitted"))
+                .filter(marketplace_financial_operation::Column::LedgerTransactionId.is_null())
+                .exec(&transaction)
+                .await?;
+
+        require_single_retry_transition(
+            operation_update.rows_affected,
+            event.checkout_operation_id,
+        )?;
 
         let inbox_update = marketplace_paid_event_inbox::Entity::update_many()
             .col_expr(
@@ -431,6 +437,18 @@ fn map_paid_event(model: marketplace_paid_event_inbox::Model) -> MarketplacePaid
     }
 }
 
+fn require_single_retry_transition(
+    rows_affected: u64,
+    checkout_operation_id: Uuid,
+) -> MarketplaceFinancialOperatorResult<()> {
+    if rows_affected != 1 {
+        return Err(MarketplaceFinancialOperatorError::Conflict(format!(
+            "financial operation {checkout_operation_id} is not safely retryable from operator_review"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_identity(tenant_id: Uuid, object_id: Uuid) -> MarketplaceFinancialOperatorResult<()> {
     if tenant_id.is_nil() || object_id.is_nil() {
         return Err(MarketplaceFinancialOperatorError::Validation(
@@ -438,4 +456,28 @@ fn validate_identity(tenant_id: Uuid, object_id: Uuid) -> MarketplaceFinancialOp
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_single_retry_transition;
+    use uuid::Uuid;
+
+    #[test]
+    fn retry_transition_requires_exactly_one_operation_row() {
+        let operation_id = Uuid::new_v4();
+
+        assert!(
+            require_single_retry_transition(1, operation_id).is_ok(),
+            "exactly one affected operation is the only safe retry transition"
+        );
+        assert!(
+            require_single_retry_transition(0, operation_id).is_err(),
+            "zero affected operations must block inbox-only retry"
+        );
+        assert!(
+            require_single_retry_transition(2, operation_id).is_err(),
+            "more than one affected operation must also fail closed"
+        );
+    }
 }

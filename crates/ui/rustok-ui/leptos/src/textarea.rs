@@ -11,6 +11,10 @@
 use leptos::prelude::*;
 use rustok_ui::{Size, textarea_classes};
 
+/// Multiline text control.
+///
+/// `rows` defaults to three; `invalid` renders `aria-invalid` and the
+/// destructive border/ring palette. Empty `id`/`name` values are omitted.
 #[component]
 pub fn Textarea(
     #[prop(default = Size::Md)] size: Size,
@@ -25,8 +29,9 @@ pub fn Textarea(
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
+    let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = textarea_classes(size, invalid, disabled, custom);
+    let full_class = textarea_classes(size, invalid, custom);
 
     view! {
         <textarea

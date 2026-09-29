@@ -29,6 +29,7 @@
 - Publish a module-owned storefront cart workspace for cart inspection.
 - Own the Axum guest-cart capability middleware used by HTTP hosts and owner
   transport tests.
+- Require the guest-cart capability for guest carts even when a downstream port call uses a trusted Service/System actor; trusted actor kinds do not substitute for the guest token.
 
 ## Interactions
 

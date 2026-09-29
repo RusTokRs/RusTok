@@ -22,6 +22,7 @@ pub fn Separator(
     rsx! {
         div {
             role: "separator",
+            "aria-orientation": orientation.as_str(),
             class: "{full_class}",
         }
     }

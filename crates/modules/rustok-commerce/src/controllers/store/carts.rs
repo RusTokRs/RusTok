@@ -152,6 +152,7 @@ pub async fn create_cart(
     responses(
         (status = 200, description = "Cart details", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -180,7 +181,7 @@ pub async fn get_cart(
         )
         .await
         .map_err(|error| map_cart_port_error(error, "get_cart", tenant.id, Some(id)))?;
-    super::ensure_store_cart_access(&cart, customer_id)?;
+    super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
     let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
         shipping_owner_reads::enrich_storefront_cart(
@@ -205,6 +206,7 @@ pub async fn get_cart(
     responses(
         (status = 200, description = "Updated cart context", body = StoreCartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -236,7 +238,7 @@ pub async fn update_cart_context(
         .map_err(|error| {
             map_cart_port_error(error, "update_cart_context_read", tenant.id, Some(id))
         })?;
-    super::ensure_store_cart_access(&cart, customer_id)?;
+    super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
 
     let shipping_option_read_port = runtime.shipping_option_read_port();
     let updated = shipping_owner_reads::apply_cart_context_patch(
@@ -277,6 +279,7 @@ pub async fn update_cart_context(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -309,7 +312,7 @@ pub async fn add_cart_line_item(
         .map_err(|error| {
             map_cart_port_error(error, "add_cart_line_item_read", tenant.id, Some(id))
         })?;
-    super::ensure_store_cart_access(&existing, customer_id)?;
+    super::ensure_store_cart_access(&existing, customer_id, auth.0.as_ref())?;
     let event_bus = runtime.event_bus();
     let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus.clone());
     let pricing_context =
@@ -380,6 +383,7 @@ pub async fn add_cart_line_item(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart or line item not found")
     )
 )]
@@ -412,7 +416,7 @@ pub async fn update_cart_line_item(
         .map_err(|error| {
             map_cart_port_error(error, "update_cart_line_item_read", tenant.id, Some(id))
         })?;
-    super::ensure_store_cart_access(&existing, customer_id)?;
+    super::ensure_store_cart_access(&existing, customer_id, auth.0.as_ref())?;
     let event_bus = runtime.event_bus();
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id)
         && let Some(variant_id) = existing_line_item.variant_id
@@ -532,6 +536,7 @@ pub async fn update_cart_line_item(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart or line item not found")
     )
 )]
@@ -563,7 +568,7 @@ pub async fn remove_cart_line_item(
         .map_err(|error| {
             map_cart_port_error(error, "remove_cart_line_item_read", tenant.id, Some(id))
         })?;
-    super::ensure_store_cart_access(&existing, customer_id)?;
+    super::ensure_store_cart_access(&existing, customer_id, auth.0.as_ref())?;
 
     let cart = storefront_port
         .remove_storefront_line_item(

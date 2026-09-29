@@ -20,7 +20,7 @@ pub fn Label(
     children: Element,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = label_classes(required, disabled, custom);
+    let full_class = label_classes(disabled, custom);
 
     rsx! {
         label {

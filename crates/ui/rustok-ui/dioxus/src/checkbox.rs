@@ -11,10 +11,15 @@
 use dioxus::prelude::*;
 use rustok_ui::checkbox_classes;
 
+/// Checkbox input.
+///
+/// Dioxus 0.6 does not expose the `indeterminate` state: HTML defines no such
+/// attribute (it is a DOM property only) and `dioxus-html` declares no
+/// `indeterminate` constant, so a tri-state checkbox has to be driven from a
+/// host-provided script.
 #[component]
 pub fn Checkbox(
     #[props(default = false)] checked: bool,
-    #[props(default = false)] indeterminate: bool,
     #[props(default = false)] disabled: bool,
     #[props(default)] onchange: Option<EventHandler<FormEvent>>,
     #[props(default)] class: Option<String>,
@@ -22,7 +27,7 @@ pub fn Checkbox(
     #[props(default)] name: Option<String>,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = checkbox_classes(disabled, custom);
+    let full_class = checkbox_classes(custom);
 
     rsx! {
         input {

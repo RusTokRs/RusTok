@@ -140,7 +140,7 @@ fn map_order_port_error(
             "Order operation conflicts with the current state",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
         ),
@@ -198,7 +198,7 @@ fn map_payment_detail_port_error(
             "Payment operation conflicts with the current state",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
         ),
@@ -254,7 +254,7 @@ fn map_fulfillment_detail_port_error(
             "Fulfillment operation conflicts with the current state",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
         ),
@@ -294,7 +294,7 @@ fn map_fulfillment_detail_port_error(
     params(ListOrdersParams),
     responses(
         (status = 200, description = "Orders", body = PaginatedResponse<OrderResponse>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_orders(
@@ -354,7 +354,7 @@ pub async fn list_orders(
     params(("id" = Uuid, Path, description = "Order ID")),
     responses(
         (status = 200, description = "Order details", body = AdminOrderDetailResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -441,7 +441,7 @@ pub async fn show_order(
     request_body = MarkPaidOrderInput,
     responses(
         (status = 200, description = "Order marked paid", body = OrderResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -505,7 +505,7 @@ pub async fn mark_order_paid(
     request_body = ShipOrderInput,
     responses(
         (status = 200, description = "Order shipped", body = OrderResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -563,7 +563,7 @@ pub async fn ship_order(
     request_body = DeliverOrderInput,
     responses(
         (status = 200, description = "Order delivered", body = OrderResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -620,7 +620,7 @@ pub async fn deliver_order(
     request_body = CancelOrderInput,
     responses(
         (status = 200, description = "Order cancelled", body = OrderResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]

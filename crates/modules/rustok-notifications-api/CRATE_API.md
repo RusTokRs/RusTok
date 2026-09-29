@@ -38,6 +38,10 @@ validated by constructors and deserialization.
 - `NotificationAudienceCandidate`
 - `NotificationAudiencePage`
 - `NotificationOpenAuthorization`
+- `NotificationInboxReconciliationInspectRequest`
+- `NotificationInboxReconciliationInspectPage`
+- `NotificationInboxReconciliationInspectPort`
+- `NotificationInboxReconciliationInspectPortFactory`
 
 An audience page contains at most 256 unique recipient UUIDs and an optional
 bounded cursor. Its internal collection is private so Rust callers cannot bypass

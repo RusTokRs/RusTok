@@ -11,6 +11,8 @@
 use leptos::prelude::*;
 use rustok_ui::{Orientation, separator_classes};
 
+/// Horizontal or vertical divider with `role="separator"` and the matching
+/// `aria-orientation`.
 #[component]
 pub fn Separator(
     #[prop(default = Orientation::Horizontal)] orientation: Orientation,
@@ -23,6 +25,7 @@ pub fn Separator(
         <div
             class=full_class
             role="separator"
+            aria-orientation=orientation.as_str()
         />
     }
 }

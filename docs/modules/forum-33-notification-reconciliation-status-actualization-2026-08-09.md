@@ -42,7 +42,7 @@ A retryable privacy/source failure fails the inspection rather than returning a 
 
 ## Forum operator composition
 
-The server adds the Forum-specific GraphQL diagnostic:
+The GraphQL field remains:
 
 ```text
 forumNotificationReconciliationStatus(
@@ -52,19 +52,29 @@ forumNotificationReconciliationStatus(
 )
 ```
 
-The server wrapper, not Notifications owner code, carries Forum-specific operator policy. Admission requires:
+Its canonical GraphQL implementation belongs to the manifest-owned
+`rustok-forum::graphql::ForumReconciliationQuery`. Forum owns the operator admission policy;
+the executable server only composes the declared module query root.
+
+Admission requires:
 
 - runtime `forum` enabled;
 - runtime `notifications` enabled;
 - authenticated tenant equal to `TenantContext`;
-- effective `settings:read`;
 - effective `forum_categories:manage`;
 - effective `forum_topics:manage`;
 - non-nil recipient UUID.
 
-Notifications remains Forum-agnostic. The wrapper resolves the already host-composed `NotificationSourceRegistry` and `NotificationRecipientPolicyRuntime` from `ModuleRuntimeExtensions`, constructs the Notifications owner service, and calls only `inspect_page`.
+Forum resolves the optional
+`NotificationInboxReconciliationInspectPort` from its manifest-attached GraphQL runtime data.
+That port is published by Notifications through `ModuleRuntimeExtensions` and materialized from
+the immutable host runtime context. Forum passes tenant, actor, locale, correlation and deadline
+context through the neutral port and receives only the bounded inspection page.
 
-Missing registry or recipient-policy composition fails closed. There is no private-table fallback in server/Forum code.
+Notifications remains Forum-agnostic: it owns the durable reconciliation implementation and the
+neutral read contract, but contains no Forum-specific GraphQL field or Forum RBAC rule. Forum does
+not read Notifications private persistence or instantiate `NotificationInboxReconcileService`
+directly.
 
 ## Report semantics
 
@@ -86,7 +96,7 @@ FORUM-33G performs no:
 
 The existing Notifications `reconcile_page` remains the durable archive owner. Delivery-time target authorization and tenant-wide scheduled reconciliation remain Notifications product work and are not claimed by this slice.
 
-Platform module entrypoint/span/error telemetry is reused for the Forum operator query; no duplicate metric family is introduced.
+Platform module entrypoint/span/error telemetry is emitted by the Forum GraphQL owner; the Notifications neutral port does not add a Forum-specific metric family.
 
 ## Canonical-plan drift
 

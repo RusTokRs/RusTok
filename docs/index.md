@@ -271,6 +271,7 @@ from complete operation safety and retention through serving cutover.
 - [FFA UI Refactoring Plan and Dioxus Preparation](./research/dioxus-ffa-ui-migration-plan.md)
 - [FFA/Dioxus Pilot Connectivity Map (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
 - [FFA UI Migration Parity Checklist](./verification/ffa-ui-parity-checklist.md)
+- [rustok-ui Component Audit — 2026-09-29](./verification/rustok-ui-audit-2026-09-29.md)
 
 ## Application Documentation
 

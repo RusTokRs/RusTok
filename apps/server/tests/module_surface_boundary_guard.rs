@@ -121,6 +121,44 @@ fn content_orchestration_bridge_does_not_live_in_server() {
 }
 
 #[test]
+fn forum_notification_reconciliation_graphql_is_owned_by_forum_crate() {
+    let repo = repo_root();
+
+    assert!(
+        !repo
+            .join("apps/server/src/graphql/forum_notification_reconciliation.rs")
+            .exists(),
+        "Forum notification reconciliation GraphQL must not be owned by apps/server"
+    );
+
+    let forum_query = std::fs::read_to_string(
+        repo.join("crates/modules/rustok-forum/src/graphql/reconciliation_query.rs"),
+    )
+    .expect("Forum reconciliation GraphQL source should read");
+    for marker in [
+        "pub struct GqlForumNotificationReconciliationStatus",
+        "forum_notification_reconciliation_status",
+        "require_module_enabled(ctx, \"notifications\").await?",
+        "NotificationInboxReconciliationInspectRequest",
+        "notification_reconciliation_port()",
+    ] {
+        assert!(
+            forum_query.contains(marker),
+            "Forum must own Forum notification reconciliation GraphQL marker {marker}"
+        );
+    }
+
+    let server_schema =
+        std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
+            .expect("server GraphQL schema should read");
+    assert!(
+        !server_schema.contains("ForumNotificationReconciliationQuery"),
+        "server GraphQL schema must not compose a server-owned notification reconciliation shim"
+    );
+}
+
+
+#[test]
 fn module_owned_graphql_types_and_resolvers_do_not_live_in_server() {
     let graphql_dir = repo_root().join("apps/server/src/graphql");
     assert!(

@@ -14,6 +14,21 @@ Dioxus 0.6 design system component adapter for the RusToK platform.
 - **Overlays**: `Dialog` (Modal).
 - **Data Display**: `Avatar`.
 
+## Behaviour notes
+
+- The component surface, class resolvers, and `ui_*` aliases mirror
+  `rustok-ui-leptos` so a host can switch renderers without changing markup
+  decisions.
+- `Checkbox` has no `indeterminate` prop: HTML defines no `indeterminate`
+  attribute (it is a DOM property) and `dioxus-html` 0.6 declares no such
+  constant, so a tri-state checkbox has to be driven from host JavaScript.
+- `Dialog` closes through the backdrop; keyboard `Escape`/focus management is
+  host-provided in this adapter.
+- `Spinner` exposes an optional `aria_label` (default `Loading`) for localized
+  accessible names, and the `value` prop of `Select` is rendered on the
+  `<select>` element in addition to per-option selection state.
+- `TabsList` and `Separator` announce their `aria-orientation`.
+
 ## Usage
 
 ```rust

@@ -19,6 +19,11 @@ fn checkbox_checked(ev: &leptos::ev::Event) -> bool {
         .unwrap_or(false)
 }
 
+/// Checkbox input with an optional controlled `checked`/`set_checked` pair.
+///
+/// `indeterminate` is applied as a DOM property (HTML defines no such
+/// attribute), so it is passed as a reactive closure and follows signal
+/// changes. Empty `id`/`name` values are omitted instead of rendered empty.
 #[component]
 pub fn Checkbox(
     #[prop(optional)] checked: Option<ReadSignal<bool>>,
@@ -29,8 +34,10 @@ pub fn Checkbox(
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
+    let id = (!id.is_empty()).then_some(id);
+    let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = checkbox_classes(disabled, custom);
+    let full_class = checkbox_classes(custom);
 
     view! {
         <input
@@ -40,7 +47,7 @@ pub fn Checkbox(
             disabled=disabled
             class=full_class
             prop:checked=move || checked.map(|c| c.get()).unwrap_or(false)
-            prop:indeterminate=indeterminate
+            prop:indeterminate=move || indeterminate
             on:change=move |ev| {
                 if let Some(set) = set_checked {
                     set.set(checkbox_checked(&ev));

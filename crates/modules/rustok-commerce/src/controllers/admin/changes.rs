@@ -127,7 +127,7 @@ fn admin_order_change_port_error_policy(error: &PortError) -> AdminOrderChangeHt
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -453,7 +453,7 @@ pub struct AdminApplyOrderChangeInput {
     request_body = AdminApplyOrderChangeInput,
     responses(
         (status = 200, description = "Order change applied", body = ApplyOrderChangeResult),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order change not found")
     )
 )]

@@ -251,7 +251,7 @@ fn admin_order_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPolic
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -292,7 +292,7 @@ fn admin_payment_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPol
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -455,7 +455,7 @@ fn map_admin_order_return_orchestration_error(
     request_body = CreateReturnDecisionInput,
     responses(
         (status = 201, description = "Return decision created", body = ReturnDecisionResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -544,7 +544,7 @@ pub async fn create_order_return_decision(
     request_body = AdminCompleteOrderReturnInput,
     responses(
         (status = 200, description = "Return completed", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Return not found")
     )
 )]

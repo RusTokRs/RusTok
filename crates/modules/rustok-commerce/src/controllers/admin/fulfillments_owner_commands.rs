@@ -168,7 +168,7 @@ fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentComman
                 "state_conflict",
             ),
             PortErrorKind::Forbidden => (
-                StatusCode::UNAUTHORIZED,
+                StatusCode::FORBIDDEN,
                 "commerce_permission_denied",
                 "Permission denied",
                 "forbidden",
@@ -298,7 +298,7 @@ fn map_fulfillment_read_error(
     params(ListFulfillmentsParams),
     responses(
         (status = 200, description = "Fulfillments", body = PaginatedResponse<FulfillmentResponse>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_fulfillments(
@@ -359,7 +359,7 @@ pub async fn list_fulfillments(
     params(("id" = Uuid, Path, description = "Fulfillment ID")),
     responses(
         (status = 200, description = "Fulfillment details", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]
@@ -412,7 +412,7 @@ pub async fn show_fulfillment(
     request_body = CreateFulfillmentInput,
     responses(
         (status = 201, description = "Fulfillment created", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -466,7 +466,7 @@ pub async fn create_fulfillment(
     request_body = ShipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment shipped", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]
@@ -527,7 +527,7 @@ pub async fn ship_fulfillment(
     request_body = DeliverFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment delivered", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]
@@ -588,7 +588,7 @@ pub async fn deliver_fulfillment(
     request_body = ReopenFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment reopened", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]
@@ -649,7 +649,7 @@ pub async fn reopen_fulfillment(
     request_body = ReshipFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment marked for reship", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]
@@ -710,7 +710,7 @@ pub async fn reship_fulfillment(
     request_body = CancelFulfillmentInput,
     responses(
         (status = 200, description = "Fulfillment cancelled", body = FulfillmentResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Fulfillment not found")
     )
 )]

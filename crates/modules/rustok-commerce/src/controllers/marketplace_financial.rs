@@ -110,7 +110,8 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     params(MarketplaceFinancialOperatorListQuery),
     responses(
         (status = 200, description = "Marketplace financial operations requiring operator review", body = [MarketplaceFinancialOperationResponse]),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_financial_operator_review(
@@ -136,6 +137,7 @@ pub async fn list_financial_operator_review(
     responses(
         (status = 200, description = "Marketplace financial operation", body = MarketplaceFinancialOperationResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Operation not found")
     )
 )]
@@ -163,6 +165,7 @@ pub async fn show_financial_operation(
     responses(
         (status = 200, description = "Marketplace financial operation reset for safe retry", body = MarketplaceFinancialOperationResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 409, description = "Operation is not safely retryable")
     )
 )]
@@ -189,7 +192,8 @@ pub async fn retry_financial_operation(
     params(MarketplaceFinancialOperatorListQuery),
     responses(
         (status = 200, description = "Paid events requiring operator review", body = [MarketplacePaidEventResponse]),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_paid_event_operator_review(
@@ -215,6 +219,7 @@ pub async fn list_paid_event_operator_review(
     responses(
         (status = 200, description = "Marketplace paid event", body = MarketplacePaidEventResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Paid event not found")
     )
 )]
@@ -242,6 +247,7 @@ pub async fn show_paid_event(
     responses(
         (status = 200, description = "Paid event processed after an explicit safe retry", body = MarketplacePaidEventResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 409, description = "Paid event is not safely retryable")
     )
 )]
@@ -269,6 +275,7 @@ pub async fn retry_paid_event(
     responses(
         (status = 200, description = "Bounded tenant-scoped marketplace financial recovery sweep", body = MarketplaceFinancialSweepResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 503, description = "Recovery storage unavailable")
     )
 )]
