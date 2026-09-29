@@ -1,6 +1,14 @@
 use std::sync::Arc;
 
-use rustok_notifications_api::NotificationSourceRegistry;
+use async_trait::async_trait;
+use rustok_api::{HostRuntimeContext, PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_notifications_api::{
+    NotificationInboxReconciliationInspectPage,
+    NotificationInboxReconciliationInspectPort,
+    NotificationInboxReconciliationInspectPortFactory,
+    NotificationInboxReconciliationInspectRequest,
+    NotificationSourceRegistry,
+};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -213,6 +221,104 @@ impl NotificationInboxReconcileService {
             next_cursor: raw.next_cursor,
             has_more: raw.has_more,
         })
+    }
+}
+
+
+#[async_trait]
+impl NotificationInboxReconciliationInspectPort for NotificationInboxReconcileService {
+    async fn inspect_page(
+        &self,
+        context: PortContext,
+        request: NotificationInboxReconciliationInspectRequest,
+    ) -> Result<NotificationInboxReconciliationInspectPage, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+
+        let tenant_id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+            PortError::validation(
+                "notifications.reconciliation_tenant_invalid",
+                "notification reconciliation tenant context is invalid",
+            )
+        })?;
+        if tenant_id.is_nil() || request.recipient_id.is_nil() {
+            return Err(PortError::validation(
+                "notifications.reconciliation_identity_invalid",
+                "notification reconciliation identity is invalid",
+            ));
+        }
+
+        let page = NotificationInboxReconcileService::inspect_page(
+            self,
+            NotificationInboxReconcileRequest {
+                tenant_id,
+                recipient_id: request.recipient_id,
+                cursor: request.cursor,
+                limit: request.limit,
+            },
+        )
+        .await
+        .map_err(reconciliation_error_to_port_error)?;
+
+        Ok(NotificationInboxReconciliationInspectPage {
+            scanned: page.scanned,
+            unavailable: page.unavailable,
+            next_cursor: page.next_cursor,
+            has_more: page.has_more,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct NotificationInboxReconciliationInspectPortFactoryImpl;
+
+impl NotificationInboxReconciliationInspectPortFactory
+    for NotificationInboxReconciliationInspectPortFactoryImpl
+{
+    fn build(
+        &self,
+        host: &HostRuntimeContext,
+    ) -> Result<Arc<dyn NotificationInboxReconciliationInspectPort>, PortError> {
+        let registry = host
+            .shared_get::<Arc<NotificationSourceRegistry>>()
+            .ok_or_else(|| {
+                PortError::new(
+                    PortErrorKind::Unavailable,
+                    "notifications.reconciliation_sources_unavailable",
+                    "notification reconciliation capability is unavailable",
+                    true,
+                )
+            })?;
+        let policy = host
+            .shared_get::<crate::NotificationRecipientPolicyRuntime>()
+            .ok_or_else(|| {
+                PortError::new(
+                    PortErrorKind::Unavailable,
+                    "notifications.reconciliation_recipient_policy_unavailable",
+                    "notification reconciliation capability is unavailable",
+                    true,
+                )
+            })?;
+
+        Ok(Arc::new(NotificationInboxReconcileService::new(
+            host.db_clone(),
+            registry,
+            policy.policy_arc(),
+        )))
+    }
+}
+
+fn reconciliation_error_to_port_error(error: NotificationError) -> PortError {
+    match error {
+        NotificationError::Validation(_) => PortError::validation(
+            "notifications.reconciliation_request_invalid",
+            "notification reconciliation request is invalid",
+        ),
+        error => PortError::new(
+            PortErrorKind::Unavailable,
+            "notifications.reconciliation_unavailable",
+            "notification reconciliation capability is unavailable",
+            error.is_retryable(),
+        ),
     }
 }
 
