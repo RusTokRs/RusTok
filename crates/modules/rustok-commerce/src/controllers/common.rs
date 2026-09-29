@@ -76,3 +76,35 @@ pub(super) fn ensure_permissions(
 
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_permissions;
+    use rustok_api::Permission;
+    use rustok_api::AuthContext;
+    use uuid::Uuid;
+
+    #[test]
+    fn authenticated_permission_denial_is_forbidden_not_unauthorized() {
+        let auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+
+        let error = ensure_permissions(
+            &auth,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )
+        .expect_err("missing permission on an authenticated principal must be forbidden");
+
+        assert_eq!(error.status, axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "commerce_permission_denied");
+    }
+}
