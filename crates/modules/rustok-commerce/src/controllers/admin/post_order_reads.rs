@@ -97,7 +97,7 @@ fn map_admin_post_order_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -166,7 +166,7 @@ fn map_admin_post_order_port_error(
     responses(
         (status = 200, description = "Returns", body = PaginatedResponse<OrderReturnResponse>),
         (status = 400, description = "Invalid request"),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 503, description = "Order storage unavailable")
     )
 )]
@@ -229,7 +229,7 @@ pub async fn list_order_returns(
     params(("id" = Uuid, Path, description = "Return ID")),
     responses(
         (status = 200, description = "Return details", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Return not found"),
         (status = 503, description = "Order storage unavailable")
     )
@@ -283,7 +283,7 @@ pub async fn show_order_return(
     responses(
         (status = 200, description = "Order changes", body = PaginatedResponse<OrderChangeResponse>),
         (status = 400, description = "Invalid request"),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 503, description = "Order storage unavailable")
     )
 )]
@@ -347,7 +347,7 @@ pub async fn list_order_changes(
     params(("id" = Uuid, Path, description = "Order change ID")),
     responses(
         (status = 200, description = "Order change details", body = OrderChangeResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order change not found"),
         (status = 503, description = "Order storage unavailable")
     )

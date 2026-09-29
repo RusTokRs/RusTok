@@ -158,7 +158,7 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     params(("id" = Uuid, Path, description = "Checkout operation ID")),
     responses(
         (status = 200, description = "Checkout operation", body = AdminCheckoutOperationResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Checkout operation not found")
     )
 )]
@@ -197,7 +197,7 @@ pub async fn show_checkout_operation(
     params(("id" = Uuid, Path, description = "Checkout operation ID")),
     responses(
         (status = 200, description = "Checkout operation compensated", body = AdminCheckoutOperationResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Checkout operation not found"),
         (status = 409, description = "Compensation requires retry or manual reconciliation")
     )
@@ -253,7 +253,7 @@ pub async fn compensate_checkout_operation(
     request_body = AdminCheckoutCompensationSweepInput,
     responses(
         (status = 200, description = "Checkout compensation sweep report", body = AdminCheckoutCompensationSweepResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn sweep_checkout_compensations(

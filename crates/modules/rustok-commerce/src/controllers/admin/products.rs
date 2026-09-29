@@ -203,7 +203,7 @@ async fn validate_admin_product_shipping_profile_input(
     params(ListProductsParams),
     responses(
         (status = 200, description = "List of products", body = PaginatedResponse<ProductListItem>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_products(
@@ -323,7 +323,7 @@ pub async fn list_products(
     request_body = CreateProductInput,
     responses(
         (status = 201, description = "Product created successfully", body = ProductResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_product(
@@ -383,7 +383,7 @@ pub async fn create_product(
     params(("id" = Uuid, Path, description = "Product ID")),
     responses(
         (status = 200, description = "Product details", body = ProductResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn show_product(
@@ -441,7 +441,7 @@ pub async fn show_product(
     request_body = UpdateProductInput,
     responses(
         (status = 200, description = "Product updated successfully", body = ProductResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn update_product(
@@ -506,7 +506,7 @@ pub async fn update_product(
     responses(
         (status = 204, description = "Product deleted successfully"),
         (status = 400, description = "Missing or invalid idempotency key"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn delete_product(
@@ -533,7 +533,7 @@ pub async fn delete_product(
     responses(
         (status = 200, description = "Product published successfully", body = ProductResponse),
         (status = 400, description = "Missing or invalid idempotency key"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn publish_product(
@@ -560,7 +560,7 @@ pub async fn publish_product(
     responses(
         (status = 200, description = "Product unpublished successfully", body = ProductResponse),
         (status = 400, description = "Missing or invalid idempotency key"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
     )
 )]
 pub async fn unpublish_product(
