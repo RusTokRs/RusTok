@@ -633,6 +633,7 @@ pub async fn list_regions(
     params(StoreContextQuery),
     responses(
         (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>),
+        (status = 401, description = "Authentication required for customer-owned carts"),
         (status = 403, description = "Cart access denied: guest capability or customer ownership")
     )
 )]
