@@ -2882,5 +2882,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** re-read the changed controller and service, all seven OpenAPI response blocks, retry transaction ordering, tenant filters, limit clamps, error mapping, migrations/FK, and operator view fields. No residual protected endpoint lacking 403 documentation and no remaining unchecked `Forbidden` retry transition were confirmed.
 - **Diff review:** branch changes are limited to `marketplace_financial.rs`, `marketplace_financial_operator.rs`, and this ledger entry relative to exact main base; no business status names, permission names, or ledger posting rules were changed.
 - **Verification:** source inspection, migration/transition tracing, immediate reread, adjacent-boundary audit, independent second pass, and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on the dedicated branch.
-- **Status:** complete pending PR/merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4348, squash merge `ebfe6564bd30d84f77c2bbdbc135d1a8065f977e`.
+- **Post-merge reconciliation:** refreshed `main` at `ebfe6564bd30d84f77c2bbdbc135d1a8065f977e`; comparing recorded base `bfa0e6c8707bddfed2252e2588d9c8fef199db0e` to the merge is exactly one commit with the expected controller/service/ledger change set. All seven protected financial operations advertise 401+403 and the retry transition guard is present on `main`.
+- **Status:** `FS-22.06.07` complete.
