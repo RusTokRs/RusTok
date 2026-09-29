@@ -2031,6 +2031,52 @@ mod tests {
     }
 
     #[test]
+    fn mutation_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_mutation_internal_error(
+            "Mutation unavailable",
+            "database password=secret table=module_operations",
+        );
+
+        assert_eq!(error.message, "Mutation unavailable");
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn platform_composition_build_error_redacts_owner_diagnostics() {
+        let error = map_platform_composition_build_error(
+            PlatformCompositionBuildError::Build(
+                "cargo stderr: database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(error.message, "Module composition build is unavailable");
+        assert!(!error.message.contains("database password=secret"));
+        assert_eq!(
+            error_code(&error.extend()).as_deref(),
+            Some("INTERNAL_ERROR")
+        );
+    }
+
+    #[test]
+    fn module_recovery_errors_redact_owner_diagnostics() {
+        let not_retryable = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::NotRetryable(
+                "database password=secret".to_string(),
+            ),
+        );
+        assert_eq!(not_retryable.message, "Module operation is not retryable");
+        assert!(!not_retryable.message.contains("database password=secret"));
+
+        let post_hook = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::PostHookFailed(
+                "post-hook database password=secret".to_string(),
+            ),
+        );
+        assert_eq!(post_hook.message, "Module hook failed");
+        assert!(!post_hook.message.contains("database password=secret"));
+    }
+
+    #[test]
     fn toggle_error_taxonomy_partitions_are_disjoint_and_complete() {
         let all = toggle_error_contract_cases();
         let user = toggle_user_input_error_cases();
