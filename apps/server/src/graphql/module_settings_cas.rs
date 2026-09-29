@@ -221,9 +221,10 @@ mod tests {
     #[test]
     fn owner_diagnostics_are_redacted_from_module_settings_cas_errors() {
         let manifest = map_settings_error(UpdateModuleSettingsError::Manifest(
-            crate::modules::ManifestError::InvalidManifest(
-                "database password=secret".to_string(),
-            ),
+            crate::modules::ManifestError::Read {
+                path: "/run/secrets/database".to_string(),
+                error: "database password=secret".to_string(),
+            },
         ));
         assert!(!manifest.message.contains("database password=secret"));
 
