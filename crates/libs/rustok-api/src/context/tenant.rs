@@ -25,7 +25,6 @@ impl TenantContext {
     }
 }
 
-
 #[derive(Clone)]
 pub struct TenantContextExtension(pub TenantContext);
 
