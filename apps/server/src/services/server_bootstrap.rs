@@ -254,7 +254,7 @@ pub async fn bootstrap_application_router(
 mod tests {
     use super::{
         check_production_secrets, known_dev_jwt_fragment, known_sample_superadmin_password,
-        sample_database_credentials_pattern, should_initialize_default_superadmin,
+        sample_database_credentials_pattern,
     };
 
     #[test]
@@ -262,12 +262,18 @@ mod tests {
         assert!(!should_initialize_default_superadmin_for_mode(
             crate::common::settings::RuntimeHostMode::RegistryOnly
         ));
-        assert!(should_initialize_default_superadmin_for_mode(
-            crate::common::settings::RuntimeHostMode::Api
-        ));
-        assert!(should_initialize_default_superadmin_for_mode(
-            crate::common::settings::RuntimeHostMode::Full
-        ));
+        for host_mode in [
+            crate::common::settings::RuntimeHostMode::Full,
+            crate::common::settings::RuntimeHostMode::Api,
+            crate::common::settings::RuntimeHostMode::AdminSsr,
+            crate::common::settings::RuntimeHostMode::StorefrontSsr,
+            crate::common::settings::RuntimeHostMode::Worker,
+        ] {
+            assert!(
+                should_initialize_default_superadmin_for_mode(host_mode),
+                "{host_mode:?}"
+            );
+        }
     }
 
     #[test]
