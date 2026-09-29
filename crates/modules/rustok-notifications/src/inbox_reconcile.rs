@@ -269,7 +269,7 @@ impl NotificationInboxReconciliationInspectPort for NotificationInboxReconcileSe
 }
 
 #[derive(Clone, Copy, Default)]
-pub struct NotificationInboxReconciliationInspectPortFactoryImpl;
+pub(crate) struct NotificationInboxReconciliationInspectPortFactoryImpl;
 
 impl NotificationInboxReconciliationInspectPortFactory
     for NotificationInboxReconciliationInspectPortFactoryImpl
