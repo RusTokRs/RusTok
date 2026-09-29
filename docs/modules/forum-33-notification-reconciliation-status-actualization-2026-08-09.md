@@ -42,7 +42,7 @@ A retryable privacy/source failure fails the inspection rather than returning a 
 
 ## Forum operator composition
 
-The server adds the Forum-specific GraphQL diagnostic:
+The GraphQL field remains:
 
 ```text
 forumNotificationReconciliationStatus(
@@ -52,19 +52,28 @@ forumNotificationReconciliationStatus(
 )
 ```
 
-The server wrapper, not Notifications owner code, carries Forum-specific operator policy. Admission requires:
+Its canonical GraphQL implementation is now part of the manifest-owned
+`rustok-notifications::graphql::NotificationsQuery`. The executable server only
+composes the declared owner query root; it does not carry a Forum notification
+reconciliation shim.
+
+Admission requires:
 
 - runtime `forum` enabled;
 - runtime `notifications` enabled;
 - authenticated tenant equal to `TenantContext`;
-- effective `settings:read`;
 - effective `forum_categories:manage`;
 - effective `forum_topics:manage`;
 - non-nil recipient UUID.
 
-Notifications remains Forum-agnostic. The wrapper resolves the already host-composed `NotificationSourceRegistry` and `NotificationRecipientPolicyRuntime` from `ModuleRuntimeExtensions`, constructs the Notifications owner service, and calls only `inspect_page`.
+The Notifications owner resolves the already host-composed `NotificationSourceRegistry`
+and `NotificationRecipientPolicyRuntime` from `ModuleRuntimeExtensions`, constructs
+the existing Notifications owner service, and calls only `inspect_page`. Missing registry
+or recipient-policy composition fails closed.
 
-Missing registry or recipient-policy composition fails closed. There is no private-table fallback in server/Forum code.
+This keeps durable reconciliation ownership in Notifications while keeping the
+Forum-specific operator admission at the GraphQL transport boundary. No Notifications
+private table is read from server/Forum composition.
 
 ## Report semantics
 
