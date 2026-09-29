@@ -74,6 +74,47 @@ for (const relativePath of [
   requireContains(relativePath, "ServerRuntimeContext", `${relativePath} consumes typed server runtime state`);
 }
 
+for (const [relativePath, marker, description] of [
+  [
+    "crates/libs/rustok-api/src/context/tenant.rs",
+    "pub struct TenantContext",
+    "rustok-api retains the shared TenantContext contract",
+  ],
+  [
+    "crates/libs/rustok-api/src/context/tenant.rs",
+    "pub struct OptionalTenant",
+    "rustok-api retains the optional tenant extractor contract",
+  ],
+]) {
+  requireContains(relativePath, marker, description);
+}
+
+for (const [relativePath, marker, description] of [
+  [
+    "crates/libs/rustok-api/src/context/tenant.rs",
+    "pub enum TenantError",
+    "rustok-api tenant context must not reintroduce the retired persistence-backed TenantError",
+  ],
+  [
+    "crates/libs/rustok-api/src/context/tenant.rs",
+    "sea_orm::DbErr",
+    "rustok-api tenant context must not depend on SeaORM error types",
+  ],
+  [
+    "crates/libs/rustok-api/src/context/mod.rs",
+    "TenantError",
+    "rustok-api context module must not re-export the retired TenantError",
+  ],
+  [
+    "crates/libs/rustok-api/src/lib.rs",
+    "TenantError",
+    "rustok-api root must not re-export the retired TenantError",
+  ],
+]) {
+  requireNotContains(relativePath, marker, description);
+}
+
+
 if (failures.length > 0) {
   console.error("API surface contract verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);

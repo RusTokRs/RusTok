@@ -17,6 +17,7 @@ module transport adapters, but which should not live in `rustok-core`.
 - GraphQL helper types and error helpers shared across modules;
 - reusable read/write/event-replay/best-effort port enforcement without module-specific business logic; consumer migration is anchored in `rustok-region` and continued for tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay and page-builder publish paths;
 - request-level locale/tenant/channel resolution primitives not belonging to domain crates;
+- host/storage locale projection over the canonical `rustok-ui-i18n` Unicode/CLDR normalizer, retaining the platform's 32-byte normalized locale width and `RuntimeLocale`/`TenantLocale` vs `StoredLocale` provenance boundary;
 - `RequestContext` is a projection of trusted tenant/auth/channel/locale request extensions; it does not reconstruct tenant or locale authority when middleware evidence is absent.
 - absence of module-specific resolvers, controllers and business logic.
 

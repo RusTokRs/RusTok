@@ -12,6 +12,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "channel.rs"]
 mod base;
 
+// Server functions share the wildcard `/api/fn/{*fn_name}` route, so the host has to classify
+// the channel mutation endpoints here. Keep this list transport-only; exact parity with the
+// owner adapter is enforced by `channel_cache_architecture_guard` to prevent route drift.
 const NATIVE_CHANNEL_MUTATION_PATHS: &[&str] = &[
     "/api/fn/channel/create-channel",
     "/api/fn/channel/set-default",

@@ -14257,7 +14257,6 @@ name = "rustok-grid"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -14267,9 +14266,6 @@ dependencies = [
  "leptos",
  "leptos-use",
  "rustok-grid",
- "rustok-ui-core",
- "serde",
- "serde_json",
  "web-sys",
 ]
 

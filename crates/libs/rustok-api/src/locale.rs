@@ -8,6 +8,10 @@ pub use rustok_ui_i18n::preferred_catalog_locale_from_accept_language as extract
 pub const PLATFORM_FALLBACK_LOCALE: &str = "en";
 pub const UNKNOWN_PROVENANCE_LOCALE: &str = "und";
 
+/// Maximum length of the canonical, extension-free locale identity exposed by
+/// the host/API layer. This matches the platform's locale storage width.
+pub const MAX_LOCALE_TAG_LEN: usize = 32;
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LocaleTypeError {
     #[error("invalid locale tag '{value}'")]
@@ -127,59 +131,8 @@ impl From<RuntimeLocale> for StoredLocale {
 }
 
 pub fn normalize_locale_tag(raw: &str) -> Option<String> {
-    let candidate = raw.trim().replace('_', "-");
-    if candidate.is_empty() || candidate.len() > 32 {
-        return None;
-    }
-
-    if !candidate
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-    {
-        return None;
-    }
-
-    let parts = candidate.split('-').collect::<Vec<_>>();
-    let language = parts.first()?.trim();
-    if language.len() < 2
-        || language.len() > 8
-        || !language.chars().all(|ch| ch.is_ascii_alphabetic())
-    {
-        return None;
-    }
-
-    let mut normalized = Vec::with_capacity(parts.len());
-    normalized.push(language.to_ascii_lowercase());
-
-    for part in parts.into_iter().skip(1) {
-        if part.is_empty() || part.len() > 8 {
-            return None;
-        }
-
-        let normalized_part = if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic())
-        {
-            part.to_ascii_uppercase()
-        } else if part.len() == 4 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
-            let mut chars = part.chars();
-            let head = chars
-                .next()
-                .map(|ch| ch.to_ascii_uppercase().to_string())
-                .unwrap_or_default();
-            let tail = chars.as_str().to_ascii_lowercase();
-            format!("{head}{tail}")
-        } else if part.len() == 3 && part.chars().all(|ch| ch.is_ascii_digit()) {
-            part.to_string()
-        } else if (5..=8).contains(&part.len()) && part.chars().all(|ch| ch.is_ascii_alphanumeric())
-        {
-            part.to_ascii_lowercase()
-        } else {
-            return None;
-        };
-
-        normalized.push(normalized_part);
-    }
-
-    Some(normalized.join("-"))
+    let normalized = rustok_ui_i18n::normalize_locale_tag(raw)?;
+    (normalized.len() <= MAX_LOCALE_TAG_LEN).then_some(normalized)
 }
 
 pub fn is_valid_locale_tag(raw: &str) -> bool {
@@ -241,12 +194,16 @@ mod tests {
     };
 
     #[test]
-    fn normalize_locale_tag_canonicalizes_common_bcp47_forms() {
+    fn normalize_locale_tag_uses_canonical_unicode_i18n_identity() {
         assert_eq!(normalize_locale_tag("ru"), Some("ru".to_string()));
         assert_eq!(normalize_locale_tag("ru_ru"), Some("ru-RU".to_string()));
         assert_eq!(normalize_locale_tag("pt_br"), Some("pt-BR".to_string()));
         assert_eq!(normalize_locale_tag("zh-hant"), Some("zh-Hant".to_string()));
         assert_eq!(normalize_locale_tag("es-419"), Some("es-419".to_string()));
+        assert_eq!(
+            normalize_locale_tag("iw-IL-u-ca-hebrew"),
+            Some("he-IL".to_string())
+        );
     }
 
     #[test]
@@ -296,6 +253,12 @@ mod tests {
     fn typed_locales_separate_runtime_policy_from_storage_provenance() {
         assert_eq!(RuntimeLocale::new("pt_br").unwrap().as_str(), "pt-BR");
         assert_eq!(TenantLocale::new("zh-hant").unwrap().as_str(), "zh-Hant");
+        assert_eq!(
+            RuntimeLocale::new("iw-IL-u-ca-hebrew")
+                .unwrap()
+                .as_str(),
+            "he-IL"
+        );
         assert!(RuntimeLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());
         assert!(TenantLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());
 

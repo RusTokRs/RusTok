@@ -196,7 +196,7 @@ fn collect_direct_tenant_value(
         }
         _ => set_invalid_argument(
             policy,
-            format!("{source} must be a UUID string, null, or UUID variable"),
+            "tenantId must be a UUID string, null, or UUID variable".to_string(),
         ),
     }
 }
@@ -211,7 +211,7 @@ fn collect_direct_tenant_const_value(
         ConstValue::Null => {}
         _ => set_invalid_argument(
             policy,
-            format!("{source} variable must resolve to a UUID string or null"),
+            "tenantId variable must resolve to a UUID string or null".to_string(),
         ),
     }
 }
@@ -307,12 +307,12 @@ fn resolve_variable<'a>(
     variables.get(name).or_else(|| defaults.get(name))
 }
 
-fn add_tenant_id(raw: &str, source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
+fn add_tenant_id(raw: &str, _source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
     match Uuid::parse_str(raw.trim()) {
         Ok(tenant_id) => policy.requested_tenant_ids.push(tenant_id),
         Err(_) => set_invalid_argument(
             policy,
-            format!("{source} value `{raw}` is not a valid UUID"),
+            "tenantId must be a valid UUID string or null".to_string(),
         ),
     }
 }
@@ -430,6 +430,22 @@ mod tests {
         Schema::build(Query, EmptyMutation, EmptySubscription)
             .extension(GraphqlTenantPolicy)
             .finish()
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_tenant_value_without_echoing_input() {
+        let tenant_id = Uuid::new_v4();
+        let hostile = "not-a-uuid secret=should-not-be-reflected";
+        let response = schema()
+            .execute(
+                Request::new(format!("query {{ echoTenant(tenantId: \"{hostile}\") }}"))
+                    .data(tenant(tenant_id)),
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1);
+        assert!(!response.errors[0].message.contains("secret=should-not-be-reflected"));
+        assert!(response.errors[0].message.contains("valid UUID"));
     }
 
     #[tokio::test]

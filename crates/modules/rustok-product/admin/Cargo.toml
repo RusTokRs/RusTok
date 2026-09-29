@@ -24,7 +24,10 @@ ssr = [
 [dependencies]
 rustok-ui-core.workspace = true
 rustok-grid.workspace = true
-rustok-grid-leptos.workspace = true
+# `default-features = false`: the adapter's default is the `ssr` backend, and
+# enabling it unconditionally would activate `leptos/ssr` in wasm (hydrate)
+# builds as well. The mode is selected by this crate’s `ssr` / `hydrate` features.
+rustok-grid-leptos = { workspace = true, default-features = false }
 leptos = { workspace = true, features = ["csr"] }
 leptos_router.workspace = true
 leptos_axum = { workspace = true, optional = true }

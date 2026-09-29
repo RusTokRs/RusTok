@@ -10,7 +10,9 @@ use rustok_api::{
     StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
+use rustok_api::graphql::{GraphQLError, PageInfo};
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -20,7 +22,6 @@ use crate::models::users;
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::module_lifecycle::ModuleLifecycleStateSnapshot;
 use crate::services::rbac_service::RbacService;
-use rustok_api::graphql::PageInfo;
 use rustok_build::BuildEvent;
 use rustok_build::build::{BuildStage, BuildStatus};
 
@@ -121,17 +122,21 @@ impl User {
         let db = ctx.data::<DatabaseConnection>()?;
         let role = RbacService::get_user_role(db, &self.tenant_id, &self.id)
             .await
-            .map_err(|err| err.to_string())?;
+            .map_err(|error| graphql_internal_error("Unable to resolve user role", error))?;
         Ok(role.to_string())
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
+        let permission = Permission::from_str(&action).map_err(|_| {
+            <async_graphql::FieldError as GraphQLError>::bad_user_input(
+                "Invalid permission action",
+            )
+        })?;
 
         RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
             .await
-            .map_err(|err| err.to_string().into())
+            .map_err(|error| graphql_internal_error("Unable to resolve user permission", error))
     }
 
     async fn tenant_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
@@ -157,8 +162,13 @@ impl User {
             tenant.default_locale.as_str(),
         )
         .await
-        .map_err(|err| err.to_string().into())
+        .map_err(|error| graphql_internal_error("Unable to resolve user custom fields", error))
     }
+}
+
+fn graphql_internal_error(message: &'static str, error: impl Display) -> async_graphql::FieldError {
+    tracing::error!(%error, message, "GraphQL user field failed");
+    <async_graphql::FieldError as GraphQLError>::internal_error(message)
 }
 
 impl From<&users::Model> for User {
@@ -401,6 +411,22 @@ pub struct ModuleOperationRecoveryPlan {
     pub error_message: Option<String>,
 }
 
+fn sanitized_recovery_error_message(
+    issue: &str,
+    error_message: Option<String>,
+) -> Option<String> {
+    let Some(_) = error_message else {
+        return None;
+    };
+
+    Some(match issue {
+        "post_hook_failed" => "Module lifecycle hook failed".to_string(),
+        "pre_hook_failed" => "Module lifecycle operation failed before commit".to_string(),
+        "other_failed" => "Module lifecycle operation failed".to_string(),
+        _ => "Module lifecycle operation failed".to_string(),
+    })
+}
+
 impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
     fn from(plan: rustok_api::ModuleOperationRecoveryPlanView) -> Self {
         Self {
@@ -421,7 +447,7 @@ impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecove
             recommended_action: plan.recommended_action,
             correlation_id: plan.correlation_id,
             requested_by: plan.requested_by,
-            error_message: plan.error_message,
+            error_message: sanitized_recovery_error_message(&plan.issue, plan.error_message),
         }
     }
 }
@@ -1353,7 +1379,42 @@ mod tests {
         ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
     };
 
-    use super::{ArtifactUiContribution, ArtifactUiSurface};
+    use async_graphql::ErrorExtensions;
+
+    use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error, sanitized_recovery_error_message};
+
+    #[test]
+    fn graphql_user_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_internal_error(
+            "Unable to resolve user role",
+            "database password=secret table=user_roles query=SELECT * FROM user_roles",
+        );
+
+        assert_eq!(error.message, "Unable to resolve user role");
+        assert!(!error.message.contains("database password=secret"));
+        assert_eq!(
+            error
+                .extensions
+                .as_ref()
+                .and_then(|extensions| extensions.get("code"))
+                .cloned()
+                .and_then(|value| value.into_json().ok())
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                .as_deref(),
+            Some("INTERNAL_ERROR")
+        );
+    }
+
+
+    #[test]
+    fn recovery_error_message_redacts_owner_diagnostics() {
+        let redacted = super::sanitized_recovery_error_message(
+            "post_hook_failed",
+            Some("post-hook: database password=secret table=module_operations".to_string()),
+        );
+
+        assert_eq!(redacted.as_deref(), Some("Module lifecycle hook failed"));
+    }
 
     #[test]
     fn artifact_ui_adapter_preserves_the_canonical_projection() {

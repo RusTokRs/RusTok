@@ -1,20 +1,33 @@
 use leptos::prelude::*;
 
-use crate::{
-    header::GridHeader,
-    pagination::GridPaginationBar,
-    row::GridRow,
-    toolbar::GridToolbar,
-};
+use crate::{header::GridHeader, pagination::GridPaginationBar, row::GridRow, toolbar::GridToolbar};
 use rustok_grid::{
     ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination, PaginationMode,
-    RowSelection, SortState,
+    RowSelection, SortState, visible_column_count,
 };
 
+/// SSR-first data grid.
+///
+/// # Data flow
+///
+/// The component is **uncontrolled by default and controlled on demand**:
+/// every piece of state (filters, sort, selection, pagination) can be handed
+/// in as an `RwSignal` and is otherwise created locally.
+///
+/// Pagination has two modes, selected implicitly:
+///
+/// * **client-side** (no `on_page_change`): the grid owns `total` (derived
+///   from `data`) and slices `data` itself.
+/// * **server-side** (`on_page_change` provided): the caller owns `data` and
+///   must keep `pagination.total` up to date; the grid never slices and
+///   reports the *clamped, effective* page number back.
 #[component]
 pub fn DataGrid<T, K, KF>(
+    /// Column definitions. Visibility is then owned by the grid (toolbar).
     columns: Vec<GridColumnDef>,
     data: Signal<Vec<T>>,
+    /// Stable, unique row identity. Used for selection and for keyed
+    /// rendering, so rows are not rebuilt on every data change.
     key_fn: KF,
     cell_renderer: Callback<(T, String), AnyView>,
     #[prop(optional)] is_loading: Option<Signal<bool>>,
@@ -31,6 +44,9 @@ pub fn DataGrid<T, K, KF>(
     #[prop(optional)] selection: Option<RwSignal<RowSelection>>,
     #[prop(optional)] on_selection_change: Option<Callback<RowSelection>>,
     #[prop(optional)] bulk_actions: Option<Callback<usize, AnyView>>,
+    /// Accessible name of the table, announced by screen readers.
+    #[prop(optional)]
+    aria_label: Option<String>,
 ) -> impl IntoView
 where
     T: Send + Sync + Clone + 'static,
@@ -44,178 +60,199 @@ where
     let local_selection = selection.unwrap_or_else(|| RwSignal::new(RowSelection::new()));
     let local_pagination = pagination.unwrap_or_else(|| RwSignal::new(GridPagination::default()));
 
-    let empty_msg = empty_message.unwrap_or_else(|| "No records found.".to_string());
+    let empty_msg = StoredValue::new(empty_message.unwrap_or_else(|| "No records found.".to_string()));
+    let table_label = aria_label.unwrap_or_else(|| "Data grid".to_string());
     let loading_signal = is_loading.unwrap_or_else(|| Signal::derive(|| false));
 
-    // Synchronize client-side pagination total reactively
-    if on_page_change.is_none() {
+    // Without `on_page_change` the caller hands us the full data set, so the
+    // grid owns totals and slicing.
+    let client_side = on_page_change.is_none();
+
+    // Pagination as it should be rendered. Deriving `total` (instead of only
+    // patching it from an `Effect`) keeps the first SSR paint correct —
+    // effects never run on the server.
+    let effective_pagination = Signal::derive(move || {
+        let mut pagination = local_pagination.get();
+        if client_side {
+            pagination.set_total(data.get().len() as u64);
+        }
+        pagination
+    });
+
+    // Keep the caller-visible signal in sync on the client.
+    if client_side {
         Effect::new(move |_| {
-            let total_len = data.get().len() as u64;
-            let current_total = local_pagination.get_untracked().total;
-            if current_total != total_len {
-                local_pagination.update(|p| {
-                    p.total = total_len;
-                    p.set_page(p.page);
-                });
+            let total = data.get().len() as u64;
+            if local_pagination.get_untracked().total != total {
+                local_pagination.update(|pagination| pagination.set_total(total));
             }
         });
     }
 
-    // Display items with client-side slicing when applicable
+    // Rows to render: the current page (client-side) or whatever the caller
+    // provided (server-side).
     let display_items = move || {
         let items = data.get();
-        if on_page_change.is_none() {
-            let pag = local_pagination.get();
-            match pag.mode {
-                PaginationMode::Paged => {
-                    if items.len() > pag.page_size {
-                        let start = (pag.page.saturating_sub(1)) * pag.page_size;
-                        let end = (start + pag.page_size).min(items.len());
-                        if start < items.len() {
-                            items[start..end].to_vec()
-                        } else {
-                            Vec::new()
-                        }
-                    } else {
-                        items
-                    }
-                }
-                PaginationMode::Infinite => {
-                    let page = pag.page.max(1);
-                    let end = (page * pag.page_size).min(items.len());
-                    items[..end].to_vec()
-                }
-            }
-        } else {
-            items
+        if !client_side {
+            return items;
+        }
+        let (start, end) = effective_pagination.get().slice_bounds(items.len());
+        items[start..end].to_vec()
+    };
+
+    let visible_colspan = move || visible_column_count(&local_columns.get()).max(1);
+
+    let notify_selection = move || {
+        if let Some(on_sel) = on_selection_change {
+            on_sel.run(local_selection.get_untracked());
         }
     };
 
-    // Handle column resize
+    let notify_filters = move || {
+        if let Some(on_change) = on_filter_change {
+            on_change.run(local_filters.get_untracked());
+        }
+    };
+
     let handle_resize = Callback::new(move |(col_id, width): (String, u32)| {
-        if let Some(column) = local_columns.get_untracked().iter().find(|c| c.id.0 == col_id) {
-            local_widths.update(|w| w.set_clamped(col_id, width, column.width.min, column.width.max));
+        let bounds = local_columns
+            .get_untracked()
+            .iter()
+            .find(|c| c.id.as_str() == col_id)
+            .map(|c| (c.width.min, c.width.max));
+        if let Some((min, max)) = bounds {
+            local_widths.update(|widths| {
+                widths.set_clamped(col_id, width, min, max);
+            });
         }
     });
 
-    // Handle single filter change
-    let handle_filter_change = Callback::new(move |(col_id, val): (String, FilterValue)| {
-        local_filters.update(|f| f.set(col_id, val));
-        local_pagination.update(|p| p.set_page(1));
-        if let Some(on_change) = on_filter_change {
-            on_change.run(local_filters.get());
+    let handle_filter_change = Callback::new(move |(col_id, value): (String, FilterValue)| {
+        let mut changed = false;
+        local_filters.update(|filters| {
+            changed = filters.set(col_id, value);
+        });
+        if changed {
+            // A different result set invalidates the current page.
+            local_pagination.update(|pagination| pagination.set_page(1));
+            notify_filters();
         }
     });
 
-    // Handle clear all filters
     let handle_clear_filters = Callback::new(move |_| {
-        local_filters.update(|f| f.clear());
-        local_pagination.update(|p| p.set_page(1));
-        if let Some(on_change) = on_filter_change {
-            on_change.run(local_filters.get());
+        let mut changed = false;
+        local_filters.update(|filters| {
+            changed = filters.clear();
+        });
+        if changed {
+            local_pagination.update(|pagination| pagination.set_page(1));
+            notify_filters();
         }
     });
 
-    // Handle column sort
     let handle_sort = Callback::new(move |col_id: String| {
-        local_sort.update(|s| s.toggle(&col_id));
+        local_sort.update(|sort| sort.toggle(&col_id));
+        local_pagination.update(|pagination| pagination.set_page(1));
         if let Some(on_sort) = on_sort_change {
-            on_sort.run(local_sort.get());
+            on_sort.run(local_sort.get_untracked());
         }
     });
 
-    // Handle toggle column visibility
     let handle_toggle_visibility = Callback::new(move |col_id: String| {
         local_columns.update(|cols| {
-            for c in cols.iter_mut() {
-                if c.id.0 == col_id {
-                    c.visible = !c.visible;
+            for column in cols.iter_mut() {
+                if column.id.as_str() == col_id {
+                    column.visible = !column.visible;
                 }
             }
         });
     });
 
-    // Handle row selection
     let handle_toggle_row_select = Callback::new(move |id: String| {
-        local_selection.update(|s| s.toggle(id));
-        if let Some(on_sel) = on_selection_change {
-            on_sel.run(local_selection.get());
-        }
+        local_selection.update(|selection| {
+            selection.toggle(id);
+        });
+        notify_selection();
     });
 
-    // Handle toggle all visible rows selection
+    // "Select all" is scoped to the rows currently on screen, which is what
+    // the checkbox in the header claims to do.
+    let page_row_ids = move || {
+        display_items()
+            .iter()
+            .map(|item| key_fn(item).to_string())
+            .collect::<Vec<_>>()
+    };
+
     let handle_toggle_all_select = Callback::new(move |check_all: bool| {
-        let current_ids: Vec<String> = display_items().iter().map(|item| key_fn(item).to_string()).collect();
-        local_selection.update(|s| {
+        let current_ids = page_row_ids();
+        local_selection.update(|selection| {
             if check_all {
-                s.select_all(current_ids);
+                selection.select_all(current_ids.clone());
             } else {
-                s.deselect_all(current_ids.iter().map(|s| s.as_str()));
+                selection.deselect_all(current_ids.iter().map(String::as_str));
             }
         });
-        if let Some(on_sel) = on_selection_change {
-            on_sel.run(local_selection.get());
-        }
+        notify_selection();
     });
 
-    // Are all current rows selected?
-    let all_selected = Signal::derive(move || {
-        let items = display_items();
-        if items.is_empty() {
-            return false;
-        }
-        let sel = local_selection.get();
-        items.iter().all(|item| sel.is_selected(&key_fn(item).to_string()))
-    });
+    let all_selected = Signal::derive(move || local_selection.get().is_all_selected(page_row_ids()));
+    let some_selected =
+        Signal::derive(move || local_selection.get().is_partially_selected(page_row_ids()));
 
-    // Has selectable column?
-    let has_selectable = Signal::derive(move || {
-        local_columns.get().iter().any(|c| c.id.0 == "__checkbox")
-    });
-
-    // Page change handler
-    let handle_page_change = Callback::new(move |new_page: usize| {
-        local_pagination.update(|p| p.set_page(new_page));
+    let handle_page_change = Callback::new(move |requested: usize| {
+        let mut effective = requested;
+        local_pagination.update(|pagination| {
+            effective = pagination.go_to_page(requested);
+        });
         if let Some(cb) = on_page_change {
-            cb.run(new_page);
+            // Report the page the grid actually switched to, never an
+            // out-of-range number a user managed to click.
+            cb.run(effective);
         }
     });
 
-    // Page size change handler
     let handle_page_size_change = Callback::new(move |new_size: usize| {
-        local_pagination.update(|p| p.set_page_size(new_size));
+        let previous_page = local_pagination.get_untracked().page;
+        local_pagination.update(|pagination| pagination.set_page_size(new_size));
+        let current = local_pagination.get_untracked();
         if let Some(cb) = on_page_size_change {
-            cb.run(new_size);
+            cb.run(current.page_size);
         }
-    });
-
-    // Mode change handler (Paged vs Infinite)
-    let handle_mode_change = Callback::new(move |mode: PaginationMode| {
-        local_pagination.update(|p| p.mode = mode);
-    });
-
-    // Load more handler (infinite scroll)
-    let handle_load_more = Callback::new(move |_| {
-        if let Some(cb) = on_load_more {
-            cb.run(());
-        } else {
-            let next_page = local_pagination.get().page.saturating_add(1);
-            local_pagination.update(|p| {
-                p.set_page(next_page);
-            });
+        // Changing the page size sends the user back to page 1; a server-side
+        // consumer has to learn about that too — but only when it happened.
+        if previous_page != current.page {
             if let Some(cb) = on_page_change {
-                cb.run(next_page);
+                cb.run(current.page);
             }
         }
     });
 
-    let total_count = Signal::derive(move || local_pagination.get().total);
+    let handle_mode_change = Callback::new(move |mode: PaginationMode| {
+        local_pagination.update(|pagination| pagination.set_mode(mode));
+    });
+
+    let handle_load_more = Callback::new(move |_| {
+        if !effective_pagination.get_untracked().has_next {
+            return;
+        }
+        let mut next = effective_pagination.get_untracked().page.saturating_add(1);
+        local_pagination.update(|pagination| {
+            next = pagination.go_to_page(next);
+        });
+        if let Some(cb) = on_load_more {
+            cb.run(());
+        } else if let Some(cb) = on_page_change {
+            cb.run(next);
+        }
+    });
+
+    let total_count = Signal::derive(move || effective_pagination.get().total);
     let selected_count = Signal::derive(move || local_selection.get().count());
     let has_active_filters = Signal::derive(move || !local_filters.get().is_empty());
 
     view! {
         <div class="w-full rounded-xl border border-border/80 bg-card shadow-sm flex flex-col overflow-hidden">
-            // Toolbar (selection counter, columns config, filters status)
             <GridToolbar
                 total_count=total_count
                 selected_count=selected_count
@@ -226,92 +263,84 @@ where
                 bulk_actions=bulk_actions
             />
 
-            // Table Scroll Container
             <div class="w-full overflow-x-auto relative">
-                <table class="w-full border-collapse text-left">
-                    {move || view! {
-                        <GridHeader
-                            columns=local_columns.get()
-                            column_widths=local_widths.into()
-                            sort_state=local_sort.into()
-                            filters=local_filters.into()
-                            all_selected=all_selected
-                            has_selectable=has_selectable.get()
-                            on_toggle_all=handle_toggle_all_select
-                            on_sort=handle_sort
-                            on_resize=handle_resize
-                            on_filter_change=handle_filter_change
-                            on_clear_filters=handle_clear_filters
-                        />
-                    }}
+                <table class="w-full border-collapse text-left" aria-label=table_label>
+                    <GridHeader
+                        columns=local_columns.into()
+                        column_widths=local_widths.into()
+                        sort_state=local_sort.into()
+                        filters=local_filters.into()
+                        all_selected=all_selected
+                        some_selected=some_selected
+                        on_toggle_all=handle_toggle_all_select
+                        on_sort=handle_sort
+                        on_resize=handle_resize
+                        on_filter_change=handle_filter_change
+                        on_clear_filters=handle_clear_filters
+                    />
 
                     <tbody class="divide-y divide-border/40 bg-background">
-                        {move || {
-                            let items = display_items();
-                            let loading = loading_signal.get();
-
-                            if loading && items.is_empty() {
+                        <For
+                            each=move || display_items()
+                            key=move |item: &T| key_fn(item).to_string()
+                            children=move |item: T| {
+                                let row_id = key_fn(&item).to_string();
+                                let is_selected = {
+                                    let id = row_id.clone();
+                                    Signal::derive(move || local_selection.get().is_selected(&id))
+                                };
                                 view! {
-                                    <tr>
-                                        <td
-                                            colspan=local_columns.get().len()
-                                            class="py-12 text-center text-sm text-muted-foreground"
-                                        >
-                                            <div class="inline-flex items-center gap-2">
-                                                <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                                                <span>"Loading data..."</span>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <GridRow
+                                        item=item
+                                        row_id=row_id
+                                        columns=local_columns.into()
+                                        column_widths=local_widths.into()
+                                        is_selected=is_selected
+                                        on_toggle_select=handle_toggle_row_select
+                                        on_row_click=on_row_click
+                                        cell_renderer=cell_renderer
+                                    />
                                 }
-                                .into_any()
-                            } else if items.is_empty() {
-                                let msg = empty_msg.clone();
-                                view! {
-                                    <tr>
-                                        <td
-                                            colspan=local_columns.get().len()
-                                            class="py-12 text-center text-sm text-muted-foreground"
-                                        >
-                                            <p>{msg}</p>
-                                        </td>
-                                    </tr>
-                                }
-                                .into_any()
-                            } else {
-                                items
-                                    .into_iter()
-                                    .map(|item| {
-                                        let row_id = key_fn(&item).to_string();
-                                        let is_sel = {
-                                            let id = row_id.clone();
-                                            Signal::derive(move || local_selection.get().is_selected(&id))
-                                        };
-
-                                        view! {
-                                            <GridRow
-                                                item=item
-                                                row_id=row_id
-                                                columns=local_columns.get()
-                                                column_widths=local_widths.into()
-                                                is_selected=is_sel
-                                                on_toggle_select=handle_toggle_row_select
-                                                on_row_click=on_row_click
-                                                cell_renderer=cell_renderer
-                                            />
-                                        }
-                                    })
-                                    .collect_view()
-                                    .into_any()
                             }
+                        />
+
+                        {move || {
+                            if !display_items().is_empty() {
+                                return ().into_any();
+                            }
+                            let loading = loading_signal.get();
+                            view! {
+                                <tr>
+                                    <td
+                                        colspan=visible_colspan
+                                        class="py-12 text-center text-sm text-muted-foreground"
+                                        aria-live="polite"
+                                    >
+                                        {if loading {
+                                            view! {
+                                                <div class="inline-flex items-center gap-2">
+                                                    <div
+                                                        class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                                                        aria-hidden="true"
+                                                    />
+                                                    <span>"Loading data..."</span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            view! { <p>{empty_msg.get_value()}</p> }.into_any()
+                                        }}
+                                    </td>
+                                </tr>
+                            }
+                                .into_any()
                         }}
                     </tbody>
                 </table>
             </div>
 
-            // Pagination & Infinite Scroll Footer
             <GridPaginationBar
-                pagination=local_pagination.into()
+                pagination=effective_pagination
                 on_page_change=handle_page_change
                 on_page_size_change=handle_page_size_change
                 on_mode_change=handle_mode_change

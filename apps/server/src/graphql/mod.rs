@@ -16,6 +16,7 @@ pub mod legacy_disable_user;
 pub mod loaders;
 #[cfg(feature = "mod-moderation")]
 pub mod moderation_recovery;
+pub mod module_rollback;
 pub mod module_security;
 pub mod module_settings_cas;
 pub mod mutations;

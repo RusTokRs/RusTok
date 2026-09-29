@@ -38,3 +38,59 @@ pub(crate) fn map_artifact_installation_lifecycle_error(
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{map_artifact_installation_lifecycle_error, map_artifact_tenant_lifecycle_error};
+    use async_graphql::ErrorExtensions;
+    use rustok_modules::ModuleInstallationError;
+
+    #[test]
+    fn installation_revision_conflict_keeps_stable_conflict_contract() {
+        let error = map_artifact_installation_lifecycle_error(
+            ModuleInstallationError::AdmissionRevisionConflict(
+                "database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(
+            error.message,
+            "Artifact installation lifecycle command conflicts with the current owner state"
+        );
+        let extended = error.extend();
+        assert_eq!(
+            extended
+                .extensions
+                .get("code")
+                .and_then(|value| value.as_str()),
+            Some("ARTIFACT_INSTALLATION_LIFECYCLE_CONFLICT")
+        );
+        assert!(!extended.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn installation_storage_errors_are_generic() {
+        let error = map_artifact_installation_lifecycle_error(
+            ModuleInstallationError::Store("database password=secret".to_string()),
+        );
+
+        assert_eq!(
+            error.message,
+            "Artifact installation lifecycle is unavailable"
+        );
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn tenant_storage_errors_are_generic() {
+        let error = map_artifact_tenant_lifecycle_error(
+            ModuleInstallationError::Outbox("database password=secret".to_string()),
+        );
+
+        assert_eq!(
+            error.message,
+            "Artifact tenant lifecycle is unavailable"
+        );
+        assert!(!error.message.contains("database password=secret"));
+    }
+}

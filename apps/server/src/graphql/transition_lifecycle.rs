@@ -37,6 +37,7 @@ pub struct ModuleTransitionCheckpointGql {
 
 impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
     fn from(checkpoint: ModuleTransitionCheckpointView) -> Self {
+        let state_for_details = checkpoint.state.clone();
         let state = match checkpoint.state {
             ModuleTransitionStateView::Preflighting => ModuleTransitionStateGql::Preflighting,
             ModuleTransitionStateView::Fenced => ModuleTransitionStateGql::Fenced,
@@ -65,12 +66,27 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
             predecessor_digest: checkpoint.predecessor_digest,
             candidate_digest: checkpoint.candidate_digest,
             state,
-            state_details: checkpoint.state_details,
+            state_details: sanitize_state_details(state_for_details, checkpoint.state_details),
             security_epoch: checkpoint.security_epoch,
             recovery_attempt_count: checkpoint.recovery_attempt_count,
             created_at: checkpoint.created_at,
             updated_at: checkpoint.updated_at,
         }
+    }
+}
+
+fn sanitize_state_details(
+    state: ModuleTransitionStateView,
+    state_details: Option<String>,
+) -> Option<String> {
+    match state {
+        ModuleTransitionStateView::RecoveredToPredecessor if state_details.is_some() => {
+            Some("Transition recovered to the retained predecessor".to_string())
+        }
+        ModuleTransitionStateView::FailedClosed if state_details.is_some() => {
+            Some("Transition failed closed; manual intervention is required".to_string())
+        }
+        _ => state_details,
     }
 }
 
@@ -145,11 +161,14 @@ impl From<ModuleRetentionHoldView> for RetentionHoldGql {
 
 pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError) -> FieldError {
     match error {
-        TransitionCoordinatorError::RecoveryLimitExhausted(reason) => FieldError::new(reason)
-            .extend_with(|_, extensions| {
-                extensions.set("code", "RECOVERY_LIMIT_EXHAUSTED");
-                extensions.set("retryable_issue", false);
-            }),
+        TransitionCoordinatorError::RecoveryLimitExhausted(reason) => {
+            tracing::error!(%reason, "module transition automatic recovery limit exhausted");
+            FieldError::new("Automatic transition recovery limit was exhausted")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "RECOVERY_LIMIT_EXHAUSTED");
+                    extensions.set("retryable_issue", false);
+                })
+        },
         TransitionCoordinatorError::InvalidStateTransition { from, to } => FieldError::new(
             format!("Invalid state transition from {from} to {to}"),
         )
@@ -157,11 +176,65 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
             extensions.set("code", "INVALID_STATE_TRANSITION");
             extensions.set("retryable_issue", false);
         }),
-        TransitionCoordinatorError::SecurityEpochStale(e) => FieldError::new(e.to_string())
-            .extend_with(|_, extensions| {
-                extensions.set("code", "SECURITY_EPOCH_STALE");
-                extensions.set("retryable_issue", false);
-            }),
+        TransitionCoordinatorError::SecurityEpochStale(error) => {
+            tracing::warn!(%error, "module transition security epoch is stale");
+            FieldError::new("Transition security epoch is stale; reload the current state")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "SECURITY_EPOCH_STALE");
+                    extensions.set("retryable_issue", false);
+                })
+        },
         _ => <FieldError as GraphQLError>::internal_error("Transition coordinator failed"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_transition_coordinator_error;
+    use rustok_modules::{TransitionCoordinatorError, security_epoch::SecurityEpochConflictError};
+
+    #[test]
+    fn recovery_limit_error_redacts_owner_reason() {
+        let error = map_transition_coordinator_error(
+            TransitionCoordinatorError::RecoveryLimitExhausted(
+                "Automatic recovery already attempted: database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(error.message, "Automatic transition recovery limit was exhausted");
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn failed_transition_state_details_redact_owner_reason() {
+        let details = super::sanitize_state_details(
+            ModuleTransitionStateView::FailedClosed,
+            Some("database password=secret".to_string()),
+        );
+
+        assert_eq!(
+            details.as_deref(),
+            Some("Transition failed closed; manual intervention is required")
+        );
+        assert!(!details.unwrap().contains("database password=secret"));
+    }
+
+    #[test]
+    fn security_epoch_error_redacts_latest_reason() {
+        let error = map_transition_coordinator_error(
+            TransitionCoordinatorError::SecurityEpochStale(
+                SecurityEpochConflictError::EpochStale {
+                    expected: rustok_modules::GlobalSecurityEpoch(1),
+                    current: rustok_modules::GlobalSecurityEpoch(2),
+                    latest_reason: "secret operational reason".to_string(),
+                },
+            ),
+        );
+
+        assert_eq!(
+            error.message,
+            "Transition security epoch is stale; reload the current state"
+        );
+        assert!(!error.message.contains("secret operational reason"));
     }
 }

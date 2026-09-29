@@ -95,29 +95,44 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
     assert!(controller.contains("invalidate_tenant_channel_cache(ctx, tenant_id).await;"));
 
     let endpoint_marker = "endpoint = \"channel/";
-    let endpoints = adapter
+    let mut native_paths = adapter
         .match_indices(endpoint_marker)
         .filter_map(|(start, _)| {
             let value = &adapter[start + "endpoint = \"".len()..];
             value.find('"').map(|end| &value[..end])
         })
+        .filter(|endpoint| *endpoint != "channel/bootstrap")
+        .map(|endpoint| format!("/api/fn/{endpoint}"))
         .collect::<Vec<_>>();
 
-    assert!(endpoints.contains(&"channel/bootstrap"));
-    assert!(endpoints.len() > 1, "expected channel mutation endpoints");
+    assert!(!native_paths.is_empty(), "expected channel mutation endpoints");
+    native_paths.sort_unstable();
 
-    for endpoint in endpoints
-        .into_iter()
-        .filter(|endpoint| *endpoint != "channel/bootstrap")
-    {
-        let path = format!("\"/api/fn/{endpoint}\"");
-        assert!(
-            wrapper.contains(&path),
-            "native channel mutation {endpoint} must invalidate the resolution cache"
-        );
-    }
+    let mut wrapper_paths = wrapper
+        .split_once("const NATIVE_CHANNEL_MUTATION_PATHS: &[&str] = &[")
+        .and_then(|(_, rest)| rest.split_once("];"))
+        .map(|(body, _)| {
+            body.lines()
+                .filter_map(|line| {
+                    let line = line.trim();
+                    line.strip_prefix('"')
+                        .and_then(|line| line.find('"').map(|end| line[..end].to_string()))
+                })
+                .collect::<Vec<_>>()
+        })
+        .expect("native channel wrapper must declare its mutation path list");
 
-    assert!(!wrapper.contains("\"/api/fn/channel/bootstrap\""));
+    assert!(
+        wrapper_paths.iter().all(|path| path.starts_with("/api/fn/channel/")),
+        "native channel wrapper must contain only channel server-function paths"
+    );
+    wrapper_paths.sort_unstable();
+
+    assert_eq!(
+        wrapper_paths, native_paths,
+        "native mutation path inventory must exactly match the channel admin server-function owner"
+    );
+    assert!(!wrapper_paths.iter().any(|path| path == "/api/fn/channel/bootstrap"));
 }
 
 #[test]
