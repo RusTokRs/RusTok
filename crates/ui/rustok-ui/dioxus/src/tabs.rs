@@ -9,12 +9,17 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{Orientation, tabs_content_classes, tabs_list_classes, tabs_trigger_classes};
+use rustok_ui::{
+    Orientation, merge_classes, tabs_content_classes, tabs_list_classes, tabs_trigger_classes,
+};
 
 #[component]
 pub fn Tabs(#[props(default)] class: Option<String>, children: Element) -> Element {
+    let custom = class.as_deref();
+    let full_class = merge_classes(&["w-full", custom.unwrap_or("")]);
+
     rsx! {
-        div { class: "w-full {class.as_deref().unwrap_or(\"\")}",
+        div { class: "{full_class}",
             {children}
         }
     }
@@ -30,7 +35,10 @@ pub fn TabsList(
     let full_class = tabs_list_classes(orientation, custom);
 
     rsx! {
-        div { role: "tablist", class: "{full_class}",
+        div {
+            role: "tablist",
+            "aria-orientation": orientation.as_str(),
+            class: "{full_class}",
             {children}
         }
     }

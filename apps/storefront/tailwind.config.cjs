@@ -1,6 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./src/**/*.rs", "./assets/**/*.css"],
+  content: [
+    "./src/**/*.rs",
+    "./assets/**/*.css",
+    "../../crates/ui/rustok-ui/src/**/*.rs",
+    "../../crates/ui/rustok-ui/leptos/src/**/*.rs",
+    "../../crates/ui/leptos-ui/src/**/*.rs",
+  ],
   theme: {
     extend: {
       fontFamily: {

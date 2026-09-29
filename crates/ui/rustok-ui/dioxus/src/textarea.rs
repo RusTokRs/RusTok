@@ -25,7 +25,7 @@ pub fn Textarea(
     #[props(default)] name: Option<String>,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = textarea_classes(size, invalid, disabled, custom);
+    let full_class = textarea_classes(size, invalid, custom);
 
     rsx! {
         textarea {

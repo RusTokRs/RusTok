@@ -12,6 +12,11 @@ use leptos::children::Children;
 use leptos::prelude::*;
 use rustok_ui::label_classes;
 
+/// Field label.
+///
+/// `r#for` targets a static element id; `required` appends the destructive
+/// asterisk, and `disabled` switches the `peer-disabled:` styling to the
+/// hard-disabled one for labels that are not peers of their control.
 #[component]
 pub fn Label(
     #[prop(default = false)] required: bool,
@@ -21,7 +26,7 @@ pub fn Label(
     children: Children,
 ) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = label_classes(required, disabled, custom);
+    let full_class = label_classes(disabled, custom);
 
     view! {
         <label

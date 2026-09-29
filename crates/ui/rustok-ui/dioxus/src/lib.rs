@@ -65,5 +65,14 @@ pub use select::Select as ui_select;
 pub use separator::Separator as ui_separator;
 pub use skeleton::Skeleton as ui_skeleton;
 pub use spinner::Spinner as ui_spinner;
+pub use card::{
+    Card as ui_card, CardAction as ui_card_action, CardContent as ui_card_content,
+    CardDescription as ui_card_description, CardFooter as ui_card_footer,
+    CardHeader as ui_card_header, CardTitle as ui_card_title,
+};
 pub use switch::Switch as ui_switch;
+pub use tabs::{
+    Tabs as ui_tabs, TabsContent as ui_tabs_content, TabsList as ui_tabs_list,
+    TabsTrigger as ui_tabs_trigger,
+};
 pub use textarea::Textarea as ui_textarea;

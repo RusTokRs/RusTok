@@ -11,6 +11,13 @@
 use leptos::prelude::*;
 use rustok_ui::{Size, input_classes};
 
+/// Single-line text control.
+///
+/// `r#type` forwards the native HTML type (`text`, `email`, `date`, …), while
+/// [`rustok_ui::InputType`] stays available as the typed contract for hosts
+/// that prefer an enum. `invalid` renders `aria-invalid` and switches the
+/// border/ring palette to the destructive one. Empty `id`/`name` values are
+/// omitted instead of rendered as empty attributes.
 #[component]
 pub fn Input(
     #[prop(default = "text")] r#type: &'static str,
@@ -25,8 +32,9 @@ pub fn Input(
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
+    let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = input_classes(size, invalid, disabled, custom);
+    let full_class = input_classes(size, invalid, custom);
 
     view! {
         <input

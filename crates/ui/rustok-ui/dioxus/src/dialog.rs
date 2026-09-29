@@ -29,7 +29,6 @@ pub fn Dialog(
         if open {
             div {
                 class: "{backdrop_class}",
-                "aria-hidden": "true",
                 onclick: move |_| {
                     if let Some(ref cb) = on_close {
                         cb.call(());
@@ -39,6 +38,7 @@ pub fn Dialog(
             div {
                 role: "dialog",
                 "aria-modal": "true",
+                tabindex: "-1",
                 class: "{content_class}",
                 {children}
             }

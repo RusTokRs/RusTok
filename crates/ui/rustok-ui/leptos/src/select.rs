@@ -11,6 +11,12 @@
 use leptos::prelude::*;
 use rustok_ui::{SelectOption, Size, select_classes};
 
+/// Native select control driven by [`SelectOption`] rows.
+///
+/// The optional `value`/`set_value` pair keeps the element in sync through the
+/// `value` property (so programmatic changes are reflected), `placeholder`
+/// renders a disabled empty option, and `invalid` renders `aria-invalid` plus
+/// the destructive palette. Empty `id`/`name` values are omitted.
 #[component]
 pub fn Select(
     #[prop(default = Size::Md)] size: Size,
@@ -25,8 +31,9 @@ pub fn Select(
     #[prop(optional, into)] name: String,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
+    let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = select_classes(size, invalid, disabled, custom);
+    let full_class = select_classes(size, invalid, custom);
 
     view! {
         <select
@@ -35,6 +42,7 @@ pub fn Select(
             disabled=disabled
             aria-invalid=invalid
             name=name
+            prop:value=move || value.map(|v| v.get()).unwrap_or_default()
             on:change=move |ev| {
                 if let Some(set) = set_value {
                     set.set(event_target_value(&ev));

@@ -13,6 +13,12 @@ use rustok_ui::{ButtonVariant, Size, button_classes};
 
 use crate::spinner::Spinner;
 
+/// Button with variant, size, loading state, and an optional click handler.
+///
+/// `loading` disables the control, renders a [`Spinner`] before the children
+/// and exposes `aria-busy` so assistive tech announces the pending state.
+/// `on_click` is the repository's boxed handler shape (`Box<dyn Fn()>`); the
+/// native `disabled` attribute keeps it from firing while disabled or loading.
 #[component]
 pub fn Button(
     #[prop(default = ButtonVariant::Default)] variant: ButtonVariant,
@@ -25,7 +31,7 @@ pub fn Button(
     children: Children,
 ) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = button_classes(variant, size, disabled, loading, custom);
+    let full_class = button_classes(variant, size, custom);
     let is_disabled = disabled || loading;
 
     view! {
@@ -33,6 +39,7 @@ pub fn Button(
             type=r#type
             class=full_class
             disabled=is_disabled
+            aria-busy=loading
             on:click=move |_| {
                 if let Some(ref handler) = on_click {
                     handler();

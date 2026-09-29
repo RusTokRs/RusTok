@@ -21,7 +21,7 @@ pub fn Switch(
     #[props(default)] id: Option<String>,
 ) -> Element {
     let custom = class.as_deref();
-    let (track_class, thumb_class) = switch_classes(checked, size, disabled, custom);
+    let (track_class, thumb_class) = switch_classes(checked, size, custom);
 
     rsx! {
         button {

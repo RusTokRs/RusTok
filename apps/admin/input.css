@@ -5,6 +5,8 @@
 @source "../../crates/**/admin/src/**/*.rs";
 @source "../../crates/ui/leptos-ui/src/**/*.rs";
 @source "../../crates/ui/leptos-*/src/**/*.rs";
+@source "../../crates/ui/rustok-ui/src/**/*.rs";
+@source "../../crates/ui/rustok-ui/leptos/src/**/*.rs";
 
 @import "../../UI/tokens/base.css";
 
