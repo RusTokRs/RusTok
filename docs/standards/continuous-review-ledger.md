@@ -447,7 +447,8 @@ Hard limits for every iteration:
 - **Regression audit:** the GraphQL field shape and bounded 0/default/64-owner pagination semantics remain unchanged; `clean` remains page-local; inspection never archives or mutates delivery/state; tenant scope remains sourced from trusted `TenantContext` and transferred through `PortContext`; absent Notifications capability yields a stable fail-closed GraphQL error instead of a fallback.
 - **Fresh second pass:** searched the changed boundary for residual server shim references, Forum-specific permission checks in Notifications, direct Notifications owner/table access from Forum, stale `settings:read` requirements, telemetry duplication, and undeclared runtime capability construction. No additional in-scope repository-owned defect was confirmed.
 - **Verification:** repository source inspection, owner-contract tracing, branch diff review, and static-verifier/source-guard review only. No tests, clippy, build, migration, gatekeeper, runtime, or Node commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** in progress; branch is prepared for pre-PR concurrency reconciliation and merge.
+- **Implementation status:** complete and integrated into `main` via PR #4333, squash merge `9bf5c48a18f6b27f54f86ed4e878ef43193bb31d`.
+- **Post-merge reconciliation:** refreshed `main` at `9bf5c48a18f6b27f54f86ed4e878ef43193bb31d`; comparison against the recorded base `f440babe6f1d4b43cd2da86b33d712438b96033d` is exactly one merged commit with the expected FS-22.05.27 file set. No concurrent `main` changes required reconciliation.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
