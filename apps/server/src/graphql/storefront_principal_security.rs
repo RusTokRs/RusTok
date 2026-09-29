@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use async_graphql::extensions::{
     Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
@@ -17,27 +17,42 @@ fn is_storefront_field(name: &str) -> bool {
 fn selection_contains_storefront(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
+    visited_fragments: &mut BTreeSet<String>,
 ) -> bool {
-    selection_set
-        .items
-        .iter()
-        .any(|selection| match &selection.node {
-            Selection::Field(field) => is_storefront_field(field.node.name.node.as_str()),
-            Selection::FragmentSpread(fragment) => document
-                .fragments
-                .get(&fragment.node.fragment_name.node)
-                .is_some_and(|definition| {
-                    selection_contains_storefront(&definition.node.selection_set.node, document)
-                }),
-            Selection::InlineFragment(fragment) => {
-                selection_contains_storefront(&fragment.node.selection_set.node, document)
+    selection_set.items.iter().any(|selection| match &selection.node {
+        Selection::Field(field) => is_storefront_field(field.node.name.node.as_str()),
+        Selection::FragmentSpread(fragment) => {
+            let name = fragment.node.fragment_name.node.as_str();
+            let Some(definition) = document.fragments.get(name) else {
+                return false;
+            };
+            if !visited_fragments.insert(name.to_owned()) {
+                return false;
             }
-        })
+            selection_contains_storefront(
+                &definition.node.selection_set.node,
+                document,
+                visited_fragments,
+            )
+        }
+        Selection::InlineFragment(fragment) => {
+            selection_contains_storefront(
+                &fragment.node.selection_set.node,
+                document,
+                visited_fragments,
+            )
+        }
+    })
 }
 
 fn document_contains_storefront(document: &ExecutableDocument) -> bool {
+    let mut visited_fragments = BTreeSet::new();
     document.operations.iter().any(|(_, operation)| {
-        selection_contains_storefront(&operation.node.selection_set.node, document)
+        selection_contains_storefront(
+            &operation.node.selection_set.node,
+            document,
+            &mut visited_fragments,
+        )
     })
 }
 
@@ -121,6 +136,27 @@ mod tests {
             let document = async_graphql::parser::parse_query(query).expect("query should parse");
             assert!(document_contains_storefront(&document));
         }
+    }
+
+    #[test]
+    fn fragment_cycle_does_not_recurse_forever_and_still_detects_storefront_fields() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                query Checkout {
+                    ...A
+                }
+                fragment A on Query {
+                    ...B
+                }
+                fragment B on Query {
+                    ...A
+                    storefrontMe { id }
+                }
+            "#,
+        )
+        .expect("cyclic fragment query should parse");
+
+        assert!(document_contains_storefront(&document));
     }
 
     #[test]
