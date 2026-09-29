@@ -69,6 +69,7 @@
   read-model assembly; post-order order-change preview/apply/cancel transport and
   return decision-tree transport stay backed by module services (`rustok-order::OrderService`
   and `PostOrderOrchestrationService`) rather than host-owned logic.
+- Authenticated principals that lack a required Commerce Admin permission receive HTTP `403 Forbidden`; HTTP `401 Unauthorized` is reserved for missing authentication context, and protected Admin OpenAPI operations advertise both responses.
 - Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
 ## Capability classification gap
