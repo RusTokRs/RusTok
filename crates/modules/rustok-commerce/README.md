@@ -70,6 +70,7 @@
   return decision-tree transport stay backed by module services (`rustok-order::OrderService`
   and `PostOrderOrchestrationService`) rather than host-owned logic.
 - Authenticated principals that lack a required Commerce Admin permission receive HTTP `403 Forbidden`; HTTP `401 Unauthorized` is reserved for missing authentication context, and protected Admin OpenAPI operations advertise both responses.
+- Store guest-cart reads and mutations require the cart's server-issued guest capability; anonymous HTTP actor classification never substitutes for that capability, and cart-scoped Store operations advertise `403 Forbidden` when the capability is missing or invalid.
 - Channel-aware price resolution is intentionally not part of the current storefront availability baseline and remains planned under Pricing 2.0.
 
 ## Capability classification gap
