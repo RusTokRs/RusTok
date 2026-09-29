@@ -222,6 +222,7 @@ Expected behavior:
 - `GET /catalog` returns the current read-only catalog contract with `ETag`, `Cache-Control` and `X-Total-Count`;
 - `GET /catalog/{slug}` is the canonical detail contract for external discovery;
 - `GET /api/openapi.json` advertises only registry/health/metrics/swagger surface;
+- startup skips default SuperAdmin tenant/user/RBAC provisioning in `registry_only`, preserving the read-only durable-state contract;
 - `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` and `POST /v2/catalog/yank` should not be available and normally give `404`;
 - `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` should not be available and normally give `404`.
 
