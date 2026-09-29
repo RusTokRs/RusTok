@@ -25,6 +25,8 @@ const serverGraphqlModPath = "apps/server/src/graphql/mod.rs";
 const schemaPath = "apps/server/src/graphql/schema.rs";
 const packetPath =
   "docs/modules/forum-33-notification-reconciliation-status-actualization-2026-08-09.md";
+const guardPath = "apps/server/tests/module_surface_boundary_guard.rs";
+
 
 const owner = read(ownerPath);
 const surface = read(surfacePath);
@@ -35,6 +37,7 @@ const forumGraphqlMod = read(forumGraphqlModPath);
 const serverShim = fs.existsSync(serverShimPath) ? read(serverShimPath) : "";
 const serverGraphqlMod = read(serverGraphqlModPath);
 const schema = read(schemaPath);
+const guard = read(guardPath);
 const packet = read(packetPath);
 
 for (const marker of [
@@ -77,6 +80,18 @@ for (const marker of [
   "NotificationInboxReconciliationInspectPortFactory",
 ]) {
   requireText(api, marker, apiPath + ": missing " + marker);
+}
+
+for (const forbidden of [
+  "NotificationInboxReconcileService",
+  "crate::entities",
+  "DatabaseConnection",
+]) {
+  requireAbsent(
+    api,
+    forbidden,
+    apiPath + ": neutral API must not depend on owner persistence " + forbidden,
+  );
 }
 
 for (const marker of [
@@ -161,16 +176,6 @@ for (const marker of [
   );
 }
 
-for (const marker of [
-  "forum notification reconciliation GraphQL must not be owned by apps/server",
-]) {
-  requireText(
-    "forum notification reconciliation GraphQL must not be owned by apps/server",
-    marker,
-    "internal guard wording check",
-  );
-}
-
 requireAbsent(
   serverShim,
   "ForumNotificationReconciliationQuery",
@@ -185,6 +190,11 @@ requireAbsent(
   schema,
   "ForumNotificationReconciliationQuery",
   schemaPath + ": schema must not compose a server-owned notification reconciliation shim",
+);
+requireText(
+  guard,
+  "forum_notification_reconciliation_graphql_is_owned_by_forum_crate",
+  guardPath + ": missing Forum ownership guard",
 );
 
 for (const marker of [
