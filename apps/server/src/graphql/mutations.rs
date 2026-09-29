@@ -62,6 +62,7 @@ use rustok_modules::{
     ArtifactSettingsRestoreRequest,
 };
 use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
+use std::fmt::Display;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -69,6 +70,11 @@ use uuid::Uuid;
 pub struct RootMutation;
 
 const TOGGLE_ERR_UNKNOWN_MODULE: &str = "Unknown module";
+
+fn graphql_mutation_internal_error(message: &'static str, error: impl Display) -> FieldError {
+    tracing::error!(%error, message, "GraphQL mutation failed");
+    <FieldError as GraphQLError>::internal_error(message)
+}
 
 fn toggle_err_core_module_cannot_be_disabled(module_slug: &str) -> String {
     format!("Core module cannot be disabled: {module_slug}")
@@ -82,8 +88,8 @@ fn toggle_err_has_dependents(dependents: &str) -> String {
     format!("Module is required by: {dependents}")
 }
 
-fn toggle_err_hook_failed(reason: &str) -> String {
-    format!("Module lifecycle hook failed: {reason}")
+fn toggle_err_hook_failed(_reason: &str) -> String {
+    "Module lifecycle hook failed".to_string()
 }
 
 #[cfg(test)]
@@ -107,7 +113,7 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldE
                 }
             })
         }
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        other => graphql_mutation_internal_error("Module composition is unavailable", other),
     }
 }
 
@@ -303,7 +309,7 @@ pub(crate) async fn ensure_modules_manage_permission(
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
     if !can_manage_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -329,7 +335,7 @@ async fn ensure_platform_composition_operator(ctx: &Context<'_>) -> Result<AuthC
     let db = ctx.data::<DatabaseConnection>()?;
     let role = RbacService::get_user_role(db, &tenant.id, &auth.user_id)
         .await
-        .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+        .map_err(|error| graphql_mutation_internal_error("GraphQL mutation failed", error))?;
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
@@ -468,7 +474,7 @@ fn map_platform_composition_build_error(error: PlatformCompositionBuildError) ->
     match error {
         PlatformCompositionBuildError::Composition(error) => map_platform_composition_error(error),
         PlatformCompositionBuildError::Build(error) => {
-            <FieldError as GraphQLError>::internal_error(&error)
+            graphql_mutation_internal_error("Module composition build is unavailable", error)
         }
     }
 }
@@ -521,13 +527,17 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Database(_) => {
             <FieldError as GraphQLError>::internal_error("Internal server error")
         }
-        ToggleModuleError::PreHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+        ToggleModuleError::PreHookFailed(err) => {
+            tracing::error!(%err, "module pre-hook failed in GraphQL mutation");
+            FieldError::new(toggle_err_hook_failed(&err))
             .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", false);
                 ext.set("operation_issue", "pre_hook_failed");
             }),
-        ToggleModuleError::PostHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+        ToggleModuleError::PostHookFailed(err) => {
+            tracing::error!(%err, "module post-hook failed in GraphQL mutation");
+            FieldError::new(toggle_err_hook_failed(&err))
             .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", true);
@@ -564,8 +574,8 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             )
         }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
-            FieldError::new(format!("Module operation is not retryable: {reason}"))
-                .extend_with(|_, ext| {
+            tracing::error!(%reason, "module operation recovery is not retryable");
+            FieldError::new("Module operation is not retryable").extend_with(|_, ext| {
                     ext.set("code", "MODULE_OPERATION_NOT_RETRYABLE");
                     ext.set("retryable_issue", false);
                 })
@@ -581,8 +591,8 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("retryable_issue", false);
         }),
         ModuleOperationRecoveryError::PostHookFailed(err) => {
-            FieldError::new(format!("Module hook failed: {err}"))
-                .extend_with(|_, ext| {
+            tracing::error!(%err, "module post-hook recovery failed in GraphQL mutation");
+            FieldError::new("Module hook failed").extend_with(|_, ext| {
                     ext.set("code", "MODULE_HOOK_FAILED");
                     ext.set("retryable_issue", true);
                     ext.set("operation_issue", "post_hook_failed");
@@ -614,10 +624,10 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                 })
         }
         ModuleOperationRecoveryError::Database(err) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            graphql_mutation_internal_error("Module operation recovery is unavailable", err)
         }
         ModuleOperationRecoveryError::Policy(err) => {
-            <FieldError as GraphQLError>::internal_error(&err)
+            graphql_mutation_internal_error("Module operation recovery policy is unavailable", err)
         }
         ModuleOperationRecoveryError::Toggle(err) => map_toggle_module_error(err),
     }
@@ -642,7 +652,7 @@ fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError
             <FieldError as GraphQLError>::bad_user_input(&other.to_string())
         }
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        other => graphql_mutation_internal_error("Module composition is unavailable", other),
     }
 }
 
@@ -852,7 +862,7 @@ impl RootMutation {
             &rustok_api::Permission::USERS_MANAGE,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
         if !can_manage_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
@@ -864,7 +874,7 @@ impl RootMutation {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .one(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map_err(|err| graphql_mutation_internal_error("Unable to load user", err))?
             .ok_or_else(|| FieldError::new("User not found"))?;
 
         let mut model: users::ActiveModel = user.into();
@@ -873,7 +883,7 @@ impl RootMutation {
         let user = model
             .update(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+.map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
         Ok(User::from(&user))
     }
@@ -1550,8 +1560,9 @@ impl RootMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let settings_json: serde_json::Value = serde_json::from_str(&settings)
-            .map_err(|err| FieldError::new(format!("Invalid JSON in settings: {err}")))?;
+        let settings_json: serde_json::Value = serde_json::from_str(&settings).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input("Invalid JSON in settings")
+        })?;
 
         let module = ModuleLifecycleService::update_module_settings(
             db,
@@ -1630,10 +1641,10 @@ impl RootMutation {
             }),
             UpdateModuleSettingsError::Manifest(err) => map_manifest_error(err),
             UpdateModuleSettingsError::Policy(err) => {
-                <FieldError as GraphQLError>::internal_error(&err)
+                graphql_mutation_internal_error("Module settings policy is unavailable", err)
             }
             UpdateModuleSettingsError::Database(err) => {
-                <FieldError as GraphQLError>::internal_error(&err.to_string())
+                graphql_mutation_internal_error("Module settings storage is unavailable", err)
             }
         })?;
 
@@ -2017,6 +2028,52 @@ mod tests {
             .into_iter()
             .filter(|case| case.expected_code == Some("IDEMPOTENCY_CONFLICT"))
             .collect()
+    }
+
+    #[test]
+    fn mutation_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_mutation_internal_error(
+            "Mutation unavailable",
+            "database password=secret table=module_operations",
+        );
+
+        assert_eq!(error.message, "Mutation unavailable");
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn platform_composition_build_error_redacts_owner_diagnostics() {
+        let error = map_platform_composition_build_error(
+            PlatformCompositionBuildError::Build(
+                "cargo stderr: database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(error.message, "Module composition build is unavailable");
+        assert!(!error.message.contains("database password=secret"));
+        assert_eq!(
+            error_code(&error.extend()).as_deref(),
+            Some("INTERNAL_ERROR")
+        );
+    }
+
+    #[test]
+    fn module_recovery_errors_redact_owner_diagnostics() {
+        let not_retryable = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::NotRetryable(
+                "database password=secret".to_string(),
+            ),
+        );
+        assert_eq!(not_retryable.message, "Module operation is not retryable");
+        assert!(!not_retryable.message.contains("database password=secret"));
+
+        let post_hook = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::PostHookFailed(
+                "post-hook database password=secret".to_string(),
+            ),
+        );
+        assert_eq!(post_hook.message, "Module hook failed");
+        assert!(!post_hook.message.contains("database password=secret"));
     }
 
     #[test]
