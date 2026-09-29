@@ -197,7 +197,7 @@ pub async fn create_payment_collection(
         )
         .await
         .map_err(rustok_web::port_error_to_http_error)?;
-    super::ensure_store_cart_access(&cart, customer_id)?;
+    super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
     super::ensure_cart_allows_payment_collection(&cart)?;
     let cart = super::reprice_storefront_cart_line_items_for_db(
         runtime.db(),
