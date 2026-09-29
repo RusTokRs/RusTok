@@ -2867,7 +2867,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete on the dedicated branch.
 - **Implementation status:** complete and integrated into `main` via PR #4346, squash merge `ba8f4e7929ab689d8b5c3e9ee07d75987e239fdc`.
 - **Post-merge reconciliation:** refreshed `main` at `ba8f4e7929ab689d8b5c3e9ee07d75987e239fdc`; comparing recorded base `97599c37c4984e0225a6f32ce620b65fc599e8e7` to the merge is exactly one commit with the expected Store/cart security, ownership-status, OpenAPI, documentation, tests and ledger change set. The guest-cart guard is present on `main`; the restored `store/tests/carts.rs` is complete; no residual `Forbidden -> 401` mapping remains in the checked Store controllers; complete checkout still advertises its intentional 404 cart-access policy.
-- **Status:** `FS-22.06.06` complete### FS-22.06.07 Result — `crates/modules/rustok-commerce/src/controllers/marketplace_financial.rs` marketplace financial operator HTTP boundary
+- **Status:** `FS-22.06.06` complete
+
+### FS-22.06.07 Result — `crates/modules/rustok-commerce/src/controllers/marketplace_financial.rs` marketplace financial operator HTTP boundary
 
 - **Base:** refreshed `main` at `bfa0e6c8707bddfed2252e2588d9c8fef199db0e`; dedicated branch `codex/audit-fs-22.06.07-marketplace-financial-http` was created from that exact SHA.
 - **Discovery:** re-read the complete marketplace financial operator controller, all seven registered endpoints, shared Commerce permission helper, operator service, paid-event inbox service, financial-operation/paid-event entities and migrations, lease/claim transitions, ledger owner-port error mapping, staged checkout financial runtime, and operator response/OpenAPI contracts.
