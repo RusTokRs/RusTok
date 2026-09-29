@@ -10,7 +10,7 @@ use crate::graphql::artifact_lifecycle::{
 };
 use crate::graphql::queries::ensure_modules_read_permission;
 use crate::graphql::types::{
-    ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation, ArtifactRollback,
+    ArtifactActivation, ArtifactDataPurgeReceipt, ArtifactDeactivation,
     ArtifactSettingsPurgeReceipt, ArtifactSettingsRecoveryPointReceipt,
     ArtifactSettingsRestoreReceipt, ArtifactTenantLifecycle, ArtifactUninstall, BuildJob,
     CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
@@ -52,7 +52,7 @@ use rustok_auth::{
 use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
-    ArtifactActivationRequest, ArtifactDeactivationRequest, ArtifactRollbackRequest,
+    ArtifactActivationRequest, ArtifactDeactivationRequest,
     ArtifactTenantDisableRequest, ArtifactTenantEnableRequest, ArtifactUninstallRequest,
     ModuleCommandContext, ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
 };
@@ -290,7 +290,7 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
     }
 }
 
-async fn ensure_modules_manage_permission(
+pub(crate) async fn ensure_modules_manage_permission(
     ctx: &Context<'_>,
 ) -> Result<(AuthContext, TenantContext)> {
     let auth = ctx
@@ -374,7 +374,7 @@ fn require_platform_composition_operator(
     Ok(())
 }
 
-fn artifact_lifecycle_expected_revision(
+pub(crate) fn artifact_lifecycle_expected_revision(
     installation_id: Uuid,
     expected_revision: i64,
     reason: &str,
@@ -397,7 +397,7 @@ fn artifact_lifecycle_expected_revision(
     })
 }
 
-fn artifact_lifecycle_revision(revision: u64) -> Result<i64> {
+pub(crate) fn artifact_lifecycle_revision(revision: u64) -> Result<i64> {
     i64::try_from(revision).map_err(|_| {
         <FieldError as GraphQLError>::internal_error(
             "Artifact lifecycle revision is outside the GraphQL range",
@@ -405,7 +405,7 @@ fn artifact_lifecycle_revision(revision: u64) -> Result<i64> {
     })
 }
 
-fn tenant_artifact_scope(tenant_id: Uuid) -> ModuleInstallationScope {
+pub(crate) fn tenant_artifact_scope(tenant_id: Uuid) -> ModuleInstallationScope {
     ModuleInstallationScope::Tenant { tenant_id }
 }
 
@@ -1194,58 +1194,6 @@ impl RootMutation {
             installation_id,
             operation_id: result.operation_id,
             revision: artifact_lifecycle_revision(result.revision)?,
-        })
-    }
-
-    /// Rolls back only to the retained direct predecessor in the authenticated
-    /// tenant scope. The client cannot supply a target installation selector.
-    async fn rollback_tenant_artifact(
-        &self,
-        ctx: &Context<'_>,
-        installation_id: Uuid,
-        expected_revision: i64,
-        reason: String,
-        idempotency_key: Uuid,
-        target_capability_grant_revision: i64,
-    ) -> Result<ArtifactRollback> {
-        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let expected_revision = artifact_lifecycle_expected_revision(
-            installation_id,
-            expected_revision,
-            &reason,
-            idempotency_key,
-        )?;
-        if target_capability_grant_revision <= 0 {
-            return Err(<FieldError as GraphQLError>::bad_user_input(
-                "Artifact rollback requires a positive target capability-grant revision",
-            ));
-        }
-        let target_capability_grant_revision = u64::try_from(target_capability_grant_revision)
-            .map_err(|_| {
-                <FieldError as GraphQLError>::bad_user_input(
-                    "Artifact rollback capability-grant revision is outside the supported range",
-                )
-            })?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let result = ModuleControlPlane::new(db.clone())
-            .installation()
-            .rollback_artifact(ArtifactRollbackRequest {
-                installation_id,
-                scope: tenant_artifact_scope(tenant.id),
-                expected_revision,
-                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
-                reason,
-                target_capability_grant_revision,
-            })
-            .await
-            .map_err(map_artifact_installation_lifecycle_error)?;
-
-        Ok(ArtifactRollback {
-            operation_id: result.operation_id,
-            source_installation_id: installation_id,
-            target_installation_id: result.target_installation_id,
-            source_revision: artifact_lifecycle_revision(result.source_revision)?,
-            target_revision: artifact_lifecycle_revision(result.target_revision)?,
         })
     }
 
