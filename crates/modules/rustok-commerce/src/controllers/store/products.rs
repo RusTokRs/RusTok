@@ -672,7 +672,7 @@ pub async fn list_shipping_options(
                         Some(cart_id),
                     )
                 })?;
-            super::ensure_store_cart_access(&cart, customer_id)?;
+            super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
             let required_shipping_profiles =
                 load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                     .await
