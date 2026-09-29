@@ -25,7 +25,7 @@ pub fn Input(
     #[props(default)] name: Option<String>,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = input_classes(size, invalid, disabled, custom);
+    let full_class = input_classes(size, invalid, custom);
     let type_attr = r#type;
 
     rsx! {

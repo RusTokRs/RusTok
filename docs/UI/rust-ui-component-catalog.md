@@ -8,15 +8,25 @@ status: verified
 ---
 # Rust UI Component Catalog
 
-This document captures the current shared UI surface in RusToK and the division of responsibility between `UI/*`, `crates/ui/leptos-ui`, and app-local components.
+This document captures the current shared UI surface in RusToK and the division of
+responsibility between `crates/ui/rustok-ui*`, `crates/ui/leptos-ui`, `UI/*`, and
+app-local components.
 
 ## Sources of Shared UI
 
-The repository currently has three levels of UI reuse:
+The repository currently has these levels of UI reuse:
 
-- `UI/tokens` — common design tokens and basic CSS variables;
-- `UI/leptos` and `UI/next/components` — parallel shared primitives for Leptos and Next.js;
-- `crates/ui/leptos-ui` — RusToK-specific Leptos package boundary with re-exports and local helper components.
+- `crates/ui/rustok-ui/src` — framework-agnostic contracts (variants, sizes, state
+  models) and the deterministic Tailwind class resolvers shared by every framework;
+- `crates/ui/rustok-ui/leptos` (`rustok-ui-leptos`) and `crates/ui/rustok-ui/dioxus`
+  (`rustok-ui-dioxus`) — the wrapper adapters that turn those resolvers into
+  framework components;
+- `crates/ui/leptos-ui` — RusToK-specific Leptos package boundary; re-exports
+  `rustok_ui_leptos::*` and owns only the local helper components
+  (`LanguageToggle`, rich-text helpers);
+- `UI/tokens` — legacy design tokens and CSS variables consumed by the admin shell;
+- `UI/leptos` (`iu-leptos`) and `UI/next/components` — the legacy parallel shared
+  primitives kept for surfaces that have not migrated to `rustok-ui` yet.
 
 App-local complex components remain inside specific host applications and are not considered part of the shared catalog until a reusable contract emerges.
 
@@ -26,29 +36,32 @@ App-local complex components remain inside specific host applications and are no
 - Leptos and Next.js components must maintain parity in purpose, visual result, and basic API, but are not required to have a literal one-to-one implementation.
 - Shared UI packages remain a presentational layer and do not own transport, auth, routing, or domain behavior.
 
-## Shared Primitives: `UI/leptos` ↔ `UI/next/components`
+## Shared Primitives: `crates/ui/rustok-ui/leptos` ↔ `UI/next/components`
 
 Current set of components with an explicit shared surface:
 
 | Primitive | Leptos | Next.js | Status |
 |-----------|--------|---------|--------|
-| Alert | `UI/leptos/src/alert.rs` | app-local / shadcn path | Leptos canonical |
-| Badge | `UI/leptos/src/badge.rs` | `UI/next/components/Badge.tsx` | parity |
-| Button | `UI/leptos/src/button.rs` | `UI/next/components/Button.tsx` | parity |
-| Checkbox | `UI/leptos/src/checkbox.rs` | `UI/next/components/Checkbox.tsx` | parity |
-| Input | `UI/leptos/src/input.rs` | `UI/next/components/Input.tsx` | parity |
-| Select | `UI/leptos/src/select.rs` | `UI/next/components/Select.tsx` | parity |
-| Spinner | `UI/leptos/src/spinner.rs` | `UI/next/components/Spinner.tsx` | parity |
-| Switch | `UI/leptos/src/switch.rs` | `UI/next/components/Switch.tsx` | parity |
-| Textarea | `UI/leptos/src/textarea.rs` | `UI/next/components/Textarea.tsx` | parity |
-| Avatar | missing from shared Leptos surface | `UI/next/components/Avatar.tsx` | Next-only |
-| Skeleton | missing from shared Leptos surface | `UI/next/components/Skeleton.tsx` | Next-only |
+| Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | app-local / shadcn path | Leptos canonical |
+| Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `UI/next/components/Badge.tsx` | parity |
+| Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `UI/next/components/Button.tsx` | parity |
+| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `UI/next/components/Checkbox.tsx` | parity |
+| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `UI/next/components/Input.tsx` | parity |
+| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `UI/next/components/Select.tsx` | parity |
+| Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `UI/next/components/Spinner.tsx` | parity |
+| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `UI/next/components/Switch.tsx` | parity |
+| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `UI/next/components/Textarea.tsx` | parity |
+| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `UI/next/components/Avatar.tsx` | parity |
+| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `UI/next/components/Skeleton.tsx` | parity |
+| Card / Tabs / Dialog / Label / Separator | `crates/ui/rustok-ui/leptos/src/{card,tabs,dialog,label,separator}.rs` | app-local / shadcn path | Leptos canonical |
 
-`UI/leptos/src/lib.rs` and `UI/next/components/index.ts` are the entry points for this shared primitive layer.
+`crates/ui/rustok-ui/leptos/src/lib.rs` and `UI/next/components/index.ts` are the entry
+points for this shared primitive layer. The legacy `UI/leptos/src/*` implementations
+remain available through the `iu-leptos` workspace crate only.
 
 ## Leptos-Specific Package Boundary: `crates/ui/leptos-ui`
 
-`crates/ui/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. Current entry points:
+`crates/ui/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. It re-exports every component from `rustok-ui-leptos` (`pub use rustok_ui_leptos::*;`) and adds the local helpers below. Current entry points:
 
 - `Button`
 - `Input`
@@ -83,7 +96,7 @@ If such a component starts being reused across multiple hosts or modules, it sho
 
 ## Verification When Changing Shared UI
 
-- compare `UI/leptos` and `UI/next/components` for API drift;
+- compare `crates/ui/rustok-ui/leptos` and `UI/next/components` for API drift;
 - verify that shared components do not pull in domain-specific dependencies;
 - update app-local docs if the host integration contract changes;
 - update [UI index](./README.md) and related app docs if the boundary between shared and app-local UI changes.

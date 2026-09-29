@@ -4,8 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
-description = "Framework-agnostic UI component design tokens, variants, props contracts, theme resolution, and headless component state machines"
+description = "Framework-agnostic UI design system core: variants, sizes, headless contracts and deterministic Tailwind CSS class resolvers"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
 serde_json.workspace = true

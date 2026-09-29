@@ -25,7 +25,7 @@ pub fn Select(
     #[props(default)] name: Option<String>,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = select_classes(size, invalid, disabled, custom);
+    let full_class = select_classes(size, invalid, custom);
 
     rsx! {
         select {
@@ -34,6 +34,7 @@ pub fn Select(
             disabled: disabled,
             "aria-invalid": invalid.to_string(),
             name: name.as_deref(),
+            value: value.as_deref(),
             onchange: move |evt| {
                 if let Some(ref handler) = onchange {
                     handler.call(evt);

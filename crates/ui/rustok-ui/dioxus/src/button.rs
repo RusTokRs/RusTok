@@ -25,7 +25,7 @@ pub fn Button(
     children: Element,
 ) -> Element {
     let custom = class.as_deref();
-    let full_class = button_classes(variant, size, disabled, loading, custom);
+    let full_class = button_classes(variant, size, custom);
     let is_disabled = disabled || loading;
     let type_attr = r#type;
 

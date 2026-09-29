@@ -7,6 +7,6 @@ authors = ["RusToK Team"]
 description = "Dioxus 0.6 component adapter for RusToK UI"
 
 [dependencies]
-dioxus = { version = "0.6" }
+dioxus = { workspace = true }
 rustok-ui = { path = ".." }
 serde = { workspace = true, features = ["derive"] }

@@ -14,6 +14,20 @@ SSR-first Leptos 0.8 design system component adapter for the RusToK platform.
 - **Overlays**: `Dialog` (Modal).
 - **Data Display**: `Avatar`.
 
+## Behaviour notes
+
+- `Button` accepts `on_click`, `disabled`, `loading` (shows a `Spinner`), and a
+  native `r#type` (default `button`). `disabled`/`loading` are rendered through
+  the native attribute, not through extra classes.
+- `Select` is controlled through `value`/`set_value`; the component binds the
+  `value` property and emits `on:change` with `event_target_value`.
+- `Dialog` renders the backdrop without `aria-hidden` (it is clickable to
+  dismiss), focuses the dialog on open, and closes on `Escape`.
+- `Spinner` exposes `aria_label` (default `Loading`) so hosts can pass localized
+  text; `TabsList` and `Separator` announce their `aria-orientation`.
+- `Input`, `Textarea`, `Select`, `Checkbox`, and `Switch` accept an optional
+  `class` string that is appended to the resolved class list.
+
 ## Usage
 
 ```rust

@@ -32,7 +32,7 @@ const files = {
   uiInput: "UI/leptos/src/input.rs",
   uiSelect: "UI/leptos/src/select.rs",
   uiTextarea: "UI/leptos/src/textarea.rs",
-  uiLabel: "crates/ui/leptos-ui/src/label.rs",
+  uiLabel: "crates/ui/rustok-ui/leptos/src/label.rs",
   leptosEn: "crates/modules/rustok-translation/admin/locales/en.ftl",
   leptosRu: "crates/modules/rustok-translation/admin/locales/ru.ftl",
   nextEn: "apps/next-admin/messages/en.ftl",
