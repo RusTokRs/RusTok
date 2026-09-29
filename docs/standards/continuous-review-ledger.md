@@ -390,7 +390,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.08 — `apps/server/src/graphql/security.rs`** — one-module audit; sensitive-field authorization now follows canonical effective-permission semantics and fragment traversal is cycle-safe. Next primary module: `apps/server/src/graphql/settings/query.rs` already completed; continue to `apps/server/src/graphql/system.rs`.
 - [x] **FS-22.05.09 — `apps/server/src/graphql/system.rs`** — one-module audit; host-global diagnostics restricted to host authority, event count failures no longer collapse to false zeroes, and session DB errors redacted. Next primary module: `apps/server/src/graphql/tenant_security.rs`.
 - [x] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant argument traversal/bypass resistance reverified and invalid tenant identifiers no longer echo raw input. Next primary module: `apps/server/src/graphql/principal_tenant_security.rs`.
-- [ ] **FS-22.05.11 — `apps/server/src/graphql/principal_tenant_security.rs`** — one-module audit; authenticated principal/request tenant binding, missing-context behavior, extension ordering, and bypass resistance.
+- [x] **FS-22.05.11 — `apps/server/src/graphql/principal_tenant_security.rs`** — one-module audit; principal/request tenant binding, context assembly, and extension ordering reverified; no repository-owned defect required remediation. Next primary module: `apps/server/src/graphql/observability.rs`.
+- [ ] **FS-22.05.12 — `apps/server/src/graphql/observability.rs`** — one-module audit; telemetry/diagnostic exposure, host-vs-tenant scope, authorization, and error mapping.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -430,6 +431,19 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.11 Assessment — `apps/server/src/graphql/principal_tenant_security.rs`
+
+- **Base:** post-merge `main` refreshed at `3604103e8f848a1d7d3c146b47597dc0205324e4`; dedicated branch `codex/audit-fs-22.05.11-graphql-principal-tenant-security` was created from that exact SHA.
+- **Discovery:** reviewed the complete principal/tenant extension plus GraphQL HTTP handler context assembly, GraphQL WebSocket initialization, access-token tenant validation, schema extension ordering, and anonymous/host execution paths.
+- **Invariant map:** an authenticated principal must never execute a GraphQL request under another tenant context; missing context combinations must remain compatible with explicitly public or host-global operations without weakening tenant-owned resolver guards; the extension must run before resolver execution and close the request on mismatch.
+- **Assessment:** the extension rejects `AuthContext.tenant_id != TenantContext.id` before execution. HTTP GraphQL always inserts the resolved tenant context and only inserts `AuthContext` after access-token validation against that tenant. WebSocket initialization resolves tenant first, validates the access token against the same tenant, then inserts both contexts into the connection data. Subsequent WS polls revalidate the auth/RBAC lease and close the socket on authority drift.
+- **Missing-context assessment:** allowing a request when only one of the contexts exists is intentional for public/host execution paths; requiring both globally would break anonymous GraphQL fields and internal host-global requests. Tenant-owned sensitive resolvers separately require their needed context/permissions.
+- **Extension-order audit:** `GraphqlPrincipalTenantPolicy` is globally attached in `schema.rs` alongside `GraphqlTenantPolicy` and sensitive-field policies; the mismatch check runs in the extension execution layer before `next.run`, so a mismatched authenticated principal cannot reach a resolver.
+- **Bypass audit:** no alternate HTTP GraphQL handler bypassing the extension was found; WS uses the same schema. Access-token extraction already rejects tenant mismatch, so the GraphQL extension acts as defense-in-depth rather than a replacement for transport authentication.
+- **Fresh second pass:** independently re-read the final extension, HTTP/WS context assembly, token tenant check, and schema extension registration. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, context/auth contract tracing, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.11` closed without code remediation. Next primary module: `FS-22.05.12 — apps/server/src/graphql/observability.rs`.
+
 ### FS-22.05.10 Assessment — `apps/server/src/graphql/tenant_security.rs`
 
 - **Base:** post-merge `main` refreshed at `4b25f1dff08303e989d7f28ba62e060de8b6a877`; dedicated branch `codex/audit-fs-22.05.10-graphql-tenant-security` was created from that exact SHA.
