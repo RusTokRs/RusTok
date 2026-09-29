@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::{sync::{Arc, OnceLock}, time::Duration};
 
 use async_graphql::Data;
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
@@ -37,6 +37,9 @@ const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect requ
 const WS_MAX_MESSAGE_SIZE: usize = 256 * 1024;
 const WS_MAX_FRAME_SIZE: usize = 256 * 1024;
 const WS_INCOMING_QUEUE_CAPACITY: usize = 32;
+const WS_CONNECTION_INIT_TIMEOUT: Duration = Duration::from_secs(10);
+const WS_CONNECTION_INIT_TIMEOUT_CLOSE: u16 = 4408;
+const WS_CONNECTION_INIT_TIMEOUT_REASON: &str = "Connection initialisation timeout";
 
 /// Normalize canonical RBAC implications for GraphQL policies that inspect an
 /// immutable permission vector directly.
@@ -311,7 +314,27 @@ async fn handle_graphql_ws(
             None => None,
         };
 
-        let next_message = with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await;
+        let next_message = if auth_lease.get().is_none() {
+            match tokio::time::timeout(
+                WS_CONNECTION_INIT_TIMEOUT,
+                with_rbac_request_scope(None, graphql_stream.next()),
+            )
+            .await
+            {
+                Ok(message) => message,
+                Err(_) => {
+                    let _ = close_ws(
+                        &mut sink,
+                        WS_CONNECTION_INIT_TIMEOUT_CLOSE,
+                        WS_CONNECTION_INIT_TIMEOUT_REASON,
+                    )
+                    .await;
+                    break;
+                }
+            }
+        } else {
+            with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await
+        };
         let Some(message) = next_message else {
             break;
         };
@@ -364,15 +387,22 @@ async fn revalidate_ws_auth(
     Ok(current_scope)
 }
 
-async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+async fn close_ws<S>(sink: &mut S, code: u16, reason: &'static str) -> Result<(), S::Error>
 where
     S: futures_util::Sink<Message> + Unpin,
 {
     sink.send(Message::Close(Some(CloseFrame {
-        code: WS_CLOSE_UNAUTHORIZED,
-        reason: WS_AUTHORITY_CHANGED_REASON.into(),
+        code,
+        reason: reason.into(),
     })))
     .await
+}
+
+async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    close_ws(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await
 }
 
 async fn build_ws_connection_data(
