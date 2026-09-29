@@ -2882,8 +2882,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** re-read the changed controller and service, all seven OpenAPI response blocks, retry transaction ordering, tenant filters, limit clamps, error mapping, migrations/FK, and operator view fields. No residual protected endpoint lacking 403 documentation and no remaining unchecked `Forbidden` retry transition were confirmed.
 - **Diff review:** branch changes are limited to `marketplace_financial.rs`, `marketplace_financial_operator.rs`, and this ledger entry relative to exact main base; no business status names, permission names, or ledger posting rules were changed.
 - **Verification:** source inspection, migration/transition tracing, immediate reread, adjacent-boundary audit, independent second pass, and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on the dedicated branch.
-- **Status:** complete pending PR/merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4348, squash merge `ebfe6564bd30d84f77c2bbdbc135d1a8065f977e`.
+- **Post-merge reconciliation:** refreshed `main` at `ebfe6564bd30d84f77c2bbdbc135d1a8065f977e`; comparing the recorded base `bfa0e6c8707bddfed2252e2588d9c8fef199db0e` to the merge is exactly one commit with the expected marketplace-financial controller/service and ledger changes. The 403 OpenAPI coverage and guarded correlated financial-operation transition are present on `main`.
+- **Status:** `FS-22.06.07` complete.
 
 ### FS-22.06.08 Pre-Implementation Audit Findings — `crates/modules/rustok-payment/src/controllers.rs` Payment provider-event HTTP boundary
 
@@ -2901,4 +2902,7 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** searched the complete Payment controller for residual overlapping identity aliases, remaining empty-body 413 paths, protected operations missing 401/403 documentation, and runtime `Forbidden -> 401` mappings. No residual defect attributable to this primary controller boundary was confirmed.
 - **Diff review:** implementation changes are limited to `crates/modules/rustok-payment/src/controllers.rs`, `crates/modules/rustok-payment/README.md`, and this ledger entry relative to the refreshed main base; no payment business-status, tenant-filter, or provider-authority rules were otherwise changed.
 - **Verification:** source inspection, provider/controller contract tracing, immediate reread, adjacent-boundary audit, independent second pass, and static diff review only. No tests, cargo check, clippy, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on dedicated branch; ready for PR and merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4351, squash merge `2453d21c12a3694f821094261b6d16e83550df3f`.
+- **Post-merge reconciliation:** refreshed `main` at `2453d21c12a3694f821094261b6d16e83550df3f`; comparing the recorded fresh base `85246906d97adee21d9634a2fb9257377c95eb04` to the merge is exactly one commit with the expected Payment controller, README and ledger changes. The independent delivery/replay header extraction, empty-versus-oversize payload status split, and protected provider-event 401+403 OpenAPI contract are present on `main`.
+
+- **FS-22.06.08 closeout:** the production implementation and post-merge reconciliation are complete; maintainer test/build verification remains explicitly required.
