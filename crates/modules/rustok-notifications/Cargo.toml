@@ -16,6 +16,7 @@ chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-notifications-api.workspace = true
+rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
