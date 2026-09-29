@@ -10,7 +10,7 @@ use rustok_api::{
     StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
-use rustok_api::graphql::GraphQLError;
+use rustok_api::graphql::{GraphQLError, PageInfo};
 use sea_orm::DatabaseConnection;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -22,7 +22,6 @@ use crate::models::users;
 use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::module_lifecycle::ModuleLifecycleStateSnapshot;
 use crate::services::rbac_service::RbacService;
-use rustok_api::graphql::PageInfo;
 use rustok_build::BuildEvent;
 use rustok_build::build::{BuildStage, BuildStatus};
 
@@ -1364,10 +1363,10 @@ mod tests {
         ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
     };
 
+    use async_graphql::ErrorExtensions;
     use rustok_api::graphql::GraphQLError;
 
     use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error};
-
 
     #[test]
     fn graphql_user_internal_error_redacts_backend_diagnostics() {
@@ -1383,7 +1382,10 @@ mod tests {
                 .extensions
                 .as_ref()
                 .and_then(|extensions| extensions.get("code"))
-                .and_then(|value| value.as_str()),
+                .cloned()
+                .and_then(|value| value.into_json().ok())
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                .as_deref(),
             Some("INTERNAL_ERROR")
         );
     }
