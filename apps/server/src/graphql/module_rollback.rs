@@ -10,6 +10,20 @@ use crate::graphql::mutations::{
 use crate::graphql::types::ArtifactRollback;
 use uuid::Uuid;
 
+fn validate_target_capability_grant_revision(value: i64) -> Result<u64> {
+    if value <= 0 {
+        return Err(<async_graphql::FieldError as GraphQLError>::bad_user_input(
+            "Artifact rollback requires a positive target capability-grant revision",
+        ));
+    }
+
+    u64::try_from(value).map_err(|_| {
+        <async_graphql::FieldError as GraphQLError>::bad_user_input(
+            "Artifact rollback capability-grant revision is outside the supported range",
+        )
+    })
+}
+
 /// Dedicated GraphQL mutation boundary for tenant artifact rollback.
 ///
 /// The rollback target is owner-selected from the retained predecessor; callers
@@ -38,18 +52,8 @@ impl ModuleRollbackMutation {
             idempotency_key,
         )?;
 
-        if target_capability_grant_revision <= 0 {
-            return Err(<async_graphql::FieldError as GraphQLError>::bad_user_input(
-                "Artifact rollback requires a positive target capability-grant revision",
-            ));
-        }
-
-        let target_capability_grant_revision = u64::try_from(target_capability_grant_revision)
-            .map_err(|_| {
-                <async_graphql::FieldError as GraphQLError>::bad_user_input(
-                    "Artifact rollback capability-grant revision is outside the supported range",
-                )
-            })?;
+        let target_capability_grant_revision =
+            validate_target_capability_grant_revision(target_capability_grant_revision)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let result = ModuleControlPlane::new(db.clone())
@@ -77,10 +81,19 @@ impl ModuleRollbackMutation {
 
 #[cfg(test)]
 mod tests {
+    use super::validate_target_capability_grant_revision;
+
     #[test]
     fn rollback_target_revision_validation_rejects_non_positive_values() {
-        assert!(0_i64 <= 0);
-        assert!(-1_i64 <= 0);
-        assert!(1_i64 > 0);
+        assert!(validate_target_capability_grant_revision(0).is_err());
+        assert!(validate_target_capability_grant_revision(-1).is_err());
+    }
+
+    #[test]
+    fn rollback_target_revision_validation_accepts_positive_values() {
+        assert_eq!(
+            validate_target_capability_grant_revision(42).expect("positive revision"),
+            42
+        );
     }
 }
