@@ -277,8 +277,14 @@ fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> Se
         .merge(controllers::artifact_permissions::router())
         .merge(controllers::admin_events::router())
         .merge(controllers::auth::router())
-        .merge(controllers::channel::router())
-        .merge(controllers::flex::router())
+        .merge(controllers::channel::router());
+
+    // Flex is an optional capability module. Its standalone REST surface
+    // must not exist in a server build where the module is not composed.
+    #[cfg(feature = "mod-flex")]
+    let router = router.merge(controllers::flex::router());
+
+    router
         .merge(controllers::graphql::router())
         .merge(controllers::installer::router())
         .merge(controllers::mcp::router())
