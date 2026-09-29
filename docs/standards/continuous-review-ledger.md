@@ -391,7 +391,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.09 — `apps/server/src/graphql/system.rs`** — one-module audit; host-global diagnostics restricted to host authority, event count failures no longer collapse to false zeroes, and session DB errors redacted. Next primary module: `apps/server/src/graphql/tenant_security.rs`.
 - [x] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant argument traversal/bypass resistance reverified and invalid tenant identifiers no longer echo raw input. Next primary module: `apps/server/src/graphql/principal_tenant_security.rs`.
 - [x] **FS-22.05.11 — `apps/server/src/graphql/principal_tenant_security.rs`** — one-module audit; principal/request tenant binding, context assembly, and extension ordering reverified; no repository-owned defect required remediation. Next primary module: `apps/server/src/graphql/observability.rs`.
-- [ ] **FS-22.05.12 — `apps/server/src/graphql/observability.rs`** — one-module audit; telemetry/diagnostic exposure, host-vs-tenant scope, authorization, and error mapping.
+- [x] **FS-22.05.12 — `apps/server/src/graphql/observability.rs`** — one-module audit; resolver telemetry contains only bounded schema metadata, list cardinality is normalized to `indexed`, and resolver completion is moved to debug-level logging. Next primary module: `apps/server/src/graphql/persisted.rs`.
+- [ ] **FS-22.05.13 — `apps/server/src/graphql/persisted.rs`** — one-module audit; persisted-query trust boundary, hash validation, catalog bypasses, operation binding, and error handling.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -431,6 +432,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.12 Assessment — `apps/server/src/graphql/observability.rs`
+
+- **Base:** post-merge `main` refreshed at `a3da6f8092c8b91a1a7d7aef090b5626f1f7c62f`; dedicated branch `codex/audit-fs-22.05.12-graphql-observability` was created from that exact SHA.
+- **Discovery:** reviewed the complete GraphQL resolver observability extension and the repository logging standard governing bounded identifiers, low-cardinality fields, log levels, and payload privacy.
+- **Invariant map:** resolver telemetry may expose only bounded schema/path metadata and timing; it must not log GraphQL variables, payloads, credentials, tokens, rich text, or unbounded high-cardinality labels; hot-path per-field telemetry must not default to info-level lifecycle logging.
+- **Finding GRAPHQLOBSERVABILITY-22.05.12-01:** list-path telemetry stored the actual numeric resolver index in the `cardinality` field. The index is unbounded by the schema contract and creates high-cardinality log values.
+- **Remediation:** indexed list paths now emit the constant `indexed`; non-list paths remain `single`. The resolver telemetry shape is otherwise unchanged.
+- **Finding GRAPHQLOBSERVABILITY-22.05.12-02:** every resolver completion was logged at `info`, even though the logging standard reserves `info` for lifecycle/operator transitions and identifies hot-path detail as `debug`/`trace`.
+- **Remediation:** resolver completion telemetry is now emitted at `debug`; no field names, status, or latency measurements were removed.
+- **Privacy audit:** the extension records parent/return schema types, actual field name, bounded path cardinality state, success/error status, and latency only. It does not log arguments, variables, result values, or authorization headers.
+- **Fresh second pass:** independently re-read the extension against `docs/standards/logging.md`; no raw payload or credential field was added, and no remaining numeric path index is emitted.
+- **Verification:** repository source/static inspection, logging-standard comparison, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.12` closed; ready for PR/merge. Next primary module: `FS-22.05.13 — apps/server/src/graphql/persisted.rs`.
+
 ### FS-22.05.11 Assessment — `apps/server/src/graphql/principal_tenant_security.rs`
 
 - **Base:** post-merge `main` refreshed at `3604103e8f848a1d7d3c146b47597dc0205324e4`; dedicated branch `codex/audit-fs-22.05.11-graphql-principal-tenant-security` was created from that exact SHA.
