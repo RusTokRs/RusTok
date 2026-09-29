@@ -381,6 +381,14 @@ impl StorefrontTestClient {
             .expect("guest cart test token lock") = Some(token);
         self
     }
+
+    pub(crate) fn clear_guest_cart_token(&self) {
+        *self
+            .guest_cart_token
+            .lock()
+            .expect("guest cart test token lock") = None;
+    }
+
 }
 
 pub(crate) async fn inject_transport_context(
