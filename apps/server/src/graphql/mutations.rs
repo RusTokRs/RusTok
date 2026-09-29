@@ -62,6 +62,7 @@ use rustok_modules::{
     ArtifactSettingsRestoreRequest,
 };
 use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
+use std::fmt::Display;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -69,6 +70,11 @@ use uuid::Uuid;
 pub struct RootMutation;
 
 const TOGGLE_ERR_UNKNOWN_MODULE: &str = "Unknown module";
+
+fn graphql_mutation_internal_error(message: &'static str, error: impl Display) -> FieldError {
+    tracing::error!(%error, message, "GraphQL mutation failed");
+    <FieldError as GraphQLError>::internal_error(message)
+}
 
 fn toggle_err_core_module_cannot_be_disabled(module_slug: &str) -> String {
     format!("Core module cannot be disabled: {module_slug}")
@@ -82,8 +88,8 @@ fn toggle_err_has_dependents(dependents: &str) -> String {
     format!("Module is required by: {dependents}")
 }
 
-fn toggle_err_hook_failed(reason: &str) -> String {
-    format!("Module lifecycle hook failed: {reason}")
+fn toggle_err_hook_failed(_reason: &str) -> String {
+    "Module lifecycle hook failed".to_string()
 }
 
 #[cfg(test)]
@@ -107,7 +113,7 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldE
                 }
             })
         }
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        other => graphql_mutation_internal_error("Module composition is unavailable", other),
     }
 }
 
@@ -303,7 +309,7 @@ pub(crate) async fn ensure_modules_manage_permission(
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
     if !can_manage_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -468,7 +474,7 @@ fn map_platform_composition_build_error(error: PlatformCompositionBuildError) ->
     match error {
         PlatformCompositionBuildError::Composition(error) => map_platform_composition_error(error),
         PlatformCompositionBuildError::Build(error) => {
-            <FieldError as GraphQLError>::internal_error(&error)
+            graphql_mutation_internal_error("Module composition build is unavailable", error)
         }
     }
 }
@@ -521,13 +527,17 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Database(_) => {
             <FieldError as GraphQLError>::internal_error("Internal server error")
         }
-        ToggleModuleError::PreHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+        ToggleModuleError::PreHookFailed(err) => {
+            tracing::error!(%err, "module pre-hook failed in GraphQL mutation");
+            FieldError::new(toggle_err_hook_failed(&err))
             .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", false);
                 ext.set("operation_issue", "pre_hook_failed");
             }),
-        ToggleModuleError::PostHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
+        ToggleModuleError::PostHookFailed(err) => {
+            tracing::error!(%err, "module post-hook failed in GraphQL mutation");
+            FieldError::new(toggle_err_hook_failed(&err))
             .extend_with(|_, ext| {
                 ext.set("code", "MODULE_HOOK_FAILED");
                 ext.set("retryable_issue", true);
@@ -564,8 +574,8 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             )
         }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
-            FieldError::new(format!("Module operation is not retryable: {reason}"))
-                .extend_with(|_, ext| {
+            tracing::error!(%reason, "module operation recovery is not retryable");
+            FieldError::new("Module operation is not retryable").extend_with(|_, ext| {
                     ext.set("code", "MODULE_OPERATION_NOT_RETRYABLE");
                     ext.set("retryable_issue", false);
                 })
@@ -581,8 +591,8 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("retryable_issue", false);
         }),
         ModuleOperationRecoveryError::PostHookFailed(err) => {
-            FieldError::new(format!("Module hook failed: {err}"))
-                .extend_with(|_, ext| {
+            tracing::error!(%err, "module post-hook recovery failed in GraphQL mutation");
+            FieldError::new("Module hook failed").extend_with(|_, ext| {
                     ext.set("code", "MODULE_HOOK_FAILED");
                     ext.set("retryable_issue", true);
                     ext.set("operation_issue", "post_hook_failed");
@@ -614,10 +624,10 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                 })
         }
         ModuleOperationRecoveryError::Database(err) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            graphql_mutation_internal_error("Module operation recovery is unavailable", err)
         }
         ModuleOperationRecoveryError::Policy(err) => {
-            <FieldError as GraphQLError>::internal_error(&err)
+            graphql_mutation_internal_error("Module operation recovery policy is unavailable", err)
         }
         ModuleOperationRecoveryError::Toggle(err) => map_toggle_module_error(err),
     }
@@ -864,7 +874,7 @@ impl RootMutation {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .one(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map_err(|err| graphql_mutation_internal_error("Unable to load user", err))?
             .ok_or_else(|| FieldError::new("User not found"))?;
 
         let mut model: users::ActiveModel = user.into();
@@ -873,7 +883,7 @@ impl RootMutation {
         let user = model
             .update(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+.map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
         Ok(User::from(&user))
     }
@@ -1550,8 +1560,9 @@ impl RootMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let settings_json: serde_json::Value = serde_json::from_str(&settings)
-            .map_err(|err| FieldError::new(format!("Invalid JSON in settings: {err}")))?;
+        let settings_json: serde_json::Value = serde_json::from_str(&settings).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input("Invalid JSON in settings")
+        })?;
 
         let module = ModuleLifecycleService::update_module_settings(
             db,
@@ -1630,10 +1641,10 @@ impl RootMutation {
             }),
             UpdateModuleSettingsError::Manifest(err) => map_manifest_error(err),
             UpdateModuleSettingsError::Policy(err) => {
-                <FieldError as GraphQLError>::internal_error(&err)
+                graphql_mutation_internal_error("Module settings policy is unavailable", err)
             }
             UpdateModuleSettingsError::Database(err) => {
-                <FieldError as GraphQLError>::internal_error(&err.to_string())
+                graphql_mutation_internal_error("Module settings storage is unavailable", err)
             }
         })?;
 
