@@ -85,6 +85,7 @@ pub use inbox_group_summary::{
 pub use inbox_reconcile::{
     NotificationInboxReconcileInspectionPage, NotificationInboxReconcilePage,
     NotificationInboxReconcileRequest, NotificationInboxReconcileService,
+    NotificationInboxReconciliationInspectPortFactoryImpl,
 };
 pub use inbox_selected::{
     MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
