@@ -151,14 +151,18 @@ impl RusToKModule for NotificationsModule {
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
         let _ = ensure_notification_source_registry(extensions);
-        extensions.get_or_insert_with::<
+        if extensions.contains::<
             Arc<dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory>,
-            _,
-        >(|| {
-            Arc::new(
-                NotificationInboxReconciliationInspectPortFactoryImpl,
-            )
-        });
+        >() {
+            return Err(rustok_core::Error::Validation(
+                "notifications reconciliation inspection port factory is already registered"
+                    .to_string(),
+            ));
+        }
+        let factory: Arc<
+            dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory,
+        > = Arc::new(NotificationInboxReconciliationInspectPortFactoryImpl);
+        extensions.insert(factory);
         Ok(())
     }
 }
@@ -202,6 +206,11 @@ mod tests {
             extensions
                 .get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
                 .is_some()
+        );
+        assert!(
+            module
+                .register_runtime_extensions(&mut extensions)
+                .is_err()
         );
 
         let service = NotificationsService::from_runtime_extensions(&extensions);
