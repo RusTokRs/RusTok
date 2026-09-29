@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-09-29](./2026-09-29-cross-module-owner-diagnostic-ports.md) | Cross-module owner diagnostic ports | Accepted | In progress | Extends [Port contract ownership and runtime feature boundary](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) and [ModuleRuntimeExtensions](./2026-04-20-module-runtime-extensions-for-capabilities.md) |
 | [2026-09-27](./2026-09-27-bounded-tenant-metric-cardinality.md) | Bounded tenant cardinality for shared metrics | Accepted | Implemented | — |
 | [2026-09-24](./2026-09-24-forum-attachment-relations.md) | Forum attachment relations use a Forum-owned CAS set and Media durable reference retention | Accepted | In progress | Extends [Direct object-store runtime and owner-local lifecycle](./2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md) |
 | [2026-09-22](./2026-09-22-platform-module-settings-architecture.md) | Platform and module settings architecture | Accepted | In progress | Extends [Static module lifecycle revision aggregate](./2026-08-20-static-module-lifecycle-revision.md), [Module release rollback safety](./2026-08-06-module-release-rollback-safety.md), and [Multilingual DB storage](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) |
