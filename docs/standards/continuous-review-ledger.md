@@ -394,7 +394,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.12 — `apps/server/src/graphql/observability.rs`** — one-module audit; resolver telemetry contains only bounded schema metadata, list cardinality is normalized to `indexed`, and resolver completion is moved to debug-level logging. Next primary module: `apps/server/src/graphql/persisted.rs`.
 - [x] **FS-22.05.13 — `apps/server/src/graphql/persisted.rs`** — one-module audit; persisted hash catalog is telemetry-only, fixed-format hash validation is bounded, and no authorization/allowlist bypass exists. Next primary module: `apps/server/src/graphql/rbac_runtime.rs`.
 - [x] **FS-22.05.14 — `apps/server/src/graphql/rbac_runtime.rs`** — one-module audit; role-writer runtime injection, tenant/actor transaction boundary, RBAC policy error taxonomy, and runtime initialization reverified; no repository-owned defect required remediation. Next primary module: `apps/server/src/graphql/module_settings_cas.rs`.
-- [ ] **FS-22.05.15 — `apps/server/src/graphql/module_settings_cas.rs`** — one-module audit; CAS/version checks, tenant scope, host/module authority, conflict taxonomy, and stale-write behavior.
+- [x] **FS-22.05.15 — `apps/server/src/graphql/module_settings_cas.rs`** — one-module audit; CAS/revision/idempotency, tenant/module authority, and stale-write semantics reverified; Manifest/Policy/DB diagnostics now use stable GraphQL internal errors. Next primary module: `apps/server/src/graphql/module_rollback.rs`.
+- [ ] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -434,6 +435,22 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.15 Assessment — `apps/server/src/graphql/module_settings_cas.rs`
+
+- **Base:** post-merge `main` refreshed at `895a56f9c74bcd9f0198b8221da6f1e46444edd7`; dedicated branch `codex/audit-fs-22.05.15-graphql-module-settings-cas` was created from that exact SHA.
+- **Discovery:** reviewed the complete CAS mutation plus the GraphQL settings mutation owner, module lifecycle service, `ModuleRolloutPromotionSettingsService`, lifecycle DB writer, idempotency receipt path, revision store, settings schema normalization, and tenant/module policy checks.
+- **Invariant map:** reviewed snapshot, revision, and idempotency identities must participate in the authoritative owner transaction; tenant and module identity must be server-derived; stale reviewed snapshots must fail closed; conflict results need stable machine-readable metadata; storage/policy/manifest failures must not expose backend diagnostics.
+- **Finding GRAPHQLMODULESETTINGSCAS-22.05.15-01:** RBAC permission lookup and `UpdateModuleSettingsError::{Manifest,Policy,Database}` were passed directly into GraphQL `internal_error`, exposing backend diagnostics.
+- **Remediation:** added a server-side logging helper with stable client messages for permission, manifest, policy, and storage failures. Existing success/conflict/idempotency semantics are unchanged.
+- **CAS audit:** the owner normalizes both submitted snapshots against the active admitted schema, checks expected enabled/settings before write, and then advances the authoritative lifecycle revision inside the same DB transaction that persists settings. A concurrent write therefore causes revision conflict even if it races the pre-transaction snapshot check.
+- **Idempotency audit:** the owner admits the idempotency receipt before mutation, replays the committed result on retry, and fails/releases the receipt on snapshot or storage failure. The GraphQL adapter supplies a non-nil key and complete reviewed snapshot, matching the owner command invariant.
+- **Tenant/module authority audit:** the GraphQL layer uses the resolved `TenantContext.id`, `AuthContext.user_id`, server `ModuleRegistry`, and `module_command_context`; the owner filters and validates by the same tenant/module identity. No caller-supplied alternate tenant or schema is accepted.
+- **Conflict taxonomy audit:** `MODULE_SETTINGS_SNAPSHOT_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `REVISION_CONFLICT`, and lifecycle-in-progress codes remain intact with their retry/review/reload metadata. Only unexpected owner/backend diagnostics were sanitized.
+- **Validation audit:** invalid JSON and non-object settings remain `BAD_USER_INPUT`; schema validation messages remain owner-generated bounded validation feedback and do not include the submitted secret/value payload.
+- **Fresh second pass:** independently searched the final module for raw internal-error conversions and re-read CAS/revision/idempotency result mapping; no additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, owner transaction tracing, schema/validation review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.15` closed; ready for PR/merge. Next primary module: `FS-22.05.16 — apps/server/src/graphql/module_rollback.rs`.
+
 ### FS-22.05.14 Assessment — `apps/server/src/graphql/rbac_runtime.rs`
 
 - **Base:** post-merge `main` refreshed at `83f85ed3063617fd7ba0be3ba3966e35b6f0fbec`; dedicated branch `codex/audit-fs-22.05.14-graphql-rbac-runtime` was created from that exact SHA.
