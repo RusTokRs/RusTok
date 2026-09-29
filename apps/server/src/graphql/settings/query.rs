@@ -63,7 +63,7 @@ impl SettingsQuery {
             .unwrap_or(configuration.active_profile);
         let iggy = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(runtime_ctx)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(|error| graphql_settings_internal_error("Unable to read Iggy connector configuration", error))?;
 
         Ok(EventDeliveryConfigurationPayload {
             active_profile: active_profile.as_str().to_string(),
@@ -125,7 +125,7 @@ impl SettingsQuery {
 
         let categories = SettingsService::get_all(runtime_ctx, tenant.id)
             .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+            .map_err(|error| graphql_settings_internal_error("Platform settings are unavailable", error))?;
 
         categories
             .into_iter()
