@@ -41,7 +41,7 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
 
     if !can_read_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: modules:read required",
+            "Permission denied: modules:read, modules:list, or modules:manage required",
         ));
     }
 
