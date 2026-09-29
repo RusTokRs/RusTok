@@ -116,7 +116,6 @@ impl ForumHttpRuntime {
     }
 }
 
-
 async fn ensure_forum_module_enabled(
     runtime: &ForumHttpRuntime,
     tenant_id: uuid::Uuid,
@@ -424,6 +423,51 @@ mod tests {
             .expect_err("missing Forum lifecycle state must fail closed");
         assert_eq!(error.status, StatusCode::FORBIDDEN);
         assert_eq!(error.code, "MODULE_NOT_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_does_not_cross_tenant() {
+        let runtime = runtime_with_module_table().await;
+        let enabled_tenant_id = Uuid::new_v4();
+        let requested_tenant_id = Uuid::new_v4();
+        runtime
+            .db_clone()
+            .execute_unprepared(&format!(
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES ('{enabled_tenant_id}', 'forum', 1)"
+            ))
+            .await
+            .expect("enabled Forum row should insert");
+
+        let error = ensure_forum_module_enabled(&runtime, requested_tenant_id)
+            .await
+            .expect_err("Forum lifecycle state must remain tenant-scoped");
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "MODULE_NOT_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn forum_rest_lifecycle_gate_maps_storage_failure_to_generic_500() {
+        let runtime = {
+            let db = Database::connect("sqlite::memory:")
+                .await
+                .expect("Forum HTTP lifecycle failure DB should connect");
+            let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
+                rustok_outbox::OutboxTransport::new(db.clone()),
+            ));
+            ForumHttpRuntime {
+                db,
+                event_bus,
+                audience_facts: None,
+                settings_providers: crate::ForumSettingsProviders::default(),
+            }
+        };
+
+        let error = ensure_forum_module_enabled(&runtime, Uuid::new_v4())
+            .await
+            .expect_err("missing lifecycle table must fail closed");
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.code, "internal_error");
+        assert_eq!(error.message, "The Forum operation could not be completed");
     }
 
     #[tokio::test]
