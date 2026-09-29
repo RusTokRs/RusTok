@@ -335,7 +335,7 @@ async fn ensure_platform_composition_operator(ctx: &Context<'_>) -> Result<AuthC
     let db = ctx.data::<DatabaseConnection>()?;
     let role = RbacService::get_user_role(db, &tenant.id, &auth.user_id)
         .await
-        .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+        .map_err(|error| graphql_mutation_internal_error("GraphQL mutation failed", error))?;
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
@@ -652,7 +652,7 @@ fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError
             <FieldError as GraphQLError>::bad_user_input(&other.to_string())
         }
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
-        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+        other => graphql_mutation_internal_error("Module composition is unavailable", other),
     }
 }
 
@@ -862,7 +862,7 @@ impl RootMutation {
             &rustok_api::Permission::USERS_MANAGE,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
 
         if !can_manage_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
