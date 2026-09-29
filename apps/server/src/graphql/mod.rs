@@ -2,8 +2,6 @@ mod artifact_lifecycle;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;
 pub mod dashboard_security;
-#[cfg(all(feature = "mod-forum", feature = "mod-notifications"))]
-pub mod forum_notification_reconciliation;
 pub mod forum_principal_security;
 pub mod index_drift_diagnosis;
 pub mod index_drift_source_page_diagnosis;
