@@ -2865,4 +2865,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Diff review:** branch changes are limited to the guest-cart guard/tests, Commerce Store access-status mappings/tests/OpenAPI, Commerce/Cart documentation, and this ledger entry. No unrelated business logic or permission names were changed.
 - **Verification:** source inspection, complete Store route/consumer inventory, adjacent tenant/actor/idempotency review, immediate reread, independent second pass, and branch diff review only. No tests, cargo check, clippy, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Implementation status:** complete on the dedicated branch.
-- **Status:** complete pending PR/merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4346, squash merge `ba8f4e7929ab689d8b5c3e9ee07d75987e239fdc`.
+- **Post-merge reconciliation:** refreshed `main` at `ba8f4e7929ab689d8b5c3e9ee07d75987e239fdc`; comparing recorded base `97599c37c4984e0225a6f32ce620b65fc599e8e7` to the merge is exactly one commit with the expected Store/cart security, ownership-status, OpenAPI, documentation, tests and ledger change set. The guest-cart guard is present on `main`; the restored `store/tests/carts.rs` is complete; no residual `Forbidden -> 401` mapping remains in the checked Store controllers; complete checkout still advertises its intentional 404 cart-access policy.
+- **Status:** `FS-22.06.06` complete.
