@@ -152,6 +152,7 @@ pub async fn create_cart(
     responses(
         (status = 200, description = "Cart details", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Guest cart access token is missing or invalid"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -205,6 +206,7 @@ pub async fn get_cart(
     responses(
         (status = 200, description = "Updated cart context", body = StoreCartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Guest cart access token is missing or invalid"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -277,6 +279,7 @@ pub async fn update_cart_context(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Guest cart access token is missing or invalid"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -380,6 +383,7 @@ pub async fn add_cart_line_item(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Guest cart access token is missing or invalid"),
         (status = 404, description = "Cart or line item not found")
     )
 )]
@@ -532,6 +536,7 @@ pub async fn update_cart_line_item(
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Guest cart access token is missing or invalid"),
         (status = 404, description = "Cart or line item not found")
     )
 )]
