@@ -1,12 +1,15 @@
 use std::time::Duration;
 
-use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, SimpleObject};
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, RequestContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
+use rustok_notifications_api::{
+    NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectRequest,
+};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -100,6 +103,16 @@ pub struct GqlForumSolutionReconciliationReport {
     pub drifts: Vec<GqlForumSolutionDrift>,
 }
 
+#[derive(Debug, Clone, SimpleObject)]
+pub struct GqlForumNotificationReconciliationStatus {
+    pub recipient_id: Uuid,
+    pub scanned: u64,
+    pub unavailable: u64,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+    pub clean: bool,
+}
+
 #[derive(Default)]
 pub struct ForumReconciliationQuery;
 
@@ -186,6 +199,104 @@ impl ForumReconciliationQuery {
             .await?;
         Ok(map_attachment_hold_report(report))
     }
+    /// Read-only FORUM-33 notification availability status for one exact recipient page.
+    ///
+    /// Forum owns operator authorization. Notifications owns the durable inbox state and exposes
+    /// only a neutral inspection port, so this transport never reads Notifications persistence
+    /// directly and never performs repair.
+    async fn forum_notification_reconciliation_status(
+        &self,
+        ctx: &Context<'_>,
+        recipient_id: Uuid,
+        cursor: Option<String>,
+        limit: Option<i32>,
+    ) -> Result<GqlForumNotificationReconciliationStatus> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_module_enabled(ctx, "notifications").await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: tenant scope mismatch",
+            ));
+        }
+        require_operations_permissions(auth)?;
+        if recipient_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "notification recipient id is invalid",
+            ));
+        }
+
+        let requested_limit = normalize_notification_limit(limit)?;
+        let runtime = forum_graphql_runtime(ctx);
+        let reconciliation = runtime
+            .notification_reconciliation_port()
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Forum notification reconciliation capability is unavailable",
+                )
+            })?;
+        let request_context = ctx.data_opt::<RequestContext>();
+        let locale = request_context
+            .map(|request| request.locale.clone())
+            .unwrap_or_else(|| tenant.default_locale.clone());
+        let correlation_id = request_context
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let mut port_context = PortContext::new(
+            tenant.id.to_string(),
+            PortActor::user(auth.user_id.to_string()),
+            locale,
+            correlation_id,
+        )
+        .with_deadline(Duration::from_secs(5))
+        .with_channel("operator");
+        for permission in &auth.permissions {
+            port_context = port_context.with_claim(permission.to_string());
+        }
+
+        rustok_telemetry::metrics::record_module_entrypoint_call(
+            "forum",
+            "notification_reconciliation_status",
+            "graphql",
+        );
+        let started_at = std::time::Instant::now();
+        let result = reconciliation
+            .inspect_page(
+                port_context,
+                NotificationInboxReconciliationInspectRequest {
+                    recipient_id,
+                    cursor,
+                    limit: requested_limit,
+                },
+            )
+            .await;
+        rustok_telemetry::metrics::record_span_duration(
+            "forum.notification_reconciliation_status",
+            started_at.elapsed().as_secs_f64(),
+        );
+        let page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                rustok_telemetry::metrics::record_span_error(
+                    "forum.notification_reconciliation_status",
+                    "owner_status",
+                );
+                rustok_telemetry::metrics::record_module_error(
+                    "forum",
+                    "notification_reconciliation_status",
+                    "error",
+                );
+                return Err(map_notification_reconciliation_error(error));
+            }
+        };
+
+        Ok(map_notification_reconciliation_status(page, recipient_id))
+    }
+
     /// Read-only FORUM-33 accepted-solution and solution-author-stat drift report.
     ///
     /// A solution is authoritative only when the exact same-tenant/topic reply still exists and is
@@ -245,6 +356,54 @@ fn require_operations_permissions(auth: &AuthContext) -> Result<()> {
         Err(<FieldError as GraphQLError>::permission_denied(
             "Permission denied: forum_categories:manage and forum_topics:manage required",
         ))
+    }
+}
+
+fn normalize_notification_limit(limit: Option<i32>) -> Result<u16> {
+    match limit {
+        None => Ok(0),
+        Some(value) if value >= 0 => u16::try_from(value).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "notification reconciliation limit is invalid",
+            )
+        }),
+        Some(_) => Err(<FieldError as GraphQLError>::bad_user_input(
+            "notification reconciliation limit is invalid",
+        )),
+    }
+}
+
+fn map_notification_reconciliation_error(error: rustok_api::PortError) -> FieldError {
+    use rustok_api::PortErrorKind;
+
+    match error.kind {
+        PortErrorKind::Validation | PortErrorKind::Forbidden => FieldError::new(error.message)
+            .extend_with(|_, extensions| {
+                extensions.set("code", "BAD_USER_INPUT");
+            }),
+        PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(
+            "notification reconciliation target is unavailable",
+        ),
+        PortErrorKind::Conflict
+        | PortErrorKind::Unavailable
+        | PortErrorKind::Timeout
+        | PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Forum notification reconciliation capability is unavailable",
+        ),
+    }
+}
+
+fn map_notification_reconciliation_status(
+    page: NotificationInboxReconciliationInspectPage,
+    recipient_id: Uuid,
+) -> GqlForumNotificationReconciliationStatus {
+    GqlForumNotificationReconciliationStatus {
+        recipient_id,
+        scanned: u64::from(page.scanned),
+        unavailable: u64::from(page.unavailable),
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+        clean: page.unavailable == 0,
     }
 }
 
@@ -378,6 +537,14 @@ mod tests {
             Permission::FORUM_TOPICS_READ,
         ]);
         assert!(require_operations_permissions(&read_only).is_err());
+    }
+
+    #[test]
+    fn notification_reconciliation_limit_preserves_owner_default_and_rejects_invalid_width() {
+        assert_eq!(normalize_notification_limit(None).unwrap(), 0);
+        assert_eq!(normalize_notification_limit(Some(64)).unwrap(), 64);
+        assert!(normalize_notification_limit(Some(-1)).is_err());
+        assert!(normalize_notification_limit(Some(i32::MAX)).is_err());
     }
 
     #[test]
