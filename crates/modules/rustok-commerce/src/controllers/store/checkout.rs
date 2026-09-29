@@ -164,7 +164,7 @@ fn storefront_payment_collection_port_context(
         (status = 201, description = "Payment collection created", body = PaymentCollectionResponse),
         (status = 400, description = "Cart is completed and cannot create payment collection"),
         (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Guest cart access token is missing or invalid"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -302,7 +302,7 @@ pub async fn create_payment_collection(
         (status = 200, description = "Checkout completed", body = CompleteCheckoutResponse),
         (status = 400, description = "Checkout request is invalid"),
         (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Guest cart access token is missing or invalid"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found"),
         (status = 409, description = "Checkout key, pricing or domain conflict")
     )
