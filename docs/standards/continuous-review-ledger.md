@@ -397,6 +397,9 @@ Hard limits for every iteration:
 - [x] **FS-22.05.15 — `apps/server/src/graphql/module_settings_cas.rs`** — one-module audit; CAS/revision/idempotency, tenant/module authority, and stale-write semantics reverified; Manifest/Policy/DB diagnostics now use stable GraphQL internal errors. Next primary module: `apps/server/src/graphql/module_rollback.rs`.
 - [x] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure reverified; existing artifact rollback resolver extracted into a dedicated module without changing the GraphQL field contract. Next primary module: `FS-22.05.17 — apps/server/src/graphql/transition_lifecycle.rs`.
 
+- [x] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure reverified; existing artifact rollback resolver extracted into a dedicated module without changing the GraphQL field contract. Next primary module: `FS-22.05.17 — apps/server/src/graphql/transition_lifecycle.rs`.
+- [x] **FS-22.05.17 — `apps/server/src/graphql/transition_lifecycle.rs`** — one-module audit; transition error diagnostics and failure-state details sanitized while tenant scope, CAS/idempotency, state taxonomy, and retention-hold projection remained unchanged. Next primary module: `apps/server/src/graphql/mutations.rs`.
+
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
 ### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
@@ -435,6 +438,21 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.17 Assessment — `apps/server/src/graphql/transition_lifecycle.rs`
+
+- **Base:** post-merge `main` refreshed at `ce742b5b81b37a6cdd87c876126661b24758a45d`; dedicated branch `codex/audit-fs-22.05.17-graphql-transition-lifecycle` was created from that exact SHA.
+- **Discovery:** reviewed the full GraphQL transition adapter, the owner `ModuleTransitionServiceError`/`TransitionCoordinatorError` taxonomy, transition coordinator failure-state construction, security epoch conflict source, transition checkpoint transport contract, retention-hold owner projection, and the admin consumers that render `stateDetails`.
+- **Invariant map:** transition conflicts must preserve stable machine-readable codes without exposing arbitrary owner reasons; failed/recovered transition state must not cross the browser boundary with backend diagnostics; tenant-scoped checkpoint access must remain owner-enforced; owner-generated UUID/revision invariants must not be weakened by the GraphQL adapter.
+- **Finding GRAPHLIFECYCLE-22.05.17-01:** `RecoveryLimitExhausted(reason)` and `SecurityEpochStale(error)` were formatted directly into GraphQL error messages. The underlying reasons can contain arbitrary operational/error text.
+- **Remediation:** both variants now log the full owner error server-side and return stable client-facing messages while retaining their existing error codes and retry metadata.
+- **Finding GRAPHLIFECYCLE-22.05.17-02:** owner recovery/fail-closed reasons flowed into `ModuleTransitionCheckpointGql.stateDetails` and were rendered directly by Admin clients. Some owner reasons are built from downstream errors.
+- **Remediation:** `RecoveredToPredecessor` and `FailedClosed` state details now use stable browser-safe lifecycle messages; observing/commit/finalization status details remain unchanged.
+- **Authorization/tenant audit:** this adapter itself exposes only transport mappings; its callers pass tenant IDs into the owner service, and the owner filters checkpoint reads by `tenant_id` before returning a plan. No new cross-tenant selector or bypass was introduced.
+- **Schema/state audit:** state enum coverage remains one-to-one with `ModuleTransitionStateView`; retention-hold IDs remain owner-generated UUIDs. UUID/revision `expect`/numeric conversions are backed by the owner API contracts and documented persistence constraints rather than client input.
+- **Fresh second pass:** independently re-read the final adapter, searched all error-to-message constructions, traced failure reason construction into the owner coordinator, and checked direct Admin rendering of `stateDetails`. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, owner error/state tracing, consumer review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.17` closed; ready for PR/merge. Next primary module: `FS-22.05.18 — apps/server/src/graphql/mutations.rs`.
+
 ### FS-22.05.16 Assessment — `apps/server/src/graphql/module_rollback.rs`
 
 - **Base:** `main` at `f3a379349e810042f3dce232febf133822bdcec7`; dedicated branch `codex/audit-fs-22.05.16-graphql-module-rollback` was created from that exact SHA.
