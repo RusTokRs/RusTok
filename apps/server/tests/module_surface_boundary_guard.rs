@@ -121,7 +121,7 @@ fn content_orchestration_bridge_does_not_live_in_server() {
 }
 
 #[test]
-fn forum_notification_reconciliation_graphql_is_owned_by_notifications_crate() {
+fn forum_notification_reconciliation_graphql_is_owned_by_forum_crate() {
     let repo = repo_root();
 
     assert!(
@@ -131,23 +131,20 @@ fn forum_notification_reconciliation_graphql_is_owned_by_notifications_crate() {
         "Forum notification reconciliation GraphQL must not be owned by apps/server"
     );
 
-    let notifications_graphql = std::fs::read_to_string(
-        repo.join("crates/modules/rustok-notifications/src/graphql.rs"),
+    let forum_query = std::fs::read_to_string(
+        repo.join("crates/modules/rustok-forum/src/graphql/reconciliation_query.rs"),
     )
-    .expect("Notifications GraphQL source should read");
+    .expect("Forum reconciliation GraphQL source should read");
     for marker in [
         "pub struct GqlForumNotificationReconciliationStatus",
         "forum_notification_reconciliation_status",
-        "require_module_enabled(ctx, FORUM_MODULE_SLUG).await?",
-        "require_module_enabled(ctx, MODULE_SLUG).await?",
-        "Permission::FORUM_CATEGORIES_MANAGE",
-        "Permission::FORUM_TOPICS_MANAGE",
-        "NotificationInboxReconcileService::new",
-        ".inspect_page(NotificationInboxReconcileRequest {",
+        "require_module_enabled(ctx, \"notifications\").await?",
+        "NotificationInboxReconciliationInspectRequest",
+        "notification_reconciliation_port()",
     ] {
         assert!(
-            notifications_graphql.contains(marker),
-            "Notifications must own Forum notification reconciliation GraphQL marker {marker}"
+            forum_query.contains(marker),
+            "Forum must own Forum notification reconciliation GraphQL marker {marker}"
         );
     }
 
@@ -159,6 +156,7 @@ fn forum_notification_reconciliation_graphql_is_owned_by_notifications_crate() {
         "server GraphQL schema must not compose a server-owned notification reconciliation shim"
     );
 }
+
 
 #[test]
 fn module_owned_graphql_types_and_resolvers_do_not_live_in_server() {
