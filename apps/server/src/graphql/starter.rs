@@ -2,6 +2,7 @@ use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
@@ -37,6 +38,13 @@ impl From<rustok_starter::StarterExecutionReport> for StarterExecutionReportPayl
             duration_ms: report.duration_ms as i64,
         }
     }
+}
+
+const MAX_STARTER_BLUEPRINT_NAME_LEN: usize = 64;
+
+fn graphql_starter_internal_error(error: impl Display) -> FieldError {
+    tracing::error!(%error, "Starter blueprint import failed");
+    <FieldError as GraphQLError>::internal_error("Starter blueprint import failed")
 }
 
 #[derive(Default)]
