@@ -361,11 +361,19 @@ pub(crate) fn storefront_public_channel_slug_for_cart(
 pub(crate) fn ensure_store_cart_access(
     cart: &CartResponse,
     customer_id: Option<Uuid>,
+    auth: Option<&rustok_api::AuthContext>,
 ) -> HttpResult<()> {
     if let Some(expected_customer_id) = cart.customer_id
         && customer_id != Some(expected_customer_id)
     {
-        return Err(HttpError::unauthorized(
+        if auth.is_none() {
+            return Err(HttpError::unauthorized(
+                "commerce_store_denied",
+                "Authentication is required to access this customer-owned cart".to_string(),
+            ));
+        }
+
+        return Err(HttpError::forbidden(
             "commerce_store_denied",
             "Cart belongs to another customer".to_string(),
         ));
