@@ -2819,4 +2819,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Diff review:** branch contains only the expected `apps/server/src/services/app_router.rs` and ledger changes relative to the exact main base; runtime change is one message correction plus its feature-off regression guard.
 - **Verification:** source inspection, framework contract verification, immediate re-read, adjacent-boundary audit, and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Implementation status:** complete on the dedicated branch; implementation commit `72eacf257249a4a176a5f0e07987a38f3d5522c7`.
-- **Status:** complete pending PR/merge integration.
+- **Implementation status:** complete and integrated into `main` via PR #4340, squash merge `cf03f687c91e2c52f2e0bcb0cd234696f38ec205`.
+- **Post-merge reconciliation:** refreshed `main` after PR #4340; comparing recorded base `101cc9781cbea9d7bb087ec4eaf025ba16865d56` to merge `cf03f687c91e2c52f2e0bcb0cd234696f38ec205` produced exactly one merged commit with the expected `app_router.rs` and ledger change set. The corrected `embed-admin` guidance is present on `main`.
+- **Status:** `FS-22.06.03` complete.
