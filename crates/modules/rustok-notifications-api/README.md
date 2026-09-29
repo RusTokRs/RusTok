@@ -30,7 +30,10 @@ Target routes are validated internal paths with an optional strictly bounded
 query; external URLs, fragments, traversal, percent encoding, whitespace, and
 malformed parameters fail closed.
 
-The neutral API never exposes SeaORM connections or source persistence models.
+The neutral API never exposes SeaORM connections or source persistence models. The reconciliation
+inspection contract carries tenant identity through `PortContext`; its request contains only
+the exact recipient and bounded cursor/limit, and its result exposes counts plus continuation
+metadata without notification identity, routes, payloads, or delivery state.
 Factory/provider duplicate slugs, factory/provider identity mismatches, and
 factory construction failures are explicit errors. Provider errors expose stable
 retryability without leaking private source data.
@@ -41,6 +44,7 @@ retryability without leaking private source data.
 - `NotificationSourceProviderFactory`
 - `NotificationSourceRegistry`
 - `NotificationSourceFactoryRegistry`
+- bounded `NotificationInboxReconciliationInspectPort` and deferred factory for neutral owner inspection
 - `register_notification_source_provider_factory`
 - `materialize_notification_source_registry`
 - `NotificationSemanticDescriptor`

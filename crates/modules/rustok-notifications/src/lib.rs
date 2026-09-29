@@ -23,6 +23,8 @@ mod service;
 mod worker;
 
 use async_trait::async_trait;
+use std::sync::Arc;
+
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications_api::ensure_notification_source_registry;
 use sea_orm_migration::MigrationTrait;
@@ -84,6 +86,7 @@ pub use inbox_reconcile::{
     NotificationInboxReconcileInspectionPage, NotificationInboxReconcilePage,
     NotificationInboxReconcileRequest, NotificationInboxReconcileService,
 };
+use inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImpl;
 pub use inbox_selected::{
     MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
     NotificationInboxSelectedStateRequest, NotificationInboxSelectedStateResult,
@@ -148,6 +151,18 @@ impl RusToKModule for NotificationsModule {
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
         let _ = ensure_notification_source_registry(extensions);
+        if extensions.contains::<
+            Arc<dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory>,
+        >() {
+            return Err(rustok_core::Error::Validation(
+                "notifications reconciliation inspection port factory is already registered"
+                    .to_string(),
+            ));
+        }
+        let factory: Arc<
+            dyn rustok_notifications_api::NotificationInboxReconciliationInspectPortFactory,
+        > = Arc::new(NotificationInboxReconciliationInspectPortFactoryImpl);
+        extensions.insert(factory);
         Ok(())
     }
 }
@@ -164,8 +179,13 @@ impl MigrationSource for NotificationsModule {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
-    use rustok_notifications_api::notification_source_registry_from_extensions;
+    use rustok_notifications_api::{
+    notification_source_registry_from_extensions, NotificationInboxReconciliationInspectPortFactory,
+};
+
 
     use super::{NotificationsModule, NotificationsService};
 
@@ -182,6 +202,16 @@ mod tests {
             .register_runtime_extensions(&mut extensions)
             .expect("notification runtime extensions should initialize");
         assert!(notification_source_registry_from_extensions(&extensions).is_some());
+        assert!(
+            extensions
+                .get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
+                .is_some()
+        );
+        assert!(
+            module
+                .register_runtime_extensions(&mut extensions)
+                .is_err()
+        );
 
         let service = NotificationsService::from_runtime_extensions(&extensions);
         assert_eq!(service.source_count(), 0);

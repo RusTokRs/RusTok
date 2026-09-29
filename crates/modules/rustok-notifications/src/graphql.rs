@@ -152,6 +152,7 @@ pub struct GqlNotificationInboxGroupStatePage {
     pub has_more: bool,
 }
 
+
 #[Object]
 impl NotificationsQuery {
     async fn notification_inbox_unread_count(

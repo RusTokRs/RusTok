@@ -83,6 +83,7 @@ bounded exact-group state commands. Channel delivery remains a later workflow.
 - `NotificationInboxReconcileService` and bounded reconciliation request/page contracts;
 - `NotificationInboxStorefrontPort` and the in-process authenticated-user owner facade;
 - feature-gated Notifications GraphQL query root and host schema-data composition;
+- neutral `NotificationInboxReconciliationInspectPort` implementation and deferred factory for bounded cross-module diagnostics;
 - module-owned native/GraphQL storefront transport and grouped Leptos UI packages;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
