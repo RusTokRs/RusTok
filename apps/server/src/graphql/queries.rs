@@ -8,6 +8,7 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QuerySelect,
 };
+use std::fmt::Display;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -39,6 +40,11 @@ use rustok_build::SharedBuildControl;
 use rustok_modules::{
     ModuleControlPlane, SharedStaticModuleRegistryReader, StaticModuleRegistryQuery,
 };
+
+fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldError {
+    tracing::error!(%error, message, "GraphQL root query failed");
+    <FieldError as GraphQLError>::internal_error(message)
+}
 
 fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
     ctx.data::<ServerRuntimeContext>()?
@@ -101,7 +107,8 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("retryable_issue", false);
         }),
         ModuleOperationRecoveryError::PostHookFailed(err) => {
-            FieldError::new(format!("Module hook failed: {err}"))
+            tracing::error!(%err, "module post-hook retry failed in GraphQL recovery");
+            FieldError::new("Module hook failed")
                 .extend_with(|_, ext| {
                     ext.set("code", "MODULE_HOOK_FAILED");
                     ext.set("retryable_issue", true);
@@ -134,13 +141,13 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
                 })
         }
         ModuleOperationRecoveryError::Database(err) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            graphql_internal_error("GraphQL query failed", err)
         }
         ModuleOperationRecoveryError::Policy(err) => {
-            <FieldError as GraphQLError>::internal_error(&err)
+            graphql_internal_error("GraphQL query failed", err)
         }
         ModuleOperationRecoveryError::Toggle(err) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+            graphql_internal_error("GraphQL query failed", err)
         }
     }
 }
@@ -163,7 +170,7 @@ pub(crate) async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<
         ],
     )
     .await
-    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
     if !can_read_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -233,7 +240,7 @@ async fn ensure_modules_manage_permission(ctx: &Context<'_>) -> Result<()> {
     let can_manage_modules =
         RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
     if !can_manage_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -355,7 +362,7 @@ impl RootQuery {
             owner_limit,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
         let modules = modules
             .into_iter()
             .map(TenantModule::from)
@@ -557,7 +564,7 @@ impl RootQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let modules = PlatformCompositionService::installed_modules(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?
             .into_iter()
             .take(limit)
             .map(InstalledModule::from)
@@ -622,7 +629,7 @@ impl RootQuery {
                 limit: limit as u32,
             })
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?
             .into_iter()
             .map(marketplace_module_from_view)
             .collect::<Vec<_>>();
@@ -655,7 +662,7 @@ impl RootQuery {
                 Some(tenant.default_locale.clone()),
             )
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))
             .map(|entry| entry.map(marketplace_module_from_view))
     }
 
@@ -749,7 +756,7 @@ impl RootQuery {
             .0
             .active_build()
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         Ok(build.as_ref().map(BuildJob::from_snapshot))
     }
@@ -770,7 +777,7 @@ impl RootQuery {
             .0
             .list_builds_page(limit, offset)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         let builds = builds
             .iter()
@@ -801,7 +808,7 @@ impl RootQuery {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .one(db)
             .await
-            .map_err(|err| err.to_string())?;
+            .map_err(|err| graphql_internal_error("Unable to load current user", err))?;
 
         Ok(user.as_ref().map(User::from))
     }
@@ -820,7 +827,7 @@ impl RootQuery {
             &rustok_api::Permission::USERS_READ,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         if !can_read_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
@@ -832,7 +839,7 @@ impl RootQuery {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .one(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         Ok(user.as_ref().map(User::from))
     }
@@ -857,7 +864,7 @@ impl RootQuery {
             &rustok_api::Permission::USERS_LIST,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
 
         if !can_list_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
@@ -875,7 +882,7 @@ impl RootQuery {
                 let user_ids = RbacService::get_user_ids_for_role(db, &tenant.id, role)
                     .await
                     .map_err(|err| {
-                        <FieldError as GraphQLError>::internal_error(&err.to_string())
+                        graphql_internal_error("GraphQL query failed", err)
                     })?;
                 query = query.filter(UsersColumn::Id.is_in(user_ids));
             }
@@ -900,7 +907,7 @@ impl RootQuery {
             .clone()
             .count(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?
             as i64;
         metrics::record_read_path_query(
             "graphql",
@@ -916,7 +923,7 @@ impl RootQuery {
             .limit(limit as u64)
             .all(db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
         metrics::record_read_path_query(
             "graphql",
             "root.users",
@@ -964,7 +971,7 @@ impl RootQuery {
             previous_period_start,
         )
         .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
         metrics::record_read_path_query(
             "graphql",
             "root.dashboard_stats",
@@ -983,7 +990,7 @@ impl RootQuery {
                 previous_period_start,
             )
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
             metrics::record_read_path_query(
                 "graphql",
                 "root.dashboard_stats",
@@ -1017,7 +1024,7 @@ impl RootQuery {
                 previous_period_start,
             )
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
             metrics::record_read_path_query(
                 "graphql",
                 "root.dashboard_stats",
@@ -1074,7 +1081,7 @@ impl RootQuery {
         let recent_users =
             dashboard_user_activity::load_recent_user_activity(db, tenant.id, limit as u64)
                 .await
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+                .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
         metrics::record_read_path_query(
             "graphql",
             "root.recent_activity",
