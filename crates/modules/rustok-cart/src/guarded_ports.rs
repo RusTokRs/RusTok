@@ -305,7 +305,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn trusted_service_and_system_actors_still_require_guest_capability() {
         let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
         let token = token.expect("guest token");
@@ -331,6 +330,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn guest_cart_requires_matching_claim() {
         let (metadata, token) = prepare_guest_cart_metadata(None, json!({}));
         let token = token.expect("guest token");
