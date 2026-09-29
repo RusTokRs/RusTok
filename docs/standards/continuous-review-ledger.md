@@ -388,7 +388,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.06 — `apps/server/src/graphql/settings/query.rs`** — one-module audit; host authority and tenant scope reverified, settings owner redaction preserved, invalid category mapped to `BAD_USER_INPUT`, and raw backend diagnostics removed from GraphQL errors. Next primary module: `apps/server/src/graphql/settings/mutation.rs`.
 - [x] **FS-22.05.07 — `apps/server/src/graphql/settings/mutation.rs`** — one-module audit; host/tenant authority and secret-write semantics reverified, input errors mapped to `BAD_USER_INPUT`, backend diagnostics redacted, and transactional outbox owner left intact. Next primary module: `apps/server/src/graphql/security.rs`.
 - [x] **FS-22.05.08 — `apps/server/src/graphql/security.rs`** — one-module audit; sensitive-field authorization now follows canonical effective-permission semantics and fragment traversal is cycle-safe. Next primary module: `apps/server/src/graphql/settings/query.rs` already completed; continue to `apps/server/src/graphql/system.rs`.
-- [ ] **FS-22.05.09 — `apps/server/src/graphql/system.rs`** — one-module audit; system/health metadata exposure, host-vs-tenant scope, error mapping, and resource bounds.
+- [x] **FS-22.05.09 — `apps/server/src/graphql/system.rs`** — one-module audit; host-global diagnostics restricted to host authority, event count failures no longer collapse to false zeroes, and session DB errors redacted. Next primary module: `apps/server/src/graphql/tenant_security.rs`.
+- [ ] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant-argument AST traversal, variable/default handling, fragment cycles, operation selection, and bypass resistance.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -428,6 +429,24 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.09 Assessment — `apps/server/src/graphql/system.rs`
+
+- **Base:** post-merge `main` refreshed at `3b45362de65fb4d2e67cf39d2866a6b518ef0f3c`; dedicated branch `codex/audit-fs-22.05.09-graphql-system` was created from that exact SHA.
+- **Discovery:** reviewed the complete system query module plus host authority context, event/outbox entities, session entity, cache health contract, storage probe owner, and GraphQL schema registration.
+- **Invariant map:** host-global system topology/health must require host authority rather than tenant RBAC; tenant session statistics must remain current-tenant bound; diagnostic failures must not be exposed as backend strings unless the surface explicitly declares a trusted operator diagnostic contract; metrics/health queries must not silently convert infrastructure failures into healthy-looking zero counts.
+- **Finding GRAPHQLSYSTEM-22.05.09-01:** `systemHealth`, `cacheHealth`, and `eventsStatus` were guarded by `HostAuthority::Read` *or* tenant `SETTINGS_READ`, despite their comments and payloads describing host-global/platform-wide diagnostics. `eventsStatus` also exposes all-tenant pending/DLQ counts.
+- **Remediation:** replaced the mixed helper with a dedicated host-only `require_host_read` gate for all host-global system diagnostics. Tenant settings permissions no longer grant process/global visibility through these fields.
+- **Finding GRAPHQLSYSTEM-22.05.09-02:** `eventsStatus` used `unwrap_or(0)` for pending/DLQ DB counts, turning database/query failures into plausible zero values instead of surfacing a health failure.
+- **Remediation:** count queries now use stable GraphQL `INTERNAL_ERROR` mapping with server-side diagnostic logging.
+- **Finding GRAPHQLSYSTEM-22.05.09-03:** `sessionStats` converted the database error directly to a GraphQL error string.
+- **Remediation:** session count failures now return a stable internal message while retaining the backend diagnostic only in logs.
+- **Scope audit:** `sessionStats` already verifies both authenticated principal tenant and requested `tenant_id` against the resolved `TenantContext`, then filters the session query by that tenant; this remains unchanged. `systemHealth` storage probe and `cacheHealth.redis_error` remain explicit host-operator diagnostics, now protected by the host-only gate.
+- **Authority audit:** request-scoped `HostAuthorityContext` is authenticated from the dedicated host credential, raw header is removed before downstream GraphQL, and the task-local scope does not cross WebSocket upgrade boundaries. No tenant RBAC wildcard can synthesize host authority.
+- **Fresh second pass:** re-read all four resolvers and the helper; searched for `require_host_or_permission`, `unwrap_or(0)`, raw `internal_error(&...to_string())`, and raw DB error mappings. No remaining instance was found in the module; the remaining `storage` health message is an intentional host-operator diagnostic, not tenant-visible data.
+- **Regression audit:** host-vs-tenant authorization semantics are tightened; successful health/session responses remain shape-compatible; tenant session filtering remains intact.
+- **Verification:** repository source/static inspection, owner-contract tracing, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.09` closed; ready for PR/merge. Next primary module: `FS-22.05.10 — apps/server/src/graphql/tenant_security.rs`.
+
 ### FS-22.05.08 Assessment — `apps/server/src/graphql/security.rs`
 
 - **Base:** post-merge `main` refreshed at `c8faeed0f7c291cd0519432c82546d462043e3ad`; dedicated branch `codex/audit-fs-22.05.08-graphql-security` was created from that exact SHA.
