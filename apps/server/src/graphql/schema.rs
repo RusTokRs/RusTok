@@ -19,8 +19,6 @@ mod schema_codegen {
 }
 
 use super::dashboard_security::GraphqlDashboardSecurityPolicy;
-#[cfg(all(feature = "mod-forum", feature = "mod-notifications"))]
-use super::forum_notification_reconciliation::ForumNotificationReconciliationQuery;
 use super::forum_principal_security::ForumPrincipalPolicy;
 use super::index_drift_diagnosis::IndexDriftDiagnosisMutation;
 use super::index_drift_source_page_diagnosis::IndexDriftSourcePageDiagnosisMutation;
