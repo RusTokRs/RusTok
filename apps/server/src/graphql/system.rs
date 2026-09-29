@@ -1,4 +1,5 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use rustok_api::{
     HostAuthority, Permission, graphql::GraphQLError,
@@ -69,24 +70,21 @@ fn require_permission<'a>(
     Ok(auth)
 }
 
-fn require_host_or_permission(
-    ctx: &Context<'_>,
-    required: HostAuthority,
-    permission: &Permission,
-    message: &str,
-) -> Result<()> {
-    if let Some(authority) = crate::host_authority::current_host_authority()
-        && authority.allows(required)
+fn require_host_read() -> Result<()> {
+    if crate::host_authority::current_host_authority()
+        .is_some_and(|authority| authority.allows(HostAuthority::Read))
     {
         return Ok(());
     }
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    if has_effective_permission(&auth.permissions, permission) {
-        return Ok(());
-    }
-    Err(<FieldError as GraphQLError>::permission_denied(message))
+
+    Err(<FieldError as GraphQLError>::permission_denied(
+        "host-global authority required",
+    ))
+}
+
+fn graphql_system_internal_error(message: &'static str, error: impl Display) -> FieldError {
+    tracing::error!(%error, message, "GraphQL system query failed");
+    <FieldError as GraphQLError>::internal_error(message)
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
@@ -99,12 +97,7 @@ impl SystemQuery {
     /// Detailed system health is a host-operator diagnostic surface. Public
     /// liveness/readiness checks must use the dedicated HTTP health endpoints.
     async fn system_health(&self, ctx: &Context<'_>) -> Result<SystemHealthSummary> {
-        require_host_or_permission(
-            ctx,
-            HostAuthority::Read,
-            &Permission::SETTINGS_READ,
-            "host-global authority or settings:read permission required",
-        )?;
+        require_host_read()?;
         let db = ctx.data::<DatabaseConnection>()?;
         let mut components = Vec::new();
         let mut overall = "ok";
@@ -168,12 +161,7 @@ impl SystemQuery {
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        require_host_or_permission(
-            ctx,
-            HostAuthority::Read,
-            &Permission::SETTINGS_READ,
-            "host-global authority or settings:read permission required",
-        )?;
+        require_host_read()?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
@@ -203,12 +191,7 @@ impl SystemQuery {
 
     /// Event transport topology and all-tenant queue counts require host read authority.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        require_host_or_permission(
-            ctx,
-            HostAuthority::Read,
-            &Permission::SETTINGS_READ,
-            "host-global authority or settings:read permission required",
-        )?;
+        require_host_read()?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;
@@ -227,12 +210,16 @@ impl SystemQuery {
             .filter(EventCol::Status.eq("pending"))
             .count(db)
             .await
-            .unwrap_or(0) as i64;
+            .map_err(|error| {
+                graphql_system_internal_error("Unable to read pending event count", error)
+            })? as i64;
         let dlq_events = EventEntity::find()
             .filter(EventCol::Status.eq("failed"))
             .count(db)
             .await
-            .unwrap_or(0) as i64;
+            .map_err(|error| {
+                graphql_system_internal_error("Unable to read dead-letter event count", error)
+            })? as i64;
 
         Ok(EventsStatusPayload {
             configured_profile,
@@ -268,7 +255,7 @@ impl SystemQuery {
             .filter(SessionCol::ExpiresAt.gt(now))
             .count(db)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?
+            .map_err(|error| graphql_system_internal_error("Unable to read active session count", error))?
             as i64;
 
         Ok(SessionStats {
@@ -303,6 +290,12 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
 #[cfg(test)]
 mod tests {
     use rustok_api::{Permission, has_effective_permission};
+
+
+    #[test]
+    fn host_global_system_queries_require_host_authority() {
+        assert!(super::require_host_read().is_err());
+    }
 
     #[test]
     fn tenant_manage_permission_still_satisfies_tenant_session_read() {
