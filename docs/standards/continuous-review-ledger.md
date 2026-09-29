@@ -2774,7 +2774,7 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 **Verification state:** No compiler, formatter, clippy, or cargo test run was possible in this environment (no Rust toolchain; Rust mirrors/static.rust-lang.org unreachable). Verification is source-level plus executed Node guardrails (`node scripts/verify/verify-translation-admin-boundary.mjs` passes after the guardrail re-point). Maintainer execution of `cargo fmt`/`clippy`/`check`/`test` for the three crates and both Tailwind builds remains required.
 
-### FS-22.06.01 Assessment — `apps/server/src/host.rs` REST/controller composition
+### FS-22.06.01 Result — `apps/server/src/host.rs` REST/controller composition
 
 - **Base:** refreshed `main` at `4a2520ceec81c82541e4cd14eaae44cbebda1791`; dedicated branch `codex/audit-fs-22.06.01-rest-controller-composition` was created from that exact SHA.
 - **Invariant map:** optional module REST must be absent when its compile-time module feature is not composed; the public OpenAPI document must describe the same externally mounted surface; owner-owned Flex REST DTOs, persistence and business rules remain in `flex`, while `apps/server` owns only route composition and transport adaptation.
@@ -2786,4 +2786,5 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Adjacent owner review:** `flex::rest` continues to own REST DTO/command/view mapping and standalone business validation; no server-side duplicate validation or storage logic was introduced. `controllers/mod.rs` remains a transport module registry only; the actual externally reachable boundary is the route assembly in `host.rs`.
 - **Fresh second pass:** independently re-read the changed host routing, OpenAPI pruning path, disabled-feature regression, Flex manifest and owner documentation, and searched the server route composition for remaining unconditional standalone Flex mounts. No second repository-owned defect attributable to this primary boundary was confirmed.
 - **Verification:** source inspection, owner-contract tracing and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on the dedicated branch; pending PR integration and post-merge ledger closeout.
+- **Implementation status:** complete and integrated into `main` via PR #4336, squash merge `83154edd68b6e03a6c61236e5398cc8b41d51a1f`.
+- **Post-merge reconciliation:** refreshed `main` at `83154edd68b6e03a6c61236e5398cc8b41d51a1f`; comparison against the recorded base `4a2520ceec81c82541e4cd14eaae44cbebda1791` is exactly one merged commit with the expected four-file change set. The merged host/OpenAPI gate remains present on `main`.
