@@ -591,7 +591,7 @@ impl RootQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let snapshot = PlatformCompositionService::active_snapshot_view(db)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+            .map_err(|error| graphql_internal_error("GraphQL query failed", error))?;
         Ok(ModuleCompositionSnapshot::from(snapshot))
     }
 
