@@ -33,7 +33,28 @@ pub async fn initialize_server_context(
     let cache = ensure_cache_service(runtime_ctx);
     start_channel_cache_invalidation_listener(runtime_ctx, cache.clone()).await?;
     start_rbac_cache_invalidation_listener(runtime_ctx, cache).await?;
-    crate::initializers::superadmin::ensure_default_superadmin(runtime_ctx).await
+    if should_initialize_default_superadmin(runtime_ctx) {
+        crate::initializers::superadmin::ensure_default_superadmin(runtime_ctx).await?;
+    } else {
+        tracing::info!(
+            host_mode = ?runtime_ctx.settings().runtime.host_mode,
+            "Skipping default SuperAdmin provisioning for the read-only registry host"
+        );
+    }
+    Ok(())
+}
+
+fn should_initialize_default_superadmin(runtime_ctx: &ServerRuntimeContext) -> bool {
+    should_initialize_default_superadmin_for_mode(runtime_ctx.settings().runtime.host_mode)
+}
+
+fn should_initialize_default_superadmin_for_mode(
+    host_mode: crate::common::settings::RuntimeHostMode,
+) -> bool {
+    !matches!(
+        host_mode,
+        crate::common::settings::RuntimeHostMode::RegistryOnly
+    )
 }
 
 fn check_production_secrets(
@@ -233,8 +254,21 @@ pub async fn bootstrap_application_router(
 mod tests {
     use super::{
         check_production_secrets, known_dev_jwt_fragment, known_sample_superadmin_password,
-        sample_database_credentials_pattern,
+        sample_database_credentials_pattern, should_initialize_default_superadmin,
     };
+
+    #[test]
+    fn registry_only_host_skips_default_superadmin_provisioning() {
+        assert!(!should_initialize_default_superadmin_for_mode(
+            crate::common::settings::RuntimeHostMode::RegistryOnly
+        ));
+        assert!(should_initialize_default_superadmin_for_mode(
+            crate::common::settings::RuntimeHostMode::Api
+        ));
+        assert!(should_initialize_default_superadmin_for_mode(
+            crate::common::settings::RuntimeHostMode::Full
+        ));
+    }
 
     #[test]
     fn production_secret_validation_is_disabled_outside_production() {
