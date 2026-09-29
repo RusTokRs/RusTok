@@ -404,6 +404,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.20 — `apps/server/src/graphql/index_drift_diagnosis.rs`** — one-module audit; request authority ordering, tenant/actor derivation, bounded entity-key parsing, dependency error taxonomy, and mismatch payload redaction reverified; no production remediation required. Next primary module: `FS-22.05.21` to be selected from the refreshed ledger after merge.
 - [x] **FS-22.05.21 — `apps/server/src/graphql/index_drift_source_page_diagnosis.rs`** — one-module audit; request authority ordering, bounded page/continuation inputs, encrypted continuation scope binding, dependency error taxonomy, and sealed output boundaries reverified; no production remediation required. Next primary module: `FS-22.05.22` to be selected from the refreshed ledger after merge.
 - [x] **FS-22.05.22 — `apps/server/src/graphql/index_replay.rs`** — one-module audit; replay authorization ordering, tenant/schema/locale derivation, bounded targeted/shadow inputs, durable job/lease semantics, encrypted continuation boundaries, and error taxonomy reverified; no production remediation required. Next primary module: `FS-22.05.23` to be selected from the refreshed ledger after merge.
+- [x] **FS-22.05.23 — `apps/server/src/graphql/storefront_principal_security.rs`** — one-module audit; storefront service-principal policy, alias/fragment coverage, and GraphQL extension ordering reverified; fragment traversal made cycle-safe to prevent recursive-query exhaustion. Next primary module: `FS-22.05.24` to be selected from the refreshed ledger after merge.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -443,6 +444,19 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.23 Assessment — `apps/server/src/graphql/storefront_principal_security.rs`
+
+- **Base:** post-merge `main` refreshed at `707361ebdb5e7cf1da4dfa939b376e1d9c6c3431`; dedicated branch `codex/audit-fs-22.05.23-graphql-storefront-principal-security` was created from that exact SHA.
+- **Discovery:** reviewed the complete GraphQL storefront principal policy extension, its AST traversal, extension prepare/execute ordering, `AuthContext` principal classification, and existing GraphQL storefront tests.
+- **Invariant map:** service principals must not execute storefront operations; anonymous guests and human-user credentials remain eligible; aliases must not hide the underlying field name; fragments and inline fragments must be traversed; malformed/cyclic fragment graphs must not cause recursive resource exhaustion.
+- **Finding GRAPHQLSTOREFRONTSEC-22.05.23-01:** fragment traversal recursively followed `FragmentSpread` nodes without a visited set. A cyclic fragment graph could therefore recurse indefinitely during `prepare_request` before normal GraphQL validation completed, creating a request-level stack/resource exhaustion vector.
+- **Remediation:** added a `BTreeSet` of visited fragment names to the traversal, short-circuiting repeated fragment edges while preserving detection of storefront fields reached elsewhere in the graph. Added a regression query with a cyclic fragment that still contains a storefront field.
+- **Authorization audit:** policy checks the underlying GraphQL field name rather than aliases, records storefront presence during `prepare_request`, and denies service principals in `execute` before resolver execution. Anonymous requests remain unaffected because the restriction is specific to an authenticated service principal.
+- **Extension/ordering audit:** `prepare_request` parses and classifies the document before execution; the policy's `StorefrontOperationRequested` marker is request-local. No alternate service-principal bypass was found in the inspected extension path.
+- **Fresh second pass:** independently re-read traversal, storefront classification, service-principal check, tests for aliases/fragments, and the schema registration path. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, GraphQL AST traversal review, principal-boundary tracing, regression source review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.23` closed; branch ready for PR/merge. Next primary module will be selected from the refreshed ledger after merge.
+
 ### FS-22.05.22 Assessment — `apps/server/src/graphql/index_replay.rs`
 
 - **Base:** post-merge `main` refreshed at `687ff5a4800abcfa6e230bad0569f3c573d8d580`; dedicated branch `codex/audit-fs-22.05.22-graphql-index-replay` was created from that exact SHA.
