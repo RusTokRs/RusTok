@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `d1fccccbf5c2025fe950a28699d3178ee4bb1878`  
+**Current main SHA:** `d45806b363bf12644dac768d9bc0bee54d44c34e`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -363,7 +363,22 @@ Hard limits for every iteration:
 - **Verification:** source inspection, qualified-usage search, dependency/feature review, and API-surface guard review only. No Cargo/test/clippy/runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.09` fully closed after retirement of the unused legacy shared error contract; next primary module is `FS-22.04.10 — crates/libs/rustok-api/src/locale.rs`.
 
-- [ ] **FS-22.04.10 — `crates/libs/rustok-api/src/locale.rs`** — shared typed locale normalization/runtime-vs-storage boundary if request/middleware audits expose owner-level propagation drift.
+- [x] **FS-22.04.10 — `crates/libs/rustok-api/src/locale.rs`** — shared typed locale normalization/runtime-vs-storage boundary; Unicode/CLDR canonicalization is delegated to `rustok-ui-i18n` while the API layer retains the 32-byte normalized storage projection and `und` provenance separation.
+### FS-22.04.10 Iteration 1 — `crates/libs/rustok-api/src/locale.rs`
+
+- **Base:** refreshed `main` at `d45806b363bf12644dac768d9bc0bee54d44c34e`; dedicated branch `codex/audit-fs-22.04.10-api-locale-contract`.
+- **Invariant map:** one canonical Unicode/CLDR locale parser must own locale grammar and alias resolution; `rustok-api` may compose host precedence and storage/runtime policy but must not carry a second incompatible locale grammar; runtime/tenant locales must reject storage-only `und`; normalized locale identities must remain within the platform's 32-byte storage width.
+- **Discovery:** re-read `crates/libs/rustok-api/src/locale.rs`, API exports/docs, `rustok-ui-i18n` locale and Accept-Language owner modules, tenant locale-policy ports/service projection, server locale middleware, request-context extraction, static module UI i18n validation, and the historical Navigation consumer contract.
+- **Finding LOCALEAPI-22.04.10-01:** `rustok-api::normalize_locale_tag` contained a second hand-written BCP-47 normalizer with a 32-byte raw-input bound and no extension/CLDR alias semantics, while `rustok-ui-i18n` is the documented canonical owner for Unicode locale parsing/canonicalization. This made locale identity dependent on request source: `Accept-Language` used the UI owner and could canonicalize aliases such as `iw-IL-u-ca-hebrew` to `he-IL`, whereas query/cookie/Medusa and tenant-policy paths went through the API parser and rejected that same valid Unicode locale. Tenant policy and static UI contracts therefore risked carrying aliases/incompatible identities into runtime/catalog matching.
+- **Remediation:** replaced the hand-written parser with a direct delegation to `rustok-ui-i18n::normalize_locale_tag`. The API layer now enforces only the host/storage contract that remains its responsibility: the canonical extension-free identity must fit the platform's 32-byte locale width. `RuntimeLocale` and `TenantLocale` continue to reject `und`, while `StoredLocale` continues to permit it as explicit unknown provenance.
+- **Regression coverage:** added canonical Unicode/CLDR alias coverage for `iw-IL-u-ca-hebrew` and typed-runtime coverage proving the same canonical identity is used through `RuntimeLocale`. The existing malformed, `und`, serialization and common BCP-47 cases remain covered.
+- **Adjacent-boundary re-audit:** tenant locale-policy entries already use `TenantLocale`; the owner service canonicalizes persisted policy rows through that type and validates exact default/fallback invariants. Server locale middleware receives the typed policy projection and retains tenant allowlist/default/fallback selection; `RequestContext` continues to consume only the upstream resolved locale extension. Static module i18n validation continues to use `rustok-api::normalize_locale_tag`, so it now shares the same canonical locale identity as UI catalogs.
+- **Fresh second pass:** independently re-read the changed API module, root exports/docs, the i18n verifier, tenant policy owner, server locale resolver, request-context consumer and known legacy Navigation/static-package consumers. No additional repository-owned production defect requiring remediation remained inside this primary module. The separately exposed API fallback-candidate helpers have no current repository consumer and their semantics are not changed speculatively in this iteration.
+- **Guardrail:** `scripts/verify/verify-i18n-contract.mjs` now requires the API normalizer to delegate to `rustok-ui-i18n` and rejects reintroduction of the legacy hand-written parser shape.
+- **Documentation:** synchronized `crates/libs/rustok-api/README.md` and `crates/libs/rustok-api/docs/README.md` with the canonical normalization ownership and 32-byte host/storage projection.
+- **Verification:** repository-content/static inspection, commit history, external-publication search, and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.10` complete after integration of the dedicated implementation branch; next primary module is `FS-22.04.11`.
+
 - [ ] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — only add concrete primary modules here after the preceding dedicated module audits identify an actual repository-owned cache-key owner requiring remediation.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
