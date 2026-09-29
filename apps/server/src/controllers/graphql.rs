@@ -1,4 +1,7 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use async_graphql::Data;
 use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage};
@@ -37,6 +40,9 @@ const WS_AUTHORITY_CHANGED_REASON: &str = "authorization changed; reconnect requ
 const WS_MAX_MESSAGE_SIZE: usize = 256 * 1024;
 const WS_MAX_FRAME_SIZE: usize = 256 * 1024;
 const WS_INCOMING_QUEUE_CAPACITY: usize = 32;
+const WS_CONNECTION_INIT_TIMEOUT: Duration = Duration::from_secs(10);
+const WS_CONNECTION_INIT_TIMEOUT_CLOSE: u16 = 4408;
+const WS_CONNECTION_INIT_TIMEOUT_REASON: &str = "Connection initialisation timeout";
 
 /// Normalize canonical RBAC implications for GraphQL policies that inspect an
 /// immutable permission vector directly.
@@ -255,18 +261,21 @@ async fn handle_graphql_ws(
     let (incoming_tx, incoming_rx) =
         tokio::sync::mpsc::channel::<String>(WS_INCOMING_QUEUE_CAPACITY);
     let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
+    let connection_init_received = Arc::new(OnceLock::<()>::new());
 
     let schema_for_stream = schema.as_ref().clone();
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
     let auth_lease_for_init = Arc::clone(&auth_lease);
+    let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
         ReceiverStream::new(incoming_rx),
         protocol,
     )
     .on_connection_init(move |payload| {
+        let _ = connection_init_received_for_init.set(());
         build_ws_connection_data(
             runtime_ctx_for_init.clone(),
             auth_runtime_for_init.clone(),
@@ -299,6 +308,11 @@ async fn handle_graphql_ws(
         }
     });
 
+    // The timeout covers receipt of the init message, not tenant/auth/locale validation after
+    // the callback starts. `connection_init_received` is set at callback entry so a slow but
+    // legitimately received initialization is not cancelled by the transport deadline.
+    let mut connection_init_deadline = Box::pin(tokio::time::sleep(WS_CONNECTION_INIT_TIMEOUT));
+
     loop {
         let scope_before_poll = match auth_lease.get() {
             Some(lease) => match revalidate_ws_auth(&auth_runtime, lease).await {
@@ -311,7 +325,24 @@ async fn handle_graphql_ws(
             None => None,
         };
 
-        let next_message = with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await;
+        let next_message = if auth_lease.get().is_none() {
+            tokio::select! {
+                _ = &mut connection_init_deadline,
+                    if connection_init_received.get().is_none() =>
+                {
+                    let _ = close_ws(
+                        &mut sink,
+                        WS_CONNECTION_INIT_TIMEOUT_CLOSE,
+                        WS_CONNECTION_INIT_TIMEOUT_REASON,
+                    )
+                    .await;
+                    break;
+                }
+                message = with_rbac_request_scope(None, graphql_stream.next()) => message,
+            }
+        } else {
+            with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await
+        };
         let Some(message) = next_message else {
             break;
         };
@@ -364,15 +395,22 @@ async fn revalidate_ws_auth(
     Ok(current_scope)
 }
 
-async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+async fn close_ws<S>(sink: &mut S, code: u16, reason: &'static str) -> Result<(), S::Error>
 where
     S: futures_util::Sink<Message> + Unpin,
 {
     sink.send(Message::Close(Some(CloseFrame {
-        code: WS_CLOSE_UNAUTHORIZED,
-        reason: WS_AUTHORITY_CHANGED_REASON.into(),
+        code,
+        reason: reason.into(),
     })))
     .await
+}
+
+async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    close_ws(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await
 }
 
 async fn build_ws_connection_data(
@@ -396,7 +434,7 @@ async fn build_ws_connection_data(
     let tenant_ctx = tenant::resolve_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
         .map_err(|error| {
-            tracing::warn!(tenant_slug, error = %error, "GraphQL WebSocket tenant resolution failed");
+            tracing::warn!(error = %error, "GraphQL WebSocket tenant resolution failed");
             async_graphql::Error::new(error.client_message())
         })?;
     let access_token = token
@@ -553,8 +591,9 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::{
-        GRAPHQL_HTTP_PATH, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE, WS_MAX_MESSAGE_SIZE,
-        graphql_http_response, graphql_permissions,
+        GRAPHQL_HTTP_PATH, WS_CONNECTION_INIT_TIMEOUT, WS_CONNECTION_INIT_TIMEOUT_CLOSE,
+        WS_CONNECTION_INIT_TIMEOUT_REASON, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE,
+        WS_MAX_MESSAGE_SIZE, graphql_http_response, graphql_permissions,
     };
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
@@ -613,6 +652,25 @@ mod tests {
         assert_eq!(WS_MAX_MESSAGE_SIZE, 256 * 1024);
         assert_eq!(WS_MAX_FRAME_SIZE, 256 * 1024);
         assert_eq!(WS_INCOMING_QUEUE_CAPACITY, 32);
+    }
+
+    #[test]
+    fn graphql_ws_connection_init_wait_is_bounded_and_protocol_compliant() {
+        assert_eq!(WS_CONNECTION_INIT_TIMEOUT, std::time::Duration::from_secs(10));
+        assert_eq!(WS_CONNECTION_INIT_TIMEOUT_CLOSE, 4408);
+        assert_eq!(
+            WS_CONNECTION_INIT_TIMEOUT_REASON,
+            "Connection initialisation timeout"
+        );
+    }
+
+    #[test]
+    fn websocket_tenant_resolution_does_not_log_raw_slug_payload() {
+        let source = include_str!("graphql.rs");
+        assert!(!source.contains("tracing::warn!(tenant_slug"));
+        assert!(!source.contains("tracing::error!(tenant_slug"));
+        assert!(!source.contains("tracing::info!(tenant_slug"));
+        assert!(!source.contains("tracing::debug!(tenant_slug"));
     }
 
     #[test]

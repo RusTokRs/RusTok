@@ -199,6 +199,8 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
+- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
+
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
