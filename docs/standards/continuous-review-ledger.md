@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `d45806b363bf12644dac768d9bc0bee54d44c34e`  
+**Current main SHA:** `7ad05f0bcd87f4227a99cd7ce3f3984874dbb105`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -379,9 +379,35 @@ Hard limits for every iteration:
 - **Verification:** repository-content/static inspection, commit history, external-publication search, and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.10` complete after integration of the dedicated implementation branch; next primary module is `FS-22.04.11`.
 
-- [ ] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — only add concrete primary modules here after the preceding dedicated module audits identify an actual repository-owned cache-key owner requiring remediation.
+- [x] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — completed as a repository-wide cache-key owner assessment across the canonical cache contract and the concrete server/module cache adapters inspected after FS-22.04.10. No repository-owned request-derived cache-key defect was confirmed, so no speculative cache-key rewrite was introduced.
+- [x] **FS-22.05.01 — `apps/server/src/graphql/loaders.rs`** — one-module audit; GraphQL tenant-name loader error boundary hardened to redact backend diagnostics. Continue to the next unchecked GraphQL primary module after this iteration is integrated.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
+
+### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
+
+- **Base:** refreshed `main` at `7ad05f0bcd87f4227a99cd7ce3f3984874dbb105`; dedicated implementation branch `codex/audit-fs-22.05.01-graphql-loaders` was created from that exact SHA for the next primary module.
+- **Discovery:** re-read the canonical cache key contract (`rustok-cache::CacheKeyBuilder`, generation and typed-cache boundaries) plus the concrete owner caches for channel resolution, tenant locale, field definitions, RBAC permissions, SEO redirects, Pages storefront data, marketplace catalog/detail, and tenant/module policy.
+- **Invariant map:** a cache entry must include every request/source attribute that can change the value; tenant/channel/locale/permission/generation dimensions must not collapse into a shared key; provider-isolated caches may use owner instance identity only when the provider configuration and unkeyed inputs are immutable for that instance.
+- **Finding assessment:** no concrete repository-owned cache-key collision or request-context omission was confirmed. Field-definition, RBAC, tenant, locale, Pages, channel and SEO caches include their required tenant/entity/generation dimensions; marketplace catalog list keys include registry identity plus query dimensions; marketplace detail is a provider-instance-local cache and its owner detail contract ignores list-query filters, so slug-only detail keys do not collapse distinct supported results.
+- **Decision:** do not add a speculative cross-cutting cache-key abstraction or rewrite existing owner keys without a demonstrated collision. The track is closed as an assessment-only iteration; later cache findings remain assignable to their concrete owner modules.
+- **Verification:** repository source/static inspection and owner-contract comparison only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent, per the maintainer-owned test rule.
+- **Status:** `FS-22.04.11` closed with no code remediation. The next primary module is `FS-22.05.01 — apps/server/src/graphql/loaders.rs`.
+
+### FS-22.05.01 Iteration 1 — `apps/server/src/graphql/loaders.rs`
+
+- **Base:** refreshed `main` at `7ad05f0bcd87f4227a99cd7ce3f3984874dbb105`; dedicated branch `codex/audit-fs-22.05.01-graphql-loaders`.
+- **Invariant map:** GraphQL loader failures must not expose persistence/backend diagnostics to API clients; loader identity values originate from already-authorized GraphQL objects and must remain tenant-scoped by the source object; batching must preserve one result per tenant UUID without silently fabricating names.
+- **Finding GRAPHQLLOADER-22.05.01-01:** `TenantNameLoader` converted `SeaORM::DbErr` directly to `async_graphql::Error::new(err.to_string())`. A database failure while resolving the public `User.tenantName` field could therefore return raw SQL/connection/storage diagnostics in the GraphQL response.
+- **Remediation:** the loader now routes persistence failures through one local error boundary that logs the backend error server-side with only bounded batch-size context and returns the stable client message `Tenant name lookup failed`. No successful lookup, batching, or tenant identity mapping behavior was changed.
+- **Regression coverage:** added a focused unit regression proving a representative backend diagnostic is absent from the client-facing GraphQL error message.
+- **Immediate re-audit:** re-read the full loader and the only direct projection consumer, `User::tenant_name` in `apps/server/src/graphql/types.rs`; the field still uses the same DataLoader and remains optional for missing tenant rows.
+- **Adjacent-boundary re-audit:** `apps/server/src/graphql/schema.rs` registers one `TenantNameLoader` DataLoader with the request schema; GraphQL user projections are assembled from tenant-scoped user records, so the loader does not introduce a new client-supplied tenant selector. No alternate loader or direct tenant-name GraphQL path was found in the inspected composition.
+- **Regression audit:** successful tenant-name resolution remains unchanged; missing tenant rows still resolve to `None`; only backend-failure presentation changes from raw diagnostics to a stable error. The server log retains the original error for operator diagnosis without copying the UUID batch itself.
+- **Fresh second pass:** independently re-read `loaders.rs`, `types.rs` tenant-name projection, schema DataLoader registration, and the GraphQL error construction path. No additional repository-owned defect remained inside this primary module.
+- **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** iteration ready for PR/merge after final branch-diff review.
+
 - [ ] **FS-22.06 — REST/controller composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.07 — Server-function composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 - [ ] **FS-22.08 — Embedded UI composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
