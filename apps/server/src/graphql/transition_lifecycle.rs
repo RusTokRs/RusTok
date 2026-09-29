@@ -37,6 +37,7 @@ pub struct ModuleTransitionCheckpointGql {
 
 impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
     fn from(checkpoint: ModuleTransitionCheckpointView) -> Self {
+        let state_for_details = checkpoint.state.clone();
         let state = match checkpoint.state {
             ModuleTransitionStateView::Preflighting => ModuleTransitionStateGql::Preflighting,
             ModuleTransitionStateView::Fenced => ModuleTransitionStateGql::Fenced,
@@ -65,7 +66,7 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
             predecessor_digest: checkpoint.predecessor_digest,
             candidate_digest: checkpoint.candidate_digest,
             state,
-            state_details: sanitize_state_details(checkpoint.state, checkpoint.state_details),
+            state_details: sanitize_state_details(state_for_details, checkpoint.state_details),
             security_epoch: checkpoint.security_epoch,
             recovery_attempt_count: checkpoint.recovery_attempt_count,
             created_at: checkpoint.created_at,
