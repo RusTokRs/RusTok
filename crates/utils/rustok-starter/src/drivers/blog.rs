@@ -162,14 +162,10 @@ pub async fn import_blog_posts(
                     version: current_version,
                 };
 
-                if let Err(e) = post_service
+                post_service
                     .update_post(tenant_id, post_id, security.clone(), update_input)
-                    .await
-                {
-                    tracing::warn!(error = ?e, locale = %trans_locale, slug = %post.slug, "Failed to apply blog post translation");
-                } else {
-                    current_version += 1;
-                }
+                    .await?;
+                current_version += 1;
             }
         }
     }
