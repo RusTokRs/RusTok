@@ -583,8 +583,9 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::{
-        GRAPHQL_HTTP_PATH, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE, WS_MAX_MESSAGE_SIZE,
-        graphql_http_response, graphql_permissions,
+        GRAPHQL_HTTP_PATH, WS_CONNECTION_INIT_TIMEOUT, WS_CONNECTION_INIT_TIMEOUT_CLOSE,
+        WS_CONNECTION_INIT_TIMEOUT_REASON, WS_INCOMING_QUEUE_CAPACITY, WS_MAX_FRAME_SIZE,
+        WS_MAX_MESSAGE_SIZE, graphql_http_response, graphql_permissions,
     };
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
@@ -643,6 +644,16 @@ mod tests {
         assert_eq!(WS_MAX_MESSAGE_SIZE, 256 * 1024);
         assert_eq!(WS_MAX_FRAME_SIZE, 256 * 1024);
         assert_eq!(WS_INCOMING_QUEUE_CAPACITY, 32);
+    }
+
+    #[test]
+    fn graphql_ws_connection_init_wait_is_bounded_and_protocol_compliant() {
+        assert_eq!(WS_CONNECTION_INIT_TIMEOUT, std::time::Duration::from_secs(10));
+        assert_eq!(WS_CONNECTION_INIT_TIMEOUT_CLOSE, 4408);
+        assert_eq!(
+            WS_CONNECTION_INIT_TIMEOUT_REASON,
+            "Connection initialisation timeout"
+        );
     }
 
     #[test]
