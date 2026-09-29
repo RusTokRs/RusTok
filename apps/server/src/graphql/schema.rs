@@ -83,8 +83,6 @@ pub struct Query(
     RootQuery,
     SearchQueryRoot,
     #[cfg(feature = "mod-forum")] ForumSearchProjectionReconciliationQuery,
-    #[cfg(all(feature = "mod-forum", feature = "mod-notifications"))]
-    ForumNotificationReconciliationQuery,
     #[cfg(feature = "mod-forum")] ForumStorefrontSearchQuery,
     AuthQuery,
     OAuthQuery,
