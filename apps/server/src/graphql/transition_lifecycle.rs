@@ -171,3 +171,40 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
         _ => <FieldError as GraphQLError>::internal_error("Transition coordinator failed"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::map_transition_coordinator_error;
+    use rustok_modules::{TransitionCoordinatorError, security_epoch::SecurityEpochConflictError};
+
+    #[test]
+    fn recovery_limit_error_redacts_owner_reason() {
+        let error = map_transition_coordinator_error(
+            TransitionCoordinatorError::RecoveryLimitExhausted(
+                "Automatic recovery already attempted: database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(error.message, "Automatic transition recovery limit was exhausted");
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn security_epoch_error_redacts_latest_reason() {
+        let error = map_transition_coordinator_error(
+            TransitionCoordinatorError::SecurityEpochStale(
+                SecurityEpochConflictError::EpochStale {
+                    expected: rustok_modules::GlobalSecurityEpoch(1),
+                    current: rustok_modules::GlobalSecurityEpoch(2),
+                    latest_reason: "secret operational reason".to_string(),
+                },
+            ),
+        );
+
+        assert_eq!(
+            error.message,
+            "Transition security epoch is stale; reload the current state"
+        );
+        assert!(!error.message.contains("secret operational reason"));
+    }
+}
