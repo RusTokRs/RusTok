@@ -145,11 +145,14 @@ impl From<ModuleRetentionHoldView> for RetentionHoldGql {
 
 pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError) -> FieldError {
     match error {
-        TransitionCoordinatorError::RecoveryLimitExhausted(reason) => FieldError::new(reason)
-            .extend_with(|_, extensions| {
-                extensions.set("code", "RECOVERY_LIMIT_EXHAUSTED");
-                extensions.set("retryable_issue", false);
-            }),
+        TransitionCoordinatorError::RecoveryLimitExhausted(reason) => {
+            tracing::error!(%reason, "module transition automatic recovery limit exhausted");
+            FieldError::new("Automatic transition recovery limit was exhausted")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "RECOVERY_LIMIT_EXHAUSTED");
+                    extensions.set("retryable_issue", false);
+                })
+        },
         TransitionCoordinatorError::InvalidStateTransition { from, to } => FieldError::new(
             format!("Invalid state transition from {from} to {to}"),
         )
@@ -157,11 +160,14 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
             extensions.set("code", "INVALID_STATE_TRANSITION");
             extensions.set("retryable_issue", false);
         }),
-        TransitionCoordinatorError::SecurityEpochStale(e) => FieldError::new(e.to_string())
-            .extend_with(|_, extensions| {
-                extensions.set("code", "SECURITY_EPOCH_STALE");
-                extensions.set("retryable_issue", false);
-            }),
+        TransitionCoordinatorError::SecurityEpochStale(error) => {
+            tracing::warn!(%error, "module transition security epoch is stale");
+            FieldError::new("Transition security epoch is stale; reload the current state")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "SECURITY_EPOCH_STALE");
+                    extensions.set("retryable_issue", false);
+                })
+        },
         _ => <FieldError as GraphQLError>::internal_error("Transition coordinator failed"),
     }
 }
