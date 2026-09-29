@@ -2,11 +2,15 @@ mod keys;
 mod model;
 #[cfg(feature = "server")]
 mod provider;
+#[cfg(feature = "server")]
+mod reconciliation;
 
 pub use keys::*;
 pub use model::*;
 #[cfg(feature = "server")]
 pub use provider::*;
+#[cfg(feature = "server")]
+pub use reconciliation::*;
 #[cfg(feature = "server")]
 pub use rustok_api::{PortContext, PortError};
 
