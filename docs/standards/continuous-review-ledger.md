@@ -382,7 +382,8 @@ Hard limits for every iteration:
 - [x] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — completed as a repository-wide cache-key owner assessment across the canonical cache contract and the concrete server/module cache adapters inspected after FS-22.04.10. No repository-owned request-derived cache-key defect was confirmed, so no speculative cache-key rewrite was introduced.
 - [x] **FS-22.05.01 — `apps/server/src/graphql/loaders.rs`** — one-module audit; GraphQL tenant-name loader error boundary hardened to redact backend diagnostics; integrated via PR #4304 at `702985eed0f6e0386bda2909ae16c451e1261239`.
 - [x] **FS-22.05.02 — `apps/server/src/graphql/schema.rs`** — one-module audit; composition dependencies and generated runtime-data factories reverified end-to-end; no repository-owned in-scope defect required remediation.
-- [ ] **FS-22.05.03 — `apps/server/src/graphql/types.rs`** — one-module audit; public GraphQL complex fields and transport error-boundary mapping are the next primary scope.
+- [x] **FS-22.05.03 — `apps/server/src/graphql/types.rs`** — one-module audit; public GraphQL complex fields and transport projection error boundaries hardened. Next primary module: `apps/server/src/graphql/queries.rs`.
+- [ ] **FS-22.05.04 — `apps/server/src/graphql/queries.rs`** — one-module audit; root query authorization, tenant scoping, pagination, owner error mapping, and operator-facing diagnostic exposure.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -407,6 +408,22 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently re-read `schema.rs`, `services/graphql_schema.rs`, `build.rs` runtime-data generation, and `rustok-api` GraphQL runtime-input contract. No repository-owned in-scope defect remained in this primary module.
 - **Verification:** repository source/static inspection only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.02` closed without code remediation. Next primary module: `FS-22.05.03 — apps/server/src/graphql/types.rs`.
+### FS-22.05.03 Assessment — `apps/server/src/graphql/types.rs`
+
+- **Base:** post-merge `main` refreshed at `c85f9af4ac550e8faee5d3175d72adf957dde7cc`; dedicated branch `codex/audit-fs-22.05.03-graphql-types` was created from that exact SHA.
+- **Discovery:** read the complete 1,377-line GraphQL type adapter, the direct `User` field dependencies (`RbacService`, `FlexAttachedValuesService`, `TenantNameLoader`), the canonical `rustok-api::GraphQLError` taxonomy, the module recovery owner projection, and the build/recovery transport contracts consumed by this adapter.
+- **Invariant map:** public GraphQL fields must expose stable transport-safe errors rather than backend diagnostics; client-provided enum/action parsing must use `BAD_USER_INPUT`; trusted persisted-state failures must use `INTERNAL_ERROR`; tenant scope comes from the authenticated request/owner projection rather than client-selected tenant identity; browser-safe recovery projections must not copy raw hook/database diagnostics.
+- **Finding GRAPHQLTYPES-22.05.03-01:** `User::role`, `User::can`, and `User::custom_fields` converted owner/RBAC/Flex failures directly to strings, allowing database/storage diagnostics to cross the GraphQL boundary. `Permission::from_str` likewise used the raw parser error for invalid actions.
+- **Remediation:** added one local GraphQL error helper that logs the backend diagnostic server-side and returns the canonical `INTERNAL_ERROR` with a stable field-specific message. Invalid permission actions now return `BAD_USER_INPUT`. Existing successful values, tenant/user identities, and DataLoader behavior are unchanged.
+- **Finding GRAPHQLTYPES-22.05.03-02:** `ModuleOperationRecoveryPlan.error_message` copied the owner journal's raw diagnostic directly into a public GraphQL `SimpleObject`, despite the owner API describing the recovery view as browser-safe.
+- **Remediation:** GraphQL now derives `error_message` from the typed recovery `issue` and returns only stable category messages (`post_hook_failed`, `pre_hook_failed`, or generic lifecycle failure), never the persisted raw error text. `retryable`, `recommended_action`, and typed lifecycle facts remain unchanged.
+- **Immediate re-audit:** the complete changed adapter was re-read. No direct raw conversion remains in the `User` complex fields, and the recovery projection no longer forwards `plan.error_message` verbatim.
+- **Adjacent-boundary re-audit:** `schema.rs` still registers the same loaders and global GraphQL extensions; `queries.rs` remains tenant/permission gated for the recovery query; the owner recovery snapshot is still the source of lifecycle category/identity facts. The build snapshot's operator diagnostics remain a separate build-owner contract and were not changed speculatively in this module.
+- **Regression audit:** stable GraphQL codes are preserved for internal/user-input failures; successful role/permission/custom-field resolution is unchanged; recovery clients retain the same field shape but receive sanitized `errorMessage` values. No tenant selector or new authorization path was introduced.
+- **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
+- **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+
 ### FS-22.05.01 Iteration 1 — `apps/server/src/graphql/loaders.rs`
 
 - **Base:** refreshed `main` at `7ad05f0bcd87f4227a99cd7ce3f3984874dbb105`; dedicated branch `codex/audit-fs-22.05.01-graphql-loaders`.
