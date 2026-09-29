@@ -2,9 +2,11 @@ use std::{sync::Arc, time::Duration};
 
 use async_graphql::{Context, Enum, ErrorExtensions, Object, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, PortActor, PortContext, PortError, PortErrorKind, TenantContext,
-    graphql::require_module_enabled, request::RequestContext,
+    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, TenantContext,
+    graphql::require_module_enabled, has_any_effective_permission, request::RequestContext,
 };
+use rustok_core::ModuleRuntimeExtensions;
+use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -19,6 +21,9 @@ use crate::{
 };
 
 const MODULE_SLUG: &str = "notifications";
+const FORUM_MODULE_SLUG: &str = "forum";
+const FORUM_NOTIFICATION_RECONCILIATION_OPERATION: &str =
+    "forum.notification_reconciliation_status";
 const PUBLIC_UNAVAILABLE_MESSAGE: &str = "notification inbox capability is unavailable";
 const GRAPHQL_READ_DEADLINE: Duration = Duration::from_secs(5);
 const GRAPHQL_WRITE_DEADLINE: Duration = Duration::from_secs(5);
@@ -152,6 +157,16 @@ pub struct GqlNotificationInboxGroupStatePage {
     pub has_more: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, SimpleObject)]
+pub struct GqlForumNotificationReconciliationStatus {
+    pub recipient_id: Uuid,
+    pub scanned: u64,
+    pub unavailable: u64,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+    pub clean: bool,
+}
+
 #[Object]
 impl NotificationsQuery {
     async fn notification_inbox_unread_count(
@@ -174,6 +189,98 @@ impl NotificationsQuery {
 
         Ok(GqlNotificationInboxUnreadCount {
             unread_count: count.unread_count,
+        })
+    }
+
+    /// Dry-run operator status for one recipient's Notifications reconciliation page.
+    ///
+    /// Notifications remains the owner of durable reconciliation state. This query evaluates the
+    /// current privacy/source authorization pipeline without mutating inbox or delivery state.
+    async fn forum_notification_reconciliation_status(
+        &self,
+        ctx: &Context<'_>,
+        recipient_id: Uuid,
+        cursor: Option<String>,
+        limit: Option<i32>,
+    ) -> Result<GqlForumNotificationReconciliationStatus> {
+        require_module_enabled(ctx, FORUM_MODULE_SLUG).await?;
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        if auth.tenant_id != tenant.id {
+            return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
+                "Forum notification reconciliation access is denied",
+            ));
+        }
+        require_forum_notification_operator_permissions(auth)?;
+        if recipient_id.is_nil() {
+            return Err(public_error(
+                "NOTIFICATION_VALIDATION_ERROR",
+                "notification recipient id is invalid",
+                false,
+            ));
+        }
+
+        let requested_limit = parse_limit(limit)?;
+        let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
+        let registry = extensions
+            .get::<Arc<crate::api::NotificationSourceRegistry>>()
+            .cloned()
+            .ok_or_else(capability_unavailable)?;
+        let policy = extensions
+            .get::<crate::NotificationRecipientPolicyRuntime>()
+            .cloned()
+            .ok_or_else(capability_unavailable)?;
+        let db = ctx
+            .data_opt::<DatabaseConnection>()
+            .cloned()
+            .ok_or_else(capability_unavailable)?;
+
+        metrics::record_module_entrypoint_call(
+            "forum",
+            "notification_reconciliation_status",
+            "graphql",
+        );
+        let started_at = std::time::Instant::now();
+        let result = NotificationInboxReconcileService::new(db, registry, policy.policy_arc())
+            .inspect_page(NotificationInboxReconcileRequest {
+                tenant_id: tenant.id,
+                recipient_id,
+                cursor,
+                limit: requested_limit,
+            })
+            .await;
+        metrics::record_span_duration(
+            FORUM_NOTIFICATION_RECONCILIATION_OPERATION,
+            started_at.elapsed().as_secs_f64(),
+        );
+
+        let page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                metrics::record_span_error(
+                    FORUM_NOTIFICATION_RECONCILIATION_OPERATION,
+                    "owner_status",
+                );
+                metrics::record_module_error(
+                    "forum",
+                    "notification_reconciliation_status",
+                    "error",
+                );
+                return Err(map_reconciliation_error(error));
+            }
+        };
+
+        Ok(GqlForumNotificationReconciliationStatus {
+            recipient_id,
+            scanned: u64::from(page.scanned),
+            unavailable: u64::from(page.unavailable),
+            next_cursor: page.next_cursor,
+            has_more: page.has_more,
+            clean: page.unavailable == 0,
         })
     }
 
@@ -358,6 +465,22 @@ fn grouped_storefront_port(ctx: &Context<'_>) -> Result<Arc<dyn NotificationInbo
         .ok_or_else(capability_unavailable)
 }
 
+fn require_forum_notification_operator_permissions(auth: &AuthContext) -> Result<()> {
+    let categories_manage = has_any_effective_permission(
+        &auth.permissions,
+        &[Permission::FORUM_CATEGORIES_MANAGE],
+    );
+    let topics_manage =
+        has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]);
+    if categories_manage && topics_manage {
+        Ok(())
+    } else {
+        Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
+            "forum_categories:manage and forum_topics:manage required",
+        ))
+    }
+}
+
 fn parse_limit(limit: Option<i32>) -> Result<u16> {
     let limit = limit.unwrap_or(i32::from(DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE));
     u16::try_from(limit).map_err(|_| {
@@ -531,6 +654,21 @@ fn map_port_error(error: PortError) -> async_graphql::Error {
     }
 }
 
+fn map_reconciliation_error(error: NotificationError) -> async_graphql::Error {
+    match error {
+        NotificationError::Validation(_) => public_error(
+            "NOTIFICATION_VALIDATION_ERROR",
+            "notification reconciliation request is invalid",
+            false,
+        ),
+        other => public_error(
+            "NOTIFICATION_INBOX_UNAVAILABLE",
+            PUBLIC_UNAVAILABLE_MESSAGE,
+            other.is_retryable(),
+        ),
+    }
+}
+
 fn map_notification_error(error: NotificationError) -> async_graphql::Error {
     match error {
         NotificationError::Validation(_) => public_error(
@@ -613,6 +751,27 @@ mod tests {
             extension_json(&error, "retryable").and_then(|value| value.as_bool()),
             Some(false)
         );
+    }
+
+    #[test]
+    fn forum_reconciliation_operator_requires_only_canonical_forum_manage_permissions() {
+        let mut auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![
+                Permission::FORUM_CATEGORIES_MANAGE,
+                Permission::FORUM_TOPICS_MANAGE,
+            ],
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        };
+        assert!(require_forum_notification_operator_permissions(&auth).is_ok());
+        auth.permissions.push(Permission::SETTINGS_READ);
+        assert!(require_forum_notification_operator_permissions(&auth).is_ok());
+        auth.permissions = vec![Permission::FORUM_TOPICS_MANAGE];
+        assert!(require_forum_notification_operator_permissions(&auth).is_err());
     }
 
     #[test]
