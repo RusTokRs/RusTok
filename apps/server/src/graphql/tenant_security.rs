@@ -307,7 +307,7 @@ fn resolve_variable<'a>(
     variables.get(name).or_else(|| defaults.get(name))
 }
 
-fn add_tenant_id(raw: &str, source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
+fn add_tenant_id(raw: &str, _source: &str, policy: &mut GraphqlTenantArgumentPolicy) {
     match Uuid::parse_str(raw.trim()) {
         Ok(tenant_id) => policy.requested_tenant_ids.push(tenant_id),
         Err(_) => set_invalid_argument(
