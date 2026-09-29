@@ -180,7 +180,7 @@ fn payment_read_error_policy(error: &PortError) -> AdminPaymentReadHttpPolicy {
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -270,7 +270,7 @@ fn payment_command_error_policy(error: &PortError) -> AdminPaymentCommandHttpPol
                 "state_conflict",
             ),
             PortErrorKind::Forbidden => (
-                StatusCode::UNAUTHORIZED,
+                StatusCode::FORBIDDEN,
                 "commerce_permission_denied",
                 "Permission denied",
                 "forbidden",
@@ -382,7 +382,7 @@ fn map_refund_command_error(
     path = "/admin/payment-collections",
     tag = "admin",
     params(ListPaymentCollectionsParams),
-    responses((status = 200, description = "Payment collections", body = PaginatedResponse<PaymentCollectionResponse>), (status = 401, description = "Unauthorized"))
+    responses((status = 200, description = "Payment collections", body = PaginatedResponse<PaymentCollectionResponse>), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"))
 )]
 pub async fn list_payment_collections(
     State(runtime): State<CommerceHttpRuntime>,
@@ -443,7 +443,7 @@ pub async fn list_payment_collections(
     path = "/admin/payment-collections/{id}",
     tag = "admin",
     params(("id" = Uuid, Path, description = "Payment collection ID")),
-    responses((status = 200, description = "Payment collection details", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
+    responses((status = 200, description = "Payment collection details", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Payment collection not found"))
 )]
 pub async fn show_payment_collection(
     State(runtime): State<CommerceHttpRuntime>,
@@ -493,7 +493,7 @@ pub async fn show_payment_collection(
         ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
     ),
     request_body = AuthorizePaymentInput,
-    responses((status = 200, description = "Payment collection authorized", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
+    responses((status = 200, description = "Payment collection authorized", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Payment collection not found"))
 )]
 pub async fn authorize_payment_collection(
     State(runtime): State<CommerceHttpRuntime>,
@@ -550,7 +550,7 @@ pub async fn authorize_payment_collection(
         ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
     ),
     request_body = CapturePaymentInput,
-    responses((status = 200, description = "Payment collection captured", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
+    responses((status = 200, description = "Payment collection captured", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Payment collection not found"))
 )]
 pub async fn capture_payment_collection(
     State(runtime): State<CommerceHttpRuntime>,
@@ -607,7 +607,7 @@ pub async fn capture_payment_collection(
         ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
     ),
     request_body = CancelPaymentInput,
-    responses((status = 200, description = "Payment collection cancelled", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Payment collection not found"))
+    responses((status = 200, description = "Payment collection cancelled", body = PaymentCollectionResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Payment collection not found"))
 )]
 pub async fn cancel_payment_collection(
     State(runtime): State<CommerceHttpRuntime>,
@@ -667,7 +667,7 @@ pub async fn cancel_payment_collection(
     responses(
         (status = 201, description = "Refund created or replayed", body = RefundResponse),
         (status = 400, description = "Missing, invalid, or conflicting idempotency key"),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Payment collection not found")
     )
 )]
@@ -718,7 +718,7 @@ pub async fn create_refund(
     path = "/admin/refunds",
     tag = "admin",
     params(ListRefundsParams),
-    responses((status = 200, description = "Refunds", body = PaginatedResponse<RefundResponse>), (status = 401, description = "Unauthorized"))
+    responses((status = 200, description = "Refunds", body = PaginatedResponse<RefundResponse>), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"))
 )]
 pub async fn list_refunds(
     State(runtime): State<CommerceHttpRuntime>,
@@ -773,7 +773,7 @@ pub async fn list_refunds(
     path = "/admin/refunds/{id}",
     tag = "admin",
     params(("id" = Uuid, Path, description = "Refund ID")),
-    responses((status = 200, description = "Refund details", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
+    responses((status = 200, description = "Refund details", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Refund not found"))
 )]
 pub async fn show_refund(
     State(runtime): State<CommerceHttpRuntime>,
@@ -818,7 +818,7 @@ pub async fn show_refund(
         ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
     ),
     request_body = CompleteRefundInput,
-    responses((status = 200, description = "Refund completed", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
+    responses((status = 200, description = "Refund completed", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Refund not found"))
 )]
 pub async fn complete_refund(
     State(runtime): State<CommerceHttpRuntime>,
@@ -876,7 +876,7 @@ pub async fn complete_refund(
         ("Idempotency-Key" = String, Header, description = "Stable write operation identity, maximum 191 bytes"),
     ),
     request_body = CancelRefundInput,
-    responses((status = 200, description = "Refund cancelled", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 404, description = "Refund not found"))
+    responses((status = 200, description = "Refund cancelled", body = RefundResponse), (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"), (status = 404, description = "Refund not found"))
 )]
 pub async fn cancel_refund(
     State(runtime): State<CommerceHttpRuntime>,
