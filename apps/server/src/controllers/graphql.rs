@@ -662,6 +662,15 @@ mod tests {
     }
 
     #[test]
+    fn websocket_tenant_resolution_does_not_log_raw_slug_payload() {
+        let source = include_str!("graphql.rs");
+        assert!(!source.contains("tracing::warn!(tenant_slug"));
+        assert!(!source.contains("tracing::error!(tenant_slug"));
+        assert!(!source.contains("tracing::info!(tenant_slug"));
+        assert!(!source.contains("tracing::debug!(tenant_slug"));
+    }
+
+    #[test]
     fn graphql_router_uses_the_canonical_http_path() {
         assert_eq!(GRAPHQL_HTTP_PATH, "/api/graphql");
     }
