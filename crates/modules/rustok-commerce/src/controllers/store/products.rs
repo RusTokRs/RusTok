@@ -340,7 +340,7 @@ fn map_storefront_shipping_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_store_denied",
             "Store access is denied",
             "forbidden",
