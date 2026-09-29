@@ -1,4 +1,5 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
+use std::fmt::Display;
 use futures_util::stream;
 use sea_orm::DatabaseConnection;
 
@@ -12,6 +13,11 @@ use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;
+
+fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldError {
+    tracing::error!(%error, message, "GraphQL build subscription failed");
+    <FieldError as GraphQLError>::internal_error(message)
+}
 
 async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
@@ -31,7 +37,7 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
         ],
     )
     .await
-    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    .map_err(|err| graphql_internal_error("Unable to resolve build subscription permission", err))?;
 
     if !can_read_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -82,5 +88,24 @@ impl BuildSubscription {
                 }
             },
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::graphql_internal_error;
+
+    #[test]
+    fn graphql_subscription_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_internal_error(
+            "Unable to resolve build subscription permission",
+            "database password=secret table=permissions",
+        );
+
+        assert_eq!(
+            error.message,
+            "Unable to resolve build subscription permission"
+        );
+        assert!(!error.message.contains("database password=secret"));
     }
 }
