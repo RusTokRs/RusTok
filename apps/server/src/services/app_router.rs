@@ -665,7 +665,6 @@ mod tests {
 
     #[cfg(not(feature = "embed-admin"))]
     #[tokio::test]
-    #[tokio::test]
     async fn disabled_admin_router_reports_the_actual_enablement_feature() {
         let response = build_admin_router()
             .oneshot(Request::builder().uri("/any").body(Body::empty()).unwrap())
@@ -679,6 +678,7 @@ mod tests {
         assert!(!message.contains("feature `embed-admin-assets`"));
     }
 
+    #[tokio::test]
     async fn disabled_admin_router_returns_service_unavailable() {
         let response = build_admin_router()
             .oneshot(Request::builder().uri("/any").body(Body::empty()).unwrap())
