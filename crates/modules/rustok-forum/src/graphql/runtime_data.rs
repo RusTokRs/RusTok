@@ -44,16 +44,9 @@ pub fn attach_schema_data(
     };
 
     let attachment_hold_media = inputs.shared_get::<Arc<dyn MediaAssetReadPort>>();
-    let notification_reconciliation = match inputs
+    let notification_reconciliation = inputs
         .shared_get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
-    {
-        Some(factory) => Some(
-            factory
-                .build(inputs.host())
-                .map_err(|_| "Notifications reconciliation capability is unavailable".to_string())?,
-        ),
-        None => None,
-    };
+        .and_then(|factory| factory.build(inputs.host()).ok());
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
