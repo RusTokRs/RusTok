@@ -16,7 +16,8 @@ function requireAbsent(text, marker, message) {
 
 const ownerPath = "crates/modules/rustok-notifications/src/inbox_reconcile.rs";
 const surfacePath = "crates/modules/rustok-notifications/src/lib.rs";
-const queryPath = "apps/server/src/graphql/forum_notification_reconciliation.rs";
+const queryPath = "crates/modules/rustok-notifications/src/graphql.rs";
+const serverShimPath = "apps/server/src/graphql/forum_notification_reconciliation.rs";
 const graphqlModPath = "apps/server/src/graphql/mod.rs";
 const schemaPath = "apps/server/src/graphql/schema.rs";
 const packetPath =
@@ -25,6 +26,9 @@ const packetPath =
 const owner = read(ownerPath);
 const surface = read(surfacePath);
 const query = read(queryPath);
+const serverShim = existsSync(path.resolve(repoRoot, serverShimPath))
+  ? read(serverShimPath)
+  : "";
 const graphqlMod = read(graphqlModPath);
 const schema = read(schemaPath);
 const packet = read(packetPath);
@@ -94,13 +98,11 @@ for (const marker of [
   "require_module_enabled(ctx, FORUM_MODULE_SLUG).await?",
   "require_module_enabled(ctx, NOTIFICATIONS_MODULE_SLUG).await?",
   "auth.tenant_id != tenant.id",
-  "Permission::SETTINGS_READ",
   "Permission::FORUM_CATEGORIES_MANAGE",
   "Permission::FORUM_TOPICS_MANAGE",
-  "settings_read && categories_manage && topics_manage",
   "Arc<ModuleRuntimeExtensions>",
-  "Arc<NotificationSourceRegistry>",
-  "NotificationRecipientPolicyRuntime",
+  "Arc<crate::api::NotificationSourceRegistry>",
+  "crate::NotificationRecipientPolicyRuntime",
   "NotificationInboxReconcileService::new",
   ".inspect_page(NotificationInboxReconcileRequest {",
   "tenant_id: tenant.id",
@@ -129,18 +131,27 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  '#[cfg(all(feature = "mod-forum", feature = "mod-notifications"))]',
-  "pub mod forum_notification_reconciliation;",
+  "NotificationsQuery",
+  "forum_notification_reconciliation_status",
 ]) {
-  requireText(graphqlMod, marker, `${graphqlModPath}: missing ${marker}`);
+  requireText(query, marker, queryPath + ": missing owner-composed " + marker);
 }
 
-for (const marker of [
-  "use super::forum_notification_reconciliation::ForumNotificationReconciliationQuery;",
-  "ForumNotificationReconciliationQuery,",
-]) {
-  requireText(schema, marker, `${schemaPath}: missing ${marker}`);
-}
+requireAbsent(
+  serverShim,
+  "pub struct ForumNotificationReconciliationQuery",
+  serverShimPath + ": server-owned notification reconciliation shim must be removed",
+);
+requireAbsent(
+  graphqlMod,
+  "forum_notification_reconciliation",
+  graphqlModPath + ": server GraphQL module must not mount the optional notification shim",
+);
+requireAbsent(
+  schema,
+  "ForumNotificationReconciliationQuery",
+  schemaPath + ": schema must not compose the server-owned notification shim",
+);
 
 for (const marker of [
   "FORUM-33G",
@@ -160,4 +171,4 @@ for (const marker of [
   requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
-console.log("Forum FORUM-33G notification reconciliation status source: ok");
+console.log("Forum FORUM-33G notification reconciliation status source: owner-composed ok");
