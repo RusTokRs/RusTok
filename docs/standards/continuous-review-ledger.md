@@ -400,6 +400,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure reverified; existing artifact rollback resolver extracted into a dedicated module without changing the GraphQL field contract. Next primary module: `FS-22.05.17 — apps/server/src/graphql/transition_lifecycle.rs`.
 - [x] **FS-22.05.17 — `apps/server/src/graphql/transition_lifecycle.rs`** — one-module audit; transition error diagnostics and failure-state details sanitized while tenant scope, CAS/idempotency, state taxonomy, and retention-hold projection remained unchanged. Next primary module: `apps/server/src/graphql/mutations.rs`.
 - [x] **FS-22.05.18 — `apps/server/src/graphql/mutations.rs`** — one-module audit; mutation authorization/tenant/idempotency flows reverified and production backend/owner diagnostics sanitized at GraphQL boundaries. Next primary module: `FS-22.05.19` to be read from the refreshed ledger after merge.
+- [x] **FS-22.05.19 — `apps/server/src/graphql/artifact_lifecycle.rs`** — one-module audit; tenant/install lifecycle error taxonomy reverified against actual owner operations, conflict codes preserved, storage/outbox diagnostics remain generic. Next primary module: `FS-22.05.20` to be selected from the refreshed ledger after merge.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -439,6 +440,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.19 Assessment — `apps/server/src/graphql/artifact_lifecycle.rs`
+
+- **Base:** post-merge `main` refreshed at `d92cfb761b3899d5d4a373d3e301f40d8f041f67`; dedicated branch `codex/audit-fs-22.05.19-graphql-artifact-lifecycle` was created from that exact SHA.
+- **Discovery:** reviewed the complete GraphQL artifact lifecycle mapper and traced every relevant `ModuleInstallationError` variant through the concrete owner implementations of `activate_artifact`, `deactivate_artifact`, `uninstall_artifact`, and `rollback_artifact`.
+- **Invariant map:** lifecycle errors must preserve stable conflict semantics; storage/outbox/admission internals must not cross the GraphQL boundary; conflict messages must remain useful without exposing arbitrary backend text.
+- **Assessment:** the concrete lifecycle operations inspected return only `AdmissionRevisionConflict`, `Store`, and `Outbox` in the exercised artifact lifecycle paths. The GraphQL mapper already maps `AdmissionRevisionConflict` to a stable `ARTIFACT_*_CONFLICT` code and all other variants to generic availability errors, so there was no production logic defect to remediate.
+- **Important owner-boundary finding:** broader `ModuleInstallationError` variants (artifact validation, registry/trust, digest, sandbox, etc.) exist at the admission layer, but they are not returned by the lifecycle methods audited here. Expanding this mapper into a broader admission taxonomy would be speculative and could change callers that rely on the current lifecycle boundary.
+- **Tenant-scope audit:** lifecycle mutations pass `ModuleInstallationScope::Tenant { tenant_id }`, and the owner queries join/filter installation rows by the same scope. Cross-tenant installation IDs become the existing `AdmissionRevisionConflict` path rather than leaking another tenant's lifecycle record.
+- **Idempotency audit:** activation/deactivation/uninstall/rollback owner operations bind the idempotency key to installation scope and persist actor/trace/correlation/reason fingerprints; mismatches return `AdmissionRevisionConflict`, which the mapper keeps stable.
+- **Regression coverage:** added tests proving stable installation conflict code/message and generic tenant/install storage/outbox messages even when supplied with representative sensitive text.
+- **Fresh second pass:** re-read the mapper, the concrete lifecycle error construction sites in `installation.rs`, and the existing artifact lifecycle GraphQL callers in `mutations.rs`; no raw owner diagnostics or missing lifecycle error classification attributable to this primary module remained.
+- **Verification:** repository source/static inspection, owner error-variant tracing, caller review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.19` closed without production remediation; branch ready for PR/merge. Next primary module will be selected from the refreshed ledger after merge.
+
 ### FS-22.05.18 Assessment — `apps/server/src/graphql/mutations.rs`
 
 - **Base:** post-merge `main` refreshed at `17744d95b089dc0eed4bd16278041ea0076b4d5d`; dedicated branch `codex/audit-fs-22.05.18-graphql-mutations` was created from that exact SHA.
