@@ -495,7 +495,7 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
                     "conflict",
                 ),
                 PortErrorKind::Forbidden => (
-                    axum::http::StatusCode::UNAUTHORIZED,
+                    axum::http::StatusCode::FORBIDDEN,
                     "commerce_permission_denied",
                     "Permission denied",
                     "forbidden",
