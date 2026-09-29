@@ -65,12 +65,27 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
             predecessor_digest: checkpoint.predecessor_digest,
             candidate_digest: checkpoint.candidate_digest,
             state,
-            state_details: checkpoint.state_details,
+            state_details: sanitize_state_details(checkpoint.state, checkpoint.state_details),
             security_epoch: checkpoint.security_epoch,
             recovery_attempt_count: checkpoint.recovery_attempt_count,
             created_at: checkpoint.created_at,
             updated_at: checkpoint.updated_at,
         }
+    }
+}
+
+fn sanitize_state_details(
+    state: ModuleTransitionStateView,
+    state_details: Option<String>,
+) -> Option<String> {
+    match state {
+        ModuleTransitionStateView::RecoveredToPredecessor if state_details.is_some() => {
+            Some("Transition recovered to the retained predecessor".to_string())
+        }
+        ModuleTransitionStateView::FailedClosed if state_details.is_some() => {
+            Some("Transition failed closed; manual intervention is required".to_string())
+        }
+        _ => state_details,
     }
 }
 
@@ -187,6 +202,20 @@ mod tests {
 
         assert_eq!(error.message, "Automatic transition recovery limit was exhausted");
         assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn failed_transition_state_details_redact_owner_reason() {
+        let details = super::sanitize_state_details(
+            ModuleTransitionStateView::FailedClosed,
+            Some("database password=secret".to_string()),
+        );
+
+        assert_eq!(
+            details.as_deref(),
+            Some("Transition failed closed; manual intervention is required")
+        );
+        assert!(!details.unwrap().contains("database password=secret"));
     }
 
     #[test]
