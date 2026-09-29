@@ -396,7 +396,7 @@ async fn build_ws_connection_data(
     let tenant_ctx = tenant::resolve_tenant_context_by_slug(&runtime_ctx, &tenant_slug)
         .await
         .map_err(|error| {
-            tracing::warn!(tenant_slug, error = %error, "GraphQL WebSocket tenant resolution failed");
+            tracing::warn!(error = %error, "GraphQL WebSocket tenant resolution failed");
             async_graphql::Error::new(error.client_message())
         })?;
     let access_token = token
