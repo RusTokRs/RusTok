@@ -299,11 +299,12 @@ impl MarketplaceFinancialOperatorService {
         }
 
         let now = Utc::now().fixed_offset();
-        marketplace_financial_operation::Entity::update_many()
-            .col_expr(
-                marketplace_financial_operation::Column::Status,
-                Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
-            )
+        let operation_update =
+            marketplace_financial_operation::Entity::update_many()
+                .col_expr(
+                    marketplace_financial_operation::Column::Status,
+                    Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
+                )
             .col_expr(
                 marketplace_financial_operation::Column::LastErrorCode,
                 Expr::value(Option::<String>::None),
@@ -327,8 +328,15 @@ impl MarketplaceFinancialOperatorService {
             )
             .filter(marketplace_financial_operation::Column::Stage.eq("admitted"))
             .filter(marketplace_financial_operation::Column::LedgerTransactionId.is_null())
-            .exec(&transaction)
-            .await?;
+                .exec(&transaction)
+                .await?;
+
+        if operation_update.rows_affected != 1 {
+            return Err(MarketplaceFinancialOperatorError::Conflict(format!(
+                "financial operation {} is not safely retryable from operator_review",
+                event.checkout_operation_id
+            )));
+        }
 
         let inbox_update = marketplace_paid_event_inbox::Entity::update_many()
             .col_expr(
