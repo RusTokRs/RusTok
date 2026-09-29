@@ -407,7 +407,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.23 — `apps/server/src/graphql/storefront_principal_security.rs`** — one-module audit; storefront service-principal policy, alias/fragment coverage, and GraphQL extension ordering reverified; fragment traversal made cycle-safe to prevent recursive-query exhaustion. Next primary module: `FS-22.05.24` to be selected from the refreshed ledger after merge.
 - [x] **FS-22.05.24 — `apps/server/src/graphql/forum_principal_security.rs`** — one-module audit; service-principal forum policy, alias/fragment classification, and personal-projection context propagation reverified; fragment traversal made cycle-safe and context-sensitive to prevent both recursion exhaustion and fragment-reuse misclassification. Next primary module: `FS-22.05.25` to be selected from the refreshed ledger after merge.
 
-- [ ] **FS-22.05.25 — `apps/server/src/graphql/starter.rs`** — primary module selected from the refreshed GraphQL tree after FS-22.05.24; pending implementation/assessment closeout.
+- [x] **FS-22.05.25 — `apps/server/src/graphql/starter.rs`** — primary module completed and integrated via PR #4329 (squash merge `6c3ab6f19ba9b9ef2c30104088e9379e60b4bb2d`).
 
 ### FS-22.05.25 Assessment — `apps/server/src/graphql/starter.rs`
 
@@ -419,7 +419,7 @@ Hard limits for every iteration:
 - **Implementation:** GraphQL now fails closed when its tenant/DB/event-bus context is absent, accepts only the embedded `default` blueprint without reflecting arbitrary selector input, and maps owner/import failures to one stable client-safe internal error while retaining diagnostics only in server logs. Starter blog translations, Forum category/topic reads, pin/solution operations, and Navigation channel lookup/binding failures now propagate instead of producing false-success reports.
 - **Immediate second pass:** independently re-read all changed functions and searched the full FS-22.05.25 execution path for raw GraphQL error propagation, selector reflection, `if let Err` warning-swallowing, `.ok()`, and `unwrap_or_default()` error suppression. No additional production defect attributable to this primary boundary remained. The Forum idempotency page-size limitation remains a separate bounded owner follow-up and is not changed speculatively here.
 - **Verification:** repository source inspection, owner contract tracing, changed-area re-audit, and base-to-head diff review only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on the dedicated branch; pending PR integration and post-merge ledger closeout.
+- **Implementation status:** complete and integrated into `main`; post-merge verification confirmed the expected merge commit and all five changed files on the refreshed `main`.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
