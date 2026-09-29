@@ -389,7 +389,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.07 — `apps/server/src/graphql/settings/mutation.rs`** — one-module audit; host/tenant authority and secret-write semantics reverified, input errors mapped to `BAD_USER_INPUT`, backend diagnostics redacted, and transactional outbox owner left intact. Next primary module: `apps/server/src/graphql/security.rs`.
 - [x] **FS-22.05.08 — `apps/server/src/graphql/security.rs`** — one-module audit; sensitive-field authorization now follows canonical effective-permission semantics and fragment traversal is cycle-safe. Next primary module: `apps/server/src/graphql/settings/query.rs` already completed; continue to `apps/server/src/graphql/system.rs`.
 - [x] **FS-22.05.09 — `apps/server/src/graphql/system.rs`** — one-module audit; host-global diagnostics restricted to host authority, event count failures no longer collapse to false zeroes, and session DB errors redacted. Next primary module: `apps/server/src/graphql/tenant_security.rs`.
-- [ ] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant-argument AST traversal, variable/default handling, fragment cycles, operation selection, and bypass resistance.
+- [x] **FS-22.05.10 — `apps/server/src/graphql/tenant_security.rs`** — one-module audit; tenant argument traversal/bypass resistance reverified and invalid tenant identifiers no longer echo raw input. Next primary module: `apps/server/src/graphql/principal_tenant_security.rs`.
+- [ ] **FS-22.05.11 — `apps/server/src/graphql/principal_tenant_security.rs`** — one-module audit; authenticated principal/request tenant binding, missing-context behavior, extension ordering, and bypass resistance.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -429,6 +430,20 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.10 Assessment — `apps/server/src/graphql/tenant_security.rs`
+
+- **Base:** post-merge `main` refreshed at `4b25f1dff08303e989d7f28ba62e060de8b6a877`; dedicated branch `codex/audit-fs-22.05.10-graphql-tenant-security` was created from that exact SHA.
+- **Discovery:** reviewed the complete tenant-argument security extension, GraphQL AST traversal, variable/default resolution, nested input traversal, fragment handling, operation selection, tenant context contract, and schema extension registration.
+- **Invariant map:** every explicit or nested tenant selector must be reconciled with the resolved request tenant before resolver execution; variables and defaults must be inspected; fragments must terminate; missing/malformed tenant context must fail closed; arbitrary invalid input must not be reflected into security errors/logs.
+- **Assessment:** literal, variable, defaulted, nested-input, fragment, and inline-fragment tenant IDs are collected and compared against the resolved `TenantContext`. The extension scans all operations in the document, so operation-name selection cannot bypass a sensitive tenant argument. Fragment traversal already uses a visited set. No cross-tenant bypass was confirmed.
+- **Finding GRAPHTENANTSECURITY-22.05.10-01:** invalid tenant UUID errors embedded the raw supplied value in the policy message, and that message was also logged at warning level. This allowed arbitrary input/PII to cross into GraphQL errors and security logs.
+- **Remediation:** invalid tenant argument failures now use constant messages (`tenantId must be a valid UUID string or null` / typed-variable variants); raw input is no longer copied into the policy or emitted by the invalid-argument logging path.
+- **Bypass audit:** aliases do not matter because arguments are inspected by actual AST argument names; nested object/list keys are recursively inspected; variable defaults are resolved per operation; fragments are followed with cycle protection; all operations are classified before execution. Missing optional variables produce no tenant assertion and are left to normal GraphQL/resolver semantics.
+- **Boundary audit:** the separate `GraphqlPrincipalTenantPolicy` checks `AuthContext.tenant_id == TenantContext.id`, while this extension checks explicit `tenantId` arguments. The two controls therefore cover principal identity and explicit selector separately; no alternate tenant-selection path was identified in the inspected schema.
+- **Fresh second pass:** independently re-read the final collector, direct/nested variable paths, fragment traversal, execute gate, and tests; searched for user-value interpolation in invalid-tenant errors. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, AST/security contract tracing, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.10` closed; ready for PR/merge. Next primary module: `FS-22.05.11 — apps/server/src/graphql/principal_tenant_security.rs`.
+
 ### FS-22.05.09 Assessment — `apps/server/src/graphql/system.rs`
 
 - **Base:** post-merge `main` refreshed at `3b45362de65fb4d2e67cf39d2866a6b518ef0f3c`; dedicated branch `codex/audit-fs-22.05.09-graphql-system` was created from that exact SHA.
