@@ -20,12 +20,8 @@ use crate::{
     PaymentProviderEventIngressService, PaymentProviderEventJournal, PaymentProviderEventObservers,
 };
 
-const DELIVERY_ID_HEADERS: [&str; 3] = [
-    "x-rustok-provider-delivery-id",
-    "x-webhook-id",
-    "idempotency-key",
-];
-const REPLAY_KEY_HEADERS: [&str; 2] = ["idempotency-key", "x-rustok-provider-delivery-id"];
+const DELIVERY_ID_HEADERS: [&str; 2] = ["x-rustok-provider-delivery-id", "x-webhook-id"];
+const REPLAY_KEY_HEADERS: [&str; 1] = ["idempotency-key"];
 const SIGNATURE_HEADERS: [&str; 3] = [
     "x-provider-signature",
     "stripe-signature",
@@ -184,13 +180,7 @@ pub async fn ingest_provider_webhook(
         MAX_EVENT_KEY_LENGTH,
     )?;
     let signature = required_signature(&headers)?;
-    if body.is_empty() || body.len() > MAX_RAW_PAYLOAD_BYTES {
-        return Err(safe_error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "payment_webhook_payload_invalid",
-            format!("Webhook payload must contain 1 to {MAX_RAW_PAYLOAD_BYTES} bytes"),
-        ));
-    }
+    validate_webhook_payload(&body)?;
 
     let lease_owner = format!("payment-webhook:{provider_id}:{}", Uuid::new_v4());
     let result = runtime
@@ -217,6 +207,7 @@ pub async fn ingest_provider_webhook(
     params(("event_id" = Uuid, Path, description = "Provider inbox event ID")),
     responses(
         (status = 200, description = "Safe provider event projection", body = PaymentProviderEventAdminResponse),
+        (status = 401, description = "Authentication is required"),
         (status = 403, description = "payments:read or payments:manage is required"),
         (status = 404, description = "Provider event not found"),
         (status = 503, description = "Provider event storage unavailable")
@@ -247,6 +238,7 @@ pub async fn get_provider_event(
     params(DeadLetterQuery),
     responses(
         (status = 200, description = "Newest dead-letter events", body = [PaymentProviderEventAdminResponse]),
+        (status = 401, description = "Authentication is required"),
         (status = 403, description = "payments:read or payments:manage is required"),
         (status = 503, description = "Provider event storage unavailable")
     )
@@ -276,6 +268,7 @@ pub async fn list_dead_letters(
     params(("event_id" = Uuid, Path, description = "Dead-letter provider event ID")),
     responses(
         (status = 200, description = "Dead-letter event replayed", body = PaymentWebhookIngressResponse),
+        (status = 401, description = "Authentication is required"),
         (status = 403, description = "payments:manage is required"),
         (status = 409, description = "Event is already processing"),
         (status = 422, description = "Event cannot be replayed or still conflicts with owner state"),
@@ -476,6 +469,26 @@ fn ensure_payment_permission(
     Ok(())
 }
 
+fn validate_webhook_payload(
+    body: &[u8],
+) -> Result<(), (StatusCode, Json<Value>)> {
+    if body.is_empty() {
+        return Err(safe_error(
+            StatusCode::BAD_REQUEST,
+            "payment_webhook_payload_invalid",
+            "Webhook payload must not be empty",
+        ));
+    }
+    if body.len() > MAX_RAW_PAYLOAD_BYTES {
+        return Err(safe_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payment_webhook_payload_too_large",
+            format!("Webhook payload must not exceed {MAX_RAW_PAYLOAD_BYTES} bytes"),
+        ));
+    }
+    Ok(())
+}
+
 fn optional_normalized_header(
     headers: &HeaderMap,
     names: &[&str],
@@ -527,11 +540,51 @@ fn normalize_required(
     Ok(value)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{
+        validate_webhook_payload, DELIVERY_ID_HEADERS, MAX_RAW_PAYLOAD_BYTES, REPLAY_KEY_HEADERS,
+    };
+    use axum::http::{HeaderMap, HeaderValue, StatusCode};
+
+    #[test]
+    fn webhook_identity_hint_headers_are_independent() {
+        let mut headers = HeaderMap::new();
+        headers.insert("idempotency-key", HeaderValue::from_static("replay-1"));
+        assert_eq!(super::optional_header(&headers, &DELIVERY_ID_HEADERS), None);
+        assert_eq!(
+            super::optional_header(&headers, &REPLAY_KEY_HEADERS),
+            Some("replay-1".to_string())
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-rustok-provider-delivery-id",
+            HeaderValue::from_static("delivery-1"),
+        );
+        assert_eq!(
+            super::optional_header(&headers, &DELIVERY_ID_HEADERS),
+            Some("delivery-1".to_string())
+        );
+        assert_eq!(super::optional_header(&headers, &REPLAY_KEY_HEADERS), None);
+    }
+
+    #[test]
+    fn webhook_payload_validation_distinguishes_empty_from_oversize() {
+        let empty = validate_webhook_payload(&[]);
+        assert_eq!(
+            empty.expect_err("empty payload must fail").0,
+            StatusCode::BAD_REQUEST
+        );
+
+        let oversize = vec![0_u8; MAX_RAW_PAYLOAD_BYTES + 1];
+        let error = validate_webhook_payload(&oversize)
+            .expect_err("oversize payload must fail");
+        assert_eq!(error.0, StatusCode::PAYLOAD_TOO_LARGE);
+    }
+}
+
 fn safe_error(
-    status: StatusCode,
-    code: impl Into<String>,
-    message: impl Into<String>,
-) -> (StatusCode, Json<Value>) {
     (
         status,
         Json(serde_json::json!({
