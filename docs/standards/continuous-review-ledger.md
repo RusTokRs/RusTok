@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `a6001d414deffefdd32fb5eda8bff5b0680b894c`  
+**Current main SHA:** `a9ca6020415e7a6c5b911d8bc1092b91f63231fc`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -285,7 +285,22 @@ Hard limits for every iteration:
 - **Verification:** GitHub source inspection, cross-file static reasoning, and branch/ledger diff review only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.05` complete after integration; next primary module is `FS-22.04.06 — apps/server/src/controllers/graphql.rs`.
 
-- [ ] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05.
+- [x] **FS-22.04.06 — `apps/server/src/controllers/graphql.rs`** — HTTP/WebSocket tenant/channel/locale context propagation only; GraphQL resolver composition remains FS-22.05; completed after PR #4290 and post-merge reconciliation.
+### FS-22.04.06 Iteration 1 — `apps/server/src/controllers/graphql.rs`
+
+- **Base:** refreshed `main` at `95351d3556bf5d965351cf6df1303a97a07f6059`; dedicated branch `codex/audit-fs-22.04.06-graphql`.
+- **Invariant map:** HTTP GraphQL must consume trusted tenant/locale/channel/auth context rather than reconstructing authority; WebSocket tenant/auth/locale initialization must remain tenant-bound and fail closed; initialization transport must have bounded frame/message/queue/resource behavior; credentials and untrusted tenant identifiers must not enter logs; RBAC auth leases must be established only after successful tenant/auth/locale validation and revalidated before emitting post-initialization results.
+- **Discovery:** audited the complete controller together with tenant route policy, tenant/locale/channel/auth middleware, `RequestContext`, RBAC request scope, GraphQL schema security extensions, GraphQL resolver consumers, locale-policy owner contract, WebSocket protocol behavior, and local GraphQL documentation.
+- **Finding GRAPHQL-22.04.06-01:** a completed WebSocket upgrade could remain indefinitely in the pre-initialization state because the controller waited on the GraphQL stream without a `connection_init` receipt deadline. The HTTP edge timeout no longer applies after upgrade, so idle unauthenticated sockets could retain per-connection runtime state.
+- **Remediation:** added a 10-second connection-initialization receipt deadline and closes with protocol code `4408`; the deadline is gated by a callback-entry marker so it covers receipt of the init message rather than cancelling slow tenant/auth/locale validation after the message has already arrived.
+- **Finding GRAPHQL-22.04.06-02:** failed tenant resolution logged the raw `tenantSlug` from the untrusted WebSocket initialization payload, allowing attacker-controlled diagnostic amplification and identifier disclosure in application logs.
+- **Remediation:** removed the raw slug from the warning and added a source regression guard preventing direct `tenant_slug` logging through the controller's tracing macros.
+- **Regression audit:** existing frame/message/queue limits, protocol-negotiation rejection, APQ hash bounds, stable GraphQL JSON errors, tenant owner-port locale policy, RequestContext insertion, RBAC lease ordering/revalidation, and intentionally unset WebSocket channel dimensions remain unchanged.
+- **Fresh second pass:** independently re-read the changed controller after remediation and then re-read the merged `main` implementation. The second pass caught and corrected the initial timeout implementation's semantic overreach before PR creation; final merged code now times only init-message receipt and preserves slow initialization callbacks.
+- **Deferred adjacent findings:** the legacy `rustok-core::i18n::Locale` projection mismatch for world-language Unicode locales remains assigned to `FS-22.04.10`; full GraphQL resolver composition remains FS-22.05; detached WebSocket worker lifecycle remains FS-24.
+- **Verification:** GitHub source inspection, cross-file contract reasoning, branch diff review, and post-merge source reconciliation only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.06` complete after PR #4290 merge (`a9ca6020415e7a6c5b911d8bc1092b91f63231fc`); next primary module is `FS-22.04.07 — apps/server/src/middleware/channel_native_wrapper.rs`.
+
 - [ ] **FS-22.04.07 — `apps/server/src/middleware/channel_native_wrapper.rs`** — native mutation context propagation and channel invalidation boundary.
 - [ ] **FS-22.04.08 — `crates/libs/rustok-api/src/context/channel.rs`** — shared ChannelContext shape/source propagation if the preceding middleware audit exposes owner-level contract drift.
 - [ ] **FS-22.04.09 — `crates/libs/rustok-api/src/context/tenant.rs`** — shared TenantContext/extension contract if the preceding tenant middleware audit exposes owner-level contract drift.
