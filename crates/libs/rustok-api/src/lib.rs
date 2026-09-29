@@ -51,7 +51,7 @@ pub use context::{
     AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
     ChannelContextExt, ChannelContextExtension, HOST_AUTHORITY_REQUIRED, HostAuthority,
     HostAuthorityContext, OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext,
-    TenantContextExt, TenantContextExtension, TenantError, has_any_effective_permission,
+    TenantContextExt, TenantContextExtension, has_any_effective_permission,
     has_effective_permission, scope_matches,
 };
 pub use context::{

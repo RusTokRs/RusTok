@@ -30,5 +30,5 @@ pub use oauth_scope::scope_matches;
 pub use principal_kind::AuthPrincipalKind;
 #[cfg(feature = "server")]
 pub use tenant::{
-    OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension, TenantError,
+    OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension,
 };
