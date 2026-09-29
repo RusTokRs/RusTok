@@ -384,7 +384,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.02 — `apps/server/src/graphql/schema.rs`** — one-module audit; composition dependencies and generated runtime-data factories reverified end-to-end; no repository-owned in-scope defect required remediation.
 - [x] **FS-22.05.03 — `apps/server/src/graphql/types.rs`** — one-module audit; public GraphQL complex fields and transport projection error boundaries hardened. Next primary module: `apps/server/src/graphql/queries.rs`.
 - [x] **FS-22.05.04 — `apps/server/src/graphql/queries.rs`** — one-module audit; root query authorization/tenant scoping/pagination reverified and GraphQL owner/backend diagnostics redacted at the query error boundary. Next primary module: `apps/server/src/graphql/subscriptions.rs`.
-- [ ] **FS-22.05.05 — `apps/server/src/graphql/subscriptions.rs`** — one-module audit; subscription authorization, tenant/channel scope, event filtering, connection lifecycle, and diagnostic exposure.
+- [x] **FS-22.05.05 — `apps/server/src/graphql/subscriptions.rs`** — one-module audit; subscription authorization, event scope/filtering, connection lifecycle, and error boundary reverified; stable permission error mapping applied. Next primary module: `apps/server/src/graphql/settings/query.rs`.
+- [ ] **FS-22.05.06 — `apps/server/src/graphql/settings/query.rs`** — one-module audit; settings authorization, tenant/locale scope, secret/value exposure, pagination, and owner error mapping.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -424,6 +425,22 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.05 Assessment — `apps/server/src/graphql/subscriptions.rs`
+
+- **Base:** post-merge `main` refreshed at `ca8300d578fea4e7ea6b8f9a4fd97081c4e3ae16`; dedicated branch `codex/audit-fs-22.05.05-graphql-subscriptions` was created from that exact SHA.
+- **Discovery:** reviewed the complete subscription module plus `BuildEventHub`, `BuildService`, build event types/publisher, the GraphQL schema subscription registration, the HTTP build WebSocket channel, and the canonical module permission hierarchy.
+- **Invariant map:** subscription setup must require an authenticated principal and tenant-scoped module permission; streamed events must belong to the scope represented by the owner model; build-id filters must be exact; broadcast lag/closure must not panic or spin; permission/backend failures must not expose persistence diagnostics.
+- **Finding GRAPHQLSUBSCRIPTIONS-22.05.05-01:** module permission DB failures were passed through `FieldError::internal_error(&err.to_string())`, allowing backend diagnostics to escape from subscription setup.
+- **Remediation:** added a server-side logging helper that returns a stable GraphQL `INTERNAL_ERROR` for permission lookup failures, with a regression test proving the client message does not contain representative backend diagnostics.
+- **Finding GRAPHQLSUBSCRIPTIONS-22.05.05-02:** the denial message said only `modules:read` was required even though the policy accepts `modules:read`, `modules:list`, or `modules:manage`. This was a transport-contract inconsistency rather than an authorization bypass.
+- **Remediation:** denial text now names all three accepted permission paths; the executable authorization policy and effective-permission semantics remain unchanged.
+- **Event scope audit:** `BuildService` persistence and `BuildEvent` identity are platform-global in the inspected contract (build records have no tenant key), and `BuildEventScope::Platform` explicitly documents platform composition builds as global. Therefore the shared `BuildEventHub` does not represent a tenant-owned event stream that can be cross-filtered by `TenantContext`; no speculative tenant filter was introduced.
+- **Adjacent WebSocket audit:** `/ws/builds` consumes the same global build hub and uses the same module permissions. Its raw `BuildFailed.error` payload is an operator-facing build diagnostic carried by the global build contract, not a subscription setup error; changing that payload would be a separate build transport contract iteration and was not bundled here.
+- **Connection/lifecycle audit:** subscriber creation is request-scoped; broadcast `Lagged` and `Closed` paths are handled without panic; client disconnect drops the receiver through stream cancellation. The current best-effort live-stream behavior was left unchanged because no stronger delivery guarantee is declared by the build event contract.
+- **Fresh second pass:** independently re-read `subscriptions.rs`, `BuildEventHub`, `BuildService`, `BuildEventScope`, and build WebSocket authorization. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, owner/event-scope tracing, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.05` closed; ready for PR/merge. Next primary module: `FS-22.05.06 — apps/server/src/graphql/settings/query.rs`.
+
 ### FS-22.05.04 Assessment — `apps/server/src/graphql/queries.rs`
 
 - **Base:** post-merge `main` refreshed at `465ee1b55fe80c225f13e15c4e5c1a36444dbeec`; dedicated branch `codex/audit-fs-22.05.04-graphql-queries` was created from that exact SHA.
