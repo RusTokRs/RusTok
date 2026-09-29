@@ -4,11 +4,21 @@ import path from 'node:path';
 import { commerceDomainModules, CommerceDomainFbaRuntimeSmokeError, verifyCommerceDomainFbaRuntimeSmoke } from './verify-commerce-domain-fba-runtime-smoke.mjs';
 
 const repoRoot = process.cwd();
-const files = commerceDomainModules.flatMap((module) => [
-  `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
-  `crates/modules/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
-  `crates/modules/rustok-${module}/src/ports.rs`,
-]).concat([
+const files = commerceDomainModules.flatMap((module) => {
+  const portsFiles = module === 'product'
+    ? [
+        `crates/modules/rustok-${module}/src/ports/mod.rs`,
+        `crates/modules/rustok-${module}/src/ports/types.rs`,
+        `crates/modules/rustok-${module}/src/ports/diagnostics.rs`,
+        `crates/modules/rustok-${module}/src/ports/catalog_read.rs`,
+      ]
+    : [`crates/modules/rustok-${module}/src/ports.rs`];
+  return [
+    `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
+    `crates/modules/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
+    ...portsFiles,
+  ];
+}).concat([
   'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
   'crates/modules/rustok-commerce/contracts/commerce-fba-registry.json',
   'crates/modules/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
@@ -55,7 +65,7 @@ function expectFailure(root, pattern) {
 verifyCommerceDomainFbaRuntimeSmoke();
 
 const missingPolicy = fixture();
-const productPorts = path.join(missingPolicy, 'crates/modules/rustok-product/src/ports.rs');
+const productPorts = path.join(missingPolicy, 'crates/modules/rustok-product/src/ports/catalog_read.rs');
 fs.writeFileSync(productPorts, fs.readFileSync(productPorts, 'utf8').replace('context.require_policy(PortCallPolicy::read())?;', '/* policy removed */'));
 expectFailure(missingPolicy, /product\.read_product_projection source marker missing/);
 

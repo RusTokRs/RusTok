@@ -11,7 +11,10 @@ const fixtureFiles = [
   'crates/modules/rustok-product/contracts/product-fba-registry.json',
   'crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json',
   'crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
-  'crates/modules/rustok-product/src/ports.rs',
+  'crates/modules/rustok-product/src/ports/mod.rs',
+  'crates/modules/rustok-product/src/ports/types.rs',
+  'crates/modules/rustok-product/src/ports/diagnostics.rs',
+  'crates/modules/rustok-product/src/ports/catalog_read.rs',
   'crates/modules/rustok-product/README.md',
   'crates/modules/rustok-product/docs/README.md',
   'crates/modules/rustok-product/docs/implementation-plan.md',
@@ -77,7 +80,7 @@ assert(
 );
 
 const missingHarnessMarker = copyFixture();
-const portsPath = path.join(missingHarnessMarker, 'crates/modules/rustok-product/src/ports.rs');
+const portsPath = path.join(missingHarnessMarker, 'crates/modules/rustok-product/src/ports/catalog_read.rs');
 fs.writeFileSync(
   portsPath,
   fs.readFileSync(portsPath, 'utf8').replace('fn product_read_ports_require_deadline_policy()', 'fn product_read_ports_policy_drift()'),

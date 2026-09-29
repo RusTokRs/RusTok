@@ -44,8 +44,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = rustok_api::HostRuntimeContext::new(database).with_shared_value(event_bus);
     let app = rustok_storefront::router(runtime).route("/assets/app.css", get(css_handler));
 
-    let listener = tokio::net::TcpListener::bind("[::1]:3100").await?;
-    println!("Storefront SSR running on http://localhost:3100");
+    let port = std::env::var("STOREFRONT_LEPTOS_PORT")
+        .or_else(|_| std::env::var("PORT"))
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3101);
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let addr = format!("{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    println!("Storefront SSR running on http://{addr}");
     axum::serve(listener, app.into_make_service()).await?;
     Ok(())
 }

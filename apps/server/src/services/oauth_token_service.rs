@@ -472,7 +472,8 @@ async fn prepare_user_tokens(
         });
     }
 
-    let refresh_token = auth::generate_refresh_token();
+    let refresh_token = auth::generate_refresh_token()
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to generate refresh token"))?;
     let refresh_hash = auth::hash_refresh_token(&refresh_token);
     let now = Utc::now();
     let refresh_model = oauth_tokens::ActiveModel {

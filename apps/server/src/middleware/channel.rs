@@ -307,7 +307,9 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, axum::http::StatusCode> {
+    tracing::info!(path = req.uri().path(), "channel::resolve entry");
     let Some(tenant) = req.extensions().tenant_context().cloned() else {
+        tracing::info!(path = req.uri().path(), "channel::resolve bypassed: no tenant_context on request");
         return Ok(next.run(req).await);
     };
 
@@ -332,7 +334,10 @@ pub async fn resolve(
                     .resolve(&facts)
                     .await
                     .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-                    .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                    .map_err(|error| {
+                        tracing::error!(%error, "channel::resolve failed in cache loader");
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                    })
             })
             .await
             .map_err(|error| *error)?
@@ -341,7 +346,10 @@ pub async fn resolve(
             .resolve(&facts)
             .await
             .map(|decision| CachedChannelResolution::from_decision(decision, &facts))
-            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|error| {
+                tracing::error!(%error, "channel::resolve failed");
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?
     };
 
     if let CachedChannelResolution::Found(context) = cached {
@@ -349,6 +357,7 @@ pub async fn resolve(
             .insert(ChannelContextExtension(*context));
     }
 
+    tracing::info!(path = req.uri().path(), "channel::resolve calling next");
     Ok(next.run(req).await)
 }
 

@@ -29,16 +29,16 @@ pub async fn import_blog_categories(
     let mut skipped = 0;
 
     for (pos, cat) in categories.iter().enumerate() {
-        // Idempotency: check if category already exists in taxonomy terms
-        let existing = rustok_taxonomy::entities::taxonomy_term::Entity::find()
-            .filter(rustok_taxonomy::entities::taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(rustok_taxonomy::entities::taxonomy_term::Column::CanonicalKey.eq(&cat.slug))
+        // Idempotency: check if category already exists in taxonomy term translations
+        let existing = rustok_taxonomy::entities::taxonomy_term_translation::Entity::find()
+            .filter(rustok_taxonomy::entities::taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(rustok_taxonomy::entities::taxonomy_term_translation::Column::Slug.eq(&cat.slug))
             .one(db)
             .await?;
 
-        if let Some(term) = existing {
+        if let Some(translation) = existing {
             tracing::info!(slug = %cat.slug, "Blog category already exists, reusing ID");
-            slug_to_id.insert(cat.slug.clone(), term.id);
+            slug_to_id.insert(cat.slug.clone(), translation.term_id);
             skipped += 1;
             continue;
         }
@@ -53,7 +53,7 @@ pub async fn import_blog_categories(
                     slug: Some(cat.slug.clone()),
                     description: cat.description.clone(),
                     parent_id: None,
-                    position: Some(pos as i32 + 1),
+                    position: Some(pos as i32),
                     settings: serde_json::json!({}),
                 },
             )

@@ -27,8 +27,7 @@ impl ModuleGraphqlField {
         let authority = match (operation_type, field_name) {
             (
                 OperationType::Query,
-                "enabledModules"
-                | "moduleEffectivePolicy"
+                "moduleEffectivePolicy"
                 | "moduleRegistry"
                 | "tenantModules"
                 | "artifactTenantLifecycle"
@@ -66,7 +65,6 @@ impl ModuleGraphqlField {
 
         Some(Self {
             name: match field_name {
-                "enabledModules" => "enabledModules",
                 "moduleEffectivePolicy" => "moduleEffectivePolicy",
                 "moduleRegistry" => "moduleRegistry",
                 "tenantModules" => "tenantModules",
@@ -286,9 +284,7 @@ mod tests {
             .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
             .expect("module policy should be attached");
 
-        assert!(policy.0.iter().any(
-            |field| field.name == "enabledModules" && field.authority == ModuleAuthority::Read
-        ));
+        assert!(!policy.0.iter().any(|field| field.name == "enabledModules"));
         assert!(
             policy
                 .0

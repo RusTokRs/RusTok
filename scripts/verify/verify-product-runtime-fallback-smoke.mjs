@@ -1,13 +1,25 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = process.env.PRODUCT_FBA_ROOT
   ? pathToFileURL(`${resolve(process.env.PRODUCT_FBA_ROOT)}/`)
   : new URL('../../', import.meta.url);
-const read = (path) => readFileSync(new URL(path, root), 'utf8');
+const read = (path) => {
+  const fileUrl = new URL(path, root);
+  if (existsSync(fileUrl)) return readFileSync(fileUrl, 'utf8');
+  const dirRelative = path.endsWith('.rs') ? path.slice(0, -3) : path;
+  const dirUrl = new URL(dirRelative, root);
+  if (existsSync(dirUrl)) {
+    return readdirSync(dirUrl)
+      .filter((file) => file.endsWith('.rs'))
+      .map((file) => readFileSync(new URL(`${dirRelative}/${file}`, root), 'utf8'))
+      .join('\n');
+  }
+  return readFileSync(fileUrl, 'utf8');
+};
 const json = (path) => JSON.parse(read(path));
 const fail = (message) => {
   console.error(`[verify-product-runtime-fallback-smoke] ${message}`);

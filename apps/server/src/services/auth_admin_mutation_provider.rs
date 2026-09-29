@@ -183,7 +183,7 @@ impl ServerAuthAdminMutationProvider {
     where
         C: sea_orm::ConnectionTrait,
     {
-        tenants::Entity::find_by_id(tenant_id)
+        <tenants::Entity as sea_orm::EntityTrait>::find_by_id(tenant_id)
             .one(db)
             .await
             .map_err(internal_admin_error)

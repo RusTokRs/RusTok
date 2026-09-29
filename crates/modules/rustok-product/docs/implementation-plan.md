@@ -391,3 +391,11 @@ rustok-pricing` dependency cycle.
   Product DTO, entity, or storage ownership.
 - Hosts compose product UI packages and pass the effective locale and runtime
   context without adding a package-local locale or transport fallback.
+
+## Source Layout: Port Responsibility Modularization
+
+Per `docs/backend/module-backend-implementation.md`, `src/ports/` is organized into canonical responsibility submodules bounded below 32 KiB:
+- `ports/mod.rs`: Module facade, documentation, and public re-exports.
+- `ports/types.rs`: Request and projection DTOs (`ProductProjectionRequest`, `PublishedProductsRequest`, etc.) and pagination bounds validation.
+- `ports/diagnostics.rs`: Structured telemetry, bounded context/error facts, tenant parsing, and stable error mapping without consumer type coupling.
+- `ports/catalog_read.rs`: `ProductCatalogReadPort` trait definition and `CatalogService` adapter implementation.

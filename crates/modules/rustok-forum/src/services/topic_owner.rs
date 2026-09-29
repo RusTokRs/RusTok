@@ -680,8 +680,12 @@ async fn topic_is_deleted_in_tx(
         .query_one_raw(statement)
         .await?
         .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?;
-    let is_deleted: i64 = row.try_get("", "is_deleted")?;
-    Ok(is_deleted == 1)
+    let is_deleted = row
+        .try_get::<i32>("", "is_deleted")
+        .map(|v| v == 1)
+        .or_else(|_| row.try_get::<i64>("", "is_deleted").map(|v| v == 1))
+        .or_else(|_| row.try_get::<bool>("", "is_deleted"))?;
+    Ok(is_deleted)
 }
 
 async fn load_topic_delete_snapshot_in_tx(

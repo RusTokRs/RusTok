@@ -498,6 +498,7 @@ impl Entity {
                     .add(Column::RevokedAt.is_null()),
             )
             .one(db)
+            .await
     }
 
     pub async fn find_active_by_client_id(

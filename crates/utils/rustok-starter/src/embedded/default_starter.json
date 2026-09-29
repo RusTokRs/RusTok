@@ -113,7 +113,7 @@
                         },
                         {
                           "id": "hero-subtitle",
-                          "type": "paragraph",
+                          "type": "text",
                           "tagName": "p",
                           "classes": [
                             "text-xl",
@@ -126,7 +126,7 @@
                         },
                         {
                           "id": "hero-cta-group",
-                          "type": "box",
+                          "type": "container",
                           "tagName": "div",
                           "classes": [
                             "flex",
@@ -187,7 +187,7 @@
                       "components": [
                         {
                           "id": "features-grid",
-                          "type": "box",
+                          "type": "container",
                           "tagName": "div",
                           "classes": [
                             "grid",
@@ -197,7 +197,7 @@
                           "components": [
                             {
                               "id": "feature-card-1",
-                              "type": "box",
+                              "type": "container",
                               "tagName": "div",
                               "classes": [
                                 "p-6",
@@ -220,7 +220,7 @@
                                 },
                                 {
                                   "id": "card-1-desc",
-                                  "type": "paragraph",
+                                  "type": "text",
                                   "tagName": "p",
                                   "classes": [
                                     "text-muted-foreground"
@@ -231,7 +231,7 @@
                             },
                             {
                               "id": "feature-card-2",
-                              "type": "box",
+                              "type": "container",
                               "tagName": "div",
                               "classes": [
                                 "p-6",
@@ -254,7 +254,7 @@
                                 },
                                 {
                                   "id": "card-2-desc",
-                                  "type": "paragraph",
+                                  "type": "text",
                                   "tagName": "p",
                                   "classes": [
                                     "text-muted-foreground"
@@ -265,7 +265,7 @@
                             },
                             {
                               "id": "feature-card-3",
-                              "type": "box",
+                              "type": "container",
                               "tagName": "div",
                               "classes": [
                                 "p-6",
@@ -288,7 +288,7 @@
                                 },
                                 {
                                   "id": "card-3-desc",
-                                  "type": "paragraph",
+                                  "type": "text",
                                   "tagName": "p",
                                   "classes": [
                                     "text-muted-foreground"

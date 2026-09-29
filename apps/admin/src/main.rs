@@ -148,10 +148,22 @@ async fn main() {
     }
 
     validate_admin_security_profile().expect("valid standalone admin security profile");
-    let configuration = get_configuration(None).expect("Leptos SSR configuration");
+    let cargo_toml = if std::path::Path::new("apps/admin/Cargo.toml").exists() {
+        Some("apps/admin/Cargo.toml")
+    } else {
+        None
+    };
+    let configuration = get_configuration(cargo_toml).expect("Leptos SSR configuration");
     let address = configuration.leptos_options.site_addr;
     let options = configuration.leptos_options;
     let routes = generate_route_list(App);
+    let mut seen_paths = std::collections::HashSet::new();
+    let mut unique_routes = Vec::new();
+    for route in routes {
+        if seen_paths.insert(route.path().to_string()) {
+            unique_routes.push(route);
+        }
+    }
     let application = Router::new()
         .route("/health", get(|| async { StatusCode::OK }))
         .route(
@@ -160,7 +172,7 @@ async fn main() {
         )
         .leptos_routes_with_context(
             &options,
-            routes,
+            unique_routes,
             || {
                 provide_server_auth_snapshot(request_auth_snapshot());
                 if let Some(nonce) = request_csp_nonce() {

@@ -81,7 +81,7 @@ impl OAuthAppService {
         )?;
 
         let client_id = Uuid::new_v4();
-        let client_secret_plain = generate_client_secret();
+        let client_secret_plain = generate_client_secret()?;
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
 
         let app = OAuthAppActiveModel {
@@ -212,7 +212,7 @@ impl OAuthAppService {
             ));
         }
 
-        let new_secret = generate_client_secret();
+        let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password(&new_secret)?;
 
         let mut active: OAuthAppActiveModel = app.into();
@@ -783,7 +783,7 @@ async fn upsert_first_party_app(
             Error::InternalServerError
         })?;
     } else {
-        let client_secret_plain = generate_client_secret();
+        let client_secret_plain = generate_client_secret()?;
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
 
         let app = OAuthAppActiveModel {
@@ -837,15 +837,15 @@ async fn upsert_first_party_app(
 }
 
 /// Generate a client secret with `sk_live_` prefix
-fn generate_client_secret() -> String {
+fn generate_client_secret() -> Result<String> {
     // Keep the prefix stable while using more than 256 bits of entropy so
     // the resulting secret comfortably exceeds bcrypt/Argon guidance tests.
     let token = format!(
         "{}{}",
-        auth::generate_refresh_token(),
-        auth::generate_refresh_token()
+        auth::generate_refresh_token()?,
+        auth::generate_refresh_token()?
     );
-    format!("sk_live_{token}")
+    Ok(format!("sk_live_{token}"))
 }
 
 fn validate_manual_app_configuration(
@@ -1627,7 +1627,7 @@ mod tests {
 
     #[test]
     fn client_secret_has_prefix() {
-        let secret = generate_client_secret();
+        let secret = generate_client_secret().expect("generate client secret");
         assert!(
             secret.starts_with("sk_live_"),
             "Client secret must have sk_live_ prefix"
@@ -1804,7 +1804,7 @@ mod tests {
     #[serial]
     async fn manifest_managed_apps_are_read_only_but_secret_rotation_still_works() {
         let (db, tenant) = test_db_with_tenant().await;
-        let secret = generate_client_secret();
+        let secret = generate_client_secret().expect("generate client secret");
         let secret_hash = auth::hash_password(&secret).expect("hash secret");
 
         let managed = OAuthAppActiveModel {

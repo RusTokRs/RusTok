@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    AdminProductListQuery, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection,
+    AdminProductListQuery, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 
 pub const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;

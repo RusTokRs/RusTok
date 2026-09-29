@@ -8,7 +8,17 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), "utf8");
+  const filePath = path.join(root, relativePath);
+  if (fs.existsSync(filePath)) return fs.readFileSync(filePath, "utf8");
+  const dirRelative = relativePath.endsWith(".rs") ? relativePath.slice(0, -3) : relativePath;
+  const dirPath = path.join(root, dirRelative);
+  if (fs.existsSync(dirPath)) {
+    return fs.readdirSync(dirPath)
+      .filter((file) => file.endsWith(".rs"))
+      .map((file) => fs.readFileSync(path.join(dirPath, file), "utf8"))
+      .join("\n");
+  }
+  return fs.readFileSync(filePath, "utf8");
 }
 
 function fail(message) {

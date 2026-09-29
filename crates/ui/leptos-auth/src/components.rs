@@ -1,21 +1,28 @@
 use leptos::prelude::*;
 use leptos_router::components::Outlet;
+#[cfg(target_arch = "wasm32")]
 use leptos_router::hooks::use_navigate;
 
-use crate::hooks::{use_is_authenticated, use_is_loading};
+use crate::hooks::use_is_authenticated;
+#[cfg(target_arch = "wasm32")]
+use crate::hooks::use_is_loading;
 
 #[component]
 pub fn ProtectedRoute() -> impl IntoView {
     let is_authenticated = use_is_authenticated();
-    let is_loading = use_is_loading();
-    let redirect_to = "/login".to_string();
-    let navigate = use_navigate();
 
-    Effect::new(move |_| {
-        if !is_loading.get() && !is_authenticated.get() {
-            navigate(&redirect_to, Default::default());
-        }
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        let is_loading = use_is_loading();
+        let redirect_to = "/login".to_string();
+        let navigate = use_navigate();
+
+        Effect::new(move |_| {
+            if !is_loading.get() && !is_authenticated.get() {
+                navigate(&redirect_to, Default::default());
+            }
+        });
+    }
 
     view! {
         <Show
@@ -34,15 +41,19 @@ pub fn ProtectedRoute() -> impl IntoView {
 #[component]
 pub fn GuestRoute() -> impl IntoView {
     let is_authenticated = use_is_authenticated();
-    let is_loading = use_is_loading();
-    let redirect_to = "/dashboard".to_string();
-    let navigate = use_navigate();
 
-    Effect::new(move |_| {
-        if !is_loading.get() && is_authenticated.get() {
-            navigate(&redirect_to, Default::default());
-        }
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        let is_loading = use_is_loading();
+        let redirect_to = "/dashboard".to_string();
+        let navigate = use_navigate();
+
+        Effect::new(move |_| {
+            if !is_loading.get() && is_authenticated.get() {
+                navigate(&redirect_to, Default::default());
+            }
+        });
+    }
 
     view! {
         <Show

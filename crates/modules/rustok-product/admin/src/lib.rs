@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 #![allow(clippy::too_many_arguments)]
 
 pub mod catalog_controls;

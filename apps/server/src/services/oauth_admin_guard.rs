@@ -19,6 +19,7 @@ use crate::models::oauth_apps;
 
 use super::oauth_app::OAuthAppService;
 use super::rbac_request_scope::permissions_for;
+use crate::services::auth_admin_mutation_provider::build_oauth_app_record;
 
 const MAX_OAUTH_GUARD_LIST_LIMIT: u64 = 100;
 
@@ -169,7 +170,7 @@ where
                     .exec(db)
                     .await
                     .map_err(internal_oauth_guard_error)?;
-                if result.rows_affected() != 1 {
+                if result.rows_affected != 1 {
                     return Err(AuthAdminMutationError::Internal(
                         "OAuth app mutation lock fence could not be acquired".to_string(),
                     ));
@@ -178,7 +179,8 @@ where
                 return query()
                     .one(db)
                     .await
-                    .map_err(internal_oauth_guard_error);
+                    .map_err(internal_oauth_guard_error)?
+                    .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()));
             }
             None
         }

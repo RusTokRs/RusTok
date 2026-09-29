@@ -1126,7 +1126,7 @@ Source inspection is not execution evidence.
 ## Audit 2026-09-25: Product owner-port diagnostic hardening
 
 - [x] Remove raw Product owner-port error, tenant, variant, and context values from
-  `rustok-product/src/ports.rs`; owner failures now retain bounded error-shape facts and
+  `rustok-product/src/ports/`; owner failures now retain bounded error-shape facts and
   correlation-safe context facts while exposing stable public `PortError` messages.
 - [x] Account for every current `CommerceError` variant in the Product owner-port mapper,
   including an explicit `DuplicateSku` conflict envelope instead of an accidental fallback.

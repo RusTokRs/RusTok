@@ -198,8 +198,8 @@ requireAll(cart, [
   'opaque_payload_present = error_facts.opaque_payload_present',
   'validation_message_length = message.chars().count()',
   'error_variant = "database"',
-  'PortError::unavailable(
-                "cart.database_unavailable"',
+  `PortError::unavailable(
+                "cart.database_unavailable"`,
   'cart checkout owner boundary was rejected with bounded diagnostics',
 ], 'cart checkout bounded diagnostics');
 
@@ -409,10 +409,10 @@ forbidAll(taxCalculation, [
 
 requireText(
   tax,
-  'PortError::validation(
+  `PortError::validation(
                 "tax.validation",
                 "tax calculation request is invalid",
-            )',
+            )`,
   'tax stable validation envelope',
 );
 requireText(taxCalculation, 'error_message_present = !error.message.is_empty()', 'tax local error message presence');

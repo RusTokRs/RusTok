@@ -323,28 +323,32 @@ async fn init_alloy_runtime(
             return Ok(());
         }
         if ctx.shared_get::<alloy::SharedAlloyRuntime>().is_none() {
-            let rhai = crate::services::artifact_runtime::sandbox_rhai_executor(ctx).await?;
-            let mut executors = rustok_sandbox::ExecutorRegistry::new();
-            executors.register_isolated_worker(rhai).map_err(|error| {
-                Error::Message(format!("Alloy isolated Rhai executor failed: {error}"))
-            })?;
-            let sandbox = rustok_sandbox::SandboxRuntime::new(
-                executors,
-                Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
-            );
-            let draft_runtime = alloy::AlloyDraftRuntime::new(
-                sandbox,
-                rustok_sandbox::SandboxPolicy::default(),
-            )
-            .with_imported_draft_policy_provider(
-                crate::services::registry_governance::alloy_imported_draft_policy_provider_handle(
+            if std::env::var("RUSTOK_SANDBOX_WORKER_ENDPOINT").is_ok() {
+                let rhai = crate::services::artifact_runtime::sandbox_rhai_executor(ctx).await?;
+                let mut executors = rustok_sandbox::ExecutorRegistry::new();
+                executors.register_isolated_worker(rhai).map_err(|error| {
+                    Error::Message(format!("Alloy isolated Rhai executor failed: {error}"))
+                })?;
+                let sandbox = rustok_sandbox::SandboxRuntime::new(
+                    executors,
+                    Arc::new(rustok_sandbox::CapabilityBrokerRouter::new()),
+                );
+                let draft_runtime = alloy::AlloyDraftRuntime::new(
+                    sandbox,
+                    rustok_sandbox::SandboxPolicy::default(),
+                )
+                .with_imported_draft_policy_provider(
+                    crate::services::registry_governance::alloy_imported_draft_policy_provider_handle(
+                        ctx.db_clone(),
+                    ),
+                );
+                ctx.shared_insert(alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
                     ctx.db_clone(),
-                ),
-            );
-            ctx.shared_insert(alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
-                ctx.db_clone(),
-                draft_runtime,
-            )));
+                    draft_runtime,
+                )));
+            } else {
+                tracing::warn!("RUSTOK_SANDBOX_WORKER_ENDPOINT is not configured; Alloy scripting runtime disabled");
+            }
         }
         Ok(())
     }

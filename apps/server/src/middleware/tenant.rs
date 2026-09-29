@@ -50,12 +50,12 @@ enum CachedTenantMiss {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct CachedTenantContext {
+pub(crate) struct CachedTenantContext {
     id: uuid::Uuid,
     name: String,
     slug: String,
     domain: Option<String>,
-    settings: serde_json::Value,
+    settings: String,
     default_locale: String,
     is_active: bool,
 }
@@ -67,7 +67,7 @@ impl From<TenantContext> for CachedTenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: context.settings,
+            settings: context.settings.to_string(),
             default_locale: context.default_locale,
             is_active: context.is_active,
         }
@@ -81,7 +81,7 @@ impl From<CachedTenantContext> for TenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: context.settings,
+            settings: serde_json::from_str(&context.settings).unwrap_or(serde_json::Value::Null),
             default_locale: context.default_locale,
             is_active: context.is_active,
         }
@@ -833,9 +833,11 @@ pub async fn resolve(
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    tracing::info!(path = req.uri().path(), "tenant::resolve entry");
     match tenant_route_scope(req.uri().path()) {
         TenantRouteScope::TenantBound => {}
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {
+            tracing::info!(path = req.uri().path(), "tenant::resolve bypassed (global/handshake)");
             return Ok(next.run(req).await);
         }
     }
@@ -870,6 +872,7 @@ pub async fn resolve(
             error.status_code()
         })?;
 
+    tracing::info!(path = req.uri().path(), tenant_slug = %context.slug, "tenant::resolve successful, inserting context and calling next");
     req.extensions_mut().insert(TenantContextExtension(context));
     Ok(next.run(req).await)
 }

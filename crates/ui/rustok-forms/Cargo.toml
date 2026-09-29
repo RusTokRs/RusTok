@@ -18,3 +18,4 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+regex = { version = "1.12", default-features = false, features = ["std", "unicode"] }

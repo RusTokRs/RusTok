@@ -41,7 +41,19 @@ function simulatePolicy({ deadlineMs, write, idempotencyKey }) {
 }
 
 export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, modules = commerceDomainModules } = {}) {
-  const read = (repoPath) => fs.readFileSync(path.join(root, repoPath), 'utf8');
+  const read = (repoPath) => {
+    const filePath = path.join(root, repoPath);
+    if (fs.existsSync(filePath)) return fs.readFileSync(filePath, 'utf8');
+    const dirRelative = repoPath.endsWith('.rs') ? repoPath.slice(0, -3) : repoPath;
+    const dirPath = path.join(root, dirRelative);
+    if (fs.existsSync(dirPath)) {
+      return fs.readdirSync(dirPath)
+        .filter((file) => file.endsWith('.rs'))
+        .map((file) => fs.readFileSync(path.join(dirPath, file), 'utf8'))
+        .join('\n');
+    }
+    return fs.readFileSync(filePath, 'utf8');
+  };
   const json = (repoPath) => JSON.parse(read(repoPath));
   const trace = json(invocationTracePath);
   const commerceRegistry = json('crates/modules/rustok-commerce/contracts/commerce-fba-registry.json');

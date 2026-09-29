@@ -267,7 +267,6 @@ impl RootQuery {
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
-        ensure_modules_read_permission(ctx).await?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let modules = effective_module_policy_view(ctx)

@@ -291,6 +291,7 @@ pub(super) fn product_context_error(
         correlation_id_length = context_facts.correlation_id_length,
         tenant_id_length = context_facts.tenant_id_length,
         operation = owner_operation,
+        code = "product.context_invalid",
         error_kind,
         error_code_length,
         error_message_present = !error.message.trim().is_empty(),
@@ -336,6 +337,7 @@ pub(super) fn product_storage_error(
         actor_kind = context_facts.actor_kind,
         actor_id_length = context_facts.actor_id_length,
         operation = owner_operation,
+        code = "product.database_unavailable",
         error_variant = "database",
         boundary = "product_catalog_read_port",
         "product catalog storage failed with bounded diagnostics"
@@ -407,10 +409,7 @@ pub(super) fn product_error_to_port_error(
 
     let code = product_error_code(&error);
     let error_facts = product_owner_error_facts(&error);
-    let technical_failure = matches!(
-        &error,
-        CommerceError::Database(_) | CommerceError::Core(_)
-    );
+    let technical_failure = matches!(&error, CommerceError::Database(_) | CommerceError::Core(_));
     log_product_port_failure(
         context,
         owner_operation,

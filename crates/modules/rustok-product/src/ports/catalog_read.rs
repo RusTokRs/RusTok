@@ -12,13 +12,13 @@ use super::diagnostics::{
     product_error_to_port_error, product_storage_error, product_variant_not_found,
 };
 use super::types::{
+    AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
+    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE,
+    MAX_PUBLISHED_PRODUCTS_PER_PAGE, ProductProjectionRequest, PublishedProductsRequest,
+    StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
     validate_admin_products_request, validate_legacy_admin_products_request,
     validate_legacy_storefront_products_request, validate_published_products_request,
-    AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
-    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
-    PublishedProductsRequest, StorefrontProductProjectionRequest,
-    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
 };
 
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
@@ -150,9 +150,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: ProductProjectionRequest,
     ) -> Result<ProductResponse, PortError> {
         let owner_operation = READ_PRODUCT_PROJECTION_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.get_product_with_locale_fallback(
@@ -171,9 +169,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: VariantProductProjectionRequest,
     ) -> Result<ProductResponse, PortError> {
         let owner_operation = READ_VARIANT_PRODUCT_PROJECTION_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let variant = product_variant::Entity::find_by_id(request.variant_id)
             .filter(product_variant::Column::TenantId.eq(tenant_id))
@@ -201,9 +197,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError> {
         let owner_operation = LIST_PUBLISHED_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_published_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
@@ -225,9 +219,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: FilteredPublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError> {
         let owner_operation = LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         crate::CatalogService::list_published_products_with_query(
@@ -248,9 +240,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: StorefrontProductProjectionRequest,
     ) -> Result<Option<ProductResponse>, PortError> {
         let owner_operation = READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let StorefrontProductProjectionRequest {
             subject,
@@ -290,9 +280,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: StorefrontVariantProductProjectionRequest,
     ) -> Result<Option<ProductResponse>, PortError> {
         let owner_operation = "read_storefront_variant_product_projection";
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let variant = product_variant::Entity::find_by_id(request.variant_id)
             .filter(product_variant::Column::TenantId.eq(tenant_id))
@@ -331,9 +319,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: LegacyStorefrontProductsRequest,
     ) -> Result<LegacyStorefrontProductList, PortError> {
         let owner_operation = LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_legacy_storefront_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let LegacyStorefrontProductsRequest {
@@ -368,9 +354,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: AdminProductsRequest,
     ) -> Result<AdminProductList, PortError> {
         let owner_operation = LIST_ADMIN_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_admin_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let AdminProductsRequest {
@@ -409,9 +393,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: LegacyAdminProductsRequest,
     ) -> Result<AdminProductList, PortError> {
         let owner_operation = LIST_LEGACY_ADMIN_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_legacy_admin_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let LegacyAdminProductsRequest {
@@ -423,18 +405,25 @@ impl ProductCatalogReadPort for crate::CatalogService {
             page,
             per_page,
         } = request;
+        let page = page.max(1);
         let locale = locale.as_deref().unwrap_or(context.locale.as_str());
-        self.list_legacy_admin_products_with_locale_fallback(
+        self.list_admin_products_with_compatibility_query(
             tenant_id,
             locale,
             fallback_locale.as_deref(),
-            search.as_deref(),
-            status,
-            vendor.as_deref(),
-            crate::StorefrontProductSortBy::CreatedAt,
-            crate::StorefrontProductSortDirection::Desc,
+            crate::AdminProductListQuery {
+                search,
+                status,
+                category_id: None,
+                sort_by: crate::StorefrontProductSortBy::CreatedAt,
+                sort_direction: crate::StorefrontProductSortDirection::Desc,
+                attribute_filters: Vec::new(),
+            },
             page,
             per_page,
+            None,
+            vendor.as_deref(),
+            None,
             false,
             true,
         )
@@ -510,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn product_page_validation_bounds_request() {
+    fn published_products_request_enforces_bounded_pagination() {
         let context = base_context().with_deadline(Duration::from_secs(3));
         let mut request = published_request();
 
@@ -555,12 +544,14 @@ mod tests {
         );
 
         request.per_page = MAX_PUBLISHED_PRODUCTS_PER_PAGE;
-        assert!(validate_published_products_request(
-            &context,
-            LIST_PUBLISHED_PRODUCTS_OPERATION,
-            &request,
-        )
-        .is_ok());
+        assert!(
+            validate_published_products_request(
+                &context,
+                LIST_PUBLISHED_PRODUCTS_OPERATION,
+                &request,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -574,15 +565,12 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert_eq!(error.code, "product.database_unavailable");
-        assert_eq!(
-            error.message,
-            "product storage is temporarily unavailable"
-        );
+        assert_eq!(error.message, "product storage is temporarily unavailable");
         assert!(error.retryable);
     }
 
     #[test]
-    fn product_domain_errors_map_to_stable_public_codes() {
+    fn commerce_errors_map_to_typed_product_port_errors() {
         let context = base_context().with_deadline(Duration::from_secs(3));
 
         let not_found = product_error_to_port_error(

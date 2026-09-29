@@ -65,7 +65,7 @@ for (const [value, label] of [
     'published product list operation mapping',
   ],
   ['correlation_id = %context.correlation_id', 'correlation logging'],
-  ['tenant_id = %context.tenant_id', 'tenant logging'],
+  ['tenant_id_length = context_facts.tenant_id_length', 'tenant logging'],
   ['operation = owner_operation', 'owner operation logging'],
   ['code = "product.context_invalid"', 'context stable code'],
   ['code = "product.database_unavailable"', 'database stable code'],

@@ -875,7 +875,18 @@ pub async fn pause_script(
 }
 
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
-    let state = AlloyHttpRuntime::from_host(runtime)?;
+    let state = match AlloyHttpRuntime::from_host(runtime) {
+        Ok(state) => state,
+        Err(err) => {
+            tracing::warn!("Alloy runtime not available ({err}); mounting disabled router");
+            return Ok(axum::Router::new().fallback(|| async {
+                (
+                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "Alloy runtime is not available",
+                )
+            }));
+        }
+    };
     Ok(axum::Router::new()
         .route("/api/alloy/scripts", get(list_scripts).post(create_script))
         .route(EXECUTION_HISTORY_ROUTES[0], get(list_recent_executions))

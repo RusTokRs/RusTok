@@ -208,6 +208,57 @@ pub mod rules {
         Ok(())
     }
 
+    /// Validates minimum value for any comparable type.
+    pub fn min<T: PartialOrd + Copy>(
+        field: impl Into<String>,
+        value: T,
+        min: T,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value < min {
+            Err(FieldError::new(field, message))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Validates maximum value for any comparable type.
+    pub fn max<T: PartialOrd + Copy>(
+        field: impl Into<String>,
+        value: T,
+        max: T,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        if value > max {
+            Err(FieldError::new(field, message))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Validates that a string matches a regular expression pattern.
+    pub fn pattern(
+        field: impl Into<String>,
+        value: &str,
+        pattern: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
+        let v = value.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+        match regex::Regex::new(pattern) {
+            Ok(re) => {
+                if re.is_match(v) {
+                    Ok(())
+                } else {
+                    Err(FieldError::new(field, message))
+                }
+            }
+            Err(_) => Err(FieldError::new(field, message)),
+        }
+    }
+
     /// Validates that a string parses as a valid finite number.
     pub fn numeric(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
         let v = value.trim();
@@ -810,7 +861,7 @@ impl FormValidator {
     }
 
     /// Conditional validator: runs validation closure only when `condition` is true.
-    pub fn validate_if<F>(mut self, condition: bool, f: F) -> Self
+    pub fn validate_if<F>(self, condition: bool, f: F) -> Self
     where
         F: FnOnce(Self) -> Self,
     {

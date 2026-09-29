@@ -102,8 +102,8 @@ async fn create_development_app(
     let client_id = Uuid::new_v4();
     let client_secret = format!(
         "sk_live_{}{}",
-        generate_refresh_token(),
-        generate_refresh_token()
+        generate_refresh_token().map_err(command_failed)?,
+        generate_refresh_token().map_err(command_failed)?
     );
     let client_secret_hash = hash_password(&client_secret).map_err(command_failed)?;
     let backend = db.get_database_backend();

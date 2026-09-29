@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::FieldError;
-use crate::field::{FieldConstraints, FieldDescriptor, FieldKind};
+use crate::field::{FieldDescriptor, FieldKind};
 use crate::validation::rules;
 
 /// Declarative schema holding the collection of all fields in a form.

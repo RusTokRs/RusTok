@@ -511,7 +511,7 @@ impl AuthLifecycleService {
 
                     return query.one(txn).await.map_err(AuthLifecycleError::from);
                 }
-                Ok(None)
+                None
             }
             _ => query.one(txn).await.map_err(AuthLifecycleError::from)?,
         };
@@ -549,7 +549,7 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let new_refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let new_token_hash = hash_refresh_token(&new_refresh_token);
-        let expires_at = session_expiration(now, config.refresh_expiration)?;
+        let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
 
         let session_id = session.id;
         let mut session_model: sessions::ActiveModel = session.into();
@@ -801,7 +801,7 @@ impl AuthLifecycleService {
         user_id: uuid::Uuid,
         limit: u64,
     ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
-        let limit = clamp_session_list_limit(limit);
+        let limit = Self::clamp_session_list_limit(limit);
         let rows = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
@@ -914,7 +914,7 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
-        let expires_at = session_expiration(now, config.refresh_expiration)?;
+        let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
 
         let session = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,

@@ -63,6 +63,7 @@ pub fn InstallerPage() -> impl IntoView {
         move || status_refresh.get(),
         |_| async move { transport::fetch_status().await },
     );
+    #[cfg(target_arch = "wasm32")]
     Effect::new(move |_| {
         let Some(Ok(status)) = status_resource.get() else {
             return;

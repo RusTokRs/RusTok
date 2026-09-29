@@ -197,7 +197,7 @@ where
                     .exec(db)
                     .await
                     .map_err(|error| super::internal_admin_error(error))?;
-                if result.rows_affected() != 1 {
+                if result.rows_affected != 1 {
                     return Err(AuthAdminMutationError::Internal(
                         "user mutation lock fence could not be acquired".to_string(),
                     ));
@@ -206,7 +206,8 @@ where
                 return query()
                     .one(db)
                     .await
-                    .map_err(|error| super::internal_admin_error(error));
+                    .map_err(|error| super::internal_admin_error(error))?
+                    .ok_or_else(|| AuthAdminMutationError::NotFound("user".to_string()));
             }
             None
         }
@@ -415,6 +416,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .locale
             .as_deref()
             .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
+        let custom_fields_updated = command.custom_fields.is_some();
         let prepared = FlexAttachedValuesService::prepare_update(
             &self.db,
             context.tenant_id,
@@ -440,7 +442,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         ensure_custom_field_snapshot_is_current(
             &initial_user.metadata,
             &locked_user.metadata,
-            command.custom_fields.is_some(),
+            custom_fields_updated,
         )?;
         let user_id = locked_user.id;
         let target_status = locked_user.status.clone();

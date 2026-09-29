@@ -575,7 +575,7 @@ async fn increment_tag_usage_in_tx(
             .values([
                 (
                     blog_tag_usage::Column::UseCount,
-                    Expr::col(blog_tag_usage::Column::UseCount).add(1),
+                    Expr::col((blog_tag_usage::Entity, blog_tag_usage::Column::UseCount)).add(1),
                 ),
                 (
                     blog_tag_usage::Column::CanonicalKey,

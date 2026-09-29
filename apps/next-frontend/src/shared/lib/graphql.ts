@@ -59,9 +59,11 @@ function apolloClientFor(baseUrl = defaultGraphqlBaseUrl()): ApolloClient {
     defaultOptions: {
       query: {
         fetchPolicy: "no-cache",
+        errorPolicy: "all",
       },
       mutate: {
         fetchPolicy: "no-cache",
+        errorPolicy: "all",
       },
     },
   });

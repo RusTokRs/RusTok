@@ -28,6 +28,31 @@ where
     AuthLifecycleMutationError::Internal("Auth lifecycle operation failed".to_string())
 }
 
+fn permission_strings_from_context(context: &AuthLifecycleContext) -> Vec<String> {
+    context.permissions.iter().map(|p| p.to_string()).collect()
+}
+
+fn map_lifecycle_error(error: AuthLifecycleError) -> AuthLifecycleMutationError {
+    match error {
+        AuthLifecycleError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
+        AuthLifecycleError::InvalidCredentials => AuthLifecycleMutationError::InvalidCredentials,
+        AuthLifecycleError::UserInactive => AuthLifecycleMutationError::UserInactive,
+        AuthLifecycleError::InvalidRefreshToken => AuthLifecycleMutationError::InvalidRefreshToken,
+        AuthLifecycleError::SessionExpired => AuthLifecycleMutationError::SessionExpired,
+        AuthLifecycleError::UserNotFound => AuthLifecycleMutationError::UserNotFound,
+        AuthLifecycleError::InvalidResetToken => AuthLifecycleMutationError::InvalidResetToken,
+        AuthLifecycleError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
+    }
+}
+
+fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError {
+    match error {
+        InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
+        InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
+        InviteAcceptanceError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
+    }
+}
+
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 pub struct ServerAuthLifecycleProvider {
@@ -497,6 +522,16 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
 
 #[async_trait]
 impl AuthUserBackfillReadPort for ServerAuthLifecycleProvider {
+    async fn list_users_for_profile_backfill(
+        &self,
+        request: AuthUserBackfillReadRequest,
+    ) -> Result<Vec<AuthUserBackfillRecord>, AuthLifecycleMutationError> {
+        AuthUserBackfillDbReader::new(self.runtime_ctx.db().clone())
+            .list_users_for_profile_backfill(request)
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ServerAuthLifecycleProvider;

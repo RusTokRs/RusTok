@@ -13,11 +13,7 @@ use rustok_telemetry::{LogFormat, TelemetryConfig};
 fn main() -> eyre::Result<()> {
     let telemetry_cfg = telemetry_config();
     let has_otel = telemetry_cfg.otel.is_some();
-    let _telemetry = if has_otel {
-        rustok_telemetry::init(telemetry_cfg)?
-    } else {
-        rustok_telemetry::init_metrics(telemetry_cfg.metrics)?
-    };
+    let _telemetry = rustok_telemetry::init(telemetry_cfg)?;
     let stack_size = std::env::var("RUSTOK_THREAD_STACK_SIZE")
         .ok()
         .and_then(|v| v.parse().ok())

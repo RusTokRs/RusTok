@@ -123,7 +123,7 @@ for (const [value, label] of [
 for (const [value, label] of [
   ['pub trait ProductCatalogReadPort', 'Product owner read port'],
   ['async fn read_storefront_product_projection(', 'Product owner storefront detail capability'],
-  ['context\n            .require_policy(PortCallPolicy::read())', 'Product read admission'],
+  ['.require_policy(PortCallPolicy::read())', 'Product read admission'],
   ['StorefrontProductProjectionSubject::ProductId { product_id }', 'Product owner product-id dispatch'],
   ['get_published_product_by_id_with_locale_fallback(', 'Product owner published detail implementation'],
 ]) requireText(productPorts, value, label);

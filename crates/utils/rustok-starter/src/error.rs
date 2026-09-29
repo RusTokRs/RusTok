@@ -16,7 +16,7 @@ pub enum StarterError {
     #[error("Blog domain error: {0}")]
     Blog(#[from] rustok_blog::BlogError),
 
-    #[error("Forum domain error: {0}")]
+    #[error("Forum domain error: {0:?}")]
     Forum(#[from] rustok_forum::error::ForumError),
 
     #[error("Navigation domain error: {0}")]

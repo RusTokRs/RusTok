@@ -513,8 +513,12 @@ impl TopicService {
             .query_one_raw(statement)
             .await?
             .ok_or(ForumError::TopicNotFound(topic_id))?;
-        let is_deleted: i64 = row.try_get("", "is_deleted")?;
-        Ok(is_deleted == 1)
+        let is_deleted = row
+            .try_get::<i32>("", "is_deleted")
+            .map(|v| v == 1)
+            .or_else(|_| row.try_get::<i64>("", "is_deleted").map(|v| v == 1))
+            .or_else(|_| row.try_get::<bool>("", "is_deleted"))?;
+        Ok(is_deleted)
     }
 
     async fn load_deleted_topic_ids(

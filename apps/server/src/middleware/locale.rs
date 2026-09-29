@@ -324,10 +324,14 @@ pub async fn resolve_locale(
             .map(|tenant| tenant.default_locale.as_str()),
     );
 
+    tracing::info!(path = parts.uri.path(), "locale::resolve_locale entry");
     if let Some(tenant) = tenant_context.as_ref() {
         let locales = get_tenant_locales_cached(&ctx, tenant.id)
             .await
-            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|error| {
+                tracing::error!(%error, tenant_id = %tenant.id, "locale::resolve_locale get_tenant_locales_cached FAILED");
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         resolved.effective_locale =
             constrain_locale_to_tenant(&resolved, locales.as_ref(), &tenant.default_locale);
     }
@@ -336,6 +340,7 @@ pub async fn resolve_locale(
     parts.extensions.insert(resolved.clone());
     parts.extensions.insert(locale);
 
+    tracing::info!(path = parts.uri.path(), effective_locale = %resolved.effective_locale, "locale::resolve_locale calling next");
     let request = Request::from_parts(parts, body);
     let mut response = next.run(request).await;
     if let Ok(value) = HeaderValue::from_str(&resolved.effective_locale) {
