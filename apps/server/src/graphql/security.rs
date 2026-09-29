@@ -47,28 +47,24 @@ impl SensitiveGraphqlField {
 
     fn permission_hint(self) -> &'static str {
         match self {
-            Self::User => "users:read",
-            Self::Users => "users:list",
-            Self::CreateUser => "users:create",
-            Self::UpdateUser => "users:update",
+            Self::User => "users:read (or users:manage)",
+            Self::Users => "users:list (or users:manage)",
+            Self::CreateUser => "users:create (or users:manage)",
+            Self::UpdateUser => "users:update (or users:manage)",
             Self::DisableUser | Self::DeleteUser => "users:manage",
         }
     }
 
     fn allows(self, permissions: &[Permission]) -> bool {
-        match self {
-            Self::User => permissions.contains(&Permission::USERS_READ),
-            Self::Users => permissions.contains(&Permission::USERS_LIST),
-            Self::CreateUser => {
-                permissions.contains(&Permission::USERS_CREATE)
-                    || permissions.contains(&Permission::USERS_MANAGE)
-            }
-            Self::UpdateUser => {
-                permissions.contains(&Permission::USERS_UPDATE)
-                    || permissions.contains(&Permission::USERS_MANAGE)
-            }
-            Self::DisableUser | Self::DeleteUser => permissions.contains(&Permission::USERS_MANAGE),
-        }
+        let required_permission = match self {
+            Self::User => Permission::USERS_READ,
+            Self::Users => Permission::USERS_LIST,
+            Self::CreateUser => Permission::USERS_CREATE,
+            Self::UpdateUser => Permission::USERS_UPDATE,
+            Self::DisableUser | Self::DeleteUser => Permission::USERS_MANAGE,
+        };
+
+        rustok_api::has_effective_permission(permissions, &required_permission)
     }
 }
 
@@ -80,6 +76,7 @@ fn collect_sensitive_fields_from_selection_set(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<SensitiveGraphqlField>,
+    visited_fragments: &mut BTreeSet<String>,
 ) {
     for selection in &selection_set.items {
         match &selection.node {
@@ -92,13 +89,18 @@ fn collect_sensitive_fields_from_selection_set(
                 }
             }
             Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
+                let fragment_name = fragment.node.fragment_name.node.clone();
+                if !visited_fragments.insert(fragment_name.clone()) {
+                    continue;
+                }
+
+                if let Some(definition) = document.fragments.get(&fragment_name) {
                     collect_sensitive_fields_from_selection_set(
                         operation_type,
                         &definition.node.selection_set.node,
                         document,
                         fields,
+                        visited_fragments,
                     );
                 }
             }
@@ -107,6 +109,7 @@ fn collect_sensitive_fields_from_selection_set(
                 &fragment.node.selection_set.node,
                 document,
                 fields,
+                visited_fragments,
             ),
         }
     }
@@ -116,11 +119,13 @@ fn sensitive_graphql_fields(document: &ExecutableDocument) -> Vec<SensitiveGraph
     let mut fields = BTreeSet::new();
 
     for (_, operation) in document.operations.iter() {
+        let mut visited_fragments = BTreeSet::new();
         collect_sensitive_fields_from_selection_set(
             operation.node.ty,
             &operation.node.selection_set.node,
             document,
             &mut fields,
+            &mut visited_fragments,
         );
     }
 
@@ -351,6 +356,44 @@ mod tests {
                 SensitiveGraphqlField::CreateUser,
             ]
         );
+    }
+
+    #[test]
+    fn manage_permission_is_effective_for_user_read_and_list_fields() {
+        assert!(SensitiveGraphqlField::User.allows(&[Permission::USERS_MANAGE]));
+        assert!(SensitiveGraphqlField::Users.allows(&[Permission::USERS_MANAGE]));
+        assert!(SensitiveGraphqlField::CreateUser.allows(&[Permission::USERS_MANAGE]));
+        assert!(SensitiveGraphqlField::UpdateUser.allows(&[Permission::USERS_MANAGE]));
+        assert!(SensitiveGraphqlField::DisableUser.allows(&[Permission::USERS_MANAGE]));
+        assert!(SensitiveGraphqlField::DeleteUser.allows(&[Permission::USERS_MANAGE]));
+    }
+
+    #[test]
+    fn cyclic_fragments_are_classified_without_unbounded_recursion() {
+        let mut request = Request::new(
+            r#"
+                query Cyclic {
+                    ...RootFields
+                }
+
+                fragment RootFields on Query {
+                    ...RootFields
+                    user {
+                        id
+                    }
+                }
+            "#,
+        );
+
+        classify_sensitive_graphql_document(&mut request).expect("query should parse");
+
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<SensitiveGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<SensitiveGraphqlDocumentPolicy>())
+            .expect("sensitive policy should be attached");
+
+        assert_eq!(policy.0, vec![SensitiveGraphqlField::User]);
     }
 
     #[test]
