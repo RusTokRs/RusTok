@@ -421,7 +421,7 @@ Hard limits for every iteration:
 - **Verification:** repository source inspection, owner contract tracing, changed-area re-audit, and base-to-head diff review only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Implementation status:** complete and integrated into `main`; post-merge verification confirmed the expected merge commit and all five changed files on the refreshed `main`.
 
-- [ ] **FS-22.05.26 — `apps/server/src/graphql/dashboard_security.rs`** — primary module selected from the refreshed GraphQL composition tree after FS-22.05.25; pending implementation/assessment closeout.
+- [x] **FS-22.05.26 — `apps/server/src/graphql/dashboard_security.rs`** — primary module completed and integrated via PR #4331 (squash merge `60691766532d891e76f78fe17f7e89c2eaeb70b1`).
 
 ### FS-22.05.26 Assessment — `apps/server/src/graphql/dashboard_security.rs`
 
@@ -433,7 +433,7 @@ Hard limits for every iteration:
 - **Authorization/tenant non-findings:** `dashboardStats` and `recentActivity` are both classified only for query operations; the extension requires authenticated `analytics:read` before resolver execution; the resolvers themselves read only the trusted tenant UUID from `TenantContext`; the dashboard read service applies `tenant_id` filters for both aggregate and recent-user queries. No repository-owned bypass was found in this primary boundary.
 - **Immediate second pass:** re-read the modified traversal, classification, execute hook, schema extension placement, dashboard resolvers, and dashboard read service. Searched for residual direct recursion, missing fragment termination, client-selected tenant use, and permission bypass. No additional repository-owned defect attributable to this primary module remained.
 - **Verification:** repository source inspection, adjacent-boundary tracing, changed-module second pass, and base/main concurrency reconciliation only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Implementation status:** complete on the dedicated branch; pending PR integration and post-merge ledger closeout.
+- **Implementation status:** complete and integrated into `main`; post-merge reconciliation confirmed the merged dashboard traversal and ledger changes on `main` at `60691766532d891e76f78fe17f7e89c2eaeb70b1`.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
