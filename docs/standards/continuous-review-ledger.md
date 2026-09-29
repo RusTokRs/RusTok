@@ -2790,6 +2790,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** refreshed `main` at `83154edd68b6e03a6c61236e5398cc8b41d51a1f`; comparison against the recorded base `4a2520ceec81c82541e4cd14eaae44cbebda1791` is exactly one merged commit with the expected four-file change set. The merged host/OpenAPI gate remains present on `main`.
 
 
+
+
 ### FS-22.06.02 Result — `crates/modules/rustok-forum/src/controllers/mod.rs` REST admission
 
 - **Base:** refreshed `main` at `ae1d00792aa341f4cf21a3401f937d76af2e1b09`; dedicated branch `codex/audit-fs-22.06.02-forum-http-composition` was created from that exact SHA.
@@ -2804,3 +2806,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete and integrated into `main` via PR #4338, squash merge `9fb9bb9fae43efe9b5b8920547e254fd5792563c`.
 - **Post-merge reconciliation:** refreshed `main` at `9fb9bb9fae43efe9b5b8920547e254fd5792563c`; comparing the recorded base `ae1d00792aa341f4cf21a3401f937d76af2e1b09` to the merge is exactly one merge commit with the expected Forum controller/docs/ledger change set. The lifecycle guard remains present on `main`.
 - **Status:** `FS-22.06.02` complete. Next primary module: `FS-22.06.03 — apps/server/src/services/app_router.rs`.
+
+
+### FS-22.06.03 Result — `apps/server/src/services/app_router.rs` shell/profile composition
+
+- **Base:** refreshed `main` at `101cc9781cbea9d7bb087ec4eaf025ba16865d56`; dedicated branch `codex/audit-fs-22.06.03-app-router-composition` was created from that exact SHA.
+- **Discovery:** re-read the complete application router, host/bootstrap caller, runtime/deployment-surface contract, `apps/server/Cargo.toml` feature definitions, module build/role-plan wiring, security/auth/tenant middleware ordering, admin and storefront router entrypoints, and existing application-router regression tests.
+- **Invariant map:** runtime deployment surfaces must agree with compile-time embed features; disabled UI must report the feature that actually enables its owner crate; embedded shell fallback must remain behind the validated deployment surface and preserve the global security middleware contract; API/server-function/module routes must remain composed before their global middleware is layered.
+- **Finding APPROUTER-22.06.03-01:** the compile-disabled Admin fallback in `build_admin_router()` told operators to rebuild with feature `embed-admin-assets`, but that feature only enables `rust-embed`; the actual server surface switch is `embed-admin`, which in turn enables both `rustok-admin` and `embed-admin-assets`. Enabling `embed-admin-assets` alone does not change `build_admin_router()` and therefore cannot make the Admin UI available. The remediation message was operationally incorrect.
+- **Remediation:** corrected the disabled Admin fallback to name `embed-admin`, the actual feature that activates `rustok-admin` and the embedded surface. Added a `not(feature = "embed-admin")` regression test that verifies the fallback status and explicitly rejects the obsolete feature guidance.
+- **Adjacent/second-pass audit:** re-read `app_router.rs`, `app_runtime.rs`, manifest deployment profile/build-plan wiring, `apps/server/Cargo.toml`, host/router composition, security headers, auth/tenant middleware, and embedded Admin/Storefront routers. Checked Axum fallback/merge semantics and confirmed the shell fallback does not replace a matched route or method-not-allowed result; no second repository-owned defect attributable to this primary boundary was confirmed.
+- **Diff review:** branch contains only the expected `apps/server/src/services/app_router.rs` and ledger changes relative to the exact main base; runtime change is one message correction plus its feature-off regression guard.
+- **Verification:** source inspection, framework contract verification, immediate re-read, adjacent-boundary audit, and branch diff review only. No tests, clippy, build, formatter, gatekeeper, migrations, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Implementation status:** complete on the dedicated branch; implementation commit `72eacf257249a4a176a5f0e07987a38f3d5522c7`.
+- **Status:** complete pending PR/merge integration.

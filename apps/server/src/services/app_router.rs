@@ -140,7 +140,7 @@ pub fn build_admin_router() -> AxumRouter {
     AxumRouter::new().fallback(|| async {
         (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "Admin UI is disabled. Rebuild server with feature `embed-admin-assets` and prepare apps/admin/dist artifacts.",
+            "Admin UI is disabled. Rebuild server with feature `embed-admin` and prepare apps/admin/dist artifacts.",
         )
     })
 }
@@ -664,6 +664,20 @@ mod tests {
     }
 
     #[cfg(not(feature = "embed-admin"))]
+    #[tokio::test]
+    async fn disabled_admin_router_reports_the_actual_enablement_feature() {
+        let response = build_admin_router()
+            .oneshot(Request::builder().uri("/any").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let message = String::from_utf8(body.to_vec()).unwrap();
+        assert!(message.contains("feature `embed-admin`"));
+        assert!(!message.contains("feature `embed-admin-assets`"));
+    }
+
     #[tokio::test]
     async fn disabled_admin_router_returns_service_unavailable() {
         let response = build_admin_router()
