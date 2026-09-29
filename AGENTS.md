@@ -45,8 +45,8 @@ When that instruction is given, the contributor or AI agent MUST:
 3. Execute audit phases strictly in ledger order unless an explicit dependency or an active ADR requires a different order. Do not skip a phase because a component was previously marked complete in an older review round.
 4. Review the whole affected change surface, including business/domain logic, persistence and migrations, writers/readers, events/outbox/workers, transports, tenancy/context/auth/policy, UI/operator surfaces, scripts, generated/reference artifacts, dependencies, and documentation.
 5. Fix discovered repository-owned defects to the canonical architecture in the same change set. Do not leave a known in-scope root-cause defect as a follow-up merely because a narrower test or static check would pass.
-6. Work on a dedicated phase branch created from the refreshed `main`. Commit the audit result and implementation on that branch, open a PR to `main`, merge it, then refresh `main` before beginning the next phase. Never rewrite another agent's branch or force-update shared history.
-7. The maintainer/user runs test suites. Unless the maintainer explicitly changes this rule, the AI agent MUST NOT run test suites. It MAY inspect tests and perform non-test static/source checks when needed to reason about correctness, but must not claim runtime/test evidence it did not obtain.
+6. Work on a dedicated phase branch created from the refreshed `main` (or directly on `main` when explicitly configured for single-agent direct repository management). When working via branches, commit the audit result and implementation cleanly on that branch, prepare the PR/integration evidence for the maintainer, and integrate to `main` before beginning the next phase. Never rewrite another agent's branch or force-update shared history.
+7. Scoped verification vs full test suites: The AI agent MUST run local, scoped checks for the affected crate/package (e.g. `cargo check -p <crate>`, `cargo test -p <crate>`, linters, and type checks) to verify correctness and ensure changes compile and pass local invariants. The AI agent MUST NOT run full workspace test suites or long-running E2E integration suites unless explicitly requested; those remain with the maintainer and CI. The agent must never claim runtime/test evidence it did not obtain.
 8. Mark the phase complete in the canonical ledger only after the implementation/assessment commit has been integrated into `main`; record outstanding maintainer verification explicitly.
 9. When an issue changes an architectural contract rather than merely implementing an existing one, stop implementation at the boundary and add/update the owning ADR before continuing.
 
@@ -133,7 +133,8 @@ Rules:
 - A consumer MUST NOT read another module's private tables, repositories, entities, or implementation-only types merely because direct access is convenient.
 - Cross-module behavior MUST use an owner-defined contract: port, event, provider seam, public transport contract, or another documented boundary.
 - Shared libraries MUST have a clear owner, stable responsibility, and dependency direction.
-- Do not put code into rustok-core, rustok-api, rustok-ui-core, or another shared crate merely because more than one consumer exists.
+- Common platform kernel primitives (e.g. money/currency types, temporal utilities, pagination structures, canonical tenant context, and base error traits) MUST reside in canonical platform foundation libraries (`crates/libs/*`) without cross-module duplication.
+- Domain-specific business logic and entities MUST NOT be moved into shared crates (`rustok-core`, `rustok-api`, etc.) merely because multiple consumers need to read them; module boundaries remain sovereign.
 - Host applications compose owner-owned entrypoints; they do not absorb module-owned business rules.
 - Cross-crate dependencies and imports MUST comply with `scripts/architecture_rules.toml`. When a change touches crate/layer boundaries, run `python scripts/architecture_dependency_guard.py` or the current canonical replacement documented by the verification runbook.
 - New native modules and major native-module source refactors MUST follow the canonical physical layout in `docs/backend/module-backend-implementation.md`. `rustok-blog` is the initial strict reference; enrolled reference modules MUST pass `npm run verify:module-source-layout`. Do not treat historical per-module layout as an alternate convention.
@@ -142,7 +143,8 @@ Rules:
 
 Reuse is driven by shared semantics and ownership, not textual similarity.
 
-- Two similar implementations trigger an abstraction review, not automatic extraction.
+- Common foundational primitives MUST NOT be copy-pasted across modules. If a primitive represents a shared platform invariant (e.g. money, address primitives, idempotency handles), place it in the appropriate `crates/libs/*` owner.
+- Bounded-context business logic remains owner-local. Two similar domain concepts in different modules (e.g. "Customer" vs "Subscriber") trigger an abstraction review, not hasty extraction into core.
 - Extract a shared abstraction when consumers genuinely share the same stable contract, lifecycle, and dependency direction.
 - Keep owner-local implementations separate when similar code represents different bounded-context semantics.
 - Before adding reusable code, inspect existing canonical libraries and their documented responsibilities.
@@ -161,19 +163,20 @@ One concept SHOULD use one canonical term across schema, domain types, APIs, eve
 
 Write-side correctness takes priority over convenience.
 
-### Database invariants
+### Database invariants and domain invariants
 
-When PostgreSQL can enforce an invariant reliably, the invariant SHOULD be enforced in the database in addition to typed domain validation where useful.
+The platform separates relational integrity from domain business logic:
 
-Use the appropriate mechanism:
-- primary, unique, and exclusion constraints;
-- foreign keys, including tenant-scoped composite foreign keys where required;
-- CHECK constraints;
-- generated or derived columns when the database can own them safely;
-- transactional or deferred constraint triggers for commit-time cross-row invariants;
-- advisory or row locks where they are part of the canonical concurrency design.
+1. **Relational and identity integrity belongs in PostgreSQL:**
+   - primary, unique, and foreign keys (including tenant-scoped composite foreign keys);
+   - NOT NULL constraints;
+   - schema-level CHECK constraints for column-level value validity;
+   - row-level concurrency tokens or advisory locks where part of canonical concurrency design.
+   Do not rely on service-layer discipline alone for tenant ownership, uniqueness, referential integrity, or physical identity constraints.
 
-Do not rely only on service-layer discipline for tenant ownership, uniqueness, referential integrity, impossible state combinations, or identity constraints that the database can enforce.
+2. **Complex business invariants belong in the Rust domain model:**
+   - Multi-row domain rules, state transition validations, workflow guards, and cross-aggregate invariants MUST be owned and validated by typed Rust domain entities and services inside a transaction boundary.
+   - Do NOT implement complex business rules, cascading side-effects, or cross-row business validations inside PL/pgSQL constraint triggers. Domain rules expressed in Rust ensure testability, portability, rich error reporting, and prevent split-brain logic.
 
 ### Schema and entity parity
 
@@ -345,11 +348,11 @@ Internal repository code has no legacy consumers that justify compatibility laye
 
 Implement the canonical target architecture directly.
 
-- A replacement is atomic: update every repository-owned caller, transport, schema, fixture, test, seed, script, generated artifact, and current document, then delete the superseded implementation in the same change.
-- Do not add or retain compatibility wrappers, deprecated aliases, dual read/write paths, fallback-to-legacy behavior, old/new adapters, or parallel implementations of the same internal contract.
-- Do not create internal numbered/version-family routes, types, modules, GraphQL fields, storage envelopes, or package exports to avoid completing a cutover.
-- The surviving internal implementation uses the canonical unversioned name.
-- Existing legacy encountered inside the task boundary must be removed, not extended or hidden behind another facade.
+- Bold refactoring with zero backward-compatibility baggage: break bad, obsolete, or non-compliant implementations completely rather than accumulating adapter debt.
+- In `main`, only the canonical implementation survives: do not retain compatibility wrappers, deprecated aliases, dual read/write paths, fallback-to-legacy behavior, old/new adapters, or parallel implementations of the same internal contract.
+- Do not create internal numbered/version-family routes, types, modules, GraphQL fields, storage envelopes, or package exports to avoid completing a cutover. The surviving internal implementation uses the canonical unversioned name.
+- Existing legacy encountered inside the task boundary must be removed cleanly, not extended or hidden behind another facade.
+- Phased execution of large refactorings: when a systemic change spans across dozens of modules and frontends, decompose the work into sequential, reviewable vertical phases (tracked in the audit ledger/plan). Each phase MUST leave the codebase compiling and valid, completely eliminating legacy within its completed slice, without postponing cleanup to an untracked future.
 - For unreleased schema work, amend or consolidate pending migrations instead of stacking corrective migrations solely to preserve repository history.
 - Before declaring completion, search for removed names and verify that remaining occurrences are explicitly preserved historical evidence rather than executable code or current guidance.
 
@@ -371,11 +374,21 @@ Do not use:
 - todo or unimplemented placeholders as delivered functionality;
 - no-op handlers;
 - unconditional success;
-- fake adapters or dummy persistence;
-- in-memory fallbacks as substitutes for required durable behavior;
+- production dummy persistence or production fake adapters masquerading as durable implementations;
+- in-memory fallbacks in production runtime as substitutes for required durable behavior;
 - broad dead-code or unused lint suppression to make incomplete code appear clean.
 
-If required target behavior exists but is unwired, wire it through the real owner, composition, transport, and UI path and verify observable behavior.
+Test doubles (such as in-memory repository implementations) are explicitly permitted and encouraged in test scopes (`#[cfg(test)]` or test utilities) to isolate domain unit tests according to Clean Architecture / Ports-and-Adapters principles. They MUST NOT be wired into production runtime composition.
+
+### Mandatory documentation of production gaps (Explicit Incompleteness)
+
+Any unfinished functionality, deferred boundary, partial implementation, or known limitation in production runtime MUST be explicitly documented in the owning component's `README.md` (under a dedicated "Known Limitations / Pending Implementation" section) and tracked in the audit ledger/plan. 
+Leaving an undocumented gap, hiding incomplete runtime behavior behind silent fallbacks, or claiming completion for a partial implementation is strictly forbidden. An unrecorded incompleteness in production is treated as a defect.
+
+If required target behavior exists but is unwired, either:
+1. Wire it through the real owner, composition, transport, and UI path and verify observable behavior; or
+2. If deliberately deferred to a subsequent planned phase, explicitly document the unwired boundary and gap in the component documentation.
+
 If the code is not part of the target architecture, delete it and its stale tests, fixtures, configuration, and documentation.
 
 Generated code and genuinely externally-invoked symbols that static analysis cannot observe may use the narrowest justified expectation/suppression with an explicit reason and evidence of the external entry path.
@@ -409,10 +422,10 @@ Do not edit CI/CD workflow files unless the user explicitly requests CI/CD chang
 
 When diagnosing GitHub Actions failures, follow the current runbook in docs/verification/README.md and use the repository-provided failed-log tooling before reasoning from stale logs.
 
-If the user explicitly chooses to run tests themselves, an agent may leave execution to the user, but MUST:
-- state exactly which checks were not run;
-- never describe unexecuted checks as green;
-- still perform all feasible static/repository consistency checks relevant to the change.
+Verification responsibilities:
+- Agents MUST run scoped, local verification for the affected crates/modules (`cargo check -p <crate>`, `cargo test -p <crate>`, targeted linter runs).
+- Full workspace test runs, long E2E tests, and deployment checks are reserved for CI and the maintainer.
+- When reporting results, an agent MUST state exactly which local checks were run and passed, and explicitly report which broader checks were left to CI/maintainer. Never describe unexecuted checks as green.
 
 ## 16. Definition of Done
 
@@ -433,6 +446,7 @@ A task is complete only when every applicable item below is true:
 - architecture changes have the required ADR;
 - removed names and obsolete concepts have been searched repository-wide;
 - no task-local placeholder, hidden fallback, unexplained suppression, or known inconsistent path remains;
+- any conscious, partially implemented target or deferred production boundary is explicitly documented in the component's `README.md` and ledger as pending work, rather than left hidden;
 - applicable verification has passed, or unrun checks and blockers are reported explicitly.
 
 A partially implemented target MUST be described as incomplete.
