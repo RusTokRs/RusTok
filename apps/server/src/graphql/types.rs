@@ -1380,9 +1380,8 @@ mod tests {
     };
 
     use async_graphql::ErrorExtensions;
-    use rustok_api::graphql::GraphQLError;
 
-    use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error};
+    use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error, sanitized_recovery_error_message};
 
     #[test]
     fn graphql_user_internal_error_redacts_backend_diagnostics() {
