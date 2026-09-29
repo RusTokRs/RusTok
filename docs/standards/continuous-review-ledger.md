@@ -383,7 +383,8 @@ Hard limits for every iteration:
 - [x] **FS-22.05.01 — `apps/server/src/graphql/loaders.rs`** — one-module audit; GraphQL tenant-name loader error boundary hardened to redact backend diagnostics; integrated via PR #4304 at `702985eed0f6e0386bda2909ae16c451e1261239`.
 - [x] **FS-22.05.02 — `apps/server/src/graphql/schema.rs`** — one-module audit; composition dependencies and generated runtime-data factories reverified end-to-end; no repository-owned in-scope defect required remediation.
 - [x] **FS-22.05.03 — `apps/server/src/graphql/types.rs`** — one-module audit; public GraphQL complex fields and transport projection error boundaries hardened. Next primary module: `apps/server/src/graphql/queries.rs`.
-- [ ] **FS-22.05.04 — `apps/server/src/graphql/queries.rs`** — one-module audit; root query authorization, tenant scoping, pagination, owner error mapping, and operator-facing diagnostic exposure.
+- [x] **FS-22.05.04 — `apps/server/src/graphql/queries.rs`** — one-module audit; root query authorization/tenant scoping/pagination reverified and GraphQL owner/backend diagnostics redacted at the query error boundary. Next primary module: `apps/server/src/graphql/subscriptions.rs`.
+- [ ] **FS-22.05.05 — `apps/server/src/graphql/subscriptions.rs`** — one-module audit; subscription authorization, tenant/channel scope, event filtering, connection lifecycle, and diagnostic exposure.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -423,6 +424,21 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.04 Assessment — `apps/server/src/graphql/queries.rs`
+
+- **Base:** post-merge `main` refreshed at `465ee1b55fe80c225f13e15c4e5c1a36444dbeec`; dedicated branch `codex/audit-fs-22.05.04-graphql-queries` was created from that exact SHA.
+- **Discovery:** reviewed the complete root-query module, its direct service/owner callers, GraphQL dashboard security extension, tenant/auth extractors, canonical permission hierarchy, pagination contract, module lifecycle recovery owner, marketplace owner, and build owner.
+- **Invariant map:** sensitive root queries must enforce authentication/RBAC either locally or through the schema extension; all tenant-owned reads must stay bound to the resolved request tenant; pagination and collection limits must be bounded before DB/provider calls; GraphQL error responses must not expose owner/backend diagnostics; recovery errors may expose only stable typed issue metadata.
+- **Finding GRAPHQLQUERIES-22.05.04-01:** root-query error mapping repeatedly passed `DbErr`/owner errors through `FieldError::internal_error(&err.to_string())`, and `me` returned `err.to_string()` directly. `ModuleOperationRecoveryError::PostHookFailed` also formatted its raw hook error into the client-facing GraphQL message.
+- **Remediation:** added a single server-side logging helper returning stable GraphQL `INTERNAL_ERROR` messages and migrated every raw internal-error conversion in the module to it. The post-hook recovery error retains its machine-readable code/retry metadata but now returns only `Module hook failed`. The `me` database path now returns a stable message as well.
+- **Immediate re-audit:** searched the full module for raw `internal_error(&...)`, direct `err.to_string()` returns, and formatted error strings. No raw backend diagnostic path remained.
+- **Authorization audit:** `dashboardStats` and `recentActivity` intentionally have no local guard but are fail-closed by `GraphqlDashboardSecurityPolicy`, which detects direct and fragment-contained fields and requires effective `ANALYTICS_READ`; this was traced through the schema composition and was not duplicated in the resolver.
+- **Tenant audit:** the HTTP auth extractor rejects access tokens whose `claims.tenant_id` differs from the resolved `TenantContext.id`; direct-user sessions and user rows are checked against the same tenant. Root `user/users/me` queries additionally filter DB reads by the resolved tenant where applicable. Recovery plan lookup is tenant-bound inside the lifecycle owner and cross-tenant IDs become `OperationNotFound`.
+- **Pagination/resource audit:** `clamp_collection_limit`, `PaginationInput::normalize`, `take(limit)`, and the owner pagination contracts bound collection sizes before the DB/provider calls. No unbounded list input was found in this module.
+- **Regression audit:** existing authorization composition remains unchanged; dashboard authorization remains centralized; successful root query data mappings remain unchanged; only error presentation is hardened.
+- **Fresh second pass:** independently re-read all root query declarations and guard placement, searched the final file for raw diagnostic patterns, and rechecked direct tenant/permission boundaries. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, targeted owner-contract tracing, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.04` closed; ready for PR/merge. Next primary module: `FS-22.05.05 — apps/server/src/graphql/subscriptions.rs`.
 
 ### FS-22.05.01 Iteration 1 — `apps/server/src/graphql/loaders.rs`
 
