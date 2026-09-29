@@ -10,7 +10,9 @@ use rustok_api::{
     StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
+use rustok_api::graphql::GraphQLError;
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -121,17 +123,21 @@ impl User {
         let db = ctx.data::<DatabaseConnection>()?;
         let role = RbacService::get_user_role(db, &self.tenant_id, &self.id)
             .await
-            .map_err(|err| err.to_string())?;
+            .map_err(|error| graphql_internal_error("Unable to resolve user role", error))?;
         Ok(role.to_string())
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
+        let permission = Permission::from_str(&action).map_err(|_| {
+            <async_graphql::FieldError as GraphQLError>::bad_user_input(
+                "Invalid permission action",
+            )
+        })?;
 
         RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
             .await
-            .map_err(|err| err.to_string().into())
+            .map_err(|error| graphql_internal_error("Unable to resolve user permission", error))
     }
 
     async fn tenant_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
@@ -157,8 +163,13 @@ impl User {
             tenant.default_locale.as_str(),
         )
         .await
-        .map_err(|err| err.to_string().into())
+        .map_err(|error| graphql_internal_error("Unable to resolve user custom fields", error))
     }
+}
+
+fn graphql_internal_error(message: &'static str, error: impl Display) -> async_graphql::FieldError {
+    tracing::error!(%error, message, "GraphQL user field failed");
+    <async_graphql::FieldError as GraphQLError>::internal_error(message)
 }
 
 impl From<&users::Model> for User {
@@ -1353,7 +1364,29 @@ mod tests {
         ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
     };
 
-    use super::{ArtifactUiContribution, ArtifactUiSurface};
+    use rustok_api::graphql::GraphQLError;
+
+    use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error};
+
+
+    #[test]
+    fn graphql_user_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_internal_error(
+            "Unable to resolve user role",
+            "database password=secret table=user_roles query=SELECT * FROM user_roles",
+        );
+
+        assert_eq!(error.message, "Unable to resolve user role");
+        assert!(!error.message.contains("database password=secret"));
+        assert_eq!(
+            error
+                .extensions
+                .as_ref()
+                .and_then(|extensions| extensions.get("code"))
+                .and_then(|value| value.as_str()),
+            Some("INTERNAL_ERROR")
+        );
+    }
 
     #[test]
     fn artifact_ui_adapter_preserves_the_canonical_projection() {
