@@ -1,5 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 
 use rustok_api::{Permission, graphql::GraphQLError};
 use rustok_core::ModuleRegistry;
@@ -14,6 +15,15 @@ use crate::services::module_rollout_promotion_settings::{
 use crate::services::rbac_service::RbacService;
 
 const MODULE_SETTINGS_SNAPSHOT_CONFLICT: &str = "MODULE_SETTINGS_SNAPSHOT_CONFLICT";
+
+fn graphql_module_settings_internal_error(
+    message: &'static str,
+    error: impl Display,
+) -> FieldError {
+    tracing::error!(%error, message, "GraphQL module settings CAS failed");
+    <FieldError as GraphQLError>::internal_error(message)
+}
+
 
 /// Conditional module-settings write surface for reviewed/control-plane automation.
 ///
@@ -45,7 +55,10 @@ impl ModuleSettingsCasMutation {
             RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
                 .await
                 .map_err(|error| {
-                    <FieldError as GraphQLError>::internal_error(&error.to_string())
+                    graphql_module_settings_internal_error(
+                        "Unable to resolve module management permission",
+                        error,
+                    )
                 })?;
         if !can_manage_modules {
             return Err(<FieldError as GraphQLError>::permission_denied(
@@ -169,13 +182,22 @@ fn map_settings_error(error: UpdateModuleSettingsError) -> FieldError {
             extensions.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
         }),
         UpdateModuleSettingsError::Manifest(error) => {
-            <FieldError as GraphQLError>::internal_error(&error.to_string())
+            graphql_module_settings_internal_error(
+                "Module settings definition is unavailable",
+                error,
+            )
         }
         UpdateModuleSettingsError::Policy(error) => {
-            <FieldError as GraphQLError>::internal_error(&error)
+            graphql_module_settings_internal_error(
+                "Module settings policy is unavailable",
+                error,
+            )
         }
         UpdateModuleSettingsError::Database(error) => {
-            <FieldError as GraphQLError>::internal_error(&error.to_string())
+            graphql_module_settings_internal_error(
+                "Module settings storage is unavailable",
+                error,
+            )
         }
     }
 }
@@ -193,6 +215,36 @@ mod tests {
             .cloned()
             .and_then(|value| value.into_json().ok())
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
+
+    #[test]
+    fn owner_diagnostics_are_redacted_from_module_settings_cas_errors() {
+        let manifest = map_settings_error(UpdateModuleSettingsError::Manifest(
+            crate::modules::ManifestError::InvalidManifest(
+                "database password=secret".to_string(),
+            ),
+        ));
+        assert!(!manifest.message.contains("database password=secret"));
+
+        let database = map_settings_error(UpdateModuleSettingsError::Database(
+            sea_orm::DbErr::Custom("database password=secret".to_string()),
+        ));
+        assert_eq!(database.message, "Module settings storage is unavailable");
+        assert!(!database.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn module_settings_internal_error_helper_is_stable() {
+        let error = graphql_module_settings_internal_error(
+            "Unable to resolve module management permission",
+            "database password=secret",
+        );
+        assert_eq!(
+            error.message,
+            "Unable to resolve module management permission"
+        );
+        assert!(!error.message.contains("database password=secret"));
     }
 
     #[test]
