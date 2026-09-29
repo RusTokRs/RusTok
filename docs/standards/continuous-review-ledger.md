@@ -401,6 +401,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.17 — `apps/server/src/graphql/transition_lifecycle.rs`** — one-module audit; transition error diagnostics and failure-state details sanitized while tenant scope, CAS/idempotency, state taxonomy, and retention-hold projection remained unchanged. Next primary module: `apps/server/src/graphql/mutations.rs`.
 - [x] **FS-22.05.18 — `apps/server/src/graphql/mutations.rs`** — one-module audit; mutation authorization/tenant/idempotency flows reverified and production backend/owner diagnostics sanitized at GraphQL boundaries. Next primary module: `FS-22.05.19` to be read from the refreshed ledger after merge.
 - [x] **FS-22.05.19 — `apps/server/src/graphql/artifact_lifecycle.rs`** — one-module audit; tenant/install lifecycle error taxonomy reverified against actual owner operations, conflict codes preserved, storage/outbox diagnostics remain generic. Next primary module: `FS-22.05.20` to be selected from the refreshed ledger after merge.
+- [x] **FS-22.05.20 — `apps/server/src/graphql/index_drift_diagnosis.rs`** — one-module audit; request authority ordering, tenant/actor derivation, bounded entity-key parsing, dependency error taxonomy, and mismatch payload redaction reverified; no production remediation required. Next primary module: `FS-22.05.21` to be selected from the refreshed ledger after merge.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -440,6 +441,21 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.20 Assessment — `apps/server/src/graphql/index_drift_diagnosis.rs`
+
+- **Base:** post-merge `main` refreshed at `b51ac993c9d924d89dee692f5e24428a2da3f20f`; dedicated branch `codex/audit-fs-22.05.20-graphql-index-drift-diagnosis` was created from that exact SHA.
+- **Discovery:** reviewed the complete Index drift diagnosis GraphQL adapter, its guarded server runtime, request-bound RBAC scope, `EntityKey` parser, digest producer error taxonomy, and existing operator regression coverage.
+- **Invariant map:** authorization must precede parsing untrusted input; tenant/actor identities must be derived from authenticated request context; schema/entity/version/ID/locale inputs must be bounded; diagnosis output must not expose snapshots, payloads, SQL, database causes, or raw dependency failures.
+- **Authorization audit:** `prepare_authorized_request` constructs the owner context from resolved tenant and authenticated actor, then reads the request-bound effective permission snapshot and requires `modules:manage` before any schema/UUID/locale parsing. Missing authority maps to unauthenticated and insufficient authority maps to forbidden.
+- **Tenant-scope audit:** the client cannot supply tenant or actor identities. The `EntityKey` is created with the resolved `tenant_id`, and the guarded runtime repeats tenant equality and effective permission checks before invoking the owner digest producer.
+- **Input/resource audit:** module/entity names are bounded to 128 bytes, schema version to 10 bytes and positive integer, entity UUID to 64 bytes/non-nil, and locale to 128 bytes; only one exact entity diagnosis is accepted. No unbounded scan/discovery path is exposed by this module.
+- **Diagnostic/output audit:** `IndexDriftDiagnosisPayload` contains only status/digests/finding identity; dependency failures are mapped to stable codes plus retryability/dependency code. Raw database/source failure text is not returned to GraphQL clients.
+- **Composition audit:** the guarded runtime itself fails closed when source/schema registries are incomplete, and the GraphQL resolver returns a stable unavailable message when the runtime is absent. `module_security.rs` does not need a duplicate rule because this resolver independently enforces its sensitive `modules:manage` boundary before owner execution.
+- **Regression audit:** existing tests already prove authorization precedes malformed-input parsing and that the constructed key retains the authenticated tenant/entity/schema/locale values.
+- **Fresh second pass:** independently re-read the resolver, prep/parser, runtime authorization helper, digest error mapper, and output DTO; searched for raw `to_string()` error propagation and oversized/unbounded user inputs. No repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** repository source/static inspection, owner/error contract tracing, security boundary review, and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.20` closed without production remediation; branch ready for PR/merge. Next primary module will be selected from the refreshed ledger after merge.
+
 ### FS-22.05.19 Assessment — `apps/server/src/graphql/artifact_lifecycle.rs`
 
 - **Base:** post-merge `main` refreshed at `d92cfb761b3899d5d4a373d3e301f40d8f041f67`; dedicated branch `codex/audit-fs-22.05.19-graphql-artifact-lifecycle` was created from that exact SHA.
