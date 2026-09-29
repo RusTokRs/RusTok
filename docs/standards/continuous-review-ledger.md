@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `37f72692d09925ef6babf18f4f7129fd9e82dd5f`  
+**Current main SHA:** `1e8bac381c87c3b5aa5f9b3ee26d7b99a0e9e748`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -316,7 +316,23 @@ Hard limits for every iteration:
 - **Verification:** GitHub source inspection, cross-file static reasoning, branch review, and post-merge source reconciliation only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.04.07` complete after PR #4293 merge (`d79545be8c44bf5e6e7530f92fe45fcdfb074454`); next primary module is `FS-22.04.08 — crates/libs/rustok-api/src/context/channel.rs`.
 
-- [ ] **FS-22.04.08 — `crates/libs/rustok-api/src/context/channel.rs`** — shared ChannelContext shape/source propagation if the preceding middleware audit exposes owner-level contract drift.
+- [x] **FS-22.04.08 — `crates/libs/rustok-api/src/context/channel.rs`** — shared ChannelContext shape/source propagation; completed after fresh module-level audit with no repository-owned code defect requiring remediation.
+
+### FS-22.04.08 Iteration 1 — `crates/libs/rustok-api/src/context/channel.rs`
+
+- **Base:** refreshed `main` at `1e8bac381c87c3b5aa5f9b3ee26d7b99a0e9e748`; dedicated branch `codex/audit-fs-22.04.08-api-channel-context`.
+- **Invariant map:** the shared channel context must remain owner-neutral, tenant-bound by upstream trusted middleware, transport-safe, and consistent with `RequestContext`, the channel owner resolver, native/REST admin adapters, and server-only extraction boundaries. Resolution source and trace types must retain stable serialization names and all channel-specific authority must remain outside `rustok-api`.
+- **Discovery:** re-read the complete `context/channel.rs`, `context/mod.rs`, `context/tenant.rs`, `context/auth.rs`, `request.rs`, API crate exports/docs, channel owner resolution/DTO/service contracts, server channel middleware and tests, REST/native channel transports, storefront/search channel consumers, and the current runtime-context invariant verifier.
+- **Confirmed current contract:** `ChannelContext` carries the resolved channel identity, tenant identity, active/status state, selected target, settings, resolution source, and typed trace; server-only `ChannelContextExtension`/extractors are feature-gated; `RequestContext` independently verifies channel-to-tenant equality before projecting the channel id/slug/source; channel middleware derives the context from the canonical owner `ResolutionDecision`; REST/native transport uses the same shared context contract without moving channel ownership into `rustok-api`.
+- **Security review:** no alternate tenant/channel authority is introduced by the shared type. The required extractor reads only the internally inserted extension, while `RequestContext` rejects cross-tenant channel context. The channel resolver itself performs tenant checks for explicit channel-id selection before the context is materialized.
+- **API consistency review:** `ChannelContextExt` currently exposes the helper on Axum `Parts`, matching the actual request-part extraction surface. `TenantContextExt` additionally exposes an `Extensions` helper, but no current channel production consumer requires the analogous method and no code path reconstructs channel authority from raw `Extensions`; adding an unused compatibility surface would enlarge the public contract without fixing a live defect.
+- **Shape/transport review:** the serializable shared type is intentionally reused by the authenticated Channel Admin bootstrap response; this is documented and does not cross into an unauthenticated public surface. The admin-specific view model remains separately owned by `rustok-channel-admin`.
+- **Fresh second pass:** independently re-read the merged FS-22.04.07 channel middleware/wrapper after its post-merge SHA refresh, then compared the shared context fields against `RequestContext`, owner DTOs, admin models, storefront/search consumers, and the module effective-policy channel input boundary. No additional repository-owned defect remained inside this primary module.
+- **Adjacent findings:** channel revision/effective-policy revision remains an owner policy concern and is not duplicated into `ChannelContext` without a demonstrated transport requirement; the conditional FS-22.04.09/10 audits remain separate shared-contract reviews.
+- **Remediation:** no production code change required in this primary module. The existing API contract is retained unchanged.
+- **Verification:** GitHub source inspection, cross-file static reasoning, branch review, and post-merge source reconciliation only. No tests, clippy, build, migration, gatekeeper, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.04.08` complete with no code remediation; next primary module is `FS-22.04.09 — crates/libs/rustok-api/src/context/tenant.rs`.
+
 - [ ] **FS-22.04.09 — `crates/libs/rustok-api/src/context/tenant.rs`** — shared TenantContext/extension contract if the preceding tenant middleware audit exposes owner-level contract drift.
 - [ ] **FS-22.04.10 — `crates/libs/rustok-api/src/locale.rs`** — shared typed locale normalization/runtime-vs-storage boundary if request/middleware audits expose owner-level propagation drift.
 - [ ] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — only add concrete primary modules here after the preceding dedicated module audits identify an actual repository-owned cache-key owner requiring remediation.
