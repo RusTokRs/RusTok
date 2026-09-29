@@ -380,7 +380,9 @@ Hard limits for every iteration:
 - **Status:** `FS-22.04.10` complete after integration of the dedicated implementation branch; next primary module is `FS-22.04.11`.
 
 - [x] **FS-22.04.11 — request-derived cache-key propagation across owner adapters** — completed as a repository-wide cache-key owner assessment across the canonical cache contract and the concrete server/module cache adapters inspected after FS-22.04.10. No repository-owned request-derived cache-key defect was confirmed, so no speculative cache-key rewrite was introduced.
-- [x] **FS-22.05.01 — `apps/server/src/graphql/loaders.rs`** — one-module audit; GraphQL tenant-name loader error boundary hardened to redact backend diagnostics. Continue to the next unchecked GraphQL primary module after this iteration is integrated.
+- [x] **FS-22.05.01 — `apps/server/src/graphql/loaders.rs`** — one-module audit; GraphQL tenant-name loader error boundary hardened to redact backend diagnostics; integrated via PR #4304 at `702985eed0f6e0386bda2909ae16c451e1261239`.
+- [x] **FS-22.05.02 — `apps/server/src/graphql/schema.rs`** — one-module audit; composition dependencies and generated runtime-data factories reverified end-to-end; no repository-owned in-scope defect required remediation.
+- [ ] **FS-22.05.03 — `apps/server/src/graphql/types.rs`** — one-module audit; public GraphQL complex fields and transport error-boundary mapping are the next primary scope.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -394,6 +396,17 @@ Hard limits for every iteration:
 - **Verification:** repository source/static inspection and owner-contract comparison only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent, per the maintainer-owned test rule.
 - **Status:** `FS-22.04.11` closed with no code remediation. The next primary module is `FS-22.05.01 — apps/server/src/graphql/loaders.rs`.
 
+### FS-22.05.02 Assessment — `apps/server/src/graphql/schema.rs`
+
+- **Base:** post-merge `main` refreshed at `702985eed0f6e0386bda2909ae16c451e1261239`; dedicated branch `codex/audit-fs-22.05.02-graphql-schema` was created from that exact SHA.
+- **Discovery:** re-read the full schema composition module, its direct bootstrap caller (`services/graphql_schema.rs`), generated GraphQL contribution code emitted by `apps/server/build.rs`, `rustok-api::GraphqlRuntimeInputs`, and the shared-value injection used to assemble the host runtime.
+- **Invariant map:** every schema dependency must be present before resolver execution; optional module contributions must be feature-gated at compile time; generated runtime-data factories may fail closed before schema finalization; startup composition failures must not silently produce a partially composed schema.
+- **Assessment:** `init_graphql_schema` validates the boot-owned `ModuleRegistry` and `SharedModuleMarketplaceCatalog` before constructing `GraphqlRuntimeInputs`, then publishes the same host runtime values used by generated factories. `build.rs` generates feature-gated `MergedObject`/`MergedSubscription` members and invokes only declared runtime-data factories. The `expect` calls in `schema.rs` therefore guard explicit composition invariants rather than request-derived failures; replacing them with a wider fallible schema-construction API would be an architectural contract change without a demonstrated runtime defect.
+- **Immediate/adjacent re-audit:** the marketplace catalog is inserted into the same host runtime consumed by the schema, optional storage/alloy/media providers are attached before `GraphqlRuntimeInputs` construction, and generated feature guards match the manifest contribution descriptors. No alternate schema builder bypass was identified in the inspected server composition.
+- **Regression audit:** resolver limits (`depth=12`, `complexity=600`) and security extensions remain globally attached; DataLoader registration remains unchanged; optional feature-specific data are still attached only when their feature is compiled and their runtime provider is present. No behavior change was introduced.
+- **Fresh second pass:** independently re-read `schema.rs`, `services/graphql_schema.rs`, `build.rs` runtime-data generation, and `rustok-api` GraphQL runtime-input contract. No repository-owned in-scope defect remained in this primary module.
+- **Verification:** repository source/static inspection only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.02` closed without code remediation. Next primary module: `FS-22.05.03 — apps/server/src/graphql/types.rs`.
 ### FS-22.05.01 Iteration 1 — `apps/server/src/graphql/loaders.rs`
 
 - **Base:** refreshed `main` at `7ad05f0bcd87f4227a99cd7ce3f3984874dbb105`; dedicated branch `codex/audit-fs-22.05.01-graphql-loaders`.
