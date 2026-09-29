@@ -395,7 +395,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.13 — `apps/server/src/graphql/persisted.rs`** — one-module audit; persisted hash catalog is telemetry-only, fixed-format hash validation is bounded, and no authorization/allowlist bypass exists. Next primary module: `apps/server/src/graphql/rbac_runtime.rs`.
 - [x] **FS-22.05.14 — `apps/server/src/graphql/rbac_runtime.rs`** — one-module audit; role-writer runtime injection, tenant/actor transaction boundary, RBAC policy error taxonomy, and runtime initialization reverified; no repository-owned defect required remediation. Next primary module: `apps/server/src/graphql/module_settings_cas.rs`.
 - [x] **FS-22.05.15 — `apps/server/src/graphql/module_settings_cas.rs`** — one-module audit; CAS/revision/idempotency, tenant/module authority, and stale-write semantics reverified; Manifest/Policy/DB diagnostics now use stable GraphQL internal errors. Next primary module: `apps/server/src/graphql/module_rollback.rs`.
-- [ ] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure.
+- [x] **FS-22.05.16 — `apps/server/src/graphql/module_rollback.rs`** — one-module audit; rollback authorization, tenant/module identity, revision/idempotency, recovery semantics, and diagnostic exposure reverified; existing artifact rollback resolver extracted into a dedicated module without changing the GraphQL field contract. Next primary module: `FS-22.05.17 — apps/server/src/graphql/transition_lifecycle.rs`.
 
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
@@ -435,6 +435,21 @@ Hard limits for every iteration:
 - **Fresh second pass:** independently searched the full `types.rs` for `map_err`, `expect`, `unwrap`, `error_message`, warnings/errors, and owner projection adapters, then traced the identified recovery/build/error surfaces to their direct callers/owners. No remaining repository-owned defect attributable to this primary adapter module was confirmed.
 - **Verification:** repository source/static inspection and branch-diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.05.03` closed; branch is ready for PR/merge. Next primary module is `FS-22.05.04 — apps/server/src/graphql/queries.rs`.
+### FS-22.05.16 Assessment — `apps/server/src/graphql/module_rollback.rs`
+
+- **Base:** `main` at `f3a379349e810042f3dce232febf133822bdcec7`; dedicated branch `codex/audit-fs-22.05.16-graphql-module-rollback` was created from that exact SHA.
+- **Discovery:** traced the pre-existing `rollback_tenant_artifact` GraphQL resolver in `mutations.rs` through `ArtifactRollbackRequest`, `ModuleControlPlane::rollback_artifact`, the retained-predecessor owner contract, tenant installation scope, idempotency context, and the GraphQL artifact lifecycle error mapper.
+- **Invariant map:** rollback must require authenticated `modules:manage`; source installation identity must be explicit while the owner selects the retained predecessor target; expected installation revision and capability-grant revision must be positive; idempotency/correlation must use the authenticated actor and resolved tenant; owner conflicts must map to stable GraphQL errors.
+- **Implementation:** extracted the existing resolver unchanged into `ModuleRollbackMutation` in a dedicated `module_rollback.rs`, registered it in `graphql/mod.rs` and the merged `Mutation` schema, and removed the duplicate resolver/imports from `mutations.rs` while making only the shared rollback helpers `pub(crate)`.
+- **Authorization/tenant audit:** the resolver still derives actor/tenant from `AuthContext` and `TenantContext`; `ensure_modules_manage_permission` checks the effective tenant-scoped RBAC permission; owner scope is `ModuleInstallationScope::Tenant { tenant_id }`, so a caller cannot redirect rollback to another tenant.
+- **Revision/idempotency audit:** `artifact_lifecycle_expected_revision` rejects nil installation/idempotency identities, non-positive expected revisions, and blank reason; target capability-grant revision must be positive; `module_command_context` binds actor, tenant, trace, correlation, and idempotency identity.
+- **Recovery/target audit:** the GraphQL caller supplies only the current installation and capability-grant revision; the owner `rollback_artifact` command retains predecessor selection and rollback semantics, so this extraction does not introduce an arbitrary target selector.
+- **Diagnostic audit:** the owner `ModuleInstallationError` is passed through the existing sanitized `map_artifact_installation_lifecycle_error`; no raw owner/storage diagnostic is introduced by the new module.
+- **Schema regression audit:** the public field remains `rollbackTenantArtifact` with the same argument and return shape because the method signature moved unchanged; the merged schema now has one owner for that field rather than two.
+- **Fresh second pass:** independently searched all four affected GraphQL files for `rollback_tenant_artifact`, `ArtifactRollbackRequest`, and `ArtifactRollback`, then re-read the new module and schema registration. No duplicate field or alternate cross-tenant rollback path remained.
+- **Verification:** repository source/static inspection and branch diff review only. No tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.05.16` closed; ready for PR/merge. Next primary module: `FS-22.05.17 — apps/server/src/graphql/transition_lifecycle.rs`.
+
 ### FS-22.05.15 Assessment — `apps/server/src/graphql/module_settings_cas.rs`
 
 - **Base:** post-merge `main` refreshed at `895a56f9c74bcd9f0198b8221da6f1e46444edd7`; dedicated branch `codex/audit-fs-22.05.15-graphql-module-settings-cas` was created from that exact SHA.

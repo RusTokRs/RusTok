@@ -30,6 +30,7 @@ use super::loaders::TenantNameLoader;
 #[cfg(feature = "mod-moderation")]
 use super::moderation_recovery::ModerationRecoveryMutation;
 use super::module_security::GraphqlModuleSecurityPolicy;
+use super::module_rollback::ModuleRollbackMutation;
 use super::module_settings_cas::ModuleSettingsCasMutation;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
@@ -98,6 +99,7 @@ pub struct Query(
 pub struct Mutation(
     RootMutation,
     IndexDriftDiagnosisMutation,
+    ModuleRollbackMutation,
     ModuleSettingsCasMutation,
     IndexDriftSourcePageDiagnosisMutation,
     IndexReplayMutation,
