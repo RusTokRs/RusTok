@@ -125,6 +125,20 @@ mod tests {
     use rustok_api::Permission;
 
     #[test]
+    fn unknown_blueprint_error_does_not_echo_client_input() {
+        let error = <FieldError as GraphQLError>::bad_user_input("Unknown starter blueprint");
+        assert_eq!(error.message, "Unknown starter blueprint");
+    }
+
+    #[test]
+    fn starter_internal_error_does_not_expose_backend_diagnostics() {
+        let error = graphql_starter_internal_error(
+            "database connection string, table name, and sensitive backend details",
+        );
+        assert_eq!(error.message, "Starter blueprint import failed");
+    }
+
+    #[test]
     fn permission_checks_require_modules_or_tenants_manage() {
         assert!(has_effective_permission(
             &[Permission::MODULES_MANAGE],
