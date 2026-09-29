@@ -26,9 +26,7 @@ const packetPath =
 const owner = read(ownerPath);
 const surface = read(surfacePath);
 const query = read(queryPath);
-const serverShim = existsSync(path.resolve(repoRoot, serverShimPath))
-  ? read(serverShimPath)
-  : "";
+const serverShim = fs.existsSync(serverShimPath) ? read(serverShimPath) : "";
 const graphqlMod = read(graphqlModPath);
 const schema = read(schemaPath);
 const packet = read(packetPath);
@@ -161,7 +159,6 @@ for (const marker of [
   "scanned",
   "unavailable",
   "forumNotificationReconciliationStatus",
-  "settings:read",
   "forum_categories:manage",
   "forum_topics:manage",
   "page-local",
