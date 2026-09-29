@@ -308,6 +308,9 @@ async fn handle_graphql_ws(
         }
     });
 
+    // The timeout covers receipt of the init message, not tenant/auth/locale validation after
+    // the callback starts. `connection_init_received` is set at callback entry so a slow but
+    // legitimately received initialization is not cancelled by the transport deadline.
     let mut connection_init_deadline = Box::pin(tokio::time::sleep(WS_CONNECTION_INIT_TIMEOUT));
 
     loop {
