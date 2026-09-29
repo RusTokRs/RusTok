@@ -407,6 +407,17 @@ Hard limits for every iteration:
 - [x] **FS-22.05.23 — `apps/server/src/graphql/storefront_principal_security.rs`** — one-module audit; storefront service-principal policy, alias/fragment coverage, and GraphQL extension ordering reverified; fragment traversal made cycle-safe to prevent recursive-query exhaustion. Next primary module: `FS-22.05.24` to be selected from the refreshed ledger after merge.
 - [x] **FS-22.05.24 — `apps/server/src/graphql/forum_principal_security.rs`** — one-module audit; service-principal forum policy, alias/fragment classification, and personal-projection context propagation reverified; fragment traversal made cycle-safe and context-sensitive to prevent both recursion exhaustion and fragment-reuse misclassification. Next primary module: `FS-22.05.25` to be selected from the refreshed ledger after merge.
 
+- [ ] **FS-22.05.25 — `apps/server/src/graphql/starter.rs`** — primary module selected from the refreshed GraphQL tree after FS-22.05.24; pending implementation/assessment closeout.
+
+### FS-22.05.25 Assessment — `apps/server/src/graphql/starter.rs`
+
+- **Base:** refreshed `main` at `bee7894664f3f8e20798718097e687acfae721c2`; dedicated branch `codex/audit-fs-22.05.25-graphql-starter` created from that exact SHA.
+- **Discovery:** reviewed the complete GraphQL starter mutation, GraphQL schema registration/runtime-data composition, `TransactionalEventBus` context owner, `rustok-starter` engine/error contract, direct starter drivers, and the canonical Starter Blueprints guide.
+- **Invariant map:** privileged starter import must require an authenticated tenant-bound authority; invalid blueprint selectors must not reflect arbitrary client input; owner/persistence failures must remain backend-only diagnostics; the mutation must use the schema-composed transactional event bus rather than silently switching event-delivery semantics; successful reports must reflect a complete import result rather than hidden backend failures.
+- **Confirmed GraphQL boundary findings:** `import_starter` currently returns `err.to_string()` through `GraphQLError::internal_error`, exposing owner/database/domain diagnostics to the client. Unknown blueprint errors also interpolate the arbitrary `name` input into the GraphQL response. Finally, absence of the schema-owned `TransactionalEventBus` is silently replaced by a new DB-backed `OutboxTransport`, masking a schema-composition invariant and potentially bypassing the deployment-selected event transport.
+- **Adjacent owner audit findings:** starter drivers independently swallow blog-translation failures, forum pin/solution failures, and navigation channel-binding failures with warnings while the top-level import still returns success. These failures directly affect the result exposed by this GraphQL mutation and will be evaluated as owner-root-cause corrections in the same bounded change set only where necessary to restore truthful mutation semantics.
+- **Implementation status:** findings recorded before implementation; no test, clippy, build, migration, gatekeeper, or runtime commands executed.
+
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
 ### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
