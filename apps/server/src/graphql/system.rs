@@ -161,12 +161,7 @@ impl SystemQuery {
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        require_host_or_permission(
-            ctx,
-            HostAuthority::Read,
-            &Permission::SETTINGS_READ,
-            "host-global authority or settings:read permission required",
-        )?;
+        require_host_read()?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
@@ -196,12 +191,7 @@ impl SystemQuery {
 
     /// Event transport topology and all-tenant queue counts require host read authority.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        require_host_or_permission(
-            ctx,
-            HostAuthority::Read,
-            &Permission::SETTINGS_READ,
-            "host-global authority or settings:read permission required",
-        )?;
+        require_host_read()?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;
@@ -265,7 +255,7 @@ impl SystemQuery {
             .filter(SessionCol::ExpiresAt.gt(now))
             .count(db)
             .await
-            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?
+            .map_err(|error| graphql_system_internal_error("Unable to read active session count", error))?
             as i64;
 
         Ok(SessionStats {
