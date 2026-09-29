@@ -107,7 +107,7 @@ fn map_admin_post_order_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -154,7 +154,7 @@ fn map_admin_post_order_port_error(
     request_body = CreateOrderChangeInput,
     responses(
         (status = 201, description = "Order change created", body = OrderChangeResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -214,7 +214,7 @@ pub async fn create_order_change(
     request_body = CancelOrderChangeInput,
     responses(
         (status = 200, description = "Order change cancelled", body = OrderChangeResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order change not found")
     )
 )]
@@ -274,7 +274,7 @@ pub async fn cancel_order_change(
     request_body = CreateOrderReturnInput,
     responses(
         (status = 201, description = "Return created", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Order not found")
     )
 )]
@@ -334,7 +334,7 @@ pub async fn create_order_return(
     request_body = CancelOrderReturnInput,
     responses(
         (status = 200, description = "Return cancelled", body = OrderReturnResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
         (status = 404, description = "Return not found")
     )
 )]
