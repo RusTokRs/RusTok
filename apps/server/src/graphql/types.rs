@@ -411,6 +411,22 @@ pub struct ModuleOperationRecoveryPlan {
     pub error_message: Option<String>,
 }
 
+fn sanitized_recovery_error_message(
+    issue: &str,
+    error_message: Option<String>,
+) -> Option<String> {
+    let Some(_) = error_message else {
+        return None;
+    };
+
+    Some(match issue {
+        "post_hook_failed" => "Module lifecycle hook failed".to_string(),
+        "pre_hook_failed" => "Module lifecycle operation failed before commit".to_string(),
+        "other_failed" => "Module lifecycle operation failed".to_string(),
+        _ => "Module lifecycle operation failed".to_string(),
+    })
+}
+
 impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
     fn from(plan: rustok_api::ModuleOperationRecoveryPlanView) -> Self {
         Self {
@@ -431,7 +447,7 @@ impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecove
             recommended_action: plan.recommended_action,
             correlation_id: plan.correlation_id,
             requested_by: plan.requested_by,
-            error_message: plan.error_message,
+            error_message: sanitized_recovery_error_message(&plan.issue, plan.error_message),
         }
     }
 }
@@ -1388,6 +1404,17 @@ mod tests {
                 .as_deref(),
             Some("INTERNAL_ERROR")
         );
+    }
+
+
+    #[test]
+    fn recovery_error_message_redacts_owner_diagnostics() {
+        let redacted = super::sanitized_recovery_error_message(
+            "post_hook_failed",
+            Some("post-hook: database password=secret table=module_operations".to_string()),
+        );
+
+        assert_eq!(redacted.as_deref(), Some("Module lifecycle hook failed"));
     }
 
     #[test]
