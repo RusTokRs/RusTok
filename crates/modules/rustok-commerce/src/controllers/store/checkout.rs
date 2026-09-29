@@ -164,6 +164,7 @@ fn storefront_payment_collection_port_context(
         (status = 201, description = "Payment collection created", body = PaymentCollectionResponse),
         (status = 400, description = "Cart is completed and cannot create payment collection"),
         (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
         (status = 404, description = "Cart not found")
     )
 )]
@@ -196,7 +197,7 @@ pub async fn create_payment_collection(
         )
         .await
         .map_err(rustok_web::port_error_to_http_error)?;
-    super::ensure_store_cart_access(&cart, customer_id)?;
+    super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
     super::ensure_cart_allows_payment_collection(&cart)?;
     let cart = super::reprice_storefront_cart_line_items_for_db(
         runtime.db(),

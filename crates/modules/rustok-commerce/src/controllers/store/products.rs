@@ -340,7 +340,7 @@ fn map_storefront_shipping_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_store_denied",
             "Store access is denied",
             "forbidden",
@@ -632,7 +632,9 @@ pub async fn list_regions(
     tag = "store",
     params(StoreContextQuery),
     responses(
-        (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>)
+        (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>),
+        (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership")
     )
 )]
 pub async fn list_shipping_options(
@@ -671,7 +673,7 @@ pub async fn list_shipping_options(
                         Some(cart_id),
                     )
                 })?;
-            super::ensure_store_cart_access(&cart, customer_id)?;
+            super::ensure_store_cart_access(&cart, customer_id, auth.0.as_ref())?;
             let required_shipping_profiles =
                 load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                     .await

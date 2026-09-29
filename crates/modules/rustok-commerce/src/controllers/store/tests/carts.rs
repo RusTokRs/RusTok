@@ -790,6 +790,61 @@ async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promoti
 }
 
 #[tokio::test]
+async fn store_guest_cart_transport_rejects_missing_access_capability() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    seed_store_tenant_context(&db, tenant_id).await;
+    let tenant = TenantContext {
+        id: tenant_id,
+        name: "Store Guest Capability Tenant".to_string(),
+        slug: format!("store-guest-capability-{tenant_id}"),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let cart_service = CartService::new(db.clone());
+    let (metadata, _guest_token) = rustok_cart::prepare_guest_cart_metadata(
+        None,
+        json!({ "source": "access-regression" }),
+    );
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("guest@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                currency_code: "eur".to_string(),
+                metadata,
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+            },
+        )
+        .await
+        .expect("guest cart should be created");
+
+    let app = commerce_transport_router(test_app_context(db), tenant);
+    app.clear_guest_cart_token();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/store/carts/{}", cart.id))
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::empty())
+                .expect("guest cart request"),
+        )
+        .await
+        .expect("guest cart request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn store_cart_transport_rejects_customer_owned_cart_for_another_customer() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
@@ -887,7 +942,7 @@ async fn store_cart_transport_rejects_customer_owned_cart_for_another_customer()
         .expect("get cart body should read");
     assert_eq!(
         get_cart_status,
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "unexpected get cart body: {}",
         String::from_utf8_lossy(&get_cart_body)
     );

@@ -1682,7 +1682,7 @@ async fn store_order_transport_rejects_order_for_another_customer() {
         .expect("get order body should read");
     assert_eq!(
         get_order_status,
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "unexpected get order body: {}",
         String::from_utf8_lossy(&get_order_body)
     );

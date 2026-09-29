@@ -619,7 +619,7 @@ async fn store_shipping_options_transport_rejects_customer_owned_cart_for_foreig
         .expect("shipping options body should read");
     assert_eq!(
         status,
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "unexpected shipping options body: {}",
         String::from_utf8_lossy(&body)
     );
