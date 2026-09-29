@@ -1174,3 +1174,32 @@ impl RootQuery {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{graphql_internal_error, map_module_operation_recovery_error};
+    use crate::services::module_lifecycle::ModuleOperationRecoveryError;
+
+    #[test]
+    fn graphql_internal_error_redacts_backend_diagnostics() {
+        let error = graphql_internal_error(
+            "Unable to load current user",
+            "database password=secret table=users query=SELECT * FROM users",
+        );
+
+        assert_eq!(error.message, "Unable to load current user");
+        assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn module_recovery_post_hook_error_redacts_backend_diagnostics() {
+        let error = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::PostHookFailed(
+                "post-hook: database password=secret".to_string(),
+            ),
+        );
+
+        assert_eq!(error.message, "Module hook failed");
+        assert!(!error.message.contains("database password=secret"));
+    }
+}
