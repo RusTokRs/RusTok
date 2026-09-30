@@ -1,12 +1,14 @@
 use chrono::Utc;
 use rustok_cart::CartCheckoutPort;
 use rustok_inventory::InventoryReservationIdentityPort;
+use rustok_order::CheckoutOrderCompensationPort;
+use rustok_payment::CheckoutPaymentCompensationPort;
 use rustok_outbox::TransactionalEventBus;
-use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -16,6 +18,13 @@ use super::{CheckoutCompensationError, CheckoutCompensationService, CheckoutOper
 
 const DEFAULT_SWEEP_LIMIT: u64 = 25;
 const MAX_SWEEP_LIMIT: u64 = 100;
+
+fn per_operation_idempotency_key(request_key: &str, operation_id: Uuid) -> String {
+    let mut digest = Sha256::new();
+    digest.update(request_key.as_bytes());
+    digest.update(operation_id.as_bytes());
+    format!("checkout-compensation:{}", hex::encode(digest.finalize()))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckoutCompensationSweepFailure {
@@ -44,6 +53,8 @@ impl CheckoutCompensationSweepService {
         event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
+        payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
+        order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,
     ) -> Self {
         Self {
             compensation: CheckoutCompensationService::new(
@@ -51,18 +62,15 @@ impl CheckoutCompensationSweepService {
                 event_bus,
                 reservation_port,
                 cart_port,
+                payment_compensation_port,
+                order_compensation_port,
             ),
             db,
         }
     }
 
-    pub fn with_payment_provider_registry(
-        mut self,
-        payment_provider_registry: PaymentProviderRegistry,
-    ) -> Self {
-        self.compensation = self
-            .compensation
-            .with_payment_provider_registry(payment_provider_registry);
+    pub fn with_lease_seconds(mut self, lease_seconds: i64) -> Self {
+        self.compensation = self.compensation.with_lease_seconds(lease_seconds);
         self
     }
 
@@ -71,6 +79,7 @@ impl CheckoutCompensationSweepService {
         tenant_id: Uuid,
         actor_id: Uuid,
         worker_id: impl AsRef<str>,
+        request_idempotency_key: impl AsRef<str>,
         limit: Option<u64>,
     ) -> Result<CheckoutCompensationSweepReport, sea_orm::DbErr> {
         let limit = limit
@@ -103,14 +112,22 @@ impl CheckoutCompensationSweepService {
             ..Default::default()
         };
         for operation in candidates {
+            let request_key = request_idempotency_key.as_ref();
             let lease_owner = format!(
                 "checkout-compensation:{}:{}",
                 worker_id.as_ref(),
                 operation.id
             );
+            let operation_key = per_operation_idempotency_key(request_key, operation.id);
             match self
                 .compensation
-                .compensate(tenant_id, actor_id, operation.id, lease_owner)
+                .compensate(
+                    tenant_id,
+                    actor_id,
+                    operation.id,
+                    lease_owner,
+                    operation_key,
+                )
                 .await
             {
                 Ok(_) => report.compensated += 1,
