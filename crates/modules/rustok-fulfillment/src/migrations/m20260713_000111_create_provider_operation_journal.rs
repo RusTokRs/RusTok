@@ -144,6 +144,9 @@ impl MigrationTrait for Migration {
                 .get_connection()
                 .execute_unprepared(
                     r#"
+                    DROP TRIGGER IF EXISTS fulfillment_provider_operations_ownership_guard
+                        ON fulfillment_provider_operations;
+                    DROP FUNCTION IF EXISTS enforce_fulfillment_provider_operation_ownership();
                     DROP TRIGGER IF EXISTS fulfillment_provider_operations_lifecycle_guard
                         ON fulfillment_provider_operations;
                     DROP FUNCTION IF EXISTS enforce_fulfillment_provider_operation_lifecycle();
@@ -167,6 +170,34 @@ async fn install_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbEr
         .get_connection()
         .execute_unprepared(
             r#"
+            CREATE OR REPLACE FUNCTION enforce_fulfillment_provider_operation_ownership()
+            RETURNS trigger AS $$
+            DECLARE
+                fulfillment_tenant UUID;
+            BEGIN
+                SELECT tenant_id INTO fulfillment_tenant
+                FROM fulfillments
+                WHERE id = NEW.fulfillment_id;
+
+                IF fulfillment_tenant IS NULL THEN
+                    RAISE EXCEPTION 'fulfillment % does not exist', NEW.fulfillment_id
+                        USING ERRCODE = '23503';
+                END IF;
+
+                IF fulfillment_tenant <> NEW.tenant_id THEN
+                    RAISE EXCEPTION 'provider operation and fulfillment belong to different tenants'
+                        USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE TRIGGER fulfillment_provider_operations_ownership_guard
+            BEFORE INSERT ON fulfillment_provider_operations
+            FOR EACH ROW
+            EXECUTE FUNCTION enforce_fulfillment_provider_operation_ownership();
+
             ALTER TABLE fulfillment_provider_operations
                 ADD CONSTRAINT ck_fulfillment_provider_operations_operation
                 CHECK (operation IN ('create_label', 'ship', 'reship', 'cancel')),
@@ -242,6 +273,19 @@ async fn install_sqlite_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr>
         .get_connection()
         .execute_unprepared(
             r#"
+            CREATE TRIGGER fulfillment_provider_operations_ownership_guard
+            BEFORE INSERT ON fulfillment_provider_operations
+            FOR EACH ROW
+            WHEN NOT EXISTS (
+                SELECT 1
+                FROM fulfillments
+                WHERE id = NEW.fulfillment_id
+                  AND tenant_id = NEW.tenant_id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'provider operation and fulfillment belong to different tenants');
+            END;
+
             CREATE TRIGGER fulfillment_provider_operations_state_guard_insert
             BEFORE INSERT ON fulfillment_provider_operations
             FOR EACH ROW
