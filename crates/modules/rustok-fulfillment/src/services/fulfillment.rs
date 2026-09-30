@@ -1314,7 +1314,9 @@ fn merge_fulfillment_metadata(
 }
 
 fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
-    strip_fulfillment_identity_metadata(strip_fulfillment_audit_metadata(value))
+    strip_provider_operation_metadata(strip_fulfillment_identity_metadata(
+        strip_fulfillment_audit_metadata(value),
+    ))
 }
 
 fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -2143,6 +2145,9 @@ mod tests {
             "audit": {
                 "events": [{"type": "fabricated"}]
             },
+            "provider_operation": {
+                "id": Uuid::new_v4().to_string()
+            },
             "customer_note": "keep"
         });
 
@@ -2153,5 +2158,6 @@ mod tests {
             Some("keep")
         );
         assert!(sanitized.get("audit").is_none());
+        assert!(sanitized.get("provider_operation").is_none());
     }
 }
