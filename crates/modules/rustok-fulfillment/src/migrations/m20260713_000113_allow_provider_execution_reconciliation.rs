@@ -208,14 +208,6 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
-            UPDATE fulfillment_provider_operations
-            SET status = 'provider_error',
-                provider_completed_at = NULL,
-                error_message = COALESCE(error_message, 'unresolved execution during migration rollback'),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE status = 'reconciliation_required'
-              AND provider_result IS NULL;
-
             DROP TRIGGER IF EXISTS fulfillment_provider_operations_state_guard_update;
 
             CREATE TRIGGER fulfillment_provider_operations_state_guard_update
