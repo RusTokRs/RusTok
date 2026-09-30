@@ -52,6 +52,12 @@ const portMapper = between(
   'fn map_admin_order_change_orchestration_error(',
   'REST owner-port mapper',
 );
+const orchestrationMapper = between(
+  controller,
+  'fn map_admin_order_change_orchestration_error(',
+  'fn map_admin_order_change_apply_error(',
+  'REST order-change orchestration mapper',
+);
 const refundContext = between(
   orchestration,
   'fn with_exchange_refund_context(',
@@ -179,6 +185,37 @@ for (const [value, label] of [
 for (const value of ['error = ?error', 'error.message', 'internal_message', 'error.to_string()']) {
   forbidText(portMapper, value, 'REST owner-port raw diagnostics');
 }
+
+for (const value of [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor_id',
+  'order_id = ?context.order_id',
+  'order_change_id = ?context.order_change_id',
+  'payment_collection_id = ?context.payment_collection_id',
+  'payment_id = ?context.payment_id',
+  'refund_id = ?context.refund_id',
+]) forbidText(
+  orchestrationMapper,
+  value,
+  'REST order-change orchestration raw diagnostics',
+);
+
+for (const [value, label] of [
+  ['tenant_id_non_nil = !context.tenant_id.is_nil()', 'bounded tenant shape'],
+  ['actor_id_non_nil = !context.actor_id.is_nil()', 'bounded actor shape'],
+  ['order_id_shape = optional_uuid_shape(context.order_id)', 'bounded order shape'],
+  ['order_change_id_shape = optional_uuid_shape(context.order_change_id)', 'bounded change shape'],
+  ['payment_collection_id_shape = optional_uuid_shape(context.payment_collection_id)', 'bounded collection shape'],
+  ['payment_id_shape = optional_uuid_shape(context.payment_id)', 'bounded payment shape'],
+  ['refund_id_shape = optional_uuid_shape(context.refund_id)', 'bounded refund shape'],
+  ['owner = ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER', 'bounded orchestration owner'],
+  ['source_owner', 'bounded source owner'],
+  ['error_kind', 'bounded orchestration error kind'],
+  ['public_code = code', 'stable public code'],
+  ['status = %status', 'HTTP status'],
+  ['"commerce admin order change orchestration failed with bounded diagnostics"', 'bounded orchestration diagnostics'],
+]) requireText(orchestrationMapper, value, label);
 
 requireText(
   graphql,
