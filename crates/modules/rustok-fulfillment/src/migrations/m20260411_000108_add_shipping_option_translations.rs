@@ -128,7 +128,7 @@ impl MigrationTrait for Migration {
                     SELECT name
                     FROM shipping_option_translations
                     WHERE shipping_option_id = shipping_options.id
-                      AND locale = 'und'
+                    ORDER BY CASE WHEN locale = 'und' THEN 0 ELSE 1 END, locale
                     LIMIT 1
                  )"
                     .to_string(),
