@@ -112,6 +112,9 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
     let journal = include_str!(
         "../../../crates/modules/rustok-commerce/src/services/return_completion_operation.rs"
     );
+    let hardening_migration = include_str!(
+        "../../../crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs"
+    );
     let orchestration = include_str!(
         "../../../crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
@@ -151,12 +154,28 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "pub async fn mark_completed(",
         "ensure_same_request",
         "request_hash must be a 64-character hexadecimal SHA-256 digest",
+        "normalize_lease_seconds",
+        "normalize_lease_owner",
     ] {
         assert!(
             journal.contains(marker),
             "return completion journal is missing invariant {marker}"
         );
     }
+    for marker in [
+        "ck_return_completion_operations_request_hash_sha256",
+        "ck_return_completion_operations_pending_stage",
+        "ck_return_completion_operations_completed_stage",
+        "return_completion_operation_identity_guard_insert",
+        "return_completion_operation_identity_guard_update",
+        "DROP TRIGGER IF EXISTS return_completion_operation_identity_guard_insert",
+    ] {
+        assert!(
+            hardening_migration.contains(marker),
+            "return completion hardening migration is missing invariant {marker}"
+        );
+    }
+
     for marker in [
         "completion_request_hash(&input)",
         "return_completion_operation_id",
