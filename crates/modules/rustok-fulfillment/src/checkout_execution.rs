@@ -651,6 +651,7 @@ fn validate_request(
     }
     Ok(plan_hash)
 }
+
 fn build_input(
     request: &EnsureCheckoutFulfillmentsRequest,
     plan: &CheckoutFulfillmentCommand,
