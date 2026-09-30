@@ -1207,6 +1207,17 @@ Source inspection is not execution evidence.
 - [ ] Continue the same no-serialization rule across remaining mounted Commerce transport
   helpers and provider-adapter boundaries.
 
+## Audit 2026-09-30: active Admin checkout compensation boundary
+
+- [x] Audit `admin/checkout_operations.rs` and trace explicit compensation into the Commerce compensation service and its owner modules.
+- [x] Remove direct Payment/Order ownership from the mounted Commerce compensation service; use typed `CheckoutPaymentCompensationPort` and `CheckoutOrderCompensationPort`.
+- [x] Compose typed Payment, Order, Inventory, and Cart compensation/check-out ports through `CommerceHttpRuntime`, preserving host overrides with in-process fallbacks.
+- [x] Require caller-owned `Idempotency-Key` for explicit checkout compensation and compensation sweep writes.
+- [x] Preserve durable operation claim/lease semantics and derive a bounded per-operation sweep key from the caller identity.
+- [x] Align the checkout-operation diagnostic and error-context verifiers with the typed compensation boundary.
+- [ ] Run Cargo/Node/format/CI verification and retain compile/runtime evidence; source work remains unvalidated until maintainer execution completes.
+
+
 ## Audit 2026-09-25: active Admin Order idempotency and cart lifecycle typing
 
 - [x] Make mounted Admin Order read contexts free of synthetic idempotency keys.
