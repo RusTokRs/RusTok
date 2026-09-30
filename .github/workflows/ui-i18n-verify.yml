@@ -149,7 +149,27 @@ jobs:
           cargo test -p rustok-page-builder locale::tests --lib
       - name: Clippy
         run: |
-          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
-          cargo clippy -p rustok-api -p rustok-page-builder --lib -- -D warnings
+          # Same rationale as the Format step: publish the diagnostics instead
+          # of only failing, so a reviewer does not need the raw log.
+          clippy_log="$(mktemp)"
+          status=0
+          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings \
+            >>"$clippy_log" 2>&1 || status=1
+          cargo clippy -p rustok-api -p rustok-page-builder --lib -- -D warnings \
+            >>"$clippy_log" 2>&1 || status=1
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          {
+            echo '### clippy diagnostics'
+            echo '```'
+            head -c 60000 "$clippy_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          escaped="$(grep -E '^(error|warning)' -A 6 "$clippy_log" \
+            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g' | head -c 6000)"
+          echo "::error title=clippy::${escaped}"
+          cat "$clippy_log"
+          exit 1
       - name: WASM check
         run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown
