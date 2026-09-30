@@ -67,6 +67,7 @@ It is important to distinguish:
 | `events` | `rustok-events-module` | `outbox` |
 | `tenant` | `rustok-tenant` | — |
 | `rbac` | `rustok-rbac` | `outbox` |
+| `translation` | `rustok-translation` | — |
 
 ### Optional
 
@@ -81,25 +82,15 @@ It is important to distinguish:
 | `product_bundles` | `rustok-product-bundles` | `product` |
 | `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` |
 | `social_graph` | `rustok-social-graph` | `index`, `outbox` |
-| `reactions` | `rustok-reactions` | `outbox` |
-| `groups` | `rustok-groups` | — |
 | `region` | `rustok-region` | — |
 | `pricing` | `rustok-pricing` | `product` |
 | `inventory` | `rustok-inventory` | `product` |
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
-| `commerce` | `rustok-commerce` | `tenant`, `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
-| `marketplace_seller` | `rustok-marketplace-seller` | — |
-| `marketplace_listing` | `rustok-marketplace-listing` | `marketplace_seller`, `product` |
-| `marketplace_allocation` | `rustok-marketplace-allocation` | `order`, `marketplace_seller`, `marketplace_listing` |
-| `marketplace_commission` | `rustok-marketplace-commission` | `marketplace_allocation` |
-| `marketplace_ledger` | `rustok-marketplace-ledger` | `marketplace_commission` |
-| `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` |
-| `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` |
-| `moderation` | `rustok-moderation` | — |
+| `commerce` | `rustok-commerce` | `tenant`, `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment` |
 | `blog` | `rustok-blog` | `content`, `outbox`, `taxonomy`, `channel` |
-| `forum` | `rustok-forum` | `content`, `taxonomy`, `tenant` |
+| `forum` | `rustok-forum` | `content`, `media`, `taxonomy` |
 | `notifications` | `rustok-notifications` | `outbox` |
 | `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content`, `outbox`, `page_builder` |
@@ -107,7 +98,6 @@ It is important to distinguish:
 | `page_builder` | `rustok-page-builder` | — |
 | `taxonomy` | `rustok-taxonomy` | `content`, `outbox` |
 | `media` | `rustok-media` | `outbox` |
-| `translation` | `rustok-translation` | — |
 | `seo` | `rustok-seo` | `content` |
 | `workflow` | `rustok-workflow` | — |
 | `alloy` | `alloy` | — |
@@ -115,10 +105,10 @@ It is important to distinguish:
 
 ### Capability Extensions
 
-| Slug | Crate | Runtime |
-|---|---|---|
-| `ai` | `rustok-ai` | `extension` |
-| `iggy_connector` | `rustok-iggy-connector` | `extension` |
+| Slug | Crate | Runtime | Required |
+|---|---|---|---|
+| `ai` | `rustok-ai` | `extension` | true |
+| `iggy_connector` | `rustok-iggy-connector` | `extension` | false |
 <!-- @generated:module-topology-end -->
 
 Capability extensions are deployment-scoped, globally active when compiled and are
