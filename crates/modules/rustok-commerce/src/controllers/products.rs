@@ -343,7 +343,7 @@ pub(crate) fn map_admin_product_port_error(
         boundary = ADMIN_PRODUCT_BOUNDARY,
         "commerce admin product owner command failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+
 }
 
 /// Shared admin product list handler.
