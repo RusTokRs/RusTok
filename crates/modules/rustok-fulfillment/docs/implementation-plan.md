@@ -29,7 +29,13 @@ fail closed with typed manual reconciliation. Durable typed checkout fulfillment
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
 
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
-administrative list-all uses the separate `ShippingOptionAdminReadPort`. Root
+administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shipping-option translation
+responses now expose a deterministic translation-resource revision, and every bulk translation update
+requires that revision when translations are supplied; a stale revision fails as a typed owner conflict
+before any mutation. The module-owned admin editor round-trips all loaded translations plus the revision
+so editing one locale cannot silently delete untouched locales. Storage-only `und` remains visible only
+as raw persisted provenance and is excluded from runtime locale resolution and outbound admin translation
+writes. Root
 in-process adapters own `FulfillmentService` construction, require read policy,
 preserve requested/default locale, and map owner failures to stable `PortError`.
 
