@@ -67,6 +67,32 @@ requireText(
   'transaction-body error preservation',
 );
 
+requireText(
+  service,
+  'fn is_shipping_profile_slug_conflict(error: &sea_orm::DbErr) -> bool',
+  'shipping profile slug conflict classifier',
+);
+requireText(
+  service,
+  'SqlErr::UniqueConstraintViolation(details)',
+  'portable unique constraint classification',
+);
+requireText(
+  service,
+  'idx_shipping_profiles_tenant_slug_unique',
+  'shipping profile slug unique index identity',
+);
+requireText(
+  service,
+  'CommerceError::DuplicateShippingProfileSlug(requested_slug)',
+  'create concurrent slug conflict mapping',
+);
+requireText(
+  service,
+  'CommerceError::DuplicateShippingProfileSlug(slug)',
+  'update concurrent slug conflict mapping',
+);
+
 for (const [value, label] of [
   ['self.ensure_slug_available(txn,', 'create slug check inside transaction'],
   ['active_profile.insert(txn).await?', 'create profile insert inside transaction'],
