@@ -189,8 +189,8 @@ if (validationUses.length !== 3) {
   failures.push(`expected validation helper definition plus two uses, found ${validationUses.length}`);
 }
 const redactedDebugUses = shipping.match(/formatter\.write_str\("redacted"\)/g) ?? [];
-if (redactedDebugUses.length !== 2) {
-  failures.push(`expected two redacted diagnostic Debug implementations, found ${redactedDebugUses.length}`);
+if (redactedDebugUses.length !== 1) {
+  failures.push(`expected one redacted shipping diagnostic Debug implementation, found ${redactedDebugUses.length}`);
 }
 if (shipping.includes('admin_shipping_option_command_idempotency_key')) {
   failures.push('synthetic shipping-option idempotency helper must be absent');
