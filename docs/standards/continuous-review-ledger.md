@@ -3092,3 +3092,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Scope:** Shipping Profile CRUD remains outside this bounded owner-option slice; Fulfillment owner still enforces `PortCallPolicy::write()`.
 - **Second pass:** production source and all three affected verifier files were re-read after edits; no remaining production references to the synthetic helper, raw internal owner code, or removed diagnostic shadow remain.
 - **Status:** complete, PR #4378, merge `6674a3e7c0abb0d413e3c171bf0ec4cabe7800ae`; GitHub PR checks were queued at integration time, and local compile/test execution was unavailable.
+
+### FS-22.06.22 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/products.rs` Active Admin Product command boundary
+
+- **Base:** refreshed `main` at `1d4551f7c227d1c214c5497bb38f56c31bdfd35d`; dedicated branch `codex/audit-fs-22.06.22-admin-product-diagnostics` was created from that exact SHA.
+- **Discovery:** re-read the active Admin Product create/update routes, shared Commerce Product command-context/idempotency helpers, ProductCatalogCommandPort owner contract, Commerce host runtime composition, and the existing Product command/error/diagnostic verifier set.
+- **Confirmed finding ADMINPRODUCT-22.06.22-01:** Admin Product create/update derived idempotency keys from tenant/actor/operation/product ID/request payload instead of requiring the caller-owned `Idempotency-Key`.
+- **Confirmed finding ADMINPRODUCT-22.06.22-02:** the shared Product command context used that generated key as `correlation_id`, coupling correlation to replay identity.
+- **Confirmed finding ADMINPRODUCT-22.06.22-03:** the active Product owner-port HTTP mapper logged `internal_code = %error.code` rather than a bounded owner-code fact.
+- **Remediation:** create/update now require and propagate the exact caller-owned `Idempotency-Key`; command correlation is operation/resource scoped; owner diagnostics now use bounded `owner_code_length` and retain only bounded context facts. Existing Product owner `PortCallPolicy::write()` remains authoritative.
+- **Verifier updates:** aligned Product command-port, write HTTP error, diagnostic, and route-context guards with the active owner-port path and caller-owned identity contract. Stale direct-`CatalogService` assertions for mounted writes were removed from the active write guard while legacy shared read/lifecycle source debt remains explicitly outside this slice.
+- **Fresh independent second pass:** re-read the final production files and all affected verifiers after edits, checked for residual production references to the synthetic Product command helper, raw owner code logging, raw correlation=idempotency coupling, and stale direct owner command calls. No additional confirmed repository-owned defect attributable to this production slice was found.
+- **Implementation status:** complete and integrated into `main` via PR #4380, squash merge `77737b81af5e6f1bbce105625cfe0add2799f46f`.
+- **Post-merge reconciliation:** refreshed `main` at `77737b81af5e6f1bbce105625cfe0add2799f46f`; the integrated change is limited to the shared Product command helper, active Admin Product create/update handlers, and four synchronized verifier files. GitHub Actions for the PR were `pending/queued` at integration time; no local test/build execution was available.
+- **Status:** `FS-22.06.22` complete; compile/runtime verification remains maintainer-owned.
