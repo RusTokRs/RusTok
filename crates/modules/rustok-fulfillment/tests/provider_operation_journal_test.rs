@@ -101,12 +101,11 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     assert!(ambiguous.provider_completed_at.is_some());
     assert!(ambiguous.provider_result.is_none());
 
+    let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
     let recovered_as_wrong_tenant = recovery
         .resolve_unknown_as_failed(wrong_tenant, operation.id, "wrong tenant")
         .await;
     assert!(recovered_as_wrong_tenant.is_err());
-
-    let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
     let retryable = recovery
         .resolve_unknown_as_failed(tenant_id, operation.id, "carrier confirmed no shipment")
         .await
