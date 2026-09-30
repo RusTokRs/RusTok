@@ -56,11 +56,7 @@ pub(super) fn ChannelCard(
         "channel.targets.primarySummary",
         "{type} · primary",
     );
-    let target_removed_template = t(
-        ui_locale.as_deref(),
-        "channel.feedback.targetRemoved",
-        "Target `{target}` removed from channel `{channel}`.",
-    );
+    let target_removed_locale = ui_locale.clone();
     let modules_edit_title = t(
         ui_locale.as_deref(),
         "channel.modules.editTitle",
@@ -103,11 +99,7 @@ pub(super) fn ChannelCard(
         "channel.modules.save",
         "Save Module Binding",
     );
-    let module_removed_template = t(
-        ui_locale.as_deref(),
-        "channel.feedback.moduleRemoved",
-        "Module binding `{module}` removed from channel `{channel}`.",
-    );
+    let module_removed_locale = ui_locale.clone();
     let oauth_edit_title = t(
         ui_locale.as_deref(),
         "channel.oauth.editTitle",
@@ -142,11 +134,7 @@ pub(super) fn ChannelCard(
         "Update OAuth App Binding",
     );
     let oauth_bind_label = t(ui_locale.as_deref(), "channel.oauth.bind", "Bind OAuth App");
-    let oauth_revoked_template = t(
-        ui_locale.as_deref(),
-        "channel.feedback.oauthRevoked",
-        "OAuth app binding `{app}` revoked for channel `{channel}`.",
-    );
+    let oauth_revoked_locale = ui_locale.clone();
     let has_available_modules = !available_modules.is_empty();
     let has_available_oauth_apps = !oauth_apps.is_empty();
     let is_default_channel = channel.channel.is_default;
@@ -345,12 +333,12 @@ pub(super) fn ChannelCard(
                 match result {
                     Ok(channel) => {
                         set_feedback.set(Some(
-                            t(
+                            crate::i18n::format(
                                 ui_locale.as_deref(),
                                 "channel.feedback.default",
+                                Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
                                 "Channel `{slug}` is now the tenant default channel.",
-                            )
-                            .replace("{slug}", channel.slug.as_str()),
+                            ),
                         ));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
@@ -589,14 +577,12 @@ pub(super) fn ChannelCard(
                     </div>
                     <h2 class="text-xl font-semibold text-card-foreground">{channel.channel.name.clone()}</h2>
                     <p class="text-sm text-muted-foreground">
-                        {t(
+                        {crate::i18n::format(
                             ui_locale.as_deref(),
                             "channel.card.summary",
+                            Some(&rustok_ui_i18n::fluent_args!("targets" => channel.targets.len().to_string(), "modules" => channel.module_bindings.len().to_string(), "apps" => channel.oauth_apps.len().to_string())),
                             "{targets} target(s), {modules} module binding(s), {apps} app binding(s)",
-                        )
-                        .replace("{targets}", channel.targets.len().to_string().as_str())
-                        .replace("{modules}", channel.module_bindings.len().to_string().as_str())
-                        .replace("{apps}", channel.oauth_apps.len().to_string().as_str())}
+                        )}
                     </p>
                 </div>
                 <div class="space-y-3">
@@ -735,10 +721,10 @@ pub(super) fn ChannelCard(
                                                     let tenant = tenant_for_target_delete.clone();
                                                     let channel_id = channel_id_for_target_delete.clone();
                                                     let channel_slug = channel_slug_for_target_delete.clone();
-                                                    let target_removed_template = target_removed_template.clone();
+                                                    let target_removed_locale = target_removed_locale.clone();
                                                     let query_writer = target_delete_query_writer.clone();
                                                     move |_| {
-                                                        let target_removed_template = target_removed_template.clone();
+                                                        let target_removed_locale = target_removed_locale.clone();
                                                         let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
@@ -749,7 +735,7 @@ pub(super) fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
-                                                            let target_removed_template = target_removed_template.clone();
+                                                            let target_removed_locale = target_removed_locale.clone();
                                                             async move {
                                                                 let result = transport::delete_target(
                                                                     token,
@@ -772,9 +758,12 @@ pub(super) fn ChannelCard(
                                                                             target_primary.set(true);
                                                                         }
                                                                         set_feedback.set(Some(
-                                                                            target_removed_template
-                                                                                .replace("{target}", deleted.value.as_str())
-                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                            crate::i18n::format(
+                                                                                target_removed_locale.as_deref(),
+                                                                                "channel.feedback.targetRemoved",
+                                                                                Some(&rustok_ui_i18n::fluent_args!("target" => deleted.value.to_string(), "channel" => channel_slug.to_string())),
+                                                                                "Target `{target}` removed from channel `{channel}`.",
+                                                                            ),
                                                                         ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
@@ -904,10 +893,10 @@ pub(super) fn ChannelCard(
                                                     let tenant = tenant_for_module_delete.clone();
                                                     let channel_id = channel_id_for_module_delete.clone();
                                                     let channel_slug = channel_slug_for_module_delete.clone();
-                                                    let module_removed_template = module_removed_template.clone();
+                                                    let module_removed_locale = module_removed_locale.clone();
                                                     let query_writer = module_delete_query_writer.clone();
                                                     move |_| {
-                                                        let module_removed_template = module_removed_template.clone();
+                                                        let module_removed_locale = module_removed_locale.clone();
                                                         let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
@@ -918,7 +907,7 @@ pub(super) fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
-                                                            let module_removed_template = module_removed_template.clone();
+                                                            let module_removed_locale = module_removed_locale.clone();
                                                             async move {
                                                                 let result = transport::delete_module_binding(
                                                                     token,
@@ -940,9 +929,12 @@ pub(super) fn ChannelCard(
                                                                             bind_module_enabled.set(true);
                                                                         }
                                                                         set_feedback.set(Some(
-                                                                            module_removed_template
-                                                                                .replace("{module}", deleted.module_slug.as_str())
-                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                            crate::i18n::format(
+                                                                                module_removed_locale.as_deref(),
+                                                                                "channel.feedback.moduleRemoved",
+                                                                                Some(&rustok_ui_i18n::fluent_args!("module" => deleted.module_slug.to_string(), "channel" => channel_slug.to_string())),
+                                                                                "Module binding `{module}` removed from channel `{channel}`.",
+                                                                            ),
                                                                         ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }
@@ -1077,10 +1069,10 @@ pub(super) fn ChannelCard(
                                                     let tenant = tenant_for_app_delete.clone();
                                                     let channel_id = channel_id_for_app_delete.clone();
                                                     let channel_slug = channel_slug_for_app_delete.clone();
-                                                    let oauth_revoked_template = oauth_revoked_template.clone();
+                                                    let oauth_revoked_locale = oauth_revoked_locale.clone();
                                                     let query_writer = oauth_delete_query_writer.clone();
                                                     move |_| {
-                                                        let oauth_revoked_template = oauth_revoked_template.clone();
+                                                        let oauth_revoked_locale = oauth_revoked_locale.clone();
                                                         let query_writer = query_writer.clone();
                                                         busy.set(true);
                                                         set_feedback.set(None);
@@ -1091,7 +1083,7 @@ pub(super) fn ChannelCard(
                                                             let tenant = tenant.clone();
                                                             let channel_id = channel_id.clone();
                                                             let channel_slug = channel_slug.clone();
-                                                            let oauth_revoked_template = oauth_revoked_template.clone();
+                                                            let oauth_revoked_locale = oauth_revoked_locale.clone();
                                                             async move {
                                                                 let result = transport::delete_oauth_app_binding(
                                                                     token,
@@ -1113,9 +1105,12 @@ pub(super) fn ChannelCard(
                                                                             bind_oauth_role.set(String::new());
                                                                         }
                                                                         set_feedback.set(Some(
-                                                                            oauth_revoked_template
-                                                                                .replace("{app}", deleted.oauth_app_id.as_str())
-                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                            crate::i18n::format(
+                                                                                oauth_revoked_locale.as_deref(),
+                                                                                "channel.feedback.oauthRevoked",
+                                                                                Some(&rustok_ui_i18n::fluent_args!("app" => deleted.oauth_app_id.to_string(), "channel" => channel_slug.to_string())),
+                                                                                "OAuth app binding `{app}` revoked for channel `{channel}`.",
+                                                                            ),
                                                                         ));
                                                                         set_refresh_nonce.update(|value| *value += 1);
                                                                     }

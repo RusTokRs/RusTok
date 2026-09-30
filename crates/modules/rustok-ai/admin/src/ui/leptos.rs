@@ -243,51 +243,15 @@ pub fn AiAdmin() -> impl IntoView {
     );
     let overview_label = t(ui_locale.as_deref(), "ai.tab.overview", "Overview");
     let diagnostics_label = t(ui_locale.as_deref(), "ai.tab.diagnostics", "Diagnostics");
-    let provider_created_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.providerCreated",
-        "Provider `{slug}` created.",
-    );
-    let provider_updated_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.providerUpdated",
-        "Provider `{slug}` updated.",
-    );
-    let provider_deactivated_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.providerDeactivated",
-        "Provider `{slug}` deactivated.",
-    );
-    let tool_created_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.toolProfileCreated",
-        "Tool profile `{slug}` created.",
-    );
-    let tool_updated_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.toolProfileUpdated",
-        "Tool profile `{slug}` updated.",
-    );
-    let task_created_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.taskProfileCreated",
-        "Task profile `{slug}` created.",
-    );
-    let task_updated_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.taskProfileUpdated",
-        "Task profile `{slug}` updated.",
-    );
-    let agent_principal_created_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.agentPrincipalCreated",
-        "Agent principal `{slug}` created.",
-    );
-    let agent_principal_updated_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.agentPrincipalUpdated",
-        "Agent principal `{slug}` updated.",
-    );
+    let provider_created_locale = ui_locale.clone();
+    let provider_updated_locale = ui_locale.clone();
+    let provider_deactivated_locale = ui_locale.clone();
+    let tool_created_locale = ui_locale.clone();
+    let tool_updated_locale = ui_locale.clone();
+    let task_created_locale = ui_locale.clone();
+    let task_updated_locale = ui_locale.clone();
+    let agent_principal_created_locale = ui_locale.clone();
+    let agent_principal_updated_locale = ui_locale.clone();
     let model_assignment_created_template = t(
         ui_locale.as_deref(),
         "ai.feedback.modelAssignmentCreated",
@@ -298,26 +262,10 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.feedback.modelAssignmentUpdated",
         "Model assignment updated.",
     );
-    let session_started_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.sessionStarted",
-        "Session `{title}` started.",
-    );
-    let alloy_completed_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.alloyCompleted",
-        "Alloy job `{title}` completed.",
-    );
-    let image_completed_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.imageCompleted",
-        "Image job `{title}` completed.",
-    );
-    let product_completed_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.productCompleted",
-        "Product copy job `{title}` completed.",
-    );
+    let session_started_locale = ui_locale.clone();
+    let alloy_completed_locale = ui_locale.clone();
+    let image_completed_locale = ui_locale.clone();
+    let product_completed_locale = ui_locale.clone();
     let product_attributes_completed_template = t(
         ui_locale.as_deref(),
         "ai.feedback.productAttributesCompleted",
@@ -333,11 +281,7 @@ pub fn AiAdmin() -> impl IntoView {
         "ai.feedback.orderOpsAssistantCompleted",
         "Order operations assistant job `{title}` completed.",
     );
-    let blog_completed_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.blogCompleted",
-        "Blog draft job `{title}` completed.",
-    );
+    let blog_completed_locale = ui_locale.clone();
     let err_select_provider_update = t(
         ui_locale.as_deref(),
         "ai.error.selectProviderBeforeUpdate",
@@ -902,7 +846,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
-        let provider_created_template = provider_created_template.clone();
+        let provider_created_locale = provider_created_locale.clone();
         let create_provider_query_writer = create_provider_query_writer.clone();
         spawn_local(async move {
             let result = transport::create_provider(
@@ -929,7 +873,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        provider_created_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            provider_created_locale.as_deref(),
+                            "ai.feedback.providerCreated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Provider `{slug}` created.",
+                        ),
                     ));
                     selected_provider.set(profile.id.clone());
                     create_provider_query_writer
@@ -967,7 +916,7 @@ pub fn AiAdmin() -> impl IntoView {
         }
         set_feedback.set(None);
         set_error.set(None);
-        let provider_updated_template = provider_updated_template.clone();
+        let provider_updated_locale = provider_updated_locale.clone();
         let update_provider_query_writer = update_provider_query_writer.clone();
         spawn_local(async move {
             let result = transport::update_provider(
@@ -995,7 +944,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        provider_updated_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            provider_updated_locale.as_deref(),
+                            "ai.feedback.providerUpdated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Provider `{slug}` updated.",
+                        ),
                     ));
                     update_provider_query_writer
                         .replace_value(AdminQueryKey::ProviderSlug.as_str(), profile.slug.clone());
@@ -1030,14 +984,19 @@ pub fn AiAdmin() -> impl IntoView {
         }
         set_feedback.set(None);
         set_error.set(None);
-        let provider_deactivated_template = provider_deactivated_template.clone();
+        let provider_deactivated_locale = provider_deactivated_locale.clone();
         let deactivate_provider_query_writer = deactivate_provider_query_writer.clone();
         spawn_local(async move {
             match transport::deactivate_provider(provider_id).await {
                 Ok(profile) => {
                     provider_active.set(false);
                     set_feedback.set(Some(
-                        provider_deactivated_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            provider_deactivated_locale.as_deref(),
+                            "ai.feedback.providerDeactivated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Provider `{slug}` deactivated.",
+                        ),
                     ));
                     deactivate_provider_query_writer
                         .replace_value(AdminQueryKey::ProviderSlug.as_str(), profile.slug.clone());
@@ -1052,7 +1011,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
-        let tool_created_template = tool_created_template.clone();
+        let tool_created_locale = tool_created_locale.clone();
         let create_tool_query_writer = create_tool_query_writer.clone();
         spawn_local(async move {
             let result = transport::create_tool_profile(
@@ -1067,7 +1026,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        tool_created_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            tool_created_locale.as_deref(),
+                            "ai.feedback.toolProfileCreated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Tool profile `{slug}` created.",
+                        ),
                     ));
                     selected_tool_profile.set(profile.id.clone());
                     create_tool_query_writer.replace_value(
@@ -1103,7 +1067,7 @@ pub fn AiAdmin() -> impl IntoView {
         }
         set_feedback.set(None);
         set_error.set(None);
-        let tool_updated_template = tool_updated_template.clone();
+        let tool_updated_locale = tool_updated_locale.clone();
         let update_tool_query_writer = update_tool_query_writer.clone();
         spawn_local(async move {
             let result = transport::update_tool_profile(
@@ -1119,7 +1083,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        tool_updated_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            tool_updated_locale.as_deref(),
+                            "ai.feedback.toolProfileUpdated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Tool profile `{slug}` updated.",
+                        ),
                     ));
                     update_tool_query_writer.replace_value(
                         AdminQueryKey::ToolProfileSlug.as_str(),
@@ -1135,7 +1104,7 @@ pub fn AiAdmin() -> impl IntoView {
     let on_create_agent_principal = move |input: AiAgentPrincipalCreateForm| {
         set_feedback.set(None);
         set_error.set(None);
-        let agent_principal_created_template = agent_principal_created_template.clone();
+        let agent_principal_created_locale = agent_principal_created_locale.clone();
         spawn_local(async move {
             match transport::create_agent_principal(
                 input.slug,
@@ -1152,7 +1121,12 @@ pub fn AiAdmin() -> impl IntoView {
                     selected_agent_roles.set(principal.role_slugs.clone());
                     agent_principal_active.set(principal.is_active);
                     set_feedback.set(Some(
-                        agent_principal_created_template.replace("{slug}", principal.slug.as_str()),
+                        crate::i18n::format(
+                            agent_principal_created_locale.as_deref(),
+                            "ai.feedback.agentPrincipalCreated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => principal.slug.to_string())),
+                            "Agent principal `{slug}` created.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1164,7 +1138,7 @@ pub fn AiAdmin() -> impl IntoView {
     let on_update_agent_principal = move |input: AiAgentPrincipalUpdateForm| {
         set_feedback.set(None);
         set_error.set(None);
-        let agent_principal_updated_template = agent_principal_updated_template.clone();
+        let agent_principal_updated_locale = agent_principal_updated_locale.clone();
         spawn_local(async move {
             match transport::update_agent_principal(input.id, input.role_slugs, input.is_active)
                 .await
@@ -1176,7 +1150,12 @@ pub fn AiAdmin() -> impl IntoView {
                     selected_agent_roles.set(principal.role_slugs.clone());
                     agent_principal_active.set(principal.is_active);
                     set_feedback.set(Some(
-                        agent_principal_updated_template.replace("{slug}", principal.slug.as_str()),
+                        crate::i18n::format(
+                            agent_principal_updated_locale.as_deref(),
+                            "ai.feedback.agentPrincipalUpdated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => principal.slug.to_string())),
+                            "Agent principal `{slug}` updated.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1245,7 +1224,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
-        let session_started_template = session_started_template.clone();
+        let session_started_locale = session_started_locale.clone();
         let start_session_query_writer = start_session_query_writer.clone();
         spawn_local(async move {
             let result = transport::start_session(
@@ -1264,8 +1243,12 @@ pub fn AiAdmin() -> impl IntoView {
                     start_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        session_started_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            session_started_locale.as_deref(),
+                            "ai.feedback.sessionStarted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Session `{title}` started.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1297,7 +1280,7 @@ pub fn AiAdmin() -> impl IntoView {
 
         set_feedback.set(None);
         set_error.set(None);
-        let alloy_completed_template = alloy_completed_template.clone();
+        let alloy_completed_locale = alloy_completed_locale.clone();
         let alloy_session_query_writer = alloy_session_query_writer.clone();
         spawn_local(async move {
             let result = transport::run_task_job(
@@ -1316,8 +1299,12 @@ pub fn AiAdmin() -> impl IntoView {
                     alloy_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        alloy_completed_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            alloy_completed_locale.as_deref(),
+                            "ai.feedback.alloyCompleted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Alloy job `{title}` completed.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1351,7 +1338,7 @@ pub fn AiAdmin() -> impl IntoView {
 
         set_feedback.set(None);
         set_error.set(None);
-        let image_completed_template = image_completed_template.clone();
+        let image_completed_locale = image_completed_locale.clone();
         let image_session_query_writer = image_session_query_writer.clone();
         spawn_local(async move {
             let result = transport::run_task_job(
@@ -1370,8 +1357,12 @@ pub fn AiAdmin() -> impl IntoView {
                     image_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        image_completed_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            image_completed_locale.as_deref(),
+                            "ai.feedback.imageCompleted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Image job `{title}` completed.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1405,7 +1396,7 @@ pub fn AiAdmin() -> impl IntoView {
 
         set_feedback.set(None);
         set_error.set(None);
-        let product_completed_template = product_completed_template.clone();
+        let product_completed_locale = product_completed_locale.clone();
         let product_session_query_writer = product_session_query_writer.clone();
         spawn_local(async move {
             let result = transport::run_task_job(
@@ -1424,8 +1415,12 @@ pub fn AiAdmin() -> impl IntoView {
                     product_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        product_completed_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            product_completed_locale.as_deref(),
+                            "ai.feedback.productCompleted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Product copy job `{title}` completed.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1534,7 +1529,7 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         };
 
-        let product_completed_template = product_attributes_completed_template.clone();
+        let product_completed_locale = product_attributes_completed_template.clone();
         let product_attributes_session_query_writer =
             product_attributes_session_query_writer.clone();
         spawn_local(async move {
@@ -1554,8 +1549,12 @@ pub fn AiAdmin() -> impl IntoView {
                     product_attributes_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        product_completed_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            product_completed_locale.as_deref(),
+                            "ai.feedback.productCompleted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Product copy job `{title}` completed.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1716,7 +1715,7 @@ pub fn AiAdmin() -> impl IntoView {
 
         set_feedback.set(None);
         set_error.set(None);
-        let blog_completed_template = blog_completed_template.clone();
+        let blog_completed_locale = blog_completed_locale.clone();
         let blog_session_query_writer = blog_session_query_writer.clone();
         spawn_local(async move {
             let result = transport::run_task_job(
@@ -1735,8 +1734,12 @@ pub fn AiAdmin() -> impl IntoView {
                     blog_session_query_writer
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
-                        blog_completed_template
-                            .replace("{title}", result.session.session.title.as_str()),
+                        crate::i18n::format(
+                            blog_completed_locale.as_deref(),
+                            "ai.feedback.blogCompleted",
+                            Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
+                            "Blog draft job `{title}` completed.",
+                        ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -1765,7 +1768,7 @@ pub fn AiAdmin() -> impl IntoView {
         ev.prevent_default();
         set_feedback.set(None);
         set_error.set(None);
-        let task_created_template = task_created_template.clone();
+        let task_created_locale = task_created_locale.clone();
         let create_task_query_writer = create_task_query_writer.clone();
         spawn_local(async move {
             let result = transport::create_task_profile(
@@ -1783,7 +1786,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        task_created_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            task_created_locale.as_deref(),
+                            "ai.feedback.taskProfileCreated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Task profile `{slug}` created.",
+                        ),
                     ));
                     selected_task_profile.set(profile.id.clone());
                     create_task_query_writer.replace_value(
@@ -1805,7 +1813,7 @@ pub fn AiAdmin() -> impl IntoView {
         }
         set_feedback.set(None);
         set_error.set(None);
-        let task_updated_template = task_updated_template.clone();
+        let task_updated_locale = task_updated_locale.clone();
         let update_task_query_writer = update_task_query_writer.clone();
         spawn_local(async move {
             let result = transport::update_task_profile(
@@ -1824,7 +1832,12 @@ pub fn AiAdmin() -> impl IntoView {
             match result {
                 Ok(profile) => {
                     set_feedback.set(Some(
-                        task_updated_template.replace("{slug}", profile.slug.as_str()),
+                        crate::i18n::format(
+                            task_updated_locale.as_deref(),
+                            "ai.feedback.taskProfileUpdated",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => profile.slug.to_string())),
+                            "Task profile `{slug}` updated.",
+                        ),
                     ));
                     update_task_query_writer.replace_value(
                         AdminQueryKey::TaskProfileSlug.as_str(),
@@ -2171,8 +2184,12 @@ pub fn AiAdmin() -> impl IntoView {
                     },
                     Err(err) => view! {
                         <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            {t(ui_locale_operator.as_deref(), "ai.session.loadBootstrap", "Failed to load AI bootstrap: {error}")
-                                .replace("{error}", err.to_string().as_str())}
+                            {crate::i18n::format(
+                                ui_locale_operator.as_deref(),
+                                "ai.session.loadBootstrap",
+                                Some(&rustok_ui_i18n::fluent_args!("error" => err.to_string())),
+                                "Failed to load AI bootstrap: {error}",
+                            )}
                         </div>
                     }.into_any(),
                     })
@@ -2251,15 +2268,12 @@ pub(crate) fn recent_run_summary(
             .map(|run| (run.status.as_str(), run.duration_ms)),
     );
 
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.recentRuns",
+        Some(&rustok_ui_i18n::fluent_args!("count" => stats.total.to_string(), "failed" => stats.failed.to_string(), "waiting" => stats.waiting_approval.to_string(), "latency" => stats.average_latency_ms.to_string())),
         "{count} run(s), {failed} failed, {waiting} waiting approval, avg {latency} ms",
     )
-    .replace("{count}", stats.total.to_string().as_str())
-    .replace("{failed}", stats.failed.to_string().as_str())
-    .replace("{waiting}", stats.waiting_approval.to_string().as_str())
-    .replace("{latency}", stats.average_latency_ms.to_string().as_str())
 }
 
 pub(crate) fn stream_event_kind_label(
@@ -2287,12 +2301,12 @@ pub(crate) fn stream_event_kind_label(
 }
 
 pub(crate) fn average_run_latency_summary(locale: Option<&str>, latency_ms: u64) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.diagnostics.averageRunLatency",
+        Some(&rustok_ui_i18n::fluent_args!("value" => latency_ms.to_string())),
         "Average run latency: {value} ms",
     )
-    .replace("{value}", latency_ms.to_string().as_str())
 }
 
 pub(crate) fn provider_profile_summary(
@@ -2302,15 +2316,12 @@ pub(crate) fn provider_profile_summary(
     capabilities: usize,
     active: bool,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.providerList",
+        Some(&rustok_ui_i18n::fluent_args!("kind" => kind.to_string(), "model" => model.to_string(), "count" => capabilities.to_string(), "state" => active_state_label(locale, active).to_string())),
         "{kind} · {model} · {count} capabilities · {state}",
     )
-    .replace("{kind}", kind)
-    .replace("{model}", model)
-    .replace("{count}", capabilities.to_string().as_str())
-    .replace("{state}", active_state_label(locale, active).as_str())
 }
 
 pub(crate) fn tool_profile_summary(
@@ -2319,14 +2330,12 @@ pub(crate) fn tool_profile_summary(
     sensitive_count: usize,
     active: bool,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.toolProfileList",
+        Some(&rustok_ui_i18n::fluent_args!("allowed" => allowed_count.to_string(), "sensitive" => sensitive_count.to_string(), "state" => active_state_label(locale, active).to_string())),
         "allowed: {allowed} · sensitive: {sensitive} · {state}",
     )
-    .replace("{allowed}", allowed_count.to_string().as_str())
-    .replace("{sensitive}", sensitive_count.to_string().as_str())
-    .replace("{state}", active_state_label(locale, active).as_str())
 }
 
 pub(crate) fn task_profile_summary(
@@ -2335,14 +2344,12 @@ pub(crate) fn task_profile_summary(
     mode: &str,
     active: bool,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.taskProfileList",
+        Some(&rustok_ui_i18n::fluent_args!("capability" => capability.to_string(), "mode" => mode.to_string(), "state" => active_state_label(locale, active).to_string())),
         "{capability} · {mode} · {state}",
     )
-    .replace("{capability}", capability)
-    .replace("{mode}", mode)
-    .replace("{state}", active_state_label(locale, active).as_str())
 }
 
 pub(crate) fn direct_transport_summary(
@@ -2350,14 +2357,12 @@ pub(crate) fn direct_transport_summary(
     provider: &str,
     task_profile: &str,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.transportDirect",
+        Some(&rustok_ui_i18n::fluent_args!("provider" => provider.to_string(), "task_profile" => task_profile.to_string(), "mode" => t(locale, "ai.common.direct", "direct").to_string())),
         "Provider: {provider} | Task profile: {task_profile} | Mode: {mode}",
     )
-    .replace("{provider}", provider)
-    .replace("{task_profile}", task_profile)
-    .replace("{mode}", t(locale, "ai.common.direct", "direct").as_str())
 }
 
 pub(crate) fn session_transport_summary(
@@ -2366,14 +2371,12 @@ pub(crate) fn session_transport_summary(
     task_profile: &str,
     tool_profile: &str,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.transportSession",
+        Some(&rustok_ui_i18n::fluent_args!("provider" => provider.to_string(), "task_profile" => task_profile.to_string(), "tool_profile" => tool_profile.to_string())),
         "Provider: {provider} | Task profile: {task_profile} | Tool profile: {tool_profile}",
     )
-    .replace("{provider}", provider)
-    .replace("{task_profile}", task_profile)
-    .replace("{tool_profile}", tool_profile)
 }
 
 pub(crate) fn session_list_summary(
@@ -2386,15 +2389,12 @@ pub(crate) fn session_list_summary(
     let latest_value = latest
         .map(ToString::to_string)
         .unwrap_or_else(|| t(locale, "ai.common.idle", "idle"));
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.sessionList",
+        Some(&rustok_ui_i18n::fluent_args!("status" => status.to_string(), "mode" => mode.to_string(), "latest" => latest_value.to_string(), "approvals" => approvals.to_string())),
         "status: {status} · mode: {mode} · latest: {latest} · approvals: {approvals}",
     )
-    .replace("{status}", status)
-    .replace("{mode}", mode)
-    .replace("{latest}", latest_value.as_str())
-    .replace("{approvals}", approvals.to_string().as_str())
 }
 
 pub(crate) fn session_profile_summary(
@@ -2403,14 +2403,12 @@ pub(crate) fn session_profile_summary(
     model: &str,
     mode: &str,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.sessionProfile",
+        Some(&rustok_ui_i18n::fluent_args!("provider" => provider.to_string(), "model" => model.to_string(), "mode" => mode.to_string())),
         "provider: {provider} · model: {model} · mode: {mode}",
     )
-    .replace("{provider}", provider)
-    .replace("{model}", model)
-    .replace("{mode}", mode)
 }
 
 pub(crate) fn locale_flow_summary(
@@ -2421,13 +2419,12 @@ pub(crate) fn locale_flow_summary(
     let requested_value = requested
         .map(ToString::to_string)
         .unwrap_or_else(|| t(locale, "ai.common.auto", "auto"));
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.localeFlow",
+        Some(&rustok_ui_i18n::fluent_args!("requested" => requested_value.to_string(), "resolved" => resolved.to_string())),
         "locale: {requested} -> {resolved}",
     )
-    .replace("{requested}", requested_value.as_str())
-    .replace("{resolved}", resolved)
 }
 
 pub(crate) fn run_path_summary(
@@ -2436,20 +2433,21 @@ pub(crate) fn run_path_summary(
     mode: &str,
     path: &str,
 ) -> String {
-    t(
+    crate::i18n::format(
         locale,
         "ai.summary.runPath",
+        Some(&rustok_ui_i18n::fluent_args!("status" => status.to_string(), "mode" => mode.to_string(), "path" => path.to_string())),
         "{status} · {mode} · path {path}",
     )
-    .replace("{status}", status)
-    .replace("{mode}", mode)
-    .replace("{path}", path)
 }
 
 pub(crate) fn tool_trace_summary(locale: Option<&str>, status: &str, duration_ms: i64) -> String {
-    t(locale, "ai.summary.toolTrace", "{status} · {duration} ms")
-        .replace("{status}", status)
-        .replace("{duration}", duration_ms.to_string().as_str())
+    crate::i18n::format(
+        locale,
+        "ai.summary.toolTrace",
+        Some(&rustok_ui_i18n::fluent_args!("status" => status.to_string(), "duration" => duration_ms.to_string())),
+        "{status} · {duration} ms",
+    )
 }
 
 pub(crate) fn stream_status_summary(locale: Option<&str>, connected: bool, status: &str) -> String {
@@ -2458,9 +2456,12 @@ pub(crate) fn stream_status_summary(locale: Option<&str>, connected: bool, statu
     } else {
         t(locale, "ai.common.disconnected", "disconnected")
     };
-    t(locale, "ai.summary.streamStatus", "{connection} · {status}")
-        .replace("{connection}", connection_label.as_str())
-        .replace("{status}", status)
+    crate::i18n::format(
+        locale,
+        "ai.summary.streamStatus",
+        Some(&rustok_ui_i18n::fluent_args!("connection" => connection_label.to_string(), "status" => status.to_string())),
+        "{connection} · {status}",
+    )
 }
 
 fn active_state_label(locale: Option<&str>, active: bool) -> String {

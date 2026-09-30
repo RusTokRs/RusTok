@@ -242,8 +242,12 @@ pub(crate) fn format_variant_prices(locale: Option<&str>, prices: &[PricingPrice
                     "{} {} ({}){}",
                     price.currency_code,
                     price.amount,
-                    t(locale, "pricing.variant.compareAt", "compare-at {value}")
-                        .replace("{value}", compare),
+                    crate::i18n::format(
+                        locale,
+                        "pricing.variant.compareAt",
+                        Some(&rustok_ui_i18n::fluent_args!("value" => compare.to_string())),
+                        "compare-at {value}",
+                    ),
                     format_discount_suffix(price.discount_percent.as_deref()),
                 )
             } else {
@@ -426,8 +430,12 @@ pub(crate) fn format_effective_price(
             "{} {} ({}){}",
             price.currency_code,
             price.amount,
-            t(locale, "pricing.variant.compareAt", "compare-at {value}")
-                .replace("{value}", compare_at_amount),
+            crate::i18n::format(
+                locale,
+                "pricing.variant.compareAt",
+                Some(&rustok_ui_i18n::fluent_args!("value" => compare_at_amount.to_string())),
+                "compare-at {value}",
+            ),
             format_discount_suffix(price.discount_percent.as_deref()),
         )
     } else {

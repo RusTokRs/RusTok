@@ -390,7 +390,12 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
             <div class="flex items-center justify-between gap-3">
                 <h3 class="text-lg font-semibold text-card-foreground">{t(locale.as_deref(), "pricing.list.title", "Pricing feed")}</h3>
                 <span class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "pricing.list.total", "{count} total").replace("{count}", &total.to_string())}
+                    {crate::i18n::format(
+                        locale.as_deref(),
+                        "pricing.list.total",
+                        Some(&rustok_ui_i18n::fluent_args!("count" => &total.to_string())),
+                        "{count} total",
+                    )}
                 </span>
             </div>
             <div class="space-y-3">
@@ -420,8 +425,18 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
                                 <p class="text-xs text-muted-foreground">{seller_boundary}</p>
                                 <p class="text-xs text-muted-foreground">{currencies}</p>
                                 <div class="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-                                    <span>{t(locale.as_deref(), "pricing.list.variants", "{count} variants").replace("{count}", &product.variant_count.to_string())}</span>
-                                    <span>{t(locale.as_deref(), "pricing.list.sales", "{count} on sale").replace("{count}", &product.sale_variant_count.to_string())}</span>
+                                    <span>{crate::i18n::format(
+                                        locale.as_deref(),
+                                        "pricing.list.variants",
+                                        Some(&rustok_ui_i18n::fluent_args!("count" => &product.variant_count.to_string())),
+                                        "{count} variants",
+                                    )}</span>
+                                    <span>{crate::i18n::format(
+                                        locale.as_deref(),
+                                        "pricing.list.sales",
+                                        Some(&rustok_ui_i18n::fluent_args!("count" => &product.sale_variant_count.to_string())),
+                                        "{count} on sale",
+                                    )}</span>
                                     <span>{product.published_at.unwrap_or(product.created_at)}</span>
                                 </div>
                             </div>

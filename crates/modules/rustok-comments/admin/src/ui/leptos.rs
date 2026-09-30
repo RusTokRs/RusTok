@@ -288,12 +288,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 {prev_label.clone()}
                             </button>
                             <span class="text-sm text-muted-foreground">{move || {
-                                t(
+                                crate::i18n::format(
                                     locale.get().as_str().into(),
                                     "comments.pagination.page",
+                                    Some(&rustok_ui_i18n::fluent_args!("count" => &page.get().to_string())),
                                     "Page {count}",
                                 )
-                                .replace("{count}", &page.get().to_string())
                             }}</span>
                             <button
                                 type="button"
@@ -310,11 +310,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 Ok(payload) => view! {
                                     <div class="space-y-3">
                                         <div class="text-sm text-muted-foreground">
-                                            {t(
+                                            {crate::i18n::format(
                                                 locale.get().as_str().into(),
                                                 "comments.threads.total",
+                                                Some(&rustok_ui_i18n::fluent_args!("count" => &payload.total.to_string())),
                                                 "{count} matching threads",
-                                            ).replace("{count}", &payload.total.to_string())}
+                                            )}
                                         </div>
                                         <div class="space-y-2">
                                             {payload.items.into_iter().map(|thread| {
@@ -341,11 +342,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 </span>
                                                             </div>
                                                             <div class="text-xs text-muted-foreground">
-                                                                {t(
+                                                                {crate::i18n::format(
                                                                     locale.get().as_str().into(),
                                                                     "comments.threads.count",
+                                                                    Some(&rustok_ui_i18n::fluent_args!("count" => &view_model.comment_count.to_string())),
                                                                     "{count} comments",
-                                                                ).replace("{count}", &view_model.comment_count.to_string())}
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </button>
@@ -397,13 +399,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                 {detail_view_model.target_label}
                                             </div>
                                             <div class="mt-2 text-xs text-muted-foreground">
-                                                {t(
+                                                {crate::i18n::format(
                                                     locale.get().as_str().into(),
                                                     "comments.detail.statusLine",
+                                                    Some(&rustok_ui_i18n::fluent_args!("count" => &detail_view_model.comment_count.to_string(), "status" => detail_view_model.status_label.to_string())),
                                                     "{count} comments, status {status}",
-                                                )
-                                                .replace("{count}", &detail_view_model.comment_count.to_string())
-                                                .replace("{status}", detail_view_model.status_label)}
+                                                )}
                                             </div>
                                         </div>
                                         <div class="space-y-3">
@@ -414,13 +415,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                     <div class="rounded-xl border border-border p-4">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
                                                             <div class="text-xs text-muted-foreground">
-                                                                {t(
+                                                                {crate::i18n::format(
                                                                     locale.get().as_str().into(),
                                                                     "comments.detail.authorLine",
+                                                                    Some(&rustok_ui_i18n::fluent_args!("author" => comment_view_model.author_id.to_string(), "created_at" => comment_view_model.created_at.to_string())),
                                                                     "author {author} · {created_at}",
-                                                                )
-                                                                .replace("{author}", comment_view_model.author_id.as_str())
-                                                                .replace("{created_at}", comment_view_model.created_at.as_str())}
+                                                                )}
                                                             </div>
                                                             <div class="flex flex-wrap gap-2">
                                                                 <StatusButton
@@ -456,13 +456,12 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                             class="richtext mt-3 rounded-lg bg-muted/40 px-3 py-2 text-sm text-card-foreground"
                                                         />
                                                         <div class="mt-2 text-xs text-muted-foreground">
-                                                            {t(
+                                                            {crate::i18n::format(
                                                                 locale.get().as_str().into(),
                                                                 "comments.detail.localeLine",
+                                                                Some(&rustok_ui_i18n::fluent_args!("requested" => comment_view_model.requested_locale.to_string(), "effective" => comment_view_model.effective_locale.to_string())),
                                                                 "locale {requested} -> {effective}",
-                                                            )
-                                                            .replace("{requested}", comment_view_model.requested_locale.as_str())
-                                                            .replace("{effective}", comment_view_model.effective_locale.as_str())}
+                                                            )}
                                                         </div>
                                                     </div>
                                                 }

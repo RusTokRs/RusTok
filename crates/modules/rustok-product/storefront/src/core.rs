@@ -488,8 +488,12 @@ pub fn format_product_price(
             "{} {} ({})",
             currency_code,
             amount,
-            t(locale, "product.selected.compareAt", "compare-at {value}")
-                .replace("{value}", compare_at_amount),
+            crate::i18n::format(
+                locale,
+                "product.selected.compareAt",
+                Some(&rustok_ui_i18n::fluent_args!("value" => compare_at_amount.to_string())),
+                "compare-at {value}",
+            ),
         )
     } else {
         format!("{currency_code} {amount}")

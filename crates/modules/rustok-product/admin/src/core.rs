@@ -114,8 +114,12 @@ fn format_scoped_price(
             "{} {} ({})",
             currency_code,
             amount,
-            t(locale, "product.summary.compareAt", "compare-at {value}")
-                .replace("{value}", compare_at_amount),
+            crate::i18n::format(
+                locale,
+                "product.summary.compareAt",
+                Some(&rustok_ui_i18n::fluent_args!("value" => compare_at_amount.to_string())),
+                "compare-at {value}",
+            ),
         )
     } else {
         format!("{currency_code} {amount}")
@@ -1471,14 +1475,11 @@ pub(crate) fn build_product_admin_profile_panel_ready_view_model(
     profiles: &[ShippingProfile],
 ) -> ProductAdminProfilePanelViewModel {
     ProductAdminProfilePanelViewModel::Ready {
-        message: t(
+        message: crate::i18n::format(
             locale,
             "product.profile.known",
+            Some(&rustok_ui_i18n::fluent_args!("profiles" => format_known_shipping_profiles(locale, profiles).to_string())),
             "Known profiles: {profiles}",
-        )
-        .replace(
-            "{profiles}",
-            format_known_shipping_profiles(locale, profiles).as_str(),
         ),
     }
 }
@@ -1582,7 +1583,12 @@ pub(crate) fn format_product_meta(
 }
 
 pub(crate) fn format_product_shipping_profile(locale: Option<&str>, slug: &str) -> String {
-    t(locale, "product.summary.profileChip", "profile {slug}").replace("{slug}", slug)
+    crate::i18n::format(
+        locale,
+        "product.summary.profileChip",
+        Some(&rustok_ui_i18n::fluent_args!("slug" => slug.to_string())),
+        "profile {slug}",
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
