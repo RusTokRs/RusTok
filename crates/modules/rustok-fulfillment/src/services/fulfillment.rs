@@ -93,6 +93,7 @@ impl FulfillmentService {
             .map(|provider_id| provider_id.trim().to_string())
             .filter(|provider_id| !provider_id.is_empty())
             .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        crate::providers::validate_provider_id(&provider_id)?;
         let allowed_shipping_profile_slugs =
             normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
         let metadata =
@@ -262,6 +263,7 @@ impl FulfillmentService {
                 .map(|provider_id| provider_id.trim().to_string())
                 .filter(|provider_id| !provider_id.is_empty())
                 .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+            crate::providers::validate_provider_id(&provider_id)?;
             active.provider_id = Set(provider_id);
         }
         if metadata.is_some() || allowed_shipping_profile_slugs.is_some() {
@@ -2064,6 +2066,13 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn shipping_option_provider_id_uses_registry_identifier_rules() {
+        assert!(crate::providers::validate_provider_id("PayPal").is_err());
+        assert!(crate::providers::validate_provider_id("foo.bar").is_err());
+        assert!(crate::providers::validate_provider_id(" carrier-1 ").is_ok());
     }
 
     #[test]
