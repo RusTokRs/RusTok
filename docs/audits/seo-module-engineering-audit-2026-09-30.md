@@ -1,7 +1,7 @@
 # SEO module — engineering audit
 
-**Date:** 2026-09-30  
-**Scope:** `rustok-seo`, `rustok-seo-targets`, migrations/entities, GraphQL/REST, workers/events/index delivery, owner integrations, Leptos storefront, Next storefront/runtime/admin.  
+**Date:** 2026-09-30
+**Scope:** `rustok-seo`, `rustok-seo-targets`, migrations/entities, GraphQL/REST, workers/events/index delivery, owner integrations, Leptos storefront, Next storefront/runtime/admin.
 **Method:** source-level tracing of request paths, provider contracts, persistence, queue state transitions, renderers, transport fallbacks, and static verification files. This deliverable records findings; it does not silently implement fixes.
 
 ## Executive conclusion

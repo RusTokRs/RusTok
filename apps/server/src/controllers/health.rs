@@ -720,14 +720,30 @@ fn check_runtime_workers(
     ));
 
     #[cfg(feature = "mod-seo")]
-    checks.push(runtime_worker_check(
-        "worker:seo_bulk",
-        settings.runtime.background_workers.seo_bulk_enabled,
-        ctx.shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
-            crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
-        ),
-        stop_requested,
-    ));
+    {
+        let seo_worker_finished = ctx.shared_map::<
+            crate::services::app_lifecycle::SeoBulkWorkerHandle,
+            _,
+        >(crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished);
+        checks.push(runtime_worker_check(
+            "worker:seo_bulk",
+            settings.runtime.background_workers.seo_bulk_enabled,
+            seo_worker_finished,
+            stop_requested,
+        ));
+        checks.push(runtime_worker_check(
+            "worker:seo_sitemap",
+            settings.runtime.background_workers.seo_sitemap_enabled,
+            seo_worker_finished,
+            stop_requested,
+        ));
+        checks.push(runtime_worker_check(
+            "worker:seo_index_repair",
+            settings.runtime.background_workers.seo_index_repair_enabled,
+            seo_worker_finished,
+            stop_requested,
+        ));
+    }
 
     checks
 }

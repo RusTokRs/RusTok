@@ -432,7 +432,21 @@ impl SeoBulkService {
         &self,
         _authorization: &SeoWorkerAuthorization,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
-        self.runtime.execute_next_bulk_job_with_bounded_io().await
+        self.runtime.execute_next_bulk_job_only_with_bounded_io().await
+    }
+
+    pub async fn execute_next_sitemap_job(
+        &self,
+        _authorization: &SeoWorkerAuthorization,
+    ) -> SeoResult<Option<SeoSitemapJobRecord>> {
+        self.runtime.execute_next_sitemap_job_background().await
+    }
+
+    pub async fn execute_next_index_repair_job(
+        &self,
+        _authorization: &SeoWorkerAuthorization,
+    ) -> SeoResult<Option<SeoIndexRepairReplayResultRecord>> {
+        self.runtime.execute_next_index_repair_replay_job_background().await
     }
 }
 

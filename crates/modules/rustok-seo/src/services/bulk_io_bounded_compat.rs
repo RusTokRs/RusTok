@@ -31,29 +31,28 @@ impl SeoService {
         Ok(bulk_job)
     }
 
-    async fn execute_next_bulk_job_only_with_bounded_io(
+    pub(super) async fn execute_next_bulk_job_only_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
         const JOB_LEASE_SECS: i64 = 30 * 60;
         let now = Utc::now().fixed_offset();
         let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
 
-        let running = seo_bulk_job::Entity::find()
+        // A fresh running job must not block queued work belonging to another tenant. Only
+        // stale leases are resumed here; the conditional update remains the ownership claim.
+        let stale_running = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
             .filter(seo_bulk_job::Column::OperationKind.is_in([
                 SeoBulkJobOperationKind::Apply.as_str(),
                 SeoBulkJobOperationKind::ExportCsv.as_str(),
                 SeoBulkJobOperationKind::ImportCsv.as_str(),
             ]))
+            .filter(seo_bulk_job::Column::UpdatedAt.lte(stale_before))
             .order_by_asc(seo_bulk_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
 
-        let running = if let Some(job) = running {
-            if job.updated_at > stale_before {
-                return Ok(None);
-            }
-
+        let running = if let Some(job) = stale_running {
             let claimed = seo_bulk_job::Entity::update_many()
                 .col_expr(
                     seo_bulk_job::Column::UpdatedAt,
@@ -131,8 +130,35 @@ impl SeoService {
         if let Err(error) = result {
             self.fail_bulk_job(&running, error.to_string()).await?;
         }
+        self.prune_bulk_history(running.tenant_id).await?;
 
         self.bulk_job(running.tenant_id, running.id).await
+    }
+
+    async fn prune_bulk_history(&self, tenant_id: Uuid) -> SeoResult<()> {
+        let cutoff = Utc::now().fixed_offset()
+            - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
+        let old_jobs = seo_bulk_job::Entity::find()
+            .filter(seo_bulk_job::Column::TenantId.eq(tenant_id))
+            .filter(seo_bulk_job::Column::Status.is_in([
+                SeoBulkJobStatus::Completed.as_str(),
+                SeoBulkJobStatus::Partial.as_str(),
+                SeoBulkJobStatus::Failed.as_str(),
+            ]))
+            .filter(seo_bulk_job::Column::CreatedAt.lt(cutoff))
+            .order_by_asc(seo_bulk_job::Column::CreatedAt)
+            .limit(super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)
+            .all(&self.db)
+            .await?;
+        if old_jobs.is_empty() {
+            return Ok(());
+        }
+        let ids = old_jobs.into_iter().map(|job| job.id).collect::<Vec<_>>();
+        seo_bulk_job::Entity::delete_many()
+            .filter(seo_bulk_job::Column::Id.is_in(ids))
+            .exec(&self.db)
+            .await?;
+        Ok(())
     }
 
     async fn execute_export_job_chunk_compat(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {

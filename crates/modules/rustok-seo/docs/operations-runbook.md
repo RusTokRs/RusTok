@@ -8,6 +8,10 @@ This runbook captures the D9 baseline for the production SEO Suite. It supplemen
 - sitemap/robots or storefront metadata lag behind owner-module changes;
 - the operator needs to safely run repair/replay without republishing all SEO entities.
 
+## Queue retention
+
+Completed and failed sitemap, bulk, and index-repair jobs are retained for 90 days. Each enabled SEO worker prunes at most 100 old terminal jobs per poll, including cascade-owned sitemap files, bulk items, and bulk artifacts. Retention is deliberately batch-bounded; if historical rows remain above the policy window, keep the worker enabled and monitor subsequent polls instead of running an unbounded delete.
+
 ## 1. SEO event backlog stuck
 
 1. Verify that the tenant module is enabled and rollout flags are not turned off for the tenant.

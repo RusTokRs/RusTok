@@ -46,6 +46,8 @@ const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
 const MAX_SITEMAP_URLS: usize = 1_000_000;
+pub(super) const SEO_HISTORY_RETENTION_DAYS: i64 = 90;
+pub(super) const SEO_HISTORY_PRUNE_BATCH_SIZE: usize = 100;
 const SEO_SETTINGS_KEYS: &[&str] = &[
     "submodule_redirects_enabled",
     "submodule_sitemaps_enabled",

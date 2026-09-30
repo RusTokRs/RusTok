@@ -222,6 +222,11 @@ pub(super) async fn invalidate_all_redirect_lookup_cache() {
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
+        if !self.load_settings(tenant_id).await?.submodule_redirects_enabled {
+            return Err(SeoError::configuration(
+                "SEO redirects submodule is disabled",
+            ));
+        }
         let items = seo_redirect::Entity::find()
             .filter(seo_redirect::Column::TenantId.eq(tenant_id))
             .order_by(seo_redirect::Column::SourcePattern, Order::Asc)
@@ -236,6 +241,11 @@ impl SeoService {
         input: SeoRedirectInput,
     ) -> SeoResult<SeoRedirectRecord> {
         let settings = self.load_settings(tenant.id).await?;
+        if !settings.submodule_redirects_enabled {
+            return Err(SeoError::configuration(
+                "SEO redirects submodule is disabled",
+            ));
+        }
         let source_pattern =
             normalize_source_pattern(input.source_pattern.as_str(), input.match_type)?;
         let target_url = normalize_target_url(

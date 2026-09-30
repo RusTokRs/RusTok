@@ -5,8 +5,8 @@ use rustok_core::{DomainEvent, simple_hash};
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, Order, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use url::Url;
 use uuid::Uuid;
@@ -39,6 +39,7 @@ use submission_aggregation::{
 
 #[allow(dead_code)]
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
+const MAX_SITEMAP_FILES_IN_RESPONSE: usize = 500;
 #[allow(dead_code)]
 const DELIVERY_STATUS_SENT: &str = "sent";
 
@@ -423,11 +424,8 @@ impl SeoService {
             });
         };
 
-        let files = seo_sitemap_file::Entity::find()
-            .filter(seo_sitemap_file::Column::TenantId.eq(tenant.id))
-            .filter(seo_sitemap_file::Column::JobId.eq(latest_job.id))
-            .order_by(seo_sitemap_file::Column::Path, Order::Asc)
-            .all(&self.db)
+        let files_map = self
+            .load_sitemap_files_for_jobs(tenant.id, &[latest_job.id])
             .await?;
 
         Ok(SeoSitemapStatusRecord {
@@ -436,15 +434,7 @@ impl SeoService {
             status: Some(latest_job.status),
             file_count: latest_job.file_count,
             generated_at: latest_job.completed_at.map(Into::into),
-            files: files
-                .into_iter()
-                .map(|file| SeoSitemapFileRecord {
-                    id: file.id,
-                    path: file.path,
-                    url_count: file.url_count,
-                    created_at: file.created_at.into(),
-                })
-                .collect(),
+            files: files_map.get(&latest_job.id).cloned().unwrap_or_default(),
         })
     }
 
@@ -520,6 +510,10 @@ impl SeoService {
         &self,
         tenant_id: Uuid,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
+        let settings = self.load_settings(tenant_id).await?;
+        if !sitemaps_enabled(&settings) {
+            return Ok(None);
+        }
         let latest_job = seo_sitemap_job::Entity::find()
             .filter(seo_sitemap_job::Column::TenantId.eq(tenant_id))
             .order_by_desc(seo_sitemap_job::Column::CreatedAt)
@@ -564,22 +558,27 @@ impl SeoService {
             return Ok(HashMap::new());
         }
 
-        let files = seo_sitemap_file::Entity::find()
-            .filter(seo_sitemap_file::Column::TenantId.eq(tenant_id))
-            .filter(seo_sitemap_file::Column::JobId.is_in(job_ids.to_vec()))
-            .order_by_asc(seo_sitemap_file::Column::Path)
-            .all(&self.db)
-            .await?;
         let mut map = HashMap::<Uuid, Vec<SeoSitemapFileRecord>>::new();
-        for file in files {
-            map.entry(file.job_id)
-                .or_default()
-                .push(SeoSitemapFileRecord {
-                    id: file.id,
-                    path: file.path,
-                    url_count: file.url_count,
-                    created_at: file.created_at.into(),
-                });
+        for job_id in job_ids {
+            let files = seo_sitemap_file::Entity::find()
+                .filter(seo_sitemap_file::Column::TenantId.eq(tenant_id))
+                .filter(seo_sitemap_file::Column::JobId.eq(*job_id))
+                .order_by_asc(seo_sitemap_file::Column::Path)
+                .limit(MAX_SITEMAP_FILES_IN_RESPONSE as u64)
+                .all(&self.db)
+                .await?;
+            map.insert(
+                *job_id,
+                files
+                    .into_iter()
+                    .map(|file| SeoSitemapFileRecord {
+                        id: file.id,
+                        path: file.path,
+                        url_count: file.url_count,
+                        created_at: file.created_at.into(),
+                    })
+                    .collect(),
+            );
         }
 
         Ok(map)

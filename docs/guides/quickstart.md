@@ -170,7 +170,7 @@ and the development seed profile to `target/debug/rustok-cli`. It is a local
 convenience wrapper, not a replacement for the durable installer HTTP pipeline.
 After bootstrap, the server and admin panels are started separately so that logs and debug sessions do not mix.
 The local `development.yaml` retains the full backend surface but disables maintenance workers
-`workflow_cron_enabled` and `seo_bulk_enabled`, so that interactive admin debugging does not compete with cron/bulk loops for the DB pool.
+`workflow_cron_enabled`, `seo_bulk_enabled`, `seo_sitemap_enabled`, and `seo_index_repair_enabled`, so that interactive admin debugging does not compete with maintenance loops for the DB pool.
 
 If `target/debug/rustok-cli` is not yet built, first run:
 

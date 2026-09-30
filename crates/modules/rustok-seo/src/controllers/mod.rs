@@ -221,13 +221,12 @@ pub async fn sitemap_index(
     tenant: TenantContext,
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
-    if !service
+    let settings = service
         .settings()
         .load_settings(tenant.id)
         .await
-        .map_err(map_seo_http_error)?
-        .sitemap_enabled
-    {
+        .map_err(map_seo_http_error)?;
+    if !settings.sitemap_enabled || !settings.submodule_sitemaps_enabled {
         return Err(SeoHttpError::not_found("SEO sitemap index is disabled"));
     }
 

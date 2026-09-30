@@ -46,7 +46,7 @@ impl SeoService {
         }
 
         let now = chrono::Utc::now().fixed_offset();
-        crate::entities::seo_sitemap_job::ActiveModel {
+        let inserted = crate::entities::seo_sitemap_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             status: Set(SITEMAP_JOB_QUEUED.to_string()),
@@ -58,7 +58,25 @@ impl SeoService {
             updated_at: Set(now),
         }
         .insert(&self.db)
-        .await?;
+        .await;
+        if let Err(error) = inserted {
+            // The PostgreSQL partial unique index closes the check-then-insert race. A concurrent
+            // enqueue should observe the existing active job instead of surfacing a conflict.
+            if crate::entities::seo_sitemap_job::Entity::find()
+                .filter(crate::entities::seo_sitemap_job::Column::TenantId.eq(tenant.id))
+                .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                    SITEMAP_JOB_QUEUED,
+                    SITEMAP_JOB_RUNNING,
+                    SITEMAP_JOB_SUBMITTING,
+                ]))
+                .one(&self.db)
+                .await?
+                .is_some()
+            {
+                return self.sitemap_status(tenant).await;
+            }
+            return Err(error.into());
+        }
 
         self.sitemap_status(tenant).await
     }
@@ -70,20 +88,19 @@ impl SeoService {
         let now = chrono::Utc::now().fixed_offset();
         let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
 
-        let active = crate::entities::seo_sitemap_job::Entity::find()
+        // A fresh running/submitting job for one tenant must not stall queued work for every
+        // other tenant. Only stale leases are resumed; the conditional update is the claim.
+        let stale_active = crate::entities::seo_sitemap_job::Entity::find()
             .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
                 SITEMAP_JOB_RUNNING,
                 SITEMAP_JOB_SUBMITTING,
             ]))
+            .filter(crate::entities::seo_sitemap_job::Column::UpdatedAt.lte(stale_before))
             .order_by_asc(crate::entities::seo_sitemap_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
 
-        let job = if let Some(job) = active {
-            if job.updated_at > stale_before {
-                return Ok(None);
-            }
-
+        let job = if let Some(job) = stale_active {
             let claimed = crate::entities::seo_sitemap_job::Entity::update_many()
                 .col_expr(
                     crate::entities::seo_sitemap_job::Column::UpdatedAt,
@@ -153,8 +170,34 @@ impl SeoService {
             self.fail_background_sitemap_job(&job, error.to_string())
                 .await?;
         }
+        self.prune_sitemap_history(job.tenant_id).await?;
 
         self.sitemap_job(job.tenant_id, job.id).await
+    }
+
+    async fn prune_sitemap_history(&self, tenant_id: Uuid) -> SeoResult<()> {
+        let cutoff = chrono::Utc::now().fixed_offset()
+            - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
+        let old_jobs = crate::entities::seo_sitemap_job::Entity::find()
+            .filter(crate::entities::seo_sitemap_job::Column::TenantId.eq(tenant_id))
+            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                SITEMAP_JOB_COMPLETED,
+                SITEMAP_JOB_FAILED,
+            ]))
+            .filter(crate::entities::seo_sitemap_job::Column::CreatedAt.lt(cutoff))
+            .order_by_asc(crate::entities::seo_sitemap_job::Column::CreatedAt)
+            .limit(super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)
+            .all(&self.db)
+            .await?;
+        if old_jobs.is_empty() {
+            return Ok(());
+        }
+        let ids = old_jobs.into_iter().map(|job| job.id).collect::<Vec<_>>();
+        crate::entities::seo_sitemap_job::Entity::delete_many()
+            .filter(crate::entities::seo_sitemap_job::Column::Id.is_in(ids))
+            .exec(&self.db)
+            .await?;
+        Ok(())
     }
 
     async fn execute_sitemap_generation_phase(
