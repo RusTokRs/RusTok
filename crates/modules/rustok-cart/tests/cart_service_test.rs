@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_api::{PortActor, PortContext};
 use rust_decimal::Decimal;
 use rustok_cart::dto::{
     AddCartLineItemInput, CartLineFulfillmentRequirement, CartShippingSelectionInput,
@@ -6,12 +7,13 @@ use rustok_cart::dto::{
     UpdateCartContextInput,
 };
 use rustok_cart::error::CartError;
+use rustok_cart::ports::{CartStorefrontAddLineItemRequest, CartStorefrontPort};
 use rustok_cart::services::{CartService, cart::CartPricingAdjustmentUpdate};
 use rustok_commerce_foundation::entities::region;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 use uuid::Uuid;
 
 mod support;
@@ -122,6 +124,60 @@ async fn create_cart_and_add_line_item_updates_totals() {
     assert_eq!(updated.subtotal_amount, Decimal::from_str("31.00").unwrap());
     assert_eq!(updated.adjustment_total, Decimal::ZERO);
     assert_eq!(updated.total_amount, Decimal::from_str("31.00").unwrap());
+}
+
+#[tokio::test]
+async fn storefront_add_line_item_replays_by_owner_receipt_and_rejects_key_rebinding() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+
+    let input = line_item_input();
+    let request = CartStorefrontAddLineItemRequest {
+        cart_id: cart.id,
+        input: input.clone(),
+        pricing_adjustment: None,
+    };
+    let port = rustok_cart::in_process_cart_storefront_port(db.clone());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-cart-test"),
+        "en",
+        format!("test:cart:add:{}", cart.id),
+    )
+    .with_idempotency_key("cart-replay-1".to_string())
+    .with_deadline(Duration::from_secs(2));
+
+    let first = port
+        .add_storefront_line_item(context.clone(), request.clone())
+        .await
+        .unwrap();
+    let second = port
+        .add_storefront_line_item(context.clone(), request)
+        .await
+        .unwrap();
+
+    assert_eq!(first.line_items.len(), 1);
+    assert_eq!(second.line_items.len(), 1);
+    assert_eq!(first.line_items[0].id, second.line_items[0].id);
+    assert_eq!(first.total_amount, second.total_amount);
+
+    let conflicting_request = CartStorefrontAddLineItemRequest {
+        cart_id: cart.id,
+        input: AddCartLineItemInput {
+            quantity: input.quantity + 1,
+            ..input
+        },
+        pricing_adjustment: None,
+    };
+    let error = port
+        .add_storefront_line_item(context, conflicting_request)
+        .await
+        .expect_err("same key with different request must fail closed");
+    assert_eq!(error.code, "outbox.operation_receipt_conflict");
 }
 
 #[tokio::test]
