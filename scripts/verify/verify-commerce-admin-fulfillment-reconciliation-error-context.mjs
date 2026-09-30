@@ -36,6 +36,23 @@ const requireBefore = (content, first, second, label) => {
   }
 };
 
+for (const [value, label] of [
+  ['Json<Vec<provider_operation::Model>>', 'raw provider-operation list response'],
+  ['HttpResult<Json<Vec<provider_operation::Model>>>', 'raw provider-operation list result type'],
+  ['HttpResult<Json<provider_operation::Model>>', 'raw provider-operation result type'],
+  ['Ok(Json(operations))', 'raw provider-operation list serialization'],
+  ['Ok(Json(operation))', 'raw provider-operation serialization'],
+]) forbidText(source, value, label);
+
+for (const [value, label] of [
+  ['struct AdminReconciliationProviderOperationResponse {', 'safe provider-operation response projection'],
+  ['provider_result_present: bool,', 'provider result presence projection'],
+  ['error_present: bool,', 'error presence projection'],
+  ['provider_result: Option<Json>', 'provider result payload projection'],
+  ['request_payload: Json', 'request payload projection'],
+  ['error_message: Option<String>', 'error message projection'],
+]) requireText(source, value, label);
+
 const ownerMapper = between(
   source,
   'fn map_reconciliation_fulfillment_error(',
@@ -220,6 +237,15 @@ for (const value of [
   'format!("failed to serialize provider result:',
 ]) forbidText(source, value, 'unsafe reconciliation diagnostic or public mapping');
 
+const unauthorizedResponses = source.match(/status = 401/g) ?? [];
+if (unauthorizedResponses.length < 6) {
+  failures.push(`OpenAPI authentication responses: expected at least 6, found ${unauthorizedResponses.length}`);
+}
+const forbiddenResponses = source.match(/status = 403/g) ?? [];
+if (forbiddenResponses.length < 6) {
+  failures.push(`OpenAPI authorization responses: expected at least 6, found ${forbiddenResponses.length}`);
+}
+
 for (const [value, expected, label] of [
   ['AdminReconciliationErrorContext::new(', 6, 'six route contexts'],
   ['map_reconciliation_fulfillment_error(', 6, 'owner mapper definition and five handoffs'],
@@ -229,6 +255,17 @@ for (const [value, expected, label] of [
   const count = source.split(value).length - 1;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
 }
+
+for (const [value, label] of [
+  ['path = "/admin/fulfillment-provider-operations/reconciliation"', 'OpenAPI reconciliation list path'],
+  ['path = "/admin/fulfillment-provider-operations/quarantine-stale"', 'OpenAPI quarantine path'],
+  ['path = "/admin/fulfillment-provider-operations/{id}/resolve-failed"', 'OpenAPI resolve-failed path'],
+  ['path = "/admin/fulfillment-provider-operations/{id}/resolve-succeeded"', 'OpenAPI resolve-succeeded path'],
+  ['path = "/admin/fulfillment-provider-operations/{id}/retry-local"', 'OpenAPI retry-local path'],
+  ['path = "/admin/fulfillment-provider-operations/{id}/retry-create-label"', 'OpenAPI retry-create-label path'],
+  ['status = 401', 'OpenAPI authentication response'],
+  ['status = 403', 'OpenAPI authorization response'],
+]) requireText(source, value, label);
 
 for (const [value, label] of [
   ['.route("/reconciliation", get(list_reconciliation_required))', 'list route'],
