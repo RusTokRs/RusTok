@@ -82,6 +82,7 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 | A-30 | ✅ | `deep-research-report (2).md` удалён (корневой (5) — вне i18n-скоупа, на него ссылается PRODUCTION_REMEDIATION_PLAN) |
 | A-31 | ✅ | `skip_while` заменён на `filter` |
 | A-10 | ✅ | 19 сообщений получили CLDR-селекторы (en/ru/ar), 13 — обоснованный `# plural-exempt` |
+| A-04 | ⚠️ | масштаб уточнён (8 пакетов вместо 3); класс закрыт детектором + shrink-only baseline, сам рефакторинг ждёт компилятора |
 | A-33 | ⚠️ | **новая находка**: 105 сайтов обходили Fluent через `String::replace`; 59 переведены на `fluent_args!`, 46 под shrink-only baseline |
 | — | ✅ | **новая находка**: 90 ключей использовались кодом, но отсутствовали в каталогах (русский UI показывал английский) |
 
@@ -89,8 +90,7 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 семь сгенерированных `fluent_args!` передавали `&x.to_string()` — ссылку на
 временное значение. Все семь — числовые поля, теперь передаются как числа.
 
-Не начато: A-04 (осиротевшие каталоги brand / marketplace-listing /
-marketplace-seller), A-05/A-06/A-07/A-32 (owner-level унификация локалей),
+Не начато: A-05/A-06/A-07/A-32 (owner-level унификация локалей),
 A-09 (CLDR `parentLocales`), A-25/A-28 (гигиена API).
 
 **A-05/A-06 требуют компилятора.** Нижний регистр локалей (`ru-ru`) зашит не
@@ -180,11 +180,22 @@ module_i18n_catalog_is_valid() { assert!(validate().is_ok()) }` — тогда �
 
 ### A-04 — Осиротевшие каталоги и захардкоженный `ru/en`
 
-| Пакет | ключей в `en.ftl` | `declare_module_i18n!` | вхождений `russian` |
+> **Уточнено при починке:** масштаб больше, чем в первой редакции аудита —
+> не 3 пакета, а **8** осиротевших каталогов (84 ключа) и **5** пакетов с
+> захардкоженным ветвлением (190 вхождений). Два каталога вообще пустые.
+> Класс теперь детектируется гейтом `verify-ui-i18n-keys.mjs` и зафиксирован
+> shrink-only baseline'ом `unwiredCatalogs`.
+
+| Пакет | ключей в `en.ftl` | каталог загружается | вхождений `russian` |
 |---|---|---|---|
 | `rustok-brand/admin` | 22 | нет | 37 |
+| `rustok-product-bundles/admin` | 36 | нет | 64 |
+| `rustok-product-relations/admin` | 21 | нет | 2 |
 | `rustok-marketplace-listing/admin` | 5 | нет | 43 |
 | `rustok-marketplace-seller/admin` | 4 | нет | 44 |
+| `rustok-navigation/storefront` | 1 | нет | 0 |
+| `rustok-events-module/admin` | 0 (пустой) | нет | 0 |
+| `rustok-iggy-connector/admin` | 0 (пустой) | нет | 0 |
 
 Все три `src/i18n.rs` состоят из одной строки:
 

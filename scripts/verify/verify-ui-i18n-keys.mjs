@@ -259,6 +259,7 @@ function discoverPackages() {
         name: path.relative(workspaceRoot, packageDir).split(path.sep).slice(-2).join("/"),
         sourceDir,
         catalog: filePath,
+        isRustPackage: fs.existsSync(path.join(packageDir, "Cargo.toml")),
       });
     });
   }
@@ -273,6 +274,28 @@ const argumentBaseline = new Set(
 );
 const observedBaseline = new Set();
 
+/**
+ * A package that ships a catalog but never loads it is shipping dead weight
+ * while its UI hardcodes copy. Both signals are cheap and precise:
+ *   - no `declare_module_i18n!` / `UiMessages::new` anywhere under `src`;
+ *   - a `let russian = ..` two-language branch in a catalog-owning package.
+ */
+const CATALOG_LOADERS =
+  /declare_module_i18n!|UiMessages::new|LazyUiMessages::new/;
+const HARDCODED_LOCALE_BRANCH = /\blet\s+russian\s*=/;
+
+function inspectCatalogWiring(pkg) {
+  let loadsCatalog = false;
+  let hardcodesLocale = false;
+  walk(pkg.sourceDir, (filePath, fileName) => {
+    if (!fileName.endsWith(".rs")) return;
+    const source = fs.readFileSync(filePath, "utf8");
+    if (CATALOG_LOADERS.test(source)) loadsCatalog = true;
+    if (HARDCODED_LOCALE_BRANCH.test(source)) hardcodesLocale = true;
+  });
+  return { loadsCatalog, hardcodesLocale };
+}
+
 const packages = discoverPackages();
 if (packages.length === 0) {
   console.error("No UI i18n packages discovered.");
@@ -283,9 +306,40 @@ let hasError = false;
 let totalChecked = 0;
 let totalMissing = 0;
 
+const wiringBaseline = new Set(
+  fs.existsSync(ARGUMENT_BASELINE_PATH)
+    ? JSON.parse(fs.readFileSync(ARGUMENT_BASELINE_PATH, "utf8")).unwiredCatalogs ?? []
+    : [],
+);
+const observedWiring = new Set();
+
 for (const pkg of packages) {
   const catalog = readCatalog(pkg.catalog);
   const missing = [];
+
+  // Only Rust packages load catalogs through this crate; the Next apps use
+  // @rustok/next-fluent and legitimately have no Rust loader.
+  const wiring = pkg.isRustPackage
+    ? inspectCatalogWiring(pkg)
+    : { loadsCatalog: true, hardcodesLocale: false };
+  if (!wiring.loadsCatalog || wiring.hardcodesLocale) {
+    const reasons = [];
+    if (!wiring.loadsCatalog) {
+      reasons.push(
+        `ships ${catalog.size} catalog key(s) but never loads them ` +
+          `(no declare_module_i18n! / UiMessages::new under src)`,
+      );
+    }
+    if (wiring.hardcodesLocale) {
+      reasons.push("hardcodes a two-language `let russian = ..` branch");
+    }
+    if (wiringBaseline.has(pkg.name)) {
+      observedWiring.add(pkg.name);
+    } else {
+      hasError = true;
+      console.error(`FAIL ${pkg.name}: ${reasons.join("; ")}`);
+    }
+  }
 
   walk(pkg.sourceDir, (filePath, fileName) => {
     if (!fileName.endsWith(".rs")) return;
@@ -369,6 +423,19 @@ for (const pkg of packages) {
   }
 }
 
+const staleWiring = [...wiringBaseline]
+  .filter((entry) => !observedWiring.has(entry))
+  .sort();
+if (staleWiring.length > 0) {
+  hasError = true;
+  console.error(
+    `\nFAIL stale unwiredCatalogs entries in ${path.relative(workspaceRoot, ARGUMENT_BASELINE_PATH)}:`,
+  );
+  for (const entry of staleWiring) {
+    console.error(`  ${entry} - now wired; delete it from the baseline`);
+  }
+}
+
 const staleBaseline = [...argumentBaseline]
   .filter((entry) => !observedBaseline.has(entry))
   .sort();
@@ -385,7 +452,8 @@ if (staleBaseline.length > 0) {
 
 console.log(
   `\nValidated ${totalChecked} UI key occurrences across ${packages.length} packages. ` +
-    `(${totalMissing} uncataloged references, ${observedBaseline.size}/${argumentBaseline.size} baselined legacy interpolation sites)`,
+    `(${totalMissing} uncataloged references, ${observedBaseline.size}/${argumentBaseline.size} ` +
+    `baselined legacy interpolation sites, ${observedWiring.size}/${wiringBaseline.size} baselined unwired catalogs)`,
 );
 
 if (isStrict && hasError) {
