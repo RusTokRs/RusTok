@@ -1,0 +1,32 @@
+{
+  "status": "commerce_store_cart_idempotency_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/modules/rustok-commerce/src/controllers/store/carts.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
+    "scripts/verify/verify-commerce-store-cart-idempotency.mjs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "cart_write_endpoints_reviewed": 5,
+    "caller_owned_idempotency_required": true,
+    "synthetic_cart_write_idempotency_removed": true,
+    "cart_reads_observational": true,
+    "shipping_patch_key_propagated": true,
+    "cart_reprice_key_propagated": true,
+    "payment_collection_key_propagated": true,
+    "openapi_write_headers_declared": true
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "Source-only review. No local Cargo, Node, rustfmt, test, or runtime execution was performed; CI evidence is not promoted here."
+}
