@@ -402,7 +402,6 @@ fn map_owner_error(
             false,
         ),
         FulfillmentError::Database(err) => {
-            eprintln!("DEBUG FULFILLMENT SERVICE DB ERROR: {err:?}");
             (
                 PortErrorKind::Unavailable,
                 "fulfillment.database_unavailable",
