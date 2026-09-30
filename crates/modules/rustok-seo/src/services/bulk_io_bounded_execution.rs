@@ -199,18 +199,28 @@ impl SeoService {
             active.update(&self.db).await?
         };
 
-        let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
-            Some(SeoBulkJobOperationKind::ExportCsv) => {
-                self.execute_export_job_chunk(&running).await
+        let result = if !self
+            .load_settings(running.tenant_id)
+            .await?
+            .submodule_bulk_editor_enabled
+        {
+            Err(SeoError::configuration(
+                "SEO bulk editor submodule was disabled after the job was queued",
+            ))
+        } else {
+            match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
+                Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+                Some(SeoBulkJobOperationKind::ExportCsv) => {
+                    self.execute_export_job_chunk(&running).await
+                }
+                Some(SeoBulkJobOperationKind::ImportCsv) => {
+                    self.execute_import_job_chunk(&running).await
+                }
+                None => Err(SeoError::validation(format!(
+                    "unknown bulk operation kind `{}`",
+                    running.operation_kind
+                ))),
             }
-            Some(SeoBulkJobOperationKind::ImportCsv) => {
-                self.execute_import_job_chunk(&running).await
-            }
-            None => Err(SeoError::validation(format!(
-                "unknown bulk operation kind `{}`",
-                running.operation_kind
-            ))),
         };
 
         if let Err(error) = result {

@@ -53,40 +53,6 @@ impl SeoService {
         route: &str,
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
-        let canonical_service = CanonicalUrlService::new(self.db.clone());
-        if self
-            .load_settings(tenant.id)
-            .await?
-            .submodule_canonical_enabled
-            && let Some(resolved) = canonical_service
-                .resolve_route(tenant.id, locale, route)
-                .await
-                .map_err(|err| SeoError::validation(err.to_string()))?
-            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
-            && let Some(mut context) = self
-                .load_target_page_context(
-                    tenant,
-                    kind,
-                    resolved.target_id,
-                    Some(locale.to_string()),
-                    Some(resolved.canonical_url.clone()),
-                    channel_slug,
-                )
-                .await?
-        {
-            if resolved.redirect_required {
-                let settings = self.load_settings(tenant.id).await?;
-                context.route.redirect = Some(SeoRedirectDecision {
-                    target_url: apply_canonical_policy(
-                        locale_prefixed_path(locale, resolved.canonical_url.as_str()),
-                        &settings,
-                    ),
-                    status_code: 308,
-                });
-            }
-            return Ok(Some(context));
-        }
-
         if let Some(redirect) = self.match_redirect(tenant.id, route).await? {
             if redirect.target_url == route {
                 return Err(SeoError::validation("redirect loop detected"));
@@ -144,6 +110,42 @@ impl SeoService {
                 },
             }));
         }
+
+
+        let canonical_service = CanonicalUrlService::new(self.db.clone());
+        if self
+            .load_settings(tenant.id)
+            .await?
+            .submodule_canonical_enabled
+            && let Some(resolved) = canonical_service
+                .resolve_route(tenant.id, locale, route)
+                .await
+                .map_err(|err| SeoError::validation(err.to_string()))?
+            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
+            && let Some(mut context) = self
+                .load_target_page_context(
+                    tenant,
+                    kind,
+                    resolved.target_id,
+                    Some(locale.to_string()),
+                    Some(resolved.canonical_url.clone()),
+                    channel_slug,
+                )
+                .await?
+        {
+            if resolved.redirect_required {
+                let settings = self.load_settings(tenant.id).await?;
+                context.route.redirect = Some(SeoRedirectDecision {
+                    target_url: apply_canonical_policy(
+                        locale_prefixed_path(locale, resolved.canonical_url.as_str()),
+                        &settings,
+                    ),
+                    status_code: 308,
+                });
+            }
+            return Ok(Some(context));
+        }
+
 
         let state = if let Some(route_match) = self
             .resolve_registered_route_match(tenant, locale, route, channel_slug)

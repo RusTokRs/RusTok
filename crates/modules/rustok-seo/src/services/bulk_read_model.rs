@@ -16,6 +16,7 @@ use super::templates::render_generated_record;
 use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
 const MAX_BULK_PAGE_SIZE: i32 = 100;
+const MAX_BULK_TARGETS: usize = 100_000;
 const BULK_META_BATCH_SIZE: usize = 256;
 
 #[derive(Debug, Clone)]
@@ -79,6 +80,11 @@ impl SeoService {
                     filter.target_kind.as_str()
                 ))
             })?;
+        if summaries.len() > MAX_BULK_TARGETS {
+            return Err(SeoError::validation(format!(
+                "bulk selection exceeds the {MAX_BULK_TARGETS} target limit"
+            )));
+        }
         let target_ids = summaries
             .iter()
             .map(|summary| summary.target_id)

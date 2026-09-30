@@ -20,7 +20,7 @@ use crate::dto::{
     SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 use crate::entities::{seo_bulk_job_artifact, seo_sitemap_file};
-use crate::{SeoResult, SeoWorkerAuthorization};
+use crate::{SeoError, SeoResult, SeoWorkerAuthorization};
 
 use super::SeoService;
 
@@ -327,11 +327,26 @@ impl SeoBulkService {
         Self { runtime }
     }
 
+    async fn ensure_bulk_editor_enabled(&self, tenant_id: Uuid) -> SeoResult<()> {
+        if !self
+            .runtime
+            .load_settings(tenant_id)
+            .await?
+            .submodule_bulk_editor_enabled
+        {
+            return Err(SeoError::configuration(
+                "SEO bulk editor submodule is disabled",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn list_bulk_items(
         &self,
         tenant: &TenantContext,
         input: SeoBulkListInput,
     ) -> SeoResult<SeoBulkPage> {
+        self.ensure_bulk_editor_enabled(tenant.id).await?;
         self.runtime.list_bulk_items_batched(tenant, input).await
     }
 
@@ -340,6 +355,7 @@ impl SeoBulkService {
         tenant: &TenantContext,
         selection: SeoBulkSelectionInput,
     ) -> SeoResult<SeoBulkSelectionPreviewRecord> {
+        self.ensure_bulk_editor_enabled(tenant.id).await?;
         self.runtime
             .preview_bulk_selection_count_batched(tenant, selection)
             .await
@@ -351,6 +367,7 @@ impl SeoBulkService {
         created_by: Option<Uuid>,
         input: SeoBulkApplyInput,
     ) -> SeoResult<SeoBulkJobRecord> {
+        self.ensure_bulk_editor_enabled(tenant.id).await?;
         self.runtime
             .queue_bulk_apply_batched(tenant, created_by, input)
             .await
@@ -362,6 +379,7 @@ impl SeoBulkService {
         created_by: Option<Uuid>,
         input: SeoBulkExportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
+        self.ensure_bulk_editor_enabled(tenant.id).await?;
         self.runtime
             .queue_bulk_export_bounded_io(tenant, created_by, input)
             .await
@@ -373,6 +391,7 @@ impl SeoBulkService {
         created_by: Option<Uuid>,
         input: SeoBulkImportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
+        self.ensure_bulk_editor_enabled(tenant.id).await?;
         self.runtime
             .queue_bulk_import_bounded_io(tenant, created_by, input)
             .await
@@ -384,6 +403,7 @@ impl SeoBulkService {
         limit: usize,
         status: Option<SeoBulkJobStatus>,
     ) -> SeoResult<Vec<SeoBulkJobRecord>> {
+        self.ensure_bulk_editor_enabled(tenant_id).await?;
         self.runtime.list_bulk_jobs(tenant_id, limit, status).await
     }
 
@@ -392,6 +412,7 @@ impl SeoBulkService {
         tenant_id: Uuid,
         job_id: Uuid,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
+        self.ensure_bulk_editor_enabled(tenant_id).await?;
         self.runtime.bulk_job(tenant_id, job_id).await
     }
 
@@ -401,6 +422,7 @@ impl SeoBulkService {
         job_id: Uuid,
         artifact_id: Uuid,
     ) -> SeoResult<Option<seo_bulk_job_artifact::Model>> {
+        self.ensure_bulk_editor_enabled(tenant_id).await?;
         self.runtime
             .bulk_artifact(tenant_id, job_id, artifact_id)
             .await
