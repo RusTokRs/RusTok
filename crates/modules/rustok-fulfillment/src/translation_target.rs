@@ -201,7 +201,11 @@ impl TranslationTargetProvider for ShippingOptionTranslationTargetProvider {
         let snapshot = self
             .load_snapshot(tenant_id, &read_request_from_patch(&request))
             .await?;
-        Ok(validate_patch_against_snapshot(&request, &snapshot))
+        let validation = validate_patch_against_snapshot(&request, &snapshot);
+        if validation.accepted {
+            return Ok(owner_patch_value_validation(&request, &snapshot));
+        }
+        Ok(validation)
     }
 
     async fn apply_patch(
@@ -453,12 +457,19 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
             "Fulfillment translation identity must address fulfillment/shipping_option_copy without a subresource",
         ));
     }
-    Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
+    let shipping_option_id = Uuid::parse_str(identity.resource_id.as_str()).map_err(|_| {
         PortError::validation(
             "fulfillment.translation_resource_id_invalid",
             "Fulfillment translation resource id must be a UUID",
         )
-    })
+    })?;
+    if shipping_option_id.is_nil() {
+        return Err(PortError::validation(
+            "fulfillment.translation_resource_id_invalid",
+            "Fulfillment translation resource id must not be the nil UUID",
+        ));
+    }
+    Ok(shipping_option_id)
 }
 
 fn shipping_option_identity(shipping_option_id: Uuid) -> TranslationResourceIdentity {
@@ -571,6 +582,42 @@ fn translation_fields(
         source_hash: field_hash(&source.name),
         protected_tokens: Vec::new(),
     }]
+}
+
+fn owner_patch_value_validation(
+    request: &TranslationPatchRequest,
+    snapshot: &TranslationResourceSnapshot,
+) -> TranslationPatchValidation {
+    match merged_target(request, snapshot) {
+        Ok(target) if target.chars().count() <= 120 => TranslationPatchValidation {
+            accepted: true,
+            issues: Vec::new(),
+        },
+        Ok(_) => TranslationPatchValidation {
+            accepted: false,
+            issues: vec![TranslationPatchIssue {
+                field: Some(
+                    FieldKey::new("name")
+                        .expect("static Fulfillment field key must satisfy the target contract"),
+                ),
+                severity: TranslationPatchIssueSeverity::Error,
+                code: "target_value_too_long".to_string(),
+                message: "name must be at most 120 characters".to_string(),
+            }],
+        },
+        Err(error) => TranslationPatchValidation {
+            accepted: false,
+            issues: vec![TranslationPatchIssue {
+                field: Some(
+                    FieldKey::new("name")
+                        .expect("static Fulfillment field key must satisfy the target contract"),
+                ),
+                severity: TranslationPatchIssueSeverity::Error,
+                code: "required_target_value_missing".to_string(),
+                message: error.message,
+            }],
+        },
+    }
 }
 
 fn merged_target(
@@ -695,3 +742,113 @@ fn fulfillment_translation_error_to_port_error(
         ),
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_identity() -> TranslationResourceIdentity {
+        shipping_option_identity(Uuid::new_v4())
+    }
+
+    fn test_snapshot() -> TranslationResourceSnapshot {
+        let shipping_option_id = Uuid::new_v4();
+        let source_locale =
+            TenantLocale::new("en").expect("test source locale must satisfy the contract");
+        let target_locale =
+            TenantLocale::new("fr").expect("test target locale must satisfy the contract");
+        let identity = TranslationResourceIdentity {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG).unwrap(),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).unwrap(),
+            resource_id: ResourceId::new(shipping_option_id.to_string()).unwrap(),
+            subresource_id: None,
+        };
+        let field = TranslationFieldSnapshot {
+            descriptor: TranslationFieldDescriptor {
+                key: FieldKey::new("name").unwrap(),
+                profile: TranslationValueProfile::PlainText,
+                strategy: TranslationStrategy::Translate,
+                classification: TranslationDataClassification::Public,
+                required: true,
+                ai_export_allowed: true,
+                max_characters: Some(120),
+                preserves_whitespace: false,
+            },
+            source_value: "Source".to_string(),
+            exact_target_value: Some("Target".to_string()),
+            source_hash: field_hash("Source"),
+            protected_tokens: Vec::new(),
+        };
+        TranslationResourceSnapshot {
+            summary: TranslationResourceSummary {
+                identity,
+                display_label: "Shipping".to_string(),
+                lifecycle: TranslationResourceLifecycle::Active,
+                resource_revision: OpaqueRevision::new("resource").unwrap(),
+                exact_locales: vec![source_locale.clone(), target_locale.clone()],
+            },
+            source_locale,
+            target_locale,
+            rendered_fallback_locale: None,
+            source_revision: OpaqueRevision::new("source").unwrap(),
+            target_revision: Some(OpaqueRevision::new("target").unwrap()),
+            fields: vec![field],
+        }
+    }
+
+    fn test_request(value: &str) -> TranslationPatchRequest {
+        TranslationPatchRequest {
+            identity: test_identity(),
+            source_locale: TenantLocale::new("en").unwrap(),
+            target_locale: TenantLocale::new("fr").unwrap(),
+            expected_resource_revision: OpaqueRevision::new("resource").unwrap(),
+            expected_source_revision: OpaqueRevision::new("source").unwrap(),
+            expected_target_revision: Some(OpaqueRevision::new("target").unwrap()),
+            fields: vec![TranslationFieldPatch {
+                key: FieldKey::new("name").unwrap(),
+                value: value.to_string(),
+                expected_source_hash: field_hash("Source"),
+            }],
+            proposal_id: "proposal".to_string(),
+            approval_receipt_id: "approval".to_string(),
+        }
+    }
+
+    #[test]
+    fn owner_patch_validation_matches_apply_name_limit() {
+        let snapshot = test_snapshot();
+        let request = test_request(&"x".repeat(121));
+        let validation = owner_patch_value_validation(&request, &snapshot);
+        assert!(!validation.accepted);
+        assert_eq!(
+            validation.issues[0].code,
+            "target_value_too_long"
+        );
+    }
+
+    #[test]
+    fn owner_patch_validation_rejects_empty_required_name() {
+        let snapshot = test_snapshot();
+        let request = test_request("   ");
+        let validation = owner_patch_value_validation(&request, &snapshot);
+        assert!(!validation.accepted);
+        assert_eq!(
+            validation.issues[0].code,
+            "required_target_value_missing"
+        );
+    }
+
+    #[test]
+    fn translation_identity_rejects_nil_shipping_option() {
+        let identity = TranslationResourceIdentity {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG).unwrap(),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).unwrap(),
+            resource_id: ResourceId::new(Uuid::nil().to_string()).unwrap(),
+            subresource_id: None,
+        };
+        let error = parse_identity(&identity).expect_err("nil resource id must fail closed");
+        assert_eq!(error.code, "fulfillment.translation_resource_id_invalid");
+    }
+}
+
