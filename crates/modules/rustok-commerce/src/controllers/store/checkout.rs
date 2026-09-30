@@ -173,9 +173,11 @@ pub async fn create_payment_collection(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> HttpResult<(StatusCode, Json<PaymentCollectionResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = required_idempotency_key(&headers)?;
 
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
     let customer_id =
@@ -204,6 +206,7 @@ pub async fn create_payment_collection(
         runtime.event_bus(),
         tenant.id,
         &request_context,
+        &idempotency_key,
         cart_storefront_port.as_ref(),
         cart,
     )
