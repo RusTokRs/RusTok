@@ -404,7 +404,6 @@ impl FulfillmentService {
             items,
             metadata,
         } = input;
-        let fulfillment_id = generate_id();
         let now = Utc::now();
         let txn = self.db.begin().await?;
         let checkout_operation_id = identity.as_ref().map(|value| value.operation_id);
