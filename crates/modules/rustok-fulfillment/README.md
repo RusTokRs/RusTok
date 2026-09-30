@@ -26,6 +26,7 @@
 - The cancellation quarantine is applied both to existing rows during migration upgrade and to live order-cancellation transitions; cancellation becomes the recorded reason for the reconciliation state.
 - Direct checkout `create_label` journal insertion as `executing` is permitted only for a tenant-scoped `paid` order; the migration quarantines legacy premature executions and refuses downgrade while any checkout label execution is still in flight.
 - Before the typed checkout-identity cutover, the legacy metadata contract requires `checkout.fulfillment_key` and a non-empty `checkout.operation_id` together. PostgreSQL, SQLite, and MySQL now enforce that pair on both insert and metadata update; immutable-key enforcement remains separate.
+- The shipping-option translation change journal is durable incremental-sync evidence, not a rebuildable cache: its change sequence and historical resource revisions are consumed by the Translation target cursor. Rollback refuses to drop a non-empty journal rather than silently invalidating that cursor history.
 - Support post-order follow-up fulfillments through the commerce facade, where manual create paths validate order-line ownership and remaining quantities before calling `FulfillmentService`.
 - Publish a module-owned Leptos admin UI package in `admin/` for shipping-option operations.
 
