@@ -354,8 +354,14 @@ pub async fn create_product(
     .await?;
 
     let idempotency_key = admin_product_command_idempotency_key(&headers)?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        None,
+        "create_product",
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .create_product(port_context.clone(), input)
@@ -471,8 +477,14 @@ pub async fn update_product(
     .await?;
 
     let idempotency_key = admin_product_command_idempotency_key(&headers)?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "update_product",
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .update_product(port_context.clone(), id, input)
