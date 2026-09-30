@@ -1,9 +1,11 @@
+use chrono::Utc;
 use rustok_cart::CartCheckoutPort;
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::CheckoutOrderCompensationPort;
 use rustok_payment::CheckoutPaymentCompensationPort;
-use chrono::Utc;
-use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
