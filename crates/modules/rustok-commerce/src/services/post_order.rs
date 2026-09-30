@@ -283,7 +283,14 @@ impl PostOrderOrchestrationService {
     ) -> PostOrderOrchestrationResult<RefundResponse> {
         let payment_service = PaymentService::new(self.db.clone());
         let collection_id = match input.payment_collection_id {
-            Some(id) => id,
+            Some(id) => {
+                let collection = payment_service.get_collection(tenant_id, id).await?;
+                validate_return_payment_collection_order(
+                    collection.order_id,
+                    id,
+                    order_id,
+                )?
+            }
             None => {
                 let (collections, _) = payment_service
                     .list_collections(
@@ -514,6 +521,19 @@ fn validate_decision_shape(
     Ok(())
 }
 
+fn validate_return_payment_collection_order(
+    collection_order_id: Option<Uuid>,
+    collection_id: Uuid,
+    order_id: Uuid,
+) -> PostOrderOrchestrationResult<Uuid> {
+    if collection_order_id != Some(order_id) {
+        return Err(PostOrderOrchestrationError::Validation(format!(
+            "payment collection {collection_id} is not attached to order {order_id}"
+        )));
+    }
+    Ok(collection_id)
+}
+
 async fn complete_return_decision(
     order_service: &OrderService,
     tenant_id: Uuid,
@@ -740,6 +760,23 @@ fn attach_order_change_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_refund_collection_must_be_attached_to_target_order() {
+        let collection_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+
+        assert!(validate_return_payment_collection_order(None, collection_id, order_id).is_err());
+        assert!(
+            validate_return_payment_collection_order(Some(Uuid::new_v4()), collection_id, order_id)
+                .is_err()
+        );
+        assert_eq!(
+            validate_return_payment_collection_order(Some(order_id), collection_id, order_id)
+                .unwrap(),
+            collection_id
+        );
+    }
 
     #[test]
     fn malformed_difference_refund_is_rejected() {
