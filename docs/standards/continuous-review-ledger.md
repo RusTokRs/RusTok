@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `467b96f716a4e71e28db3d008ffe03cb74cfadf4`  
+**Current main SHA:** `68b9dcfccc394f794ef9ddd1ca4f7d4f782eea54`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3786,3 +3786,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.63` complete as a clean assessment; no production source change was required. The earlier empty PR #4419 was closed and is not part of the integrated history.
 - **Verification:** source inspection and cross-module contract comparison only; local Cargo/remediation-gate execution remains unavailable in the current environment.
 - **Next primary module:** `FS-22.06.64 — crates/modules/rustok-fulfillment/src/services/mod.rs`.
+
+
+
+### FS-22.06.64 Assessment — `crates/modules/rustok-fulfillment/src/services/mod.rs` Service module facade
+
+- **Base:** `68b9dcfccc394f794ef9ddd1ca4f7d4f782eea54`; refreshed `main` immediately before closeout.
+- **Primary scope:** the Fulfillment `services/mod.rs` facade only — service module registration, visibility boundaries, root re-exports, private translation-progress helper ownership, and public API consistency with the module contract.
+- **Invariant map:** public service capabilities must have one canonical owner; root crate exports must resolve to live service implementations; internal helpers must not become accidental public contract; service modules must remain free of transport ownership or cross-module persistence duplication.
+- **Discovery:** `services/mod.rs` declares `fulfillment`, `provider_operation`, `provider_operation_recovery`, and `shipping_option_translation` as the public service families and keeps `translation_progress` private. The root `lib.rs` deliberately re-exports the supported service types/constants while retaining a single underlying implementation.
+- **Facade consistency:** every root service re-export was cross-checked against the live service implementations; all referenced public types/constants exist. The private `translation_progress` module is used by the owning translation service and is not re-exported from the crate facade.
+- **Boundary audit:** `FulfillmentService` remains the fulfillment lifecycle owner; provider-operation journal/recovery remain the provider-operation owner; shipping-option translation remains the translation-copy owner. No transport framework or foreign module persistence access is introduced by the facade.
+- **Compatibility audit:** the visibility pattern matches the current neighboring Order/Cart service organization and does not introduce a competing owner or a second source of truth. Existing public submodule exposure is therefore retained rather than changed speculatively.
+- **History audit:** the facade's current shape was introduced incrementally with the shipping-option translation owner and its private progress helper; no stale orphan declaration or duplicate service module was found.
+- **Fresh second pass:** independently re-read the final `services/mod.rs`, `lib.rs`, all five service children, Fulfillment local documentation, and the backend module implementation contract. No repository-owned defect attributable to this primary module was confirmed.
+- **Implementation:** no production source change required; this is a clean module-level assessment.
+- **Verification:** source/static inspection and cross-module API comparison only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.64` complete and integrated as a ledger-only closeout.
+- **Next primary module:** `FS-22.06.65 — crates/modules/rustok-fulfillment/src/services/fulfillment.rs`.
