@@ -4,10 +4,12 @@ use rustok_cart::entities::{
 };
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_fulfillment::entities::{shipping_option, shipping_option_translation};
+use rustok_outbox::SysEventsMigration;
 use rustok_tenant::entities::tenant;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, Schema,
 };
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::{Uuid, uuid};
 
 pub const TEST_TENANT_ID: Uuid = uuid!("11111111-1111-1111-1111-111111111111");
@@ -81,6 +83,11 @@ pub async fn ensure_cart_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(tenant::Entity),
     )
     .await;
+
+    SysEventsMigration
+        .up(&SchemaManager::new(db))
+        .await
+        .expect("failed to create shared owner-operation receipt schema");
 
     tenant::ActiveModel {
         id: Set(TEST_TENANT_ID),
