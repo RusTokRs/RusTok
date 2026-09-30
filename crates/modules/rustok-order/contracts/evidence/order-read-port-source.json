@@ -148,10 +148,10 @@
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
     "storefront_return_mutation": "concrete_order_service",
     "storefront_refund_reads": "concrete_payment_service",
-    "unmounted_admin_compatibility_handlers": "concrete_order_service_source_only_not_routed"
+    "unmounted_admin_compatibility_handlers": "removed_from_admin_returns_and_changes_source"
   },
   "decision": {
-    "next_slice": "execute compile, mounted parity, deadline and failure, restart, and remote-adapter evidence; remove unmounted compatibility GET handlers only after validation",
+    "next_slice": "execute compile, mounted parity, deadline and failure, restart, and remote-adapter evidence; source compatibility handlers are already removed",
     "mutation_scope": "unchanged",
     "status_promotion": false
   },
