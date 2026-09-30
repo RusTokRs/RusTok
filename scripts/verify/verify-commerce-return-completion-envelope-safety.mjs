@@ -232,6 +232,23 @@ for (const value of [
   'HttpError::new(StatusCode::CONFLICT, "return_completion_operation_conflict", message)',
 ]) forbidText(source, value, 'unsafe raw conflict envelope');
 
+for (const [value, label] of [
+  ['ensure_all_permissions(', 'retry all-permissions helper'],
+  ['Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE', 'retry paired permissions'],
+  ['for permission in permissions', 'retry checks every required permission'],
+  ['status = 403, description = "orders:read is required"', 'orders read 403 OpenAPI contract'],
+  ['status = 403, description = "orders:manage and payments:manage are required"', 'retry 403 OpenAPI contract'],
+  ['pagination_offset(', 'overflow-safe pagination helper'],
+  ['.saturating_sub(1).saturating_mul(per_page)', 'overflow-safe pagination arithmetic'],
+  ['safe_last_error_message(', 'safe operator error projection'],
+]) requireText(source, value, label);
+
+for (const [value, label] of [
+  ['ensure_permissions(\n        &auth,\n        &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],', 'retry must not use any-permission helper'],
+  ['.offset((page - 1) * per_page)', 'overflow-prone pagination offset'],
+  ['last_error_message: operation.last_error_message', 'raw persisted error projection'],
+]) forbidText(source, value, label);
+
 const mapperUses = source.match(/map_operator_error\(/g) ?? [];
 if (mapperUses.length !== 4) {
   failures.push(`expected mapper definition plus three uses, found ${mapperUses.length}`);
