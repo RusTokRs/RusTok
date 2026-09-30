@@ -30,6 +30,7 @@ The root in-process checkout factory mounts
 fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and a concurrency-safe uniqueness constraint are source-complete;
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
 The typed identity cutover also treats migration rollback as a compatibility boundary: current legacy SQLite/MySQL identity guards are restored exactly, MySQL legacy INSERT protection is removed during cutover, and PostgreSQL numeric legacy indices are bounded before BIGINT conversion.
+Migration sources are registry-complete: executable migrations are declared once in `src/migrations/mod.rs`. The historical unregistered `m20260713_000111_enforce_order_line_allocation` prototype is not part of the current target architecture and has been removed; allocation read-before-write concurrency remains a separate owner-path concern and is tracked independently.
 
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
 administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shipping-option translation

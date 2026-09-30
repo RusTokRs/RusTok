@@ -28,6 +28,7 @@
 - Before the typed checkout-identity cutover, the legacy metadata contract requires `checkout.fulfillment_key` and a non-empty `checkout.operation_id` together. PostgreSQL, SQLite, and MySQL now enforce that pair on both insert and metadata update; immutable-key enforcement remains separate.
 - The shipping-option translation change journal is durable incremental-sync evidence, not a rebuildable cache: its change sequence and historical resource revisions are consumed by the Translation target cursor. Rollback refuses to drop a non-empty journal rather than silently invalidating that cursor history.
 - The typed checkout-identity migration is a clean cutover: MySQL removes the pre-cutover legacy INSERT guard, PostgreSQL/SQLite/MySQL rollback paths restore the current legacy identity contract, and PostgreSQL legacy numeric-index backfill is length-bounded before BIGINT casting.
+- The fulfillment migration registry contains only executable canonical migrations; an unregistered historical `m20260713_000111_enforce_order_line_allocation` prototype was removed rather than silently activating a cross-row trigger implementation that is not part of the accepted current contract.
 - Support post-order follow-up fulfillments through the commerce facade, where manual create paths validate order-line ownership and remaining quantities before calling `FulfillmentService`.
 - Publish a module-owned Leptos admin UI package in `admin/` for shipping-option operations.
 
