@@ -2030,7 +2030,7 @@ mod tests {
 
     #[test]
     fn normalize_currency_code_rejects_non_letters() {
-        assert!(super::normalize_currency_code("$$").is_err());
+        assert!(super::normalize_currency_code("$$$").is_err());
         assert!(super::normalize_currency_code("123").is_err());
     }
 
