@@ -29,6 +29,7 @@ The root in-process checkout factory mounts
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
 fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and a concurrency-safe uniqueness constraint are source-complete;
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
+The typed identity cutover also treats migration rollback as a compatibility boundary: current legacy SQLite/MySQL identity guards are restored exactly, MySQL legacy INSERT protection is removed during cutover, and PostgreSQL numeric legacy indices are bounded before BIGINT conversion.
 
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
 administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shipping-option translation
