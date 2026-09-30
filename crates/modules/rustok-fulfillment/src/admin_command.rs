@@ -184,6 +184,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             metadata,
         } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
             "ship",
@@ -333,6 +334,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             metadata,
         } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
             "reship",
@@ -435,6 +437,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await?;
         let CancelFulfillmentInput { reason, metadata } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
             "cancel",
@@ -872,49 +875,39 @@ fn log_port_error(
 }
 
 fn operation_request(
+    context: &PortContext,
     tenant_id: Uuid,
     fulfillment_id: Uuid,
     operation: &'static str,
     provider_id: &str,
     metadata: Value,
 ) -> Result<FulfillmentProviderOperationRequest, PortError> {
-    let immutable_payload = serde_json::json!({
-        "tenant_id": tenant_id,
-        "fulfillment_id": fulfillment_id,
-        "operation": operation,
-        "provider_id": provider_id,
-        "metadata": metadata,
-    });
-    let key = stable_operation_key(fulfillment_id, operation, &immutable_payload)?;
+    let idempotency_key = context
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            PortError::validation(
+                "fulfillment.provider_idempotency_key_missing",
+                "fulfillment provider operation requires caller-owned idempotency identity",
+            )
+        })?;
+
+    if idempotency_key.len() > 191 {
+        return Err(PortError::validation(
+            "fulfillment.provider_idempotency_key_invalid",
+            "fulfillment provider idempotency identity is too long",
+        ));
+    }
+
     Ok(FulfillmentProviderOperationRequest {
         tenant_id,
         fulfillment_id,
-        idempotency_key: Some(key),
+        operation: operation.to_string(),
+        provider_id: provider_id.to_string(),
+        idempotency_key: Some(idempotency_key.to_string()),
         metadata,
-    })
-}
-
-fn stable_operation_key(
-    fulfillment_id: Uuid,
-    operation: &str,
-    payload: &Value,
-) -> Result<String, PortError> {
-    let bytes = serde_json::to_vec(payload).map_err(|_| {
-        PortError::validation(
-            "fulfillment.provider_identity_invalid",
-            "fulfillment provider identity could not be normalized",
-        )
-    })?;
-    let first = fnv1a64(&bytes, 0xcbf29ce484222325);
-    let second = fnv1a64(&bytes, 0x84222325cbf29ce4);
-    Ok(format!(
-        "fulfillment:{fulfillment_id}:{operation}:{first:016x}{second:016x}"
-    ))
-}
-
-fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
-    bytes.iter().fold(offset_basis, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
     })
 }
 
@@ -959,5 +952,62 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
             Value::Object(current)
         }
         (_, patch) => patch,
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{PortActor, PortErrorKind};
+
+    use super::*;
+
+    #[test]
+    fn provider_operation_uses_caller_owned_idempotency_key() {
+        let context = PortContext::new(
+            "tenant-1",
+            PortActor::user("actor-1"),
+            "en",
+            "commerce-admin-fulfillment:ship:test",
+        )
+        .with_idempotency_key("caller-owned-key");
+
+        let request = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            "ship",
+            "manual",
+            serde_json::json!({"example": "value"}),
+        )
+        .expect("caller-owned key should produce provider request");
+
+        assert_eq!(
+            request.idempotency_key.as_deref(),
+            Some("caller-owned-key")
+        );
+    }
+
+    #[test]
+    fn provider_operation_rejects_missing_idempotency_key() {
+        let context = PortContext::new(
+            "tenant-1",
+            PortActor::user("actor-1"),
+            "en",
+            "commerce-admin-fulfillment:ship:test",
+        );
+
+        let error = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            "ship",
+            "manual",
+            Value::Null,
+        )
+        .expect_err("missing caller-owned key must fail closed");
+
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.provider_idempotency_key_missing");
     }
 }
