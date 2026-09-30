@@ -181,6 +181,50 @@ async fn storefront_add_line_item_replays_by_owner_receipt_and_rejects_key_rebin
 }
 
 #[tokio::test]
+async fn storefront_write_replays_terminal_failure_by_owner_receipt() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+
+    let invalid_input = AddCartLineItemInput {
+        unit_price: Decimal::from_str("-1.00").unwrap(),
+        ..line_item_input()
+    };
+    let request = CartStorefrontAddLineItemRequest {
+        cart_id: cart.id,
+        input: invalid_input,
+        pricing_adjustment: None,
+    };
+    let port = rustok_cart::in_process_cart_storefront_port(db.clone());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-cart-test"),
+        "en",
+        format!("test:cart:add-failure:{}", cart.id),
+    )
+    .with_idempotency_key("cart-failure-replay-1".to_string())
+    .with_deadline(Duration::from_secs(2));
+
+    let first = port
+        .add_storefront_line_item(context.clone(), request.clone())
+        .await
+        .expect_err("invalid mutation should fail");
+    let second = port
+        .add_storefront_line_item(context, request)
+        .await
+        .expect_err("failed owner operation should replay its terminal error");
+
+    assert_eq!(first.code, "cart.validation");
+    assert_eq!(second.code, "cart.validation");
+
+    let cart = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert!(cart.line_items.is_empty());
+}
+
+#[tokio::test]
 async fn set_adjustments_recalculates_cart_total_without_localized_labels() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
