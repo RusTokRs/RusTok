@@ -709,6 +709,26 @@ fn validate_fulfillment(
         ));
     }
 
+    let persisted_plan_hash = match record.plan_hash.as_deref() {
+        Some(value) => Some(normalize_checkout_plan_hash(value).map_err(|_| {
+            PortError::conflict(
+                "fulfillment.checkout_identity_conflict",
+                "fulfillment has an invalid persisted checkout plan hash",
+            )
+        })?),
+        None => None,
+    };
+
+    if record.index != plan.index
+        || record.order_id != order_id
+        || persisted_plan_hash.as_deref() != Some(plan_hash)
+    {
+        return Err(PortError::conflict(
+            "fulfillment.checkout_identity_conflict",
+            "fulfillment has a mismatched checkout identity",
+        ));
+    }
+
     let fulfillment = &record.fulfillment;
     if fulfillment.tenant_id != tenant_id
         || fulfillment.order_id != order_id
@@ -1240,6 +1260,13 @@ mod tests {
             "checkout": {}
         });
         assert_eq!(extract_cart_line_item_id(&metadata), None);
+    }
+
+    #[test]
+    fn persisted_uppercase_checkout_plan_hash_canonicalizes_to_identity_value() {
+        let persisted =
+            normalize_checkout_plan_hash(&"A".repeat(64)).expect("valid persisted hash");
+        assert_eq!(persisted, "a".repeat(64));
     }
 
     #[test]
