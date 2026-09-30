@@ -124,13 +124,13 @@ impl MigrationTrait for Migration {
             .execute_raw(Statement::from_string(
                 backend,
                 "UPDATE shipping_options
-                 SET name = COALESCE((
-                        SELECT name
-                        FROM shipping_option_translations
-                        WHERE shipping_option_id = shipping_options.id
-                        ORDER BY locale
-                        LIMIT 1
-                    ), '')"
+                 SET name = (
+                    SELECT name
+                    FROM shipping_option_translations
+                    WHERE shipping_option_id = shipping_options.id
+                      AND locale = 'und'
+                    LIMIT 1
+                 )"
                     .to_string(),
             ))
             .await?;
