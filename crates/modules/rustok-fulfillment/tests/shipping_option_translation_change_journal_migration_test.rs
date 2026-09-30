@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_fulfillment::migrations::migrations;
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -22,14 +22,24 @@ async fn translation_change_journal_rollback_is_blocked_when_evidence_exists() {
         .await
         .expect("translation change journal migration should install");
 
-    db.execute_unprepared(&format!(
-        "INSERT INTO shipping_option_translation_change_journal          (operation_id, tenant_id, shipping_option_id, resource_revision, lifecycle)          VALUES ('{}', '{}', '{}', 'sha256:test', 'active')",
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4()
-    ))
-    .await
-    .expect("change evidence should be insertable");
+    let statement = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        r#"
+        INSERT INTO shipping_option_translation_change_journal (
+            operation_id, tenant_id, shipping_option_id, resource_revision, lifecycle
+        ) VALUES (?, ?, ?, ?, ?)
+        "#,
+        vec![
+            Uuid::new_v4().into(),
+            Uuid::new_v4().into(),
+            Uuid::new_v4().into(),
+            "sha256:test".to_string().into(),
+            "active".to_string().into(),
+        ],
+    );
+    db.execute(statement)
+        .await
+        .expect("change evidence should be insertable");
 
     let rollback = migration.down(&manager).await;
 
@@ -38,15 +48,15 @@ async fn translation_change_journal_rollback_is_blocked_when_evidence_exists() {
         "rollback must not silently delete durable translation change evidence"
     );
 
-    let count = db
-        .query_one_raw(
-            "SELECT COUNT(*) AS count FROM shipping_option_translation_change_journal",
-            []
-        )
+    let row = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*) FROM shipping_option_translation_change_journal".to_owned(),
+        ))
         .await
         .expect("change journal should remain queryable")
         .expect("count row should exist");
-    let count: i64 = count.try_get_by_index(0).expect("count should be an integer");
+    let count: i64 = row.try_get_by_index(0).expect("count should be an integer");
     assert_eq!(count, 1, "blocked rollback must not delete change evidence");
 }
 
