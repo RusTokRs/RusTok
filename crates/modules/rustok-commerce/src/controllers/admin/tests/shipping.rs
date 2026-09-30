@@ -312,6 +312,10 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
         created["allowed_shipping_profile_slugs"],
         json!(["bulky", "cold-chain"])
     );
+    let translation_revision = created["translation_revision"]
+        .as_str()
+        .expect("created shipping option translation revision should be present")
+        .to_string();
 
     let list_response = app
         .clone()
@@ -354,6 +358,7 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
                             locale: "en".to_string(),
                             name: "Cold Chain Freight".to_string(),
                         }]),
+                        expected_translation_revision: Some(translation_revision.clone()),
                         currency_code: Some("usd".to_string()),
                         amount: Some(Decimal::from_str("39.99").expect("valid decimal")),
                         provider_id: Some("custom-provider".to_string()),
