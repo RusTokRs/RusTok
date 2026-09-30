@@ -3329,3 +3329,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Diff review:** no production change required; only this ledger closeout is added.
 - **Verification:** source inspection, caller/service tracing, tenant-scope review, pagination analysis, projection/privacy review, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
 - **Status:** `FS-22.06.36` complete as a clean audit; continue to the next unreviewed Fulfillment module.
+
+
+### FS-22.06.37 Assessment — `crates/modules/rustok-fulfillment/src/translation_changes.rs` Translation change journal owner
+
+- **Base:** refreshed `main` at `0691cfa5873c53b4c895a7ae45cf48c4c322b997`; exact main state was re-read before closeout.
+- **Discovery:** re-read the full translation change journal, journal migration, `ShippingOptionTranslationService::resource_revision`, all transaction callers, highwater/cursor readers, and the translation target change-feed consumer.
+- **Invariant map:** change journal writes must be atomic with the underlying translation mutation; records must be tenant-scoped; cursors/highwater must be monotonic and bounded; resource revisions must be deterministic; malformed persisted rows must fail closed; repeated writes that produce the same resource snapshot may be safely deduplicated.
+- **Confirmed result:** no additional production defect was found. Journal inserts occur through `record_shipping_option_translation_change_in_tx` on the same `DatabaseTransaction` as the shipping-option/translation mutation. Highwater and change queries are tenant-qualified and cursor-bounded. Persisted sequence/lifecycle/revision rows are validated on decode. The resource revision is a deterministic SHA-256 snapshot of the option identity plus ordered translation rows, so identical state is represented by the same revision.
+- **Concurrency check:** the previous-row comparison is intentionally advisory deduplication rather than the correctness mechanism; actual change records remain append-only and each journal row receives an auto-increment sequence. Current mutation callers lock/transactionally update the owning shipping option before recomputing the revision, preventing two distinct concurrent translation states from being collapsed into one revision.
+- **Fresh independent second pass:** re-read journal SQL for all supported backends, migration indexes/constraints, all three mutation callers, highwater/cursor consumers, and revision construction. No cross-tenant query, stale cursor path, transaction-outside-journal write, unsafe cast, raw diagnostic, or non-deterministic revision source was confirmed.
+- **Diff review:** no production change required; only this ledger closeout is added.
+- **Verification:** source inspection, migration/index tracing, caller transaction tracing, revision determinism analysis, concurrency review, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
+- **Status:** `FS-22.06.37` complete as a clean audit; continue to the next unreviewed Fulfillment module.
