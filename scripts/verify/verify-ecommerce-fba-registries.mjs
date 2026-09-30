@@ -225,6 +225,10 @@ export function verifyEcommerceFbaRegistries({
         if (isReadOnlyOperation(operation) && testCase.assertions.includes('write_idempotency_required')) {
           fail(`${module}.${operation} read-only contract test case must not require write idempotency`);
         }
+        if (isReadOnlyOperation(operation) && port.idempotency_required === true) {
+          fail(`${module}.${operation} read-only operation must not declare write idempotency requirement`);
+        }
+
         if (!isReadOnlyOperation(operation) && port.idempotency_required === true && !testCase.assertions.includes('write_idempotency_required')) {
           fail(`${module}.${operation} write contract test case lacks write idempotency assertion`);
         }
