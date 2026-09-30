@@ -10,13 +10,13 @@ use crate::model::{
 pub type ApiError = GraphqlHttpError;
 
 const BOOTSTRAP_QUERY: &str = "query FulfillmentAdminBootstrap { currentTenant { id slug name } }";
-const SHIPPING_OPTIONS_QUERY: &str = "query FulfillmentAdminShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } } }";
-const SHIPPING_OPTION_QUERY: &str = "query FulfillmentAdminShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
+const SHIPPING_OPTIONS_QUERY: &str = "query FulfillmentAdminShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } } }";
+const SHIPPING_OPTION_QUERY: &str = "query FulfillmentAdminShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query FulfillmentAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active } } }";
-const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminCreateShippingOption($tenantId: UUID!, $input: CreateShippingOptionInput!) { createShippingOption(tenantId: $tenantId, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
-const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
-const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
-const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
+const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminCreateShippingOption($tenantId: UUID!, $input: CreateShippingOptionInput!) { createShippingOption(tenantId: $tenantId, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } }";
+const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } }";
+const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } }";
+const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translationRevision translations { locale name } } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -138,6 +138,8 @@ struct CreateShippingOptionInput {
 #[derive(Debug, Serialize)]
 struct UpdateShippingOptionInput {
     translations: Option<Vec<ShippingOptionTranslationInput>>,
+    #[serde(rename = "expectedTranslationRevision")]
+    expected_translation_revision: Option<String>,
     #[serde(rename = "currencyCode")]
     currency_code: Option<String>,
     amount: Option<String>,
@@ -375,6 +377,7 @@ fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShipp
 
     UpdateShippingOptionInput {
         translations,
+        expected_translation_revision: draft.expected_translation_revision,
         currency_code: optional_text(draft.currency_code.as_str())
             .map(|value| normalize_currency_code(value.as_str())),
         amount: optional_text(draft.amount.as_str()).map(|value| normalize_amount(value.as_str())),
@@ -461,6 +464,7 @@ mod tests {
             metadata_json: String::new(),
             locale: "de".to_string(),
             existing_translations,
+            expected_translation_revision: Some("revision-1".to_string()),
         }
     }
 
@@ -480,6 +484,11 @@ mod tests {
                 name: "Express old".to_string(),
             },
         ]));
+
+        assert_eq!(
+            input.expected_translation_revision.as_deref(),
+            Some("revision-1"),
+        );
 
         let translations = input.translations.expect("translation update expected");
         assert_eq!(
