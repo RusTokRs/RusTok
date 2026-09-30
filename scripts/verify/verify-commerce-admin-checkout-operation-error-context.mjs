@@ -116,17 +116,13 @@ for (const value of [
 );
 
 for (const value of [
-  "payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>",
-  "order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>",
-  "pub async fn compensate(",
+  "inner: legacy::CheckoutCompensationService",
+  "payment_compensation_port: Arc<dyn CanonicalCheckoutPaymentCompensationPort>",
+  "order_compensation_port: Arc<dyn CanonicalCheckoutOrderCompensationPort>",
+  "rustok_payment_shim::wrap_checkout_payment_compensation_port(",
+  "rustok_order_shim::wrap_checkout_order_compensation_port(",
   "idempotency_key: impl Into<String>",
-  "self.payment_compensation_port",
-  ".compensate_checkout_payment(",
-  "self.order_compensation_port",
-  ".compensate_checkout_order(",
-  "with_idempotency_key(idempotency_key.to_string())",
-  "PortActor::user(actor_id.to_string())",
-]) need(service, value, "typed compensation orchestration");
+]) need(facade, value, "safe compensation facade");
 
 for (const value of [
   "pub async fn run(",
