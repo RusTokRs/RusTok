@@ -1245,7 +1245,7 @@ fn validate_checkout_identity(
 
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() != 3 {
+    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic()) {
         return Err(FulfillmentError::Validation(
             "currency_code must be a 3-letter code".to_string(),
         ));
@@ -2026,6 +2026,20 @@ mod tests {
         assert_eq!(fulfillment_list_offset(0, 0), 0);
         assert_eq!(fulfillment_list_offset(1, 100), 0);
         assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn normalize_currency_code_rejects_non_letters() {
+        assert!(super::normalize_currency_code("$$").is_err());
+        assert!(super::normalize_currency_code("123").is_err());
+    }
+
+    #[test]
+    fn normalize_currency_code_canonicalizes_valid_codes() {
+        assert_eq!(
+            super::normalize_currency_code(" usd ").expect("valid currency"),
+            "USD"
+        );
     }
 
     #[test]
