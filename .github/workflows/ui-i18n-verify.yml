@@ -7,12 +7,31 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/libs/rustok-api/**"
+      - "crates/libs/rustok-core/src/i18n.rs"
+      - "crates/libs/rustok-core/src/field_schema.rs"
+      - "crates/modules/**/locales/**"
+      - "crates/modules/rustok-ai/src/metrics.rs"
+      - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "crates/ui/fly/src/runtime_locale.rs"
+      - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
+      - "apps/storefront/locales/**"
+      - "apps/next-admin/messages/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/src/i18n/**"
+      - "apps/next-frontend/messages/**"
+      - "apps/next-frontend/package.json"
+      - "apps/next-frontend/src/i18n.ts"
+      - "apps/next-frontend/src/i18n-config.ts"
+      - "scripts/verify/lib/**"
+      - "scripts/verify/ui-i18n-argument-baseline.json"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-ui-i18n-parity.mjs"
+      - "scripts/verify/verify-ui-i18n-keys.mjs"
       - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
@@ -23,12 +42,31 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/libs/rustok-api/**"
+      - "crates/libs/rustok-core/src/i18n.rs"
+      - "crates/libs/rustok-core/src/field_schema.rs"
+      - "crates/modules/**/locales/**"
+      - "crates/modules/rustok-ai/src/metrics.rs"
+      - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "crates/ui/fly/src/runtime_locale.rs"
+      - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
+      - "apps/storefront/locales/**"
+      - "apps/next-admin/messages/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/src/i18n/**"
+      - "apps/next-frontend/messages/**"
+      - "apps/next-frontend/package.json"
+      - "apps/next-frontend/src/i18n.ts"
+      - "apps/next-frontend/src/i18n-config.ts"
+      - "scripts/verify/lib/**"
+      - "scripts/verify/ui-i18n-argument-baseline.json"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-ui-i18n-parity.mjs"
+      - "scripts/verify/verify-ui-i18n-keys.mjs"
       - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
@@ -71,10 +109,17 @@ jobs:
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
             crates/modules/rustok-page-builder/src/locale.rs
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - name: Repository i18n contracts
         run: |
           node scripts/verify/verify-i18n-contract.mjs
           node scripts/verify/verify-fly-multilingual.mjs
+      - name: UI catalog parity
+        run: node scripts/verify/verify-ui-i18n-parity.mjs
+      - name: UI key inventory
+        run: node scripts/verify/verify-ui-i18n-keys.mjs --strict
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration

@@ -24,6 +24,7 @@ import path from "node:path";
 
 import { entryPatterns, parseFtl, patternVariables } from "./lib/ftl.mjs";
 
+
 const workspaceRoot = process.cwd();
 const isStrict = process.argv.includes("--strict");
 // `--report-missing` emits `package\tkey\tfallback` for every uncataloged
@@ -32,6 +33,19 @@ const reportMissing = process.argv.includes("--report-missing");
 const scanRoots = ["apps", "crates", "packages"];
 const skippedDirNames = new Set(["node_modules", "target", "dist", "out"]);
 const catalogDirNames = new Set(["locales", "messages"]);
+
+/**
+ * Ratchet for call sites that still resolve a variable-bearing message through
+ * a module-local helper which takes a pre-resolved template string. Each entry
+ * is a known legacy site: the gate fails on anything NOT listed, and also fails
+ * when a listed entry disappears, so the baseline can only shrink.
+ */
+const ARGUMENT_BASELINE_PATH = path.join(
+  workspaceRoot,
+  "scripts",
+  "verify",
+  "ui-i18n-argument-baseline.json",
+);
 
 /** Call shapes and the zero-based argument index that carries the key. */
 const FUNCTION_CALLS = new Map([
@@ -252,6 +266,13 @@ function discoverPackages() {
   return [...packages.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
+const argumentBaseline = new Set(
+  fs.existsSync(ARGUMENT_BASELINE_PATH)
+    ? JSON.parse(fs.readFileSync(ARGUMENT_BASELINE_PATH, "utf8")).sites
+    : [],
+);
+const observedBaseline = new Set();
+
 const packages = discoverPackages();
 if (packages.length === 0) {
   console.error("No UI i18n packages discovered.");
@@ -302,6 +323,11 @@ for (const pkg of packages) {
       // English literal, which is how `String::replace("{slug}", ..)` call
       // sites used to "work".
       if (message.variables.size > 0 && !occurrence.suppliesArguments) {
+        const baselineId = `${pkg.name} ${occurrence.key}`;
+        if (argumentBaseline.has(baselineId)) {
+          observedBaseline.add(baselineId);
+          continue;
+        }
         missing.push({
           file: path.relative(workspaceRoot, filePath),
           line: occurrence.line,
@@ -343,8 +369,23 @@ for (const pkg of packages) {
   }
 }
 
+const staleBaseline = [...argumentBaseline]
+  .filter((entry) => !observedBaseline.has(entry))
+  .sort();
+
+if (staleBaseline.length > 0) {
+  hasError = true;
+  console.error(
+    `\nFAIL stale entries in ${path.relative(workspaceRoot, ARGUMENT_BASELINE_PATH)}:`,
+  );
+  for (const entry of staleBaseline) {
+    console.error(`  ${entry} - fixed or removed; delete it from the baseline`);
+  }
+}
+
 console.log(
-  `\nValidated ${totalChecked} UI key occurrences across ${packages.length} packages. (${totalMissing} uncataloged references)`,
+  `\nValidated ${totalChecked} UI key occurrences across ${packages.length} packages. ` +
+    `(${totalMissing} uncataloged references, ${observedBaseline.size}/${argumentBaseline.size} baselined legacy interpolation sites)`,
 );
 
 if (isStrict && hasError) {

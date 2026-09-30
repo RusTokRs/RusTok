@@ -58,10 +58,18 @@ function walkDirectory(relativeRoot, visitor) {
   }
 }
 
+// The declaration lives in the shared config module; `i18n.ts` re-exports it.
+// Checking only `i18n.ts` made this gate fail the moment the constant was
+// extracted, while checking only the re-export would let the value drift.
 expectContains(
-  "apps/next-frontend/src/i18n.ts",
+  "apps/next-frontend/src/i18n-config.ts",
   'export const defaultLocale = "en";',
   "apps/next-frontend to use platform fallback locale 'en'",
+);
+expectContains(
+  "apps/next-frontend/src/i18n.ts",
+  "defaultLocale",
+  "apps/next-frontend request config to re-export the shared default locale",
 );
 expectContains(
   "apps/next-admin/src/i18n/config.ts",
@@ -87,6 +95,26 @@ expectNotContains(
   "apps/admin/src/main.rs",
   "language.split(',').next()",
   "manual first-range Accept-Language selection in the admin host",
+);
+expectContains(
+  "apps/next-admin/src/i18n/accept-language.ts",
+  "export function parseAcceptLanguage",
+  "next-admin to parse Accept-Language with the shared bounded q-value contract",
+);
+expectNotContains(
+  "apps/next-admin/src/i18n/request.ts",
+  "item.split(';')[0]",
+  "q-value-ignoring Accept-Language splitting in the next-admin host",
+);
+expectNotContains(
+  "apps/next-frontend/src/i18n.ts",
+  'return "";',
+  "silent empty-catalog fallback in the next-frontend request config",
+);
+expectNotContains(
+  "apps/next-admin/src/i18n/request.ts",
+  "return '';",
+  "silent empty-catalog fallback in the next-admin request config",
 );
 expectContains(
   "crates/modules/rustok-modules/src/static_package.rs",
