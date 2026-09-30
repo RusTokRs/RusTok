@@ -70,6 +70,12 @@ mod marketplace_financial;
         crate::controllers::return_completion_operations::list_return_completion_operations,
         crate::controllers::return_completion_operations::show_return_completion_operation,
         crate::controllers::return_completion_operations::retry_return_completion_operation,
+        crate::controllers::reconciliation::list_reconciliation_required,
+        crate::controllers::reconciliation::quarantine_stale_executing,
+        crate::controllers::reconciliation::resolve_unknown_as_failed,
+        crate::controllers::reconciliation::resolve_unknown_as_succeeded,
+        crate::controllers::reconciliation::retry_local_persistence,
+        crate::controllers::reconciliation::retry_create_label,
     ),
     components(
         schemas(
@@ -147,6 +153,13 @@ mod marketplace_financial;
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepResponse,
             crate::controllers::return_completion_operations::AdminListReturnCompletionOperationsParams,
             crate::services::ReturnCompletionOperationResponse,
+            crate::controllers::reconciliation::ListReconciliationParams,
+            crate::controllers::reconciliation::QuarantineStaleInput,
+            crate::controllers::reconciliation::ResolveUnknownFailedInput,
+            crate::controllers::reconciliation::ResolveUnknownSucceededInput,
+            crate::controllers::reconciliation::QuarantineStaleResponse,
+            crate::controllers::reconciliation::AdminReconciliationProviderOperationResponse,
+            rustok_fulfillment::providers::FulfillmentProviderOperationResult,
         )
     ),
     modifiers(&CommerceOpenApiAddon),
