@@ -1377,7 +1377,7 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
     }
 }
 
-fn strip_fulfillment_identity_metadata(
+pub(crate) fn strip_fulfillment_identity_metadata(
     value: serde_json::Value,
 ) -> FulfillmentResult<serde_json::Value> {
     let mut root = match value {
@@ -1503,7 +1503,7 @@ fn apply_allowed_shipping_profiles_to_metadata(
     Ok(Value::Object(metadata_object))
 }
 
-fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
+pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
     let mut root = match value {
         Value::Object(object) => object,
         _ => {
