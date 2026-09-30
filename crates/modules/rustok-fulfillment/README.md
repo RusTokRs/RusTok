@@ -41,6 +41,7 @@
 - Shipping-option currency codes are normalized as uppercase ASCII three-letter codes at the owner-service boundary, matching the provider currency invariant before persistence.
 - All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - `metadata.provider_operation` is write-reserved: fulfillment creation strips caller-supplied receipt data, while provider-backed lifecycle commands attach the receipt only after the provider operation has been journaled.
+- Shipping-option `provider_id` values use the canonical Fulfillment provider-registry identifier grammar at the owner boundary, so persisted options cannot contain provider IDs that the registry would later reject.
 - The broad `fulfillment/fulfillment_copy` readiness row is an aggregate classification only and must not be registered as a second Translation provider.
 - `carrier` and `tracking_number` are identifiers; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
 - `delivered_note` and `cancellation_reason` belong to fulfillment history and preserve their original operational context. Translation must not retroactively rewrite those facts.

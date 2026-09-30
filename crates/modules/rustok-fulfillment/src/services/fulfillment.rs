@@ -89,10 +89,7 @@ impl FulfillmentService {
                 "amount cannot be negative".to_string(),
             ));
         }
-        let provider_id = provider_id
-            .map(|provider_id| provider_id.trim().to_string())
-            .filter(|provider_id| !provider_id.is_empty())
-            .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+        let provider_id = normalize_provider_id(provider_id)?;
         let allowed_shipping_profile_slugs =
             normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
         let metadata =
@@ -257,12 +254,8 @@ impl FulfillmentService {
         if let Some(amount) = amount {
             active.amount = Set(amount);
         }
-        if let Some(provider_id) = provider_id {
-            let provider_id = Some(provider_id)
-                .map(|provider_id| provider_id.trim().to_string())
-                .filter(|provider_id| !provider_id.is_empty())
-                .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
-            active.provider_id = Set(provider_id);
+        if provider_id.is_some() {
+            active.provider_id = Set(normalize_provider_id(provider_id)?);
         }
         if metadata.is_some() || allowed_shipping_profile_slugs.is_some() {
             let current_metadata = active.metadata.clone().take().unwrap_or_default();
@@ -1273,6 +1266,15 @@ fn validate_checkout_identity(
     Ok(checkout_plan_hash.to_string())
 }
 
+fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
+    let provider_id = value
+        .map(|provider_id| provider_id.trim().to_string())
+        .filter(|provider_id| !provider_id.is_empty())
+        .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+    crate::providers::validate_provider_id(&provider_id)?;
+    Ok(provider_id)
+}
+
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
     if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic()) {
@@ -2064,6 +2066,22 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_provider_id_uses_registry_identifier_rules() {
+        assert!(super::normalize_provider_id(Some("PayPal".to_string())).is_err());
+        assert!(super::normalize_provider_id(Some("foo.bar".to_string())).is_err());
+        assert_eq!(
+            super::normalize_provider_id(Some(" carrier-1 ".to_string()))
+                .expect("valid provider id"),
+            "carrier-1"
+        );
+        assert_eq!(
+            super::normalize_provider_id(Some("   ".to_string()))
+                .expect("blank provider id uses manual"),
+            "manual"
+        );
     }
 
     #[test]
