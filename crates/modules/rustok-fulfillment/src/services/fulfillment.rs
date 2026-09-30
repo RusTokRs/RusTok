@@ -68,6 +68,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -142,6 +143,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .filter(entities::shipping_option::Column::Active.eq(true))
@@ -164,6 +166,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .order_by_asc(entities::shipping_option::Column::CreatedAt)
@@ -186,6 +189,7 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
         input: UpdateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -310,6 +314,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         let option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -333,6 +338,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, false)
             .await
     }
@@ -342,6 +348,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, true)
             .await
     }
@@ -352,6 +359,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         self.create_fulfillment_with_identity(tenant_id, input, None)
             .await
     }
@@ -366,6 +374,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         self.create_fulfillment_with_identity_and_id(
             tenant_id,
             input,
@@ -383,6 +392,7 @@ impl FulfillmentService {
         checkout_fulfillment_index: u32,
         checkout_plan_hash: &str,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let checkout_plan_hash = validate_checkout_identity(
             checkout_operation_id,
             checkout_fulfillment_index,
@@ -492,6 +502,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
         self.build_fulfillment_response(fulfillment).await
     }
@@ -502,6 +513,7 @@ impl FulfillmentService {
         checkout_operation_id: Uuid,
         checkout_fulfillment_index: u32,
     ) -> FulfillmentResult<Option<CheckoutFulfillmentRecord>> {
+        validate_tenant_id(tenant_id)?;
         let row = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
@@ -533,6 +545,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
     ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
@@ -570,6 +583,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+        validate_tenant_id(tenant_id)?;
         let fulfillment = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
@@ -588,6 +602,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> FulfillmentResult<Vec<FulfillmentResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
@@ -607,6 +622,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: ListFulfillmentsInput,
     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+        validate_tenant_id(tenant_id)?;
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
         let offset = fulfillment_list_offset(page, per_page);
@@ -646,6 +662,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -762,6 +779,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -867,6 +885,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: ReopenFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -987,6 +1006,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -1086,6 +1106,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
@@ -1217,6 +1238,15 @@ impl FulfillmentService {
         self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
     }
+}
+
+fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_checkout_identity(
@@ -2026,6 +2056,12 @@ mod tests {
         assert_eq!(fulfillment_list_offset(0, 0), 0);
         assert_eq!(fulfillment_list_offset(1, 100), 0);
         assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn validate_tenant_id_rejects_nil_identity() {
+        assert!(super::validate_tenant_id(Uuid::nil()).is_err());
+        assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
     }
 
     #[test]
