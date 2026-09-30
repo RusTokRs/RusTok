@@ -1073,6 +1073,8 @@ impl FulfillmentService {
         Ok(map_fulfillment(fulfillment, items))
     }
 
+    /// Lifecycle commands serialize on the parent fulfillment row so their
+    /// quantity decisions are made from one current snapshot before any item write.
     async fn load_fulfillment_for_update(
         &self,
         txn: &DatabaseTransaction,
