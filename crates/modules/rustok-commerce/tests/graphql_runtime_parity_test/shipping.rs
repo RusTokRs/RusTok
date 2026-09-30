@@ -118,6 +118,7 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
                 currencyCode
                 providerId
                 allowedShippingProfileSlugs
+                translationRevision
               }}
             }}
             "#
@@ -140,6 +141,10 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
         created_json["createShippingOption"]["allowedShippingProfileSlugs"],
         serde_json::json!(["bulky", "cold-chain"])
     );
+    let translation_revision = created_json["createShippingOption"]["translationRevision"]
+        .as_str()
+        .expect("shipping option translation revision should be present")
+        .to_string();
 
     let updated = schema
         .execute(Request::new(format!(
@@ -149,6 +154,7 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
                 tenantId: "{tenant_id}",
                 id: "{shipping_option_id}",
                 input: {{
+                  expectedTranslationRevision: "{translation_revision}",
                   translations: [{{ locale: "en", name: "Cold Chain Freight" }}],
                   currencyCode: "usd",
                   amount: "39.99",
@@ -162,6 +168,7 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
                 currencyCode
                 providerId
                 allowedShippingProfileSlugs
+                translationRevision
               }}
             }}
             "#
@@ -210,6 +217,7 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
                 providerId
                 metadata
                 allowedShippingProfileSlugs
+                translationRevision
               }}
             }}
             "#
