@@ -22,6 +22,8 @@ the immutable checkout plan and receives normalized owner projections. The owner
 uses `FulfillmentService::list_by_order` and `create_fulfillment`; mounted Commerce
 checkout no longer queries fulfillment persistence or constructs the service.
 
+Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract remains owned by the later `m20260925_000119_type_checkout_fulfillment_identity` migration.
+
 The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
