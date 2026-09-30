@@ -3963,3 +3963,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, direct consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.73` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.74 — same primary module, shipping-option metadata/object-shape and compatibility normalization residuals`.
+
+### FS-22.06.74 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Stable collection ordering
+
+- **Base:** `74ad99093a8dc3090838300f90f59e9e7e531c46`; dedicated branch `audit/fs-22.06.74-fulfillment-stable-ordering` created from refreshed `main`.
+- **Primary scope:** one production service module only — ordering of shipping-option, fulfillment, and fulfillment-item collection reads, including paginated lists and latest-by-order selection.
+- **Invariant map:** collection order must be deterministic across repeated reads; pagination must use a total ordering so equal timestamps cannot move records between pages; latest-by-order must have a deterministic winner; response item ordering must be stable.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.74-01:** shipping options, fulfillments, and fulfillment items used `created_at` as the only ordering key. Equal timestamps are legal, so SQL had no total order. On paginated fulfillment lists this can produce unstable page membership; on latest-by-order and response item projection it can produce nondeterministic result ordering.
+- **Production remediation:** added ID tie-breakers: shipping-option lists now order by `created_at, id` ascending; `find_by_order` and paginated `list_fulfillments` order by `created_at, id` descending; `list_by_order` and both fulfillment-item loaders order by `created_at, id` ascending.
+- **Semantic preservation:** existing primary timestamp direction, filters, tenant predicates, page/limit semantics, and checkout-index ordering remain unchanged. The ID key only resolves ties.
+- **Immediate re-audit:** re-read every changed query and the response/item loaders; no code path relies on timestamp-only ordering as a semantic signal.
+- **Fresh second pass:** enumerated every `order_by_*` in the primary module. Remaining single-key orders are intentional: checkout fulfillment rows are ordered by their identity index; shipping translations by `(shipping_option_id, locale)` and single-option translations by locale.
+- **Checkout reconciliation:** checkout fulfillment index has its own identity uniqueness semantics, so adding an unrelated ID tie-breaker there is unnecessary and was intentionally not done.
+- **Regression-test decision:** no new pure unit test was added because the defect is SQL total-order behavior; static query audit and complete `ORDER BY` enumeration prove the source-level remediation while runtime DB pagination remains maintainer evidence.
+- **Documentation:** Fulfillment README now states the deterministic collection-order contract.
+- **Verification:** source inspection, complete `ORDER BY` enumeration, pagination/response impact analysis, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.74` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.75 — same primary module, deeper metadata merge and shipping-option compatibility normalization pass`.
