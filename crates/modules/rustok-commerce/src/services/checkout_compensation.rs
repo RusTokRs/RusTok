@@ -200,7 +200,7 @@ impl CheckoutCompensationService {
             .compensate_checkout_payment(
                 checkout_compensation_port_context(
                     tenant_id,
-                    Uuid::nil(),
+                    actor_id,
                     operation,
                     "payment",
                     idempotency_key,
@@ -425,34 +425,6 @@ fn cart_context(
     if write {
         context.with_idempotency_key(format!(
             "checkout:{}:compensation:cart:{action}",
-            operation.id
-        ))
-    } else {
-        context
-    }
-}
-
-fn order_identity_context(
-    tenant_id: Uuid,
-    operation: &checkout_operation::Model,
-    deadline: Duration,
-    action: &str,
-    write: bool,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant_id.to_string(),
-        PortActor::service("rustok-commerce.checkout-compensation"),
-        PLATFORM_FALLBACK_LOCALE,
-        format!(
-            "checkout:{}:compensation:order-identity:{action}",
-            operation.id
-        ),
-    )
-    .with_causation_id(operation.id.to_string())
-    .with_deadline(deadline);
-    if write {
-        context.with_idempotency_key(format!(
-            "checkout:{}:compensation:order-identity:{action}",
             operation.id
         ))
     } else {
