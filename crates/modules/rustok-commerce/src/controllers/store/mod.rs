@@ -438,6 +438,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     event_bus: rustok_outbox::TransactionalEventBus,
     tenant_id: Uuid,
     request_context: &RequestContext,
+    idempotency_key: &str,
     storefront_port: &dyn CartStorefrontPort,
     cart: CartResponse,
 ) -> HttpResult<CartResponse> {
@@ -488,7 +489,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
                     None,
                     cart.id,
                     "reprice",
-                    true,
+                    Some(idempotency_key),
                 ),
                 CartStorefrontRepriceRequest {
                     cart_id: cart.id,
