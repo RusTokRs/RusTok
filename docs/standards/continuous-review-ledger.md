@@ -3946,3 +3946,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, call-site tracing, registry contract comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.72` Iteration 1 complete; module track remains open.
 - **Next primary module iteration:** `FS-22.06.73 — same primary module, malformed `shipping_profiles` compatibility fail-open behavior`.
+
+### FS-22.06.73 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-profile compatibility fail-closed boundary
+
+- **Base:** `68278f94ba61a9261e464b29d3e67e8f7b2381e0`; dedicated branch `audit/fs-22.06.73-fulfillment-shipping-profiles` created from refreshed `main`.
+- **Primary scope:** one production service module only — extraction of persisted `shipping_profiles.allowed_slugs` into the typed `ShippingOptionResponse` compatibility projection.
+- **Invariant map:** an absent shipping-profile restriction may remain unrestricted; a present compatibility namespace must be structurally valid; malformed restriction metadata must never widen storefront eligibility.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.73-01:** `extract_allowed_shipping_profile_slugs` returned `None` when `shipping_profiles` was not an object, when `allowed_slugs` was missing, or when `allowed_slugs` was not an array. The storefront compatibility function treats `None` as no restriction, so malformed present metadata could fail open and make an option compatible with any required shipping profile.
+- **Production remediation:** the Fulfillment owner projection now distinguishes absence from malformed presence. If `shipping_profiles` exists but is structurally invalid or lacks `allowed_slugs`, it returns `Some(Vec::new())`; this preserves unrestricted semantics only when the entire `shipping_profiles` namespace is absent.
+- **Regression coverage:** added pure tests for malformed namespace, missing `allowed_slugs`, scalar `allowed_slugs`, and fully absent namespace.
+- **Adjacent-boundary audit:** `ShippingOptionResponse.allowed_shipping_profile_slugs` is consumed before metadata fallback by Commerce; `Some(empty)` therefore reaches the existing compatibility helper as a concrete restriction and rejects non-empty required profiles. No Commerce code change was required.
+- **Immediate re-audit:** re-read extraction, response construction, and Commerce compatibility semantics. Valid arrays still normalize/deduplicate as before; malformed present metadata no longer becomes `None`.
+- **Fresh second pass:** searched all Fulfillment `shipping_profiles` writers/readers and all current Commerce consumers. Fulfillment create/update remain the only owner write paths; typed profile input continues to produce an explicit `allowed_slugs` array.
+- **Compatibility note:** an entirely absent `shipping_profiles` namespace remains `None` by design, preserving the established meaning of an unrestricted shipping option. Only malformed present compatibility data is fail-closed.
+- **Documentation:** Fulfillment README now states the fail-closed malformed shipping-profile compatibility contract.
+- **Verification:** source inspection, direct consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.73` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.74 — same primary module, shipping-option metadata/object-shape and compatibility normalization residuals`.
