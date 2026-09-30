@@ -1254,8 +1254,13 @@ Source inspection is not execution evidence.
 - [x] Replace synthetic cart write idempotency derived from the correlation ID with a caller-owned `Idempotency-Key`.
 - [x] Keep Store Cart reads observational with no idempotency key in their `PortContext`.
 - [x] Propagate the caller key through the shipping/context patch and cart reprice helper.
-- [x] Propagate the existing payment-collection caller key into its pre-command cart reprice and payment command context.
-- [x] Add a static verifier covering the mounted Store Cart and payment-collection write boundaries plus OpenAPI header contracts.
+- [x] Propagate the existing payment-collection caller key into its pre-command cart reprice and payment command context, using a deterministic bounded child key for the Cart reprice step.
+- [x] Move Store Cart mutations into transaction-aware owner helpers and bind durable receipt completion to the same DB transaction.
+- [x] Replay completed owner operations from the durable receipt; reject reuse of one key with a different operation/request hash.
+- [x] Persist terminal mutation failures as durable receipts after rollback so a retry with the same key does not execute the mutation again.
+- [x] Declare the Cart migration dependency on `m20260803_000001_create_owner_operation_receipts`.
+- [x] Add Cart source coverage for success replay, key rebinding conflict, and shared receipt test schema.
+- [x] Add a static verifier covering the HTTP header contract and the owner-level durable receipt boundary.
 - [ ] Run Cargo/Node/format/CI verification and retain execution evidence; source work remains unvalidated until maintainer/CI execution completes.
 
 
