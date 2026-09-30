@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Write as _};
+use std::{collections::{BTreeSet, HashMap}, fmt::Write as _};
 
-use rustok_api::{PortError, TenantLocale, sha256_digest};
+use rustok_api::{PortError, TenantLocale, UNKNOWN_PROVENANCE_LOCALE, sha256_digest};
 use rustok_core::generate_id;
 use rustok_outbox::idempotency;
 use sea_orm::{
@@ -433,14 +433,7 @@ fn build_snapshot(
     let resource_revision = resource_revision(&option, &translations);
     let source_revision = locale_revision(&source);
     let target_revision = target.as_ref().map(locale_revision);
-    let exact_locales = translations
-        .iter()
-        .filter_map(|translation| {
-            TenantLocale::new(&translation.locale)
-                .ok()
-                .map(TenantLocale::into_inner)
-        })
-        .collect();
+    let exact_locales = exact_locales(&translations)?;
 
     Ok(ShippingOptionTranslationExactLocaleSnapshot {
         shipping_option_id: option.id,
@@ -463,6 +456,37 @@ fn exact_locale_row<'a>(
     translations
         .iter()
         .find(|translation| translation.locale == locale)
+}
+
+fn exact_locales(
+    translations: &[shipping_option_translation::Model],
+) -> ShippingOptionTranslationExactLocaleResult<Vec<String>> {
+    let mut seen = BTreeSet::new();
+    let mut locales = Vec::with_capacity(translations.len());
+
+    for translation in translations {
+        if translation.locale == UNKNOWN_PROVENANCE_LOCALE {
+            continue;
+        }
+        let locale = TenantLocale::new(&translation.locale).map_err(|error| {
+            ShippingOptionTranslationExactLocaleError::Validation(format!(
+                "Shipping option translation contains an invalid persisted locale: {error}"
+            ))
+        })?;
+        if locale.as_str() != translation.locale {
+            return Err(ShippingOptionTranslationExactLocaleError::Validation(
+                "Shipping option translation contains a non-canonical persisted locale".to_string(),
+            ));
+        }
+        if !seen.insert(locale.as_str().to_string()) {
+            return Err(ShippingOptionTranslationExactLocaleError::Validation(
+                "Shipping option translations contain duplicate canonical locales".to_string(),
+            ));
+        }
+        locales.push(locale.into_inner());
+    }
+
+    Ok(locales)
 }
 
 fn validate_tenant(tenant_id: Uuid) -> ShippingOptionTranslationExactLocaleResult<()> {
@@ -564,4 +588,67 @@ fn digest_revision(payload: &[u8]) -> String {
         write!(&mut revision, "{byte:02x}").expect("writing to String cannot fail");
     }
     revision
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn translation(locale: &str, name: &str) -> shipping_option_translation::Model {
+        shipping_option_translation::Model {
+            id: Uuid::new_v4(),
+            shipping_option_id: Uuid::new_v4(),
+            locale: locale.to_string(),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn exact_locales_rejects_invalid_persisted_locale_instead_of_dropping_it() {
+        let result = exact_locales(&[
+            translation("en", "Express"),
+            translation("not@a-locale", "Broken"),
+        ]);
+
+        assert!(matches!(
+            result,
+            Err(ShippingOptionTranslationExactLocaleError::Validation(message))
+                if message.contains("invalid persisted locale")
+        ));
+    }
+
+    #[test]
+    fn exact_locales_rejects_noncanonical_and_duplicate_locales() {
+        let noncanonical = exact_locales(&[
+            translation("en", "Express"),
+            translation("EN", "Express uppercase"),
+        ]);
+        assert!(matches!(
+            noncanonical,
+            Err(ShippingOptionTranslationExactLocaleError::Validation(message))
+                if message.contains("non-canonical persisted locale")
+        ));
+
+        let duplicate = exact_locales(&[
+            translation("en", "Express"),
+            translation("en-US", "Express US"),
+            translation("en-US", "Express US duplicate"),
+        ]);
+        assert!(matches!(
+            duplicate,
+            Err(ShippingOptionTranslationExactLocaleError::Validation(message))
+                if message.contains("duplicate canonical locales")
+        ));
+    }
+
+    #[test]
+    fn exact_locales_excludes_storage_only_unknown_provenance() {
+        let result = exact_locales(&[
+            translation("und", "Legacy name"),
+            translation("en", "Express"),
+        ])
+        .expect("storage-only provenance must not be an exact runtime locale");
+
+        assert_eq!(result, vec!["en".to_string()]);
+    }
 }
