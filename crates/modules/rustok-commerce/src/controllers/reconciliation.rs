@@ -572,7 +572,7 @@ mod tests {
         let response: AdminReconciliationProviderOperationResponse = operation.into();
         let value = serde_json::to_value(response).expect("response projection must serialize");
 
-        for field in ["request_payload", "provider_result", "error_message", "tenant_id"] {
+        for field in ["request_payload", "provider_result", "error_message", "tenant_id", "idempotency_key"] {
             assert!(
                 value.get(field).is_none(),
                 "sensitive persistence field {field} must not be exposed"
