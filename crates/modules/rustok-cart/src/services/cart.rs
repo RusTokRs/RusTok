@@ -739,9 +739,8 @@ impl CartService {
         txn: &C,
         tenant_id: Uuid,
         cart_id: Uuid,
-        line_item_id: Uuid ,
+        line_item_id: Uuid,
     ) -> CartResult<CartResponse> {
-        let txn = self.db.begin().await?;
         let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "remove_line_item")?;
 
