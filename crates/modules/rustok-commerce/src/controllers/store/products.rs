@@ -659,7 +659,7 @@ pub async fn list_shipping_options(
                         auth.0.as_ref(),
                         cart_id,
                         "read",
-                        false,
+                        None,
                     ),
                     CartStorefrontReadRequest { cart_id },
                 )
