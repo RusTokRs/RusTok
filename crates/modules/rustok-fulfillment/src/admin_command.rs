@@ -187,8 +187,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             &context,
             tenant_id,
             request.fulfillment_id,
-            "ship",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -337,8 +335,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             &context,
             tenant_id,
             request.fulfillment_id,
-            "reship",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -440,8 +436,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             &context,
             tenant_id,
             request.fulfillment_id,
-            "cancel",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -876,8 +870,6 @@ fn operation_request(
     context: &PortContext,
     tenant_id: Uuid,
     fulfillment_id: Uuid,
-    operation: &'static str,
-    provider_id: &str,
     metadata: Value,
 ) -> Result<FulfillmentProviderOperationRequest, PortError> {
     let idempotency_key = context
