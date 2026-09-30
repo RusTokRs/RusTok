@@ -520,7 +520,7 @@ impl SeoService {
         })
     }
 
-    async fn public_sitemap_modules_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
+    pub(super) async fn public_sitemap_modules_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
         for provider in self
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)

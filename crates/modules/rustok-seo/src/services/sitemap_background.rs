@@ -264,6 +264,13 @@ impl SeoService {
     ) -> SeoResult<()> {
         let tenant = self.load_background_sitemap_tenant(job.tenant_id).await?;
         let settings = self.load_settings(tenant.id).await?;
+        if !sitemaps_enabled(&settings)
+            || !self.public_sitemap_modules_enabled(tenant.id).await?
+        {
+            return Err(SeoError::configuration(
+                "sitemap submission was disabled after the job was queued",
+            ));
+        }
         let preview = self.robots_preview(&tenant).await?;
         let sitemap_index_url = preview
             .public_url
