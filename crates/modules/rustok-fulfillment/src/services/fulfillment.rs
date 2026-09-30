@@ -1159,6 +1159,7 @@ impl FulfillmentService {
         let items = entities::fulfillment_item::Entity::find()
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment_item::Column::Id)
             .all(&self.db)
             .await?;
 
@@ -1192,6 +1193,7 @@ impl FulfillmentService {
         entities::fulfillment_item::Entity::find()
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment_item::Column::Id)
             .all(db)
             .await
             .map_err(Into::into)
