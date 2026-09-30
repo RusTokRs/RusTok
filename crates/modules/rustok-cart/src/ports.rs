@@ -6,7 +6,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    AddCartLineItemInput, CartError, CartLineItemPricingUpdate, CartPricingAdjustmentUpdate,
+    AddCartLineItemInput, CartLineItemPricingUpdate, CartPricingAdjustmentUpdate,
     CartResponse, CreateCartInput, UpdateCartContextInput,
 };
 
@@ -538,7 +538,7 @@ impl CartPromotionPort for crate::CartService {
     }
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+pub(crate) fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "cart.tenant_id_invalid",
@@ -547,42 +547,3 @@ fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
-fn cart_error_to_port_error(error: CartError) -> PortError {
-    match error {
-        CartError::Validation(message) => PortError::validation("cart.validation", message),
-        CartError::CartNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "cart.cart_not_found",
-            format!("cart {id} not found"),
-            false,
-        ),
-        CartError::CartLineItemNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "cart.line_item_not_found",
-            format!("cart line item {id} not found"),
-            false,
-        ),
-        CartError::InvalidTransition { from, to } => PortError::new(
-            rustok_api::PortErrorKind::Conflict,
-            "cart.invalid_transition",
-            format!("invalid cart status transition: {from} -> {to}"),
-            false,
-        ),
-        CartError::Database(error) => PortError::unavailable(
-            "cart.database_unavailable",
-            format!("cart storage unavailable: {error}"),
-        ),
-        CartError::TaxBoundary {
-            kind,
-            code,
-            message,
-            retryable,
-        }
-        | CartError::ShippingBoundary {
-            kind,
-            code,
-            message,
-            retryable,
-        } => PortError::new(kind, code, message, retryable),
-    }
-}
