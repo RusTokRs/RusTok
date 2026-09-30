@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `22d73e8a29aeb247159f98bb1d667ed85a4a3fd6`  
+**Current main SHA:** `755cb57929760ad8cd42ef0bbc42ae275464b8ea`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4070,5 +4070,5 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Static contract audit:** the canonical typed-identity verifier continues to enforce typed columns, tenant-scoped uniqueness, and rollback compatibility; no conflicting lowercase-only database contract currently exists.
 - **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/rustfmt/runtime evidence is claimed beyond source/static inspection.
 - **Documentation:** Fulfillment README now documents canonical lowercase checkout plan hashes and legacy uppercase-row read compatibility.
-- **Status:** `FS-22.06.80` implementation complete on its dedicated branch; integration pending final merge gate.
+- **Status:** `FS-22.06.80` complete and integrated on `main` as `755cb57929760ad8cd42ef0bbc42ae275464b8ea`.
 - **Next primary module iteration:** `FS-22.06.81 — same primary module, checkout fulfillment identity metadata projection and item cart-line identity residuals`.
