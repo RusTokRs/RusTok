@@ -553,14 +553,13 @@ impl InProcessFulfillmentAdminCommandPort {
                 | PROVIDER_OPERATION_SUCCEEDED
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
         ) {
-            let result = deserialize_provider_result(&journal_operation)
-                .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
             if journal_operation.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-                return Err(PortError::validation(
-                    "fulfillment.provider_reconciliation_pending",
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
                     "fulfillment provider operation requires reconciliation",
                 ));
             }
+            let result = deserialize_provider_result(&journal_operation)?;
             return Ok(JournaledProviderResult {
                 operation_id: journal_operation.id,
                 result,
@@ -568,7 +567,7 @@ impl InProcessFulfillmentAdminCommandPort {
             });
         }
         if journal_operation.status == PROVIDER_OPERATION_EXECUTING {
-            return Err(PortError::validation(
+            return Err(PortError::conflict(
                 "fulfillment.provider_operation_in_progress",
                 "fulfillment provider operation is already executing",
             ));
@@ -592,21 +591,20 @@ impl InProcessFulfillmentAdminCommandPort {
                     | PROVIDER_OPERATION_SUCCEEDED
                     | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             ) {
-                let result = deserialize_provider_result(&current)
-                    .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
                 if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-                    return Err(PortError::validation(
-                        "fulfillment.provider_reconciliation_pending",
+                    return Err(PortError::conflict(
+                        "fulfillment.reconciliation_required",
                         "fulfillment provider operation requires reconciliation",
                     ));
                 }
+                let result = deserialize_provider_result(&current)?;
                 return Ok(JournaledProviderResult {
                     operation_id: current.id,
                     result,
                     committed: current.status == PROVIDER_OPERATION_COMMITTED,
                 });
             }
-            return Err(PortError::validation(
+            return Err(PortError::conflict(
                 "fulfillment.provider_operation_in_progress",
                 "fulfillment provider operation is already executing",
             ));
@@ -639,9 +637,9 @@ impl InProcessFulfillmentAdminCommandPort {
                     .await
                     .is_err()
                 {
-                    return Err(PortError::validation(
+                    return Err(PortError::unavailable(
                         "fulfillment.provider_journal_failed",
-                        "fulfillment provider operation failed and could not be checkpointed",
+                        "fulfillment provider operation could not be safely checkpointed",
                     ));
                 }
                 return Err(map_fulfillment_error(context, owner_operation, error));
@@ -649,7 +647,7 @@ impl InProcessFulfillmentAdminCommandPort {
         };
 
         let result_payload = serde_json::to_value(&provider_result).map_err(|_| {
-            PortError::validation(
+            PortError::invariant_violation(
                 "fulfillment.provider_result_invalid",
                 "fulfillment provider result could not be normalized",
             )
@@ -742,8 +740,8 @@ impl InProcessFulfillmentAdminCommandPort {
                     format!("fulfillment.local_{operation}_journal_commit_failed"),
                 )
                 .await;
-            return Err(PortError::validation(
-                "fulfillment.journal_commit_failed",
+            return Err(PortError::conflict(
+                "fulfillment.reconciliation_required",
                 "fulfillment operation completed but its journal could not be committed",
             ));
         }
@@ -911,15 +909,17 @@ fn operation_request(
 
 fn deserialize_provider_result(
     operation: &provider_operation::Model,
-) -> Result<FulfillmentProviderOperationResult, FulfillmentError> {
+) -> Result<FulfillmentProviderOperationResult, PortError> {
     let value = operation.provider_result.clone().ok_or_else(|| {
-        FulfillmentError::Validation(
-            "fulfillment provider operation has no persisted provider result".to_string(),
+        PortError::invariant_violation(
+            "fulfillment.provider_result_missing",
+            "fulfillment provider operation has no persisted provider result",
         )
     })?;
     serde_json::from_value(value).map_err(|_| {
-        FulfillmentError::Validation(
-            "fulfillment provider operation has an invalid persisted provider result".to_string(),
+        PortError::invariant_violation(
+            "fulfillment.provider_result_invalid",
+            "fulfillment provider operation has an invalid persisted provider result",
         )
     })
 }
