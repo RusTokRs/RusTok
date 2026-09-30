@@ -167,6 +167,7 @@ async fn operational_shipping_option_state_does_not_change_translation_revision(
             option.id,
             UpdateShippingOptionInput {
                 translations: None,
+                expected_translation_revision: None,
                 currency_code: Some("eur".to_string()),
                 amount: Some(Decimal::from_str("19.00").expect("valid amount")),
                 provider_id: Some("manual".to_string()),

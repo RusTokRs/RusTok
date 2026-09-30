@@ -156,13 +156,16 @@ impl SeaOrmModuleGovernanceService {
         let trust_level = verified.trust_level;
         let license = verified.license;
         let entry_type = verified.entry_type;
-        let marketplace_json = verified.marketplace_json;
+        let marketplace = verified.marketplace;
+        let ui_packages = verified.ui_packages;
+        let artifact_storage_key = verified.artifact_storage_key;
         let checksum_sha256 = verified.checksum_sha256;
+        let artifact_size = verified.artifact_size;
+        let artifact_origin = verified.artifact_origin;
         let delivery_media_type = verified.delivery_media_type;
         let delivery_payload_digest = verified.delivery_payload_digest;
         let delivery_storage_key = verified.delivery_storage_key;
         let delivery_size_bytes = verified.delivery_size_bytes;
-        let artifact_origin = verified.artifact_origin;
         let command_approval_override = verified.command_approval_override;
         let translations = verified.translations;
 

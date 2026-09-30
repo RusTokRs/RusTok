@@ -1920,7 +1920,7 @@ mod tests {
     }
 
     fn option(id: Uuid) -> shipping_option::Model {
-        let now = Utc::now().fixed();
+        let now = Utc::now().into();
         shipping_option::Model {
             id,
             tenant_id: Uuid::new_v4(),

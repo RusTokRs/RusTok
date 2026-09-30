@@ -748,6 +748,7 @@ fn fulfillment_translation_error_to_port_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_translation_targets::TranslationFieldPatch;
 
     fn test_identity() -> TranslationResourceIdentity {
         shipping_option_identity(Uuid::new_v4())

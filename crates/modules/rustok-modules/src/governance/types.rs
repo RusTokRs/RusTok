@@ -377,7 +377,7 @@ pub enum ModulePublicationArtifactOrigin {
 }
 
 impl ModulePublicationArtifactOrigin {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::PlatformBuilt => "platform_built",
             Self::ExternalPrebuilt => "external_prebuilt",
@@ -385,7 +385,7 @@ impl ModulePublicationArtifactOrigin {
         }
     }
 
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "platform_built" => Some(Self::PlatformBuilt),
             "external_prebuilt" => Some(Self::ExternalPrebuilt),
@@ -578,7 +578,7 @@ pub(crate) enum ModulePublicationEvidenceAuthority {
 }
 
 impl ModulePublicationEvidenceAuthority {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::AuthorSignature => "author_signature",
             Self::BuildServiceAttestation => "build_service_attestation",

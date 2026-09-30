@@ -1,3 +1,5 @@
+use uuid::Uuid;
+use semver::Version;
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
 use super::fixtures::*;

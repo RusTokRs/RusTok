@@ -1,3 +1,4 @@
+use semver::Version;
 //! Shared test fixtures and builder helpers for governance test suites.
 
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};

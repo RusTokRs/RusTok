@@ -1,3 +1,5 @@
+use uuid::Uuid;
+use semver::Version;
 //! Governance integration and contract tests.
 
 mod fixtures;

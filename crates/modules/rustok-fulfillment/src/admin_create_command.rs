@@ -645,6 +645,7 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::PROVIDER_OPERATION_PENDING;
 
     fn provider_operation(payload: Value) -> provider_operation::Model {
         let now = chrono::Utc::now().into();

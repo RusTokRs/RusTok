@@ -140,7 +140,7 @@ impl SeaOrmModuleGovernanceService {
         })
     }
 
-    async fn marketplace_release_projections(
+    pub(crate) async fn marketplace_release_projections(
         &self,
     ) -> Result<Vec<RegistryMarketplaceReleaseProjection>, ModuleGovernanceError> {
         let backend = self.db.get_database_backend();
@@ -179,7 +179,7 @@ impl SeaOrmModuleGovernanceService {
             .collect()
     }
 
-    async fn marketplace_release_metadata(
+    pub(crate) async fn marketplace_release_metadata(
         &self,
         release_id: &str,
         preferred_locale: Option<&str>,
