@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::services::fulfillment::{normalize_checkout_plan_hash, CheckoutFulfillmentRecord};
+use crate::services::fulfillment::{
+    normalize_checkout_plan_hash, strip_fulfillment_identity_metadata,
+    strip_fulfillment_item_checkout_metadata, CheckoutFulfillmentRecord,
+};
 use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
     FulfillmentService,
@@ -690,7 +693,12 @@ fn build_input(
 }
 
 fn fulfillment_metadata(base: Value) -> Result<Value, PortError> {
-    let mut root = strip_checkout_identity_metadata(base)?;
+    let value = strip_fulfillment_identity_metadata(base)
+        .map_err(|_| metadata_projection_error())?;
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => return Err(metadata_projection_error()),
+    };
     root.insert(
         "commerce_orchestration".to_string(),
         serde_json::json!({"operation": "checkout_create_fulfillment"}),
@@ -702,7 +710,12 @@ fn fulfillment_item_metadata(
     base: Value,
     cart_line_item_id: Uuid,
 ) -> Result<Value, PortError> {
-    let mut root = strip_checkout_identity_metadata(base)?;
+    let value = strip_fulfillment_item_checkout_metadata(base)
+        .map_err(|_| metadata_projection_error())?;
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => return Err(metadata_projection_error()),
+    };
     let mut checkout = root
         .remove("checkout")
         .and_then(|value| value.as_object().cloned())
@@ -719,44 +732,12 @@ fn fulfillment_item_metadata(
     Ok(Value::Object(root))
 }
 
-fn strip_checkout_identity_metadata(
-    value: Value,
-) -> Result<serde_json::Map<String, Value>, PortError> {
-    let mut root = match value {
-        Value::Object(object) => object,
-        _ => {
-            return Err(PortError::validation(
-                "fulfillment.checkout_metadata_invalid",
-                "checkout fulfillment metadata must be a JSON object",
-            ));
-        }
-    };
-    if let Some(checkout) = root.remove("checkout") {
-        let mut checkout = match checkout {
-            Value::Object(object) => object,
-            _ => {
-                return Err(PortError::validation(
-                    "fulfillment.checkout_metadata_invalid",
-                    "checkout metadata namespace must be a JSON object",
-                ));
-            }
-        };
-        for key in [
-            "operation_id",
-            "order_id",
-            "order_plan_hash",
-            "fulfillment_index",
-            "fulfillment_key",
-        ] {
-            checkout.remove(key);
-        }
-        if !checkout.is_empty() {
-            root.insert("checkout".to_string(), Value::Object(checkout));
-        }
-    }
-    Ok(root)
+fn metadata_projection_error() -> PortError {
+    PortError::validation(
+        "fulfillment.checkout_metadata_invalid",
+        "checkout fulfillment metadata is invalid",
+    )
 }
-
 struct FulfillmentExpectation<'a> {
     tenant_id: Uuid,
     order_id: Uuid,
@@ -1262,7 +1243,7 @@ mod tests {
     fn checkout_fulfillment_metadata_rejects_scalar_projection_input() {
         assert!(fulfillment_metadata(Value::String("legacy".to_string())).is_err());
         assert!(fulfillment_item_metadata(Value::Array(Vec::new()), Uuid::new_v4()).is_err());
-        assert!(strip_checkout_identity_metadata(Value::Bool(true)).is_err());
+        assert!(fulfillment_metadata(Value::Bool(true)).is_err());
     }
 
     #[test]
