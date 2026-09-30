@@ -5,7 +5,6 @@ use axum::{
 };
 use chrono::{DateTime, FixedOffset};
 use rustok_api::{AuthContext, Permission, TenantContext};
-use rustok_cart::in_process_cart_checkout_port;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
