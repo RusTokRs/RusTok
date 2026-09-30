@@ -457,7 +457,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
-        self.commit_create_label(context, owner_operation, operation.id)
+        self.commit_create_label(owner_operation, operation.id)
             .await?;
         Ok(result)
     }
@@ -622,7 +622,6 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
         (_, patch) => patch,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
