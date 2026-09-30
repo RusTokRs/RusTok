@@ -12,6 +12,8 @@ pub enum FulfillmentError {
     ShippingOptionNotFound(Uuid),
     #[error("fulfillment {0} not found")]
     FulfillmentNotFound(Uuid),
+    #[error("shipping option {0} translation revision conflicts with the current state")]
+    ShippingOptionTranslationRevisionConflict(Uuid),
     #[error("invalid fulfillment transition from `{from}` to `{to}`")]
     InvalidTransition { from: String, to: String },
     #[error(transparent)]
