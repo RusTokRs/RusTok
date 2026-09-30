@@ -1152,6 +1152,38 @@ fn fulfillment_error_to_port_error(
                 "fulfillment lifecycle conflicts with checkout execution",
             )
         }
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(id) => {
+            let shipping_option_id_non_nil = !id.is_nil();
+            tracing::warn!(
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                operation = owner_operation,
+                owner_error_kind = "shipping_option_translation_revision_conflict",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                shipping_option_id_non_nil,
+                code = "fulfillment.shipping_option_translation_revision_conflict",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "checkout fulfillment shipping option translation revision conflicts with the current state"
+            );
+            PortError::conflict(
+                "fulfillment.shipping_option_translation_revision_conflict",
+                "shipping option translation revision conflicts with the current state",
+            )
+        }
         FulfillmentError::Database(error) => {
             let database_error_type = std::any::type_name_of_val(&error);
             tracing::error!(

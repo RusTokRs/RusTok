@@ -352,7 +352,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         ) {
             let result = deserialize_create_label_result(context, owner_operation, &operation)?;
             if operation.status != PROVIDER_OPERATION_COMMITTED {
-                self.commit_create_label(owner_operation, operation.id)
+                self.commit_create_label(operation.tenant_id, owner_operation, operation.id)
                     .await?;
             }
             return Ok(result);
@@ -366,14 +366,14 @@ impl InProcessFulfillmentAdminCreateCommandPort {
 
         if self
             .operation_journal
-            .claim_execution(operation.id)
+            .claim_execution(operation.tenant_id, operation.id)
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?
             .is_none()
         {
             let current = self
                 .operation_journal
-                .get(operation.id)
+                .get(operation.tenant_id, operation.id)
                 .await
                 .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
             if matches!(
@@ -384,7 +384,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             ) {
                 let result = deserialize_create_label_result(context, owner_operation, &current)?;
                 if current.status != PROVIDER_OPERATION_COMMITTED {
-                    self.commit_create_label(owner_operation, current.id)
+                    self.commit_create_label(operation.tenant_id, owner_operation, current.id)
                         .await?;
                 }
                 return Ok(result);
@@ -404,7 +404,11 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             Err(error) => {
                 if let Err(checkpoint_error) = self
                     .operation_journal
-                    .mark_provider_error(operation.id, "create_label provider execution failed")
+                    .mark_provider_error(
+                        operation.tenant_id,
+                        operation.id,
+                        "create_label provider execution failed",
+                    )
                     .await
                 {
                     tracing::error!(
@@ -426,6 +430,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                 if let Err(checkpoint_error) = self
                     .operation_journal
                     .mark_execution_reconciliation_required(
+                        operation.tenant_id,
                         operation.id,
                         result.external_reference.clone(),
                         None,
@@ -451,26 +456,29 @@ impl InProcessFulfillmentAdminCreateCommandPort {
 
         self.operation_journal
             .mark_provider_succeeded(
+                operation.tenant_id,
                 operation.id,
                 result.external_reference.clone(),
                 result_payload,
             )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
-        self.commit_create_label(owner_operation, operation.id)
+        self.commit_create_label(operation.tenant_id, owner_operation, operation.id)
             .await?;
         Ok(result)
     }
 
     async fn commit_create_label(
         &self,
+        tenant_id: Uuid,
         owner_operation: &'static str,
         operation_id: Uuid,
     ) -> Result<(), PortError> {
-        if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
+        if let Err(error) = self.operation_journal.mark_committed(tenant_id, operation_id).await {
             if let Err(checkpoint_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation_id,
                     "create_label provider succeeded but journal commit failed",
                 )
@@ -547,6 +555,10 @@ fn map_fulfillment_error_without_context(error: FulfillmentError) -> PortError {
             "fulfillment.invalid_transition",
             "fulfillment operation conflicts with the current state",
         ),
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => PortError::conflict(
+            "fulfillment.shipping_option_translation_revision_conflict",
+            "shipping option translation revision conflicts with the current state",
+        ),
         FulfillmentError::Database(_) => PortError::unavailable(
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
@@ -591,6 +603,13 @@ fn map_fulfillment_error(
             PortError::conflict(
                 "fulfillment.invalid_transition",
                 "fulfillment operation conflicts with the current state",
+            ),
+        ),
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
+            "shipping_option_translation_revision_conflict",
+            PortError::conflict(
+                "fulfillment.shipping_option_translation_revision_conflict",
+                "shipping option translation revision conflicts with the current state",
             ),
         ),
         FulfillmentError::Database(_) => (

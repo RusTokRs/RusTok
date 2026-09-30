@@ -607,6 +607,7 @@ impl InProcessFulfillmentAdminCommandPort {
             ));
         }
 
+        let tenant_id = request.tenant_id;
         let provider_result = match operation {
             "ship" | "reship" => {
                 self.provider_registry
@@ -628,7 +629,7 @@ impl InProcessFulfillmentAdminCommandPort {
                 if self
                     .operation_journal
                     .mark_provider_error(
-                        request.tenant_id,
+                        tenant_id,
                         journal_operation.id,
                         "fulfillment.provider_operation_failed",
                     )
@@ -652,7 +653,7 @@ impl InProcessFulfillmentAdminCommandPort {
         })?;
         self.operation_journal
             .mark_provider_succeeded(
-                request.tenant_id,
+                tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,

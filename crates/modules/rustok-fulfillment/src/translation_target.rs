@@ -8,6 +8,7 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
+    TranslationPatchIssue, TranslationPatchIssueSeverity,
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
