@@ -1988,6 +1988,7 @@ mod tests {
     use crate::entities::{shipping_option, shipping_option_translation};
     use chrono::Utc;
     use rust_decimal::Decimal;
+    use serde_json::Value;
     use uuid::Uuid;
 
     fn translation(

@@ -1,16 +1,12 @@
-use chrono::Utc;
 use rustok_fulfillment::migrations::migrations;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
-
-mod support;
 
 #[tokio::test]
 async fn translation_change_journal_rollback_is_blocked_when_evidence_exists() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
 
     let migration = migrations()
         .into_iter()
@@ -63,7 +59,6 @@ async fn translation_change_journal_rollback_is_blocked_when_evidence_exists() {
 #[tokio::test]
 async fn translation_change_journal_rollback_succeeds_when_empty() {
     let db = setup_test_db().await;
-    support::ensure_fulfillment_schema(&db).await;
 
     let migration = migrations()
         .into_iter()

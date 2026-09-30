@@ -1,8 +1,7 @@
 use chrono::Utc;
 use rustok_fulfillment::entities::fulfillment;
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, Set, Statement};
-use sea_orm_migration::MigrationTrait;
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, Set, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 

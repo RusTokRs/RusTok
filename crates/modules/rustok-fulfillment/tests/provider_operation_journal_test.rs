@@ -647,7 +647,7 @@ async fn premature_checkout_label_insert_requires_paid_order() {
 
     let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
-    for index in 6..=10 {
+    for index in 6..=11 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -745,7 +745,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
     .await
     .expect("legacy executing operation should be insertable before the new guard");
 
-    for index in 7..=9 {
+    for index in 7..=10 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -754,7 +754,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
             .expect("required provider migration should install");
     }
     migrations
-        .get(10)
+        .get(11)
         .expect("premature insert guard migration should exist")
         .up(&manager)
         .await
@@ -803,7 +803,7 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
 
     let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
-    for index in 6..=10 {
+    for index in 6..=11 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -837,7 +837,7 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
         .expect("operation should be executing");
 
     let rollback = migrations
-        .get(10)
+        .get(11)
         .expect("premature insert guard migration should exist")
         .down(&manager)
         .await;
