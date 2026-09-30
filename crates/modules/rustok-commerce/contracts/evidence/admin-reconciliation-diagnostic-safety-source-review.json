@@ -25,7 +25,7 @@
     "owner_calls_preserved": true,
     "provider_registry_composition_preserved": true,
     "limits_and_stale_clamp_preserved": true,
-    "successful_response_envelopes_preserved": false,
+    "successful_response_envelopes_preserved": true,
     "broad_ecommerce_cleanup_closed": false,
     "runtime_evidence_claimed": false,
     "raw_provider_operation_http_response": false,
@@ -34,7 +34,9 @@
     "provider_operation_error_message_exposed": false,
     "six_route_openapi_contracts_published": true,
     "six_route_auth_responses_401_403": true,
-    "provider_operation_response_projection_preserved": true
+    "provider_operation_response_projection_preserved": true,
+    "fulfillment_retry_response_envelope_preserved": true,
+    "provider_operation_sensitive_fields_exposed": false
   },
   "execution": [],
   "validation": {
