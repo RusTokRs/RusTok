@@ -4,7 +4,7 @@
 //! All helpers are `pub(super)` so they stay internal to `ports/` while being
 //! shared by port submodules without exposing telemetry internals.
 
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortContext, PortError};
 use uuid::Uuid;
 
 // ── Context fact extraction ─────────────────────────────────────────
@@ -276,50 +276,6 @@ pub(super) fn parse_port_tenant_id(
     })
 }
 
-pub(super) fn product_context_error(
-    context: &PortContext,
-    owner_operation: &'static str,
-    error: PortError,
-) -> PortError {
-    let error_kind = product_port_error_kind(&error.kind);
-    let error_code_length = error.code.chars().count();
-    let error_message_length = error.message.chars().count();
-    let context_facts = product_port_context_facts(context);
-    tracing::warn!(
-        owner = "rustok_product",
-        correlation_id = %context.correlation_id,
-        correlation_id_length = context_facts.correlation_id_length,
-        tenant_id_length = context_facts.tenant_id_length,
-        operation = owner_operation,
-        code = "product.context_invalid",
-        error_kind,
-        error_code_length,
-        error_message_present = !error.message.trim().is_empty(),
-        error_message_length,
-        retryable = error.retryable,
-        boundary = "product_catalog_read_port",
-        "product catalog call context was rejected"
-    );
-
-    let PortError {
-        kind,
-        code,
-        retryable,
-        ..
-    } = error;
-    match kind {
-        PortErrorKind::Timeout => PortError::timeout(code, "product request context is invalid"),
-        PortErrorKind::Validation => {
-            PortError::validation(code, "product request context is invalid")
-        }
-        kind => PortError::new(
-            kind,
-            "product.context_invalid",
-            "product request context is invalid",
-            retryable,
-        ),
-    }
-}
 
 // ── Storage/variant error helpers ───────────────────────────────────
 
@@ -370,17 +326,6 @@ pub(super) fn product_variant_not_found(
 
 // ── Domain error → port error mapping ───────────────────────────────
 
-fn product_port_error_kind(kind: &PortErrorKind) -> &'static str {
-    match kind {
-        PortErrorKind::Validation => "validation",
-        PortErrorKind::NotFound => "not_found",
-        PortErrorKind::Conflict => "conflict",
-        PortErrorKind::Forbidden => "forbidden",
-        PortErrorKind::Unavailable => "unavailable",
-        PortErrorKind::Timeout => "timeout",
-        PortErrorKind::InvariantViolation => "invariant_violation",
-    }
-}
 
 fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
     use crate::error::CommerceError;

@@ -729,7 +729,7 @@ fn validate_fulfillment(
         .map(|item| {
             (
                 item.order_line_item_id,
-                (item.cart_line_item_id, item.quantity),
+                (Some(item.cart_line_item_id), item.quantity),
             )
         })
         .collect::<BTreeMap<_, _>>();

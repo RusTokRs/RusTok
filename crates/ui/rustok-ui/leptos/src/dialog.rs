@@ -35,8 +35,8 @@ pub fn Dialog(
     let custom = (!class.is_empty()).then_some(class.as_str());
     let backdrop_class = dialog_backdrop_classes(open);
     let content_class = dialog_content_classes(open, custom);
-    let label_attr = (!aria_label.is_empty()).then_some(aria_label.as_str());
-    let labelledby_attr = (!aria_labelledby.is_empty()).then_some(aria_labelledby.as_str());
+    let label_attr = (!aria_label.is_empty()).then_some(aria_label);
+    let labelledby_attr = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
     let dialog_ref = NodeRef::<html::Div>::new();
 
     // Move focus into the dialog when it opens so that the modal is reachable

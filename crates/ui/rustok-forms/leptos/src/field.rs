@@ -78,6 +78,7 @@ pub fn FormField(
 /// `<FormField>` for fields that should show automatic error messages.
 #[component]
 pub fn FormItem(
+    /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
     children: Children,
@@ -147,6 +148,7 @@ pub fn FormLabel(
 /// Wrapper that sets `aria-invalid` on its container for accessibility slot coordination.
 #[component]
 pub fn FormControl(
+    /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
     children: Children,
@@ -241,6 +243,7 @@ pub fn FormMessage(
 /// Help text below a form field.
 #[component]
 pub fn FormDescription(
+    /// Extra CSS classes.
     #[prop(optional, into)]
     class: String,
     children: Children,
@@ -262,7 +265,19 @@ pub fn FormDescription(
 }
 
 /// Alias for [`FormDescription`].
-pub type FormHelperText = FormDescription;
+#[component]
+pub fn FormHelperText(
+    /// Extra CSS classes.
+    #[prop(optional, into)]
+    class: String,
+    children: Children,
+) -> impl IntoView {
+    view! {
+        <FormDescription class=class>
+            {children()}
+        </FormDescription>
+    }
+}
 
 // ─── FormError ──────────────────────────────────────────────────────────────
 

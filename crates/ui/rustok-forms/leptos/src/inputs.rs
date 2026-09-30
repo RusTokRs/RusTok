@@ -419,25 +419,31 @@ pub fn FormNumberInput(
     let max_str = max.map(|v| v.to_string());
     let step_str = step.map(|v| v.to_string());
 
-    view! {
-        <FormInput
-            value=value
-            on_input=on_input
-            on_change=on_change
-            on_blur=on_blur
-            input_type="number"
-            name=name
-            id=id
-            placeholder=placeholder
-            min=min_str
-            max=max_str
-            step=step_str
-            disabled=disabled
-            required=required
-            readonly=readonly
-            class=class
-        />
-    }
+    FormInput(FormInputProps {
+        value,
+        on_input,
+        on_change,
+        on_blur,
+        on_focus: None,
+        input_type: Some("number"),
+        name,
+        id,
+        placeholder,
+        disabled,
+        required,
+        readonly,
+        autofocus: false,
+        min: min_str,
+        max: max_str,
+        step: step_str,
+        minlength: None,
+        maxlength: None,
+        pattern: None,
+        autocomplete: None,
+        aria_label: None,
+        aria_describedby: None,
+        class,
+    })
 }
 
 // ─── FormSearchInput ───────────────────────────────────────────────────────
@@ -485,15 +491,31 @@ pub fn FormSearchInput(
                     <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
             </span>
-            <FormInput
-                value=value
-                on_input=on_input
-                input_type="search"
-                name=name
-                id=id
-                placeholder=ph
-                class=format!("pl-8 pr-8 {class}")
-            />
+            {FormInput(FormInputProps {
+                value,
+                on_input,
+                on_change: None,
+                on_blur: None,
+                on_focus: None,
+                input_type: Some("search"),
+                name,
+                id,
+                placeholder: Some(ph),
+                disabled: None,
+                required: false,
+                readonly: false,
+                autofocus: false,
+                min: None,
+                max: None,
+                step: None,
+                minlength: None,
+                maxlength: None,
+                pattern: None,
+                autocomplete: None,
+                aria_label: None,
+                aria_describedby: None,
+                class: format!("pl-8 pr-8 {class}"),
+            })}
             {move || has_value.get().then(|| view! {
                 <button
                     type="button"
@@ -1047,7 +1069,7 @@ pub fn FormSwitch(
         }
     };
 
-    let on_label_toggle = on_toggle;
+    let on_label_toggle = on_toggle.clone();
 
     view! {
         <div class=format!("inline-flex items-start gap-2.5 {class}")>
@@ -1191,13 +1213,14 @@ pub fn FormRadioGroup(
                     }
                 };
 
+                let opt_input_id = opt_id.clone();
                 view! {
                     <label
-                        for=opt_id.clone()
+                        for=opt_id
                         class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-foreground"
                     >
                         <input
-                            id=opt_id
+                            id=opt_input_id
                             type="radio"
                             name=group_name.clone()
                             value=opt_val
@@ -1443,7 +1466,7 @@ pub fn FormOtpInput(
     });
 
     let field_for_dirty = field;
-    let on_digit_input = move |idx: usize, ev: Event| {
+    let on_digit_input = std::rc::Rc::new(move |idx: usize, ev: Event| {
         let raw = event_target_value(&ev);
         let digit = raw.chars().filter(|c| c.is_ascii_digit()).last().map(|c| c.to_string()).unwrap_or_default();
 
@@ -1471,7 +1494,7 @@ pub fn FormOtpInput(
                 cb.run(new_val);
             }
         }
-    };
+    });
 
     view! {
         <div class=format!("flex items-center gap-2 {class}")>
@@ -1494,6 +1517,7 @@ pub fn FormOtpInput(
                     format!("{base} {state_border}")
                 };
 
+                let on_input_fn = on_digit_input.clone();
                 view! {
                     <input
                         id=cell_id
@@ -1503,7 +1527,7 @@ pub fn FormOtpInput(
                         maxlength="1"
                         name=format!("{name_attr}[{idx}]")
                         prop:value=digit_val
-                        on:input=move |ev| on_digit_input(idx, ev)
+                        on:input=move |ev| on_input_fn(idx, ev)
                         disabled=move || is_disabled.get()
                         class=cell_class
                     />

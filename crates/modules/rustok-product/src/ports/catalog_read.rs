@@ -1,24 +1,23 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use uuid::Uuid;
 
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
-use crate::{AdminProductList, CatalogService, StorefrontProductList};
+use crate::{AdminProductList, StorefrontProductList};
 
 use super::diagnostics::{
-    log_product_port_failure, parse_port_tenant_id, product_context_error,
-    product_error_to_port_error, product_storage_error, product_variant_not_found,
+    parse_port_tenant_id, product_error_to_port_error, product_storage_error,
+    product_variant_not_found,
 };
 use super::types::{
     AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
-    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE,
-    MAX_PUBLISHED_PRODUCTS_PER_PAGE, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
-    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
-    validate_admin_products_request, validate_legacy_admin_products_request,
-    validate_legacy_storefront_products_request, validate_published_products_request,
+    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
+    PublishedProductsRequest, StorefrontProductProjectionRequest,
+    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest, validate_admin_products_request,
+    validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
+    validate_published_products_request,
 };
 
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
@@ -444,6 +443,7 @@ mod tests {
     use super::diagnostics::product_error_to_port_error;
     use super::types::validate_published_products_request;
     use super::*;
+    use uuid::Uuid;
 
     fn base_context() -> PortContext {
         PortContext::new(

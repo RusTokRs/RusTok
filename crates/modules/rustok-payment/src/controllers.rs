@@ -540,6 +540,22 @@ fn normalize_required(
     Ok(value)
 }
 
+fn safe_error(
+    status: StatusCode,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> (StatusCode, Json<Value>) {
+    (
+        status,
+        Json(serde_json::json!({
+            "error": {
+                "code": code.into(),
+                "message": message.into(),
+            }
+        })),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -582,16 +598,4 @@ mod tests {
             .expect_err("oversize payload must fail");
         assert_eq!(error.0, StatusCode::PAYLOAD_TOO_LARGE);
     }
-}
-
-fn safe_error(
-    (
-        status,
-        Json(serde_json::json!({
-            "error": {
-                "code": code.into(),
-                "message": message.into(),
-            }
-        })),
-    )
 }

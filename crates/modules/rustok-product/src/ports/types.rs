@@ -2,10 +2,7 @@ use rustok_api::{PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    AdminProductListQuery, StorefrontProductListQuery, StorefrontProductSortBy,
-    StorefrontProductSortDirection,
-};
+use crate::{AdminProductListQuery, StorefrontProductListQuery};
 
 pub const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
 pub const MAX_ADMIN_PRODUCTS_PER_PAGE: u64 = 100;
