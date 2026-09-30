@@ -760,8 +760,9 @@ impl FulfillmentService {
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
-        input: DeliverFulfillmentInput,
+        mut input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
@@ -864,8 +865,9 @@ impl FulfillmentService {
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
-        input: ReopenFulfillmentInput,
+        mut input: ReopenFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
@@ -1256,6 +1258,16 @@ fn merge_fulfillment_metadata(
     patch: serde_json::Value,
 ) -> serde_json::Value {
     strip_fulfillment_identity_metadata(merge_metadata(current, patch))
+}
+
+fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(mut object) => {
+            object.remove("provider_operation");
+            serde_json::Value::Object(object)
+        }
+        other => other,
+    }
 }
 
 fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::Value {
