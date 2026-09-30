@@ -756,6 +756,7 @@ fn strip_checkout_identity_metadata(
     }
     Ok(root)
 }
+ 
 struct FulfillmentExpectation<'a> {
     tenant_id: Uuid,
     order_id: Uuid,
@@ -1265,6 +1266,7 @@ mod tests {
         assert!(strip_checkout_identity_metadata(Value::Bool(true)).is_err());
     }
 
+    #[test]
     fn checkout_fulfillment_metadata_rejects_malformed_checkout_namespace() {
         let metadata = serde_json::json!({
             "checkout": "not-an-object",
@@ -1286,9 +1288,8 @@ mod tests {
             "note": "keep"
         });
 
-        let projected =
-            fulfillment_item_metadata(metadata, cart_line_item_id)
-                .expect("valid checkout metadata should project");
+        let projected = fulfillment_item_metadata(metadata, cart_line_item_id)
+            .expect("valid checkout metadata should project");
         assert_eq!(
             extract_cart_line_item_id(&projected),
             Some(cart_line_item_id)
