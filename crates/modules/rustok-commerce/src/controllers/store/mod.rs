@@ -462,6 +462,8 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
         return Ok(cart);
     }
 
+    let reprice_idempotency_key =
+        derived_storefront_idempotency_key(idempotency_key, "reprice", cart.id);
     let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus);
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
@@ -505,7 +507,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
                     None,
                     cart.id,
                     "reprice",
-                    Some(idempotency_key),
+                    Some(&reprice_idempotency_key),
                 ),
                 CartStorefrontRepriceRequest {
                     cart_id: cart.id,
