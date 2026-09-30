@@ -5,8 +5,8 @@ use rustok_cart::{
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
-use rustok_order::{CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest};
-use rustok_payment::{CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest};
+use rustok_order::{CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, OrderError};
+use rustok_payment::{CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest, PaymentError};
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -19,7 +19,7 @@ use super::{
     CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationStatus, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS,
-    PaymentOrchestrationError, PaymentOrchestrationService,
+    PaymentOrchestrationError,
 };
 
 const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;
