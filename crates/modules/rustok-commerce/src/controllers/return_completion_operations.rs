@@ -111,7 +111,8 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     params(AdminListReturnCompletionOperationsParams),
     responses(
         (status = 200, description = "Return completion operations", body = PaginatedResponse<ReturnCompletionOperationResponse>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "orders:read is required")
     )
 )]
 pub async fn list_return_completion_operations(
@@ -163,6 +164,7 @@ pub async fn list_return_completion_operations(
     responses(
         (status = 200, description = "Return completion operation", body = ReturnCompletionOperationResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "orders:read is required"),
         (status = 404, description = "Return completion operation not found")
     )
 )]
@@ -203,6 +205,7 @@ pub async fn show_return_completion_operation(
     responses(
         (status = 200, description = "Return completion retried", body = OrderReturnResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "orders:manage and payments:manage are required"),
         (status = 404, description = "Return completion operation not found"),
         (status = 409, description = "Operation is leased or requires reconciliation"),
         (status = 503, description = "Recovery storage or provider is unavailable")
@@ -214,7 +217,7 @@ pub async fn retry_return_completion_operation(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<OrderReturnResponse>> {
-    ensure_permissions(
+    ensure_all_permissions(
         &auth,
         &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
         "Permission denied: orders:manage and payments:manage required",
@@ -235,6 +238,17 @@ pub async fn retry_return_completion_operation(
                 )
             })?;
     Ok(Json(order_return))
+}
+
+fn ensure_all_permissions(
+    auth: &AuthContext,
+    permissions: &[Permission],
+    message: &str,
+) -> HttpResult<()> {
+    for permission in permissions {
+        ensure_permissions(auth, &[*permission], message)?;
+    }
+    Ok(())
 }
 
 fn return_completion_operator_policy(
@@ -302,4 +316,58 @@ fn map_operator_error(
         "commerce admin return completion operation failed"
     );
     HttpError::new(status, code, message)
+}
+
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    fn auth_with(permissions: Vec<Permission>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions,
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[test]
+    fn retry_requires_both_orders_and_payments_manage_permissions() {
+        let message = "Permission denied: orders:manage and payments:manage required";
+
+        let only_orders = auth_with(vec![Permission::ORDERS_MANAGE]);
+        let only_orders_error = ensure_all_permissions(
+            &only_orders,
+            &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
+            message,
+        )
+        .expect_err("orders:manage alone must not authorize the retry");
+
+        assert_eq!(only_orders_error.status, axum::http::StatusCode::FORBIDDEN);
+
+        let only_payments = auth_with(vec![Permission::PAYMENTS_MANAGE]);
+        let only_payments_error = ensure_all_permissions(
+            &only_payments,
+            &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
+            message,
+        )
+        .expect_err("payments:manage alone must not authorize the retry");
+
+        assert_eq!(
+            only_payments_error.status,
+            axum::http::StatusCode::FORBIDDEN
+        );
+
+        let both = auth_with(vec![Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE]);
+        assert!(ensure_all_permissions(
+            &both,
+            &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
+            message
+        )
+        .is_ok());
+    }
 }

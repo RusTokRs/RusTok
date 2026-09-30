@@ -98,6 +98,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
     params(PaymentProviderEventRecoveryQuery),
     responses(
         (status = 200, description = "Bounded recovery sweep completed; per-event failures are reported safely", body = PaymentProviderEventRecoveryResponse),
+        (status = 401, description = "Authentication is required"),
         (status = 403, description = "payments:manage is required"),
         (status = 503, description = "Initial provider event recovery query failed")
     )

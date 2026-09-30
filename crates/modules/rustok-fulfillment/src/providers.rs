@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -394,7 +395,7 @@ pub struct FulfillmentProviderOperationRequest {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct FulfillmentProviderOperationResult {
     pub provider_id: String,
     pub external_reference: Option<String>,

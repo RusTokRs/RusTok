@@ -310,7 +310,7 @@ pub(crate) fn map_admin_product_port_error(
             "state_conflict",
         ),
         PortErrorKind::Forbidden => (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
             "Permission denied",
             "forbidden",
@@ -437,6 +437,7 @@ pub async fn list_products(
         let translations_started_at = Instant::now();
         let translations = product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
+            .filter(product_translation::Column::TenantId.eq(tenant.id))
             .all(runtime.db())
             .await
             .map_err(|error| {
@@ -723,4 +724,40 @@ pub struct ProductListItem {
     pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::PortActor;
+
+    #[test]
+    fn forbidden_port_error_maps_to_http_403() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::user(actor_id.to_string()),
+            "en",
+            "test-correlation",
+        )
+        .with_idempotency_key("test-idempotency-key")
+        .with_deadline(std::time::Duration::from_secs(2));
+
+        let error = map_admin_product_port_error(
+            AdminProductErrorContext::new(
+                tenant_id,
+                actor_id,
+                Some(Uuid::new_v4()),
+                "forbidden_port_error",
+            ),
+            &context,
+            PortError::forbidden("product.forbidden", "Permission denied"),
+        );
+
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "commerce_permission_denied");
+        assert_eq!(error.message, "Permission denied");
+    }
 }
