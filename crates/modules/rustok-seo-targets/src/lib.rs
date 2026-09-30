@@ -808,6 +808,10 @@ pub struct SeoSitemapCandidateRecord {
     pub target_id: Uuid,
     pub locale: String,
     pub route: String,
+    #[serde(default)]
+    pub images: Vec<SeoTargetImageRecord>,
+    #[serde(default)]
+    pub alternates: Vec<SeoTargetAlternateRoute>,
 }
 
 #[cfg(feature = "server")]

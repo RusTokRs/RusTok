@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use rustok_core::security::{SsrfProtection, ValidationResult};
 use rustok_core::{DomainEvent, simple_hash};
-use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
+use rustok_seo_targets::{
+    SeoTargetAlternateRoute, SeoTargetCapabilityKind, SeoTargetImageRecord,
+    SeoTargetSitemapRequest,
+};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
@@ -45,6 +48,13 @@ const DELIVERY_STATUS_SENT: &str = "sent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PublicOrigin(String);
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct SitemapUrlRecord {
+    pub(super) url: String,
+    pub(super) images: Vec<SeoTargetImageRecord>,
+    pub(super) alternates: Vec<SeoTargetAlternateRoute>,
+}
 
 #[allow(dead_code)]
 struct SitemapEventPublication {
@@ -237,7 +247,7 @@ impl SeoService {
         &self,
         tenant: &TenantContext,
         public_origin: &PublicOrigin,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
         settings: &SeoModuleSettings,
         started_at: chrono::DateTime<chrono::FixedOffset>,
         completed_at: chrono::DateTime<chrono::FixedOffset>,
@@ -590,7 +600,7 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &PublicOrigin,
         job_id: Uuid,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
         settings: &SeoModuleSettings,
         now: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<Vec<seo_sitemap_file::Model>> {
@@ -609,6 +619,10 @@ impl SeoService {
                         chunk,
                         settings.sitemap_changefreq.as_str(),
                         settings.sitemap_priority.as_str(),
+                        settings.sitemap_include_images,
+                        settings.hreflang_in_sitemap
+                            && settings.hreflang_enabled
+                            && settings.submodule_hreflang_enabled,
                     )),
                     created_at: Set(now),
                     updated_at: Set(now),
@@ -646,7 +660,7 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &PublicOrigin,
         exclude_patterns: &[String],
-    ) -> SeoResult<Vec<String>> {
+    ) -> SeoResult<Vec<SitemapUrlRecord>> {
         let base_url = public_origin.as_str();
         let mut urls = Vec::new();
         for provider in self
@@ -673,17 +687,54 @@ impl SeoService {
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
                 )?;
-                let route = locale_prefixed_path(locale.as_str(), candidate.route.as_str());
+                let route = sitemap_locale_path(locale.as_str(), candidate.route.as_str());
                 if !sitemap_route_excluded(candidate.route.as_str(), exclude_patterns)
                     && !sitemap_route_excluded(route.as_str(), exclude_patterns)
                 {
-                    urls.push(format!("{base_url}{route}"));
+                    let alternates = candidate
+                        .alternates
+                        .into_iter()
+                        .filter_map(|alternate| {
+                            let alternate_locale = normalize_effective_locale(
+                                alternate.locale.as_str(),
+                                tenant.default_locale.as_str(),
+                            )
+                            .ok()?;
+                            let alternate_route = sitemap_locale_path(
+                                alternate_locale.as_str(),
+                                alternate.route.as_str(),
+                            );
+                            Some(SeoTargetAlternateRoute {
+                                locale: alternate_locale,
+                                route: sitemap_public_url(base_url, alternate_route.as_str()),
+                            })
+                        })
+                        .collect();
+                    let images = candidate
+                        .images
+                        .into_iter()
+                        .filter_map(|mut image| {
+                            let is_absolute = image.url.starts_with("http://")
+                                || image.url.starts_with("https://");
+                            let is_root_relative =
+                                image.url.starts_with('/') && !image.url.starts_with("//");
+                            if is_root_relative {
+                                image.url = sitemap_public_url(base_url, image.url.as_str());
+                            }
+                            (is_absolute || is_root_relative).then_some(image)
+                        })
+                        .collect();
+                    urls.push(SitemapUrlRecord {
+                        url: sitemap_public_url(base_url, route.as_str()),
+                        images,
+                        alternates,
+                    });
                 }
             }
         }
 
-        urls.sort();
-        urls.dedup();
+        urls.sort_by(|left, right| left.url.cmp(&right.url));
+        urls.dedup_by(|left, right| left.url == right.url);
         Ok(urls)
     }
 }
@@ -814,6 +865,34 @@ fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
 
 pub(super) fn sitemaps_enabled(settings: &SeoModuleSettings) -> bool {
     settings.sitemap_enabled && settings.submodule_sitemaps_enabled
+}
+
+pub(super) fn sitemap_locale_path(locale: &str, path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return path.to_string();
+    }
+    let normalized_path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    let locale_prefix = format!("/{locale}");
+    let locale_prefix_with_separator = format!("{locale_prefix}/");
+    if normalized_path == locale_prefix
+        || normalized_path.starts_with(locale_prefix_with_separator.as_str())
+    {
+        normalized_path
+    } else {
+        locale_prefixed_path(locale, normalized_path.as_str())
+    }
+}
+
+pub(super) fn sitemap_public_url(public_origin: &str, path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        path.to_string()
+    } else {
+        format!("{public_origin}{path}")
+    }
 }
 
 pub(super) fn sitemap_route_excluded(route: &str, patterns: &[String]) -> bool {

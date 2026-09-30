@@ -1,4 +1,7 @@
-use super::sitemaps::{index_generation, sitemaps_enabled, submission_adapters, submission_aggregation};
+use super::sitemaps::{
+    SitemapUrlRecord, index_generation, sitemaps_enabled, submission_adapters,
+    submission_aggregation,
+};
 
 const SITEMAP_JOB_QUEUED: &str = "queued";
 const SITEMAP_JOB_RUNNING: &str = "running";
@@ -240,6 +243,10 @@ impl SeoService {
             settings.sitemap_max_entries_per_file as usize,
             settings.sitemap_changefreq.as_str(),
             settings.sitemap_priority.as_str(),
+            settings.sitemap_include_images,
+            settings.hreflang_in_sitemap
+                && settings.hreflang_enabled
+                && settings.submodule_hreflang_enabled,
             !settings.sitemap_submission_endpoints.is_empty(),
             generated_at,
         )
@@ -306,7 +313,7 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &str,
         exclude_patterns: &[String],
-    ) -> SeoResult<Vec<String>> {
+    ) -> SeoResult<Vec<SitemapUrlRecord>> {
         let mut urls = Vec::new();
         for provider in self
             .registry
@@ -332,7 +339,7 @@ impl SeoService {
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
                 )?;
-                let route = super::routing::locale_prefixed_path(
+                let route = super::sitemaps::sitemap_locale_path(
                     locale.as_str(),
                     candidate.route.as_str(),
                 );
@@ -341,13 +348,57 @@ impl SeoService {
                     exclude_patterns,
                 ) && !super::sitemaps::sitemap_route_excluded(route.as_str(), exclude_patterns)
                 {
-                    urls.push(format!("{public_origin}{route}"));
+                    let alternates = candidate
+                        .alternates
+                        .into_iter()
+                        .filter_map(|alternate| {
+                            let alternate_locale =
+                                super::normalize_effective_locale(
+                                    alternate.locale.as_str(),
+                                    tenant.default_locale.as_str(),
+                                )
+                                .ok()?;
+                            let alternate_route = super::sitemaps::sitemap_locale_path(
+                                alternate_locale.as_str(),
+                                alternate.route.as_str(),
+                            );
+                            Some(rustok_seo_targets::SeoTargetAlternateRoute {
+                                locale: alternate_locale,
+                                route: super::sitemaps::sitemap_public_url(
+                                    public_origin,
+                                    alternate_route.as_str(),
+                                ),
+                            })
+                        })
+                        .collect();
+                    let images = candidate
+                        .images
+                        .into_iter()
+                        .filter_map(|mut image| {
+                            let is_absolute = image.url.starts_with("http://")
+                                || image.url.starts_with("https://");
+                            let is_root_relative =
+                                image.url.starts_with('/') && !image.url.starts_with("//");
+                            if is_root_relative {
+                                image.url = super::sitemaps::sitemap_public_url(
+                                    public_origin,
+                                    image.url.as_str(),
+                                );
+                            }
+                            (is_absolute || is_root_relative).then_some(image)
+                        })
+                        .collect();
+                    urls.push(SitemapUrlRecord {
+                        url: super::sitemaps::sitemap_public_url(public_origin, route.as_str()),
+                        images,
+                        alternates,
+                    });
                 }
             }
         }
 
-        urls.sort();
-        urls.dedup();
+        urls.sort_by(|left, right| left.url.cmp(&right.url));
+        urls.dedup_by(|left, right| left.url == right.url);
         Ok(urls)
     }
 
@@ -356,10 +407,12 @@ impl SeoService {
         job: &crate::entities::seo_sitemap_job::Model,
         tenant: &TenantContext,
         public_origin: &str,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
         chunk_size: usize,
         changefreq: &str,
         priority: &str,
+        include_images: bool,
+        include_hreflang: bool,
         requires_submission: bool,
         generated_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<()> {
@@ -380,6 +433,8 @@ impl SeoService {
             chunk_size,
             changefreq,
             priority,
+            include_images,
+            include_hreflang,
             generated_at,
         )
         .await?;
@@ -429,10 +484,12 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &str,
         job_id: Uuid,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
         chunk_size: usize,
         changefreq: &str,
         priority: &str,
+        include_images: bool,
+        include_hreflang: bool,
         now: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<()> {
         let mut files = Vec::new();
@@ -453,6 +510,8 @@ impl SeoService {
                         chunk,
                         changefreq,
                         priority,
+                        include_images,
+                        include_hreflang,
                     )),
                     created_at: Set(now),
                     updated_at: Set(now),
