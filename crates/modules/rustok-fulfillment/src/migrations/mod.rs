@@ -41,7 +41,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
         MigrationDependencyDescriptor::new(
             "m20260713_000109_enforce_fulfillment_integrity",
-            vec!["m20260325_000101_create_order_tables"],
+            vec![
+                "m20260325_000101_create_order_tables",
+                "m20260325_000103_create_customers_table",
+            ],
         ),
         MigrationDependencyDescriptor::new(
             "m20260713_000114_defer_checkout_create_label_until_paid",

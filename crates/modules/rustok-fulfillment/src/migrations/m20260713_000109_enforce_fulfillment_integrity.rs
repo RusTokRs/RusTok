@@ -70,6 +70,7 @@ impl MigrationTrait for Migration {
                         DECLARE
                             order_tenant UUID;
                             option_tenant UUID;
+                            customer_tenant UUID;
                             fulfillment_order UUID;
                             line_order UUID;
                         BEGIN
@@ -96,6 +97,18 @@ impl MigrationTrait for Migration {
                                             USING ERRCODE = '23514';
                                     END IF;
                                 END IF;
+                                IF NEW.customer_id IS NOT NULL THEN
+                                    SELECT tenant_id INTO customer_tenant
+                                    FROM customers WHERE id = NEW.customer_id;
+                                    IF customer_tenant IS NULL THEN
+                                        RAISE EXCEPTION 'customer % does not exist', NEW.customer_id
+                                            USING ERRCODE = '23503';
+                                    END IF;
+                                    IF customer_tenant <> NEW.tenant_id THEN
+                                        RAISE EXCEPTION 'fulfillment and customer belong to different tenants'
+                                            USING ERRCODE = '23514';
+                                    END IF;
+                                END IF;
                                 RETURN NEW;
                             END IF;
 
@@ -116,7 +129,7 @@ impl MigrationTrait for Migration {
                         $$ LANGUAGE plpgsql;
 
                         CREATE TRIGGER fulfillments_ownership_guard
-                        BEFORE INSERT OR UPDATE OF tenant_id, order_id, shipping_option_id
+                        BEFORE INSERT OR UPDATE OF tenant_id, order_id, shipping_option_id, customer_id
                         ON fulfillments FOR EACH ROW
                         EXECUTE FUNCTION enforce_fulfillment_ownership();
 
@@ -178,10 +191,14 @@ impl MigrationTrait for Migration {
                                 SELECT 1 FROM shipping_options so
                                 WHERE so.id = NEW.shipping_option_id AND so.tenant_id = NEW.tenant_id
                             ) THEN RAISE(ABORT, 'fulfillment shipping option tenant mismatch') END;
+                            SELECT CASE WHEN NEW.customer_id IS NOT NULL AND NOT EXISTS (
+                                SELECT 1 FROM customers c
+                                WHERE c.id = NEW.customer_id AND c.tenant_id = NEW.tenant_id
+                            ) THEN RAISE(ABORT, 'fulfillment customer tenant mismatch') END;
                         END;
 
                         CREATE TRIGGER fulfillments_integrity_guard_update
-                        BEFORE UPDATE OF tenant_id, order_id, shipping_option_id, status, carrier,
+                        BEFORE UPDATE OF tenant_id, order_id, shipping_option_id, customer_id, status, carrier,
                             tracking_number, shipped_at, delivered_at, cancelled_at
                         ON fulfillments FOR EACH ROW BEGIN
                             SELECT CASE WHEN NEW.status NOT IN ('pending', 'shipped', 'delivered', 'cancelled')
@@ -208,6 +225,10 @@ impl MigrationTrait for Migration {
                                 SELECT 1 FROM shipping_options so
                                 WHERE so.id = NEW.shipping_option_id AND so.tenant_id = NEW.tenant_id
                             ) THEN RAISE(ABORT, 'fulfillment shipping option tenant mismatch') END;
+                            SELECT CASE WHEN NEW.customer_id IS NOT NULL AND NOT EXISTS (
+                                SELECT 1 FROM customers c
+                                WHERE c.id = NEW.customer_id AND c.tenant_id = NEW.tenant_id
+                            ) THEN RAISE(ABORT, 'fulfillment customer tenant mismatch') END;
                         END;
 
                         CREATE TRIGGER fulfillment_items_integrity_guard_insert
