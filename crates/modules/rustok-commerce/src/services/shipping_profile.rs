@@ -2,8 +2,8 @@ use chrono::Utc;
 use sea_orm::Condition;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, Value,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Value,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
@@ -46,23 +46,31 @@ impl ShippingProfileService {
 
         let slug = normalize_shipping_profile_slug(&input.slug)
             .ok_or_else(|| CommerceError::Validation("shipping profile slug is required".into()))?;
-        self.ensure_slug_available(tenant_id, &slug, None).await?;
         let normalized_translations = normalize_translation_inputs(input.translations)?;
-
-        let now = Utc::now();
         let id = generate_id();
-        let active_profile = shipping_profile::ActiveModel {
-            id: Set(id),
-            tenant_id: Set(tenant_id),
-            slug: Set(slug),
-            active: Set(true),
-            metadata: Set(input.metadata),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        };
-        active_profile.insert(&self.db).await?;
 
-        insert_translations(&self.db, id, &normalized_translations).await?;
+        self.db
+            .transaction::<_, _, CommerceError>(|txn| {
+                Box::pin(async move {
+                    self.ensure_slug_available(txn, tenant_id, &slug, None).await?;
+
+                    let now = Utc::now();
+                    let active_profile = shipping_profile::ActiveModel {
+                        id: Set(id),
+                        tenant_id: Set(tenant_id),
+                        slug: Set(slug),
+                        active: Set(true),
+                        metadata: Set(input.metadata),
+                        created_at: Set(now.into()),
+                        updated_at: Set(now.into()),
+                    };
+                    active_profile.insert(txn).await?;
+
+                    insert_translations(txn, id, &normalized_translations).await?;
+                    Ok::<(), CommerceError>(())
+                })
+            })
+            .await?;
 
         self.get_shipping_profile(tenant_id, id, None, None).await
     }
@@ -126,7 +134,7 @@ impl ShippingProfileService {
         tenant_default_locale: Option<&str>,
     ) -> CommerceResult<ShippingProfileResponse> {
         let row = self
-            .load_shipping_profile(tenant_id, shipping_profile_id)
+            .load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
             .await?;
         let items = load_profiles_with_translations(
             &self.db,
@@ -152,30 +160,58 @@ impl ShippingProfileService {
             .validate()
             .map_err(|error| CommerceError::Validation(error.to_string()))?;
 
-        let row = self
-            .load_shipping_profile(tenant_id, shipping_profile_id)
+        let UpdateShippingProfileInput {
+            slug,
+            metadata,
+            translations,
+        } = input;
+
+        let normalized_slug = match slug {
+            Some(slug) => Some(
+                normalize_shipping_profile_slug(&slug).ok_or_else(|| {
+                    CommerceError::Validation("shipping profile slug cannot be empty".into())
+                })?,
+            ),
+            None => None,
+        };
+        let normalized_translations = match translations {
+            Some(translations) => Some(normalize_translation_inputs(translations)?),
+            None => None,
+        };
+
+        self.db
+            .transaction::<_, _, CommerceError>(|txn| {
+                Box::pin(async move {
+                    let row = self
+                        .load_shipping_profile(txn, tenant_id, shipping_profile_id)
+                        .await?;
+                    let mut active: shipping_profile::ActiveModel = row.into();
+
+                    if let Some(slug) = normalized_slug {
+                        self.ensure_slug_available(
+                            txn,
+                            tenant_id,
+                            &slug,
+                            Some(shipping_profile_id),
+                        )
+                        .await?;
+                        active.slug = Set(slug);
+                    }
+                    if let Some(metadata) = metadata {
+                        active.metadata = Set(metadata);
+                    }
+
+                    active.updated_at = Set(Utc::now().into());
+                    active.update(txn).await?;
+
+                    if let Some(translations) = normalized_translations {
+                        replace_translations(txn, shipping_profile_id, &translations).await?;
+                    }
+
+                    Ok::<(), CommerceError>(())
+                })
+            })
             .await?;
-        let mut active: shipping_profile::ActiveModel = row.into();
-
-        if let Some(slug) = input.slug {
-            let slug = normalize_shipping_profile_slug(&slug).ok_or_else(|| {
-                CommerceError::Validation("shipping profile slug cannot be empty".into())
-            })?;
-            self.ensure_slug_available(tenant_id, &slug, Some(shipping_profile_id))
-                .await?;
-            active.slug = Set(slug);
-        }
-        if let Some(metadata) = input.metadata {
-            active.metadata = Set(metadata);
-        }
-
-        active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
-
-        if let Some(translations) = input.translations {
-            let normalized = normalize_translation_inputs(translations)?;
-            replace_translations(&self.db, shipping_profile_id, &normalized).await?;
-        }
 
         self.get_shipping_profile(tenant_id, shipping_profile_id, None, None)
             .await
@@ -241,8 +277,9 @@ impl ShippingProfileService {
         Ok(())
     }
 
-    async fn ensure_slug_available(
+    async fn ensure_slug_available<C: ConnectionTrait>(
         &self,
+        db: &C,
         tenant_id: Uuid,
         slug: &str,
         current_id: Option<Uuid>,
@@ -250,7 +287,7 @@ impl ShippingProfileService {
         let existing = shipping_profile::Entity::find()
             .filter(shipping_profile::Column::TenantId.eq(tenant_id))
             .filter(shipping_profile::Column::Slug.eq(slug))
-            .one(&self.db)
+            .one(db)
             .await?;
 
         if existing.is_some_and(|row| Some(row.id) != current_id) {
@@ -262,14 +299,15 @@ impl ShippingProfileService {
         Ok(())
     }
 
-    async fn load_shipping_profile(
+    async fn load_shipping_profile<C: ConnectionTrait>(
         &self,
+        db: &C,
         tenant_id: Uuid,
         shipping_profile_id: Uuid,
     ) -> CommerceResult<shipping_profile::Model> {
         shipping_profile::Entity::find_by_id(shipping_profile_id)
             .filter(shipping_profile::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(db)
             .await?
             .ok_or(CommerceError::ShippingProfileNotFound(shipping_profile_id))
     }
@@ -413,8 +451,8 @@ fn normalize_translation_inputs(
     Ok(normalized)
 }
 
-async fn insert_translations(
-    db: &DatabaseConnection,
+async fn insert_translations<C: ConnectionTrait>(
+    db: &C,
     shipping_profile_id: Uuid,
     translations: &[ShippingProfileTranslationInput],
 ) -> CommerceResult<()> {
@@ -432,8 +470,8 @@ async fn insert_translations(
     Ok(())
 }
 
-async fn replace_translations(
-    db: &DatabaseConnection,
+async fn replace_translations<C: ConnectionTrait>(
+    db: &C,
     shipping_profile_id: Uuid,
     translations: &[ShippingProfileTranslationInput],
 ) -> CommerceResult<()> {
