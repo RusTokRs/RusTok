@@ -590,14 +590,17 @@ impl FulfillmentService {
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let txn = self.db.begin().await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         if !matches!(fulfillment.status.as_str(), STATUS_PENDING | STATUS_SHIPPED) {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_SHIPPED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
         if items.is_empty() {
             if fulfillment.status != STATUS_PENDING {
                 return Err(FulfillmentError::InvalidTransition {
@@ -627,7 +630,8 @@ impl FulfillmentService {
             ));
             active.shipped_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
-            active.update(&self.db).await?;
+            active.update(&txn).await?;
+            txn.commit().await?;
 
             return self.get_fulfillment(tenant_id, fulfillment_id).await;
         }
@@ -636,7 +640,6 @@ impl FulfillmentService {
         let now = Utc::now();
         let adjustment_plan =
             resolve_item_adjustments(&items, input.items.as_deref(), FulfillmentItemAction::Ship)?;
-        let txn = self.db.begin().await?;
         let mut adjusted_items = Vec::with_capacity(items.len());
         let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
         let mut adjusted_entries = Vec::new();
@@ -696,14 +699,17 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let txn = self.db.begin().await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         if fulfillment.status != STATUS_SHIPPED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_DELIVERED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
             let now = Utc::now();
@@ -723,7 +729,8 @@ impl FulfillmentService {
             ));
             active.delivered_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
-            active.update(&self.db).await?;
+            active.update(&txn).await?;
+            txn.commit().await?;
 
             return self.get_fulfillment(tenant_id, fulfillment_id).await;
         }
@@ -735,7 +742,6 @@ impl FulfillmentService {
             input.items.as_deref(),
             FulfillmentItemAction::Deliver,
         )?;
-        let txn = self.db.begin().await?;
         let mut adjusted_items = Vec::with_capacity(items.len());
         let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
         let mut adjusted_entries = Vec::new();
@@ -794,12 +800,15 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ReopenFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let txn = self.db.begin().await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         let now = Utc::now();
 
         match fulfillment.status.as_str() {
             STATUS_CANCELLED => {
-                let items = self.load_fulfillment_items(fulfillment.id).await?;
+                let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
                 let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                 let metadata = active.metadata.clone().take().unwrap_or_default();
                 let status_after = reopened_status_for_cancelled(&items, &active);
@@ -818,12 +827,13 @@ impl FulfillmentService {
                     ),
                 ));
                 active.updated_at = Set(now.into());
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
+                txn.commit().await?;
 
                 self.get_fulfillment(tenant_id, fulfillment_id).await
             }
             STATUS_DELIVERED => {
-                let items = self.load_fulfillment_items(fulfillment.id).await?;
+                let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
                 if items.is_empty() {
                     let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                     let metadata = active.metadata.clone().take().unwrap_or_default();
@@ -842,7 +852,8 @@ impl FulfillmentService {
                         ),
                     ));
                     active.updated_at = Set(now.into());
-                    active.update(&self.db).await?;
+                    active.update(&txn).await?;
+                    txn.commit().await?;
 
                     return self.get_fulfillment(tenant_id, fulfillment_id).await;
                 }
@@ -853,7 +864,6 @@ impl FulfillmentService {
                     input.items.as_deref(),
                     FulfillmentItemAction::Reopen,
                 )?;
-                let txn = self.db.begin().await?;
                 let adjustment_lookup =
                     adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
                 let mut adjusted_entries = Vec::new();
@@ -911,7 +921,10 @@ impl FulfillmentService {
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let txn = self.db.begin().await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         if fulfillment.status != STATUS_DELIVERED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -919,7 +932,7 @@ impl FulfillmentService {
             });
         }
 
-        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
         let now = Utc::now();
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
@@ -941,7 +954,8 @@ impl FulfillmentService {
                 ),
             ));
             active.updated_at = Set(now.into());
-            active.update(&self.db).await?;
+            active.update(&txn).await?;
+            txn.commit().await?;
 
             return self.get_fulfillment(tenant_id, fulfillment_id).await;
         }
@@ -952,7 +966,6 @@ impl FulfillmentService {
             input.items.as_deref(),
             FulfillmentItemAction::Reship,
         )?;
-        let txn = self.db.begin().await?;
         let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
         let mut adjusted_entries = Vec::new();
         for item in items {
@@ -1001,7 +1014,10 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let txn = self.db.begin().await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         if fulfillment.status == STATUS_DELIVERED || fulfillment.status == STATUS_CANCELLED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1027,7 +1043,8 @@ impl FulfillmentService {
         ));
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
+        txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
@@ -1057,14 +1074,34 @@ impl FulfillmentService {
         Ok(map_fulfillment(fulfillment, items))
     }
 
-    async fn load_fulfillment_items(
+    /// Lifecycle commands serialize on the parent fulfillment row so their
+    /// quantity decisions are made from one current snapshot before any item write.
+    async fn load_fulfillment_for_update(
         &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         fulfillment_id: Uuid,
-    ) -> FulfillmentResult<Vec<entities::fulfillment_item::Model>> {
+    ) -> FulfillmentResult<entities::fulfillment::Model> {
+        entities::fulfillment::Entity::find_by_id(fulfillment_id)
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))
+    }
+
+    async fn load_fulfillment_items<C>(
+        &self,
+        db: &C,
+        fulfillment_id: Uuid,
+    ) -> FulfillmentResult<Vec<entities::fulfillment_item::Model>>
+    where
+        C: ConnectionTrait,
+    {
         entities::fulfillment_item::Entity::find()
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
-            .all(&self.db)
+            .all(db)
             .await
             .map_err(Into::into)
     }
