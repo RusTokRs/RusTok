@@ -87,3 +87,5 @@ richText-redo = Redo
 richText-remove_link = Remove link
 richText-strike = Strike
 richText-undo = Undo
+blog-error-restorePost = Failed to restore post
+blog-table-restore = Restore

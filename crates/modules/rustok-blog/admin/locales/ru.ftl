@@ -87,3 +87,5 @@ richText-redo = Повторить
 richText-remove_link = Удалить ссылку
 richText-strike = Зачёркнутый
 richText-undo = Отменить
+blog-error-restorePost = Не удалось восстановить публикацию
+blog-table-restore = Восстановить
