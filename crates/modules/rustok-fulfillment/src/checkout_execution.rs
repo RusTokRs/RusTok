@@ -70,12 +70,12 @@ pub struct CheckoutFulfillmentItemCommand {
     pub metadata: Value,
 }
 
-pub struct InProcessCheckoutFulfillmentExecutionPort {
+pub(crate) struct InProcessCheckoutFulfillmentExecutionPort {
     service: FulfillmentService,
 }
 
 impl InProcessCheckoutFulfillmentExecutionPort {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub(crate) fn new(db: DatabaseConnection) -> Self {
         Self {
             service: FulfillmentService::new(db),
         }
