@@ -67,7 +67,11 @@ async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
              AND parent_order.tenant_id = fulfillment.tenant_id
             WHERE operation.operation = 'create_label'
               AND operation.status IN ('pending', 'provider_error', 'executing')
-              AND (parent_order.id IS NULL OR parent_order.status <> 'paid')
+              AND (
+                  parent_order.id IS NULL
+                  OR fulfillment.id IS NULL
+                  OR parent_order.status <> 'paid'
+              )
             LIMIT 1
             "#
             .to_owned(),
