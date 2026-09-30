@@ -3121,3 +3121,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete and integrated into `main` via PR #4382, squash merge `a8d7b28d195a0f95566dc1f9250ad18bb875008f`.
 - **Post-merge reconciliation:** refreshed `main` at `a8d7b28d195a0f95566dc1f9250ad18bb875008f`; the integrated production diff is limited to Shipping Profile transactionality plus the focused source guard. PR checks were queued/pending at review time; local Cargo/rustfmt/test execution was unavailable.
 - **Status:** `FS-22.06.23` complete; runtime/database evidence and broader Commerce validation remain maintainer-owned.
+
+### FS-22.06.24 Assessment — `crates/modules/rustok-commerce/src/services/shipping_profile.rs` Concurrent slug conflict semantics
+
+- **Base:** refreshed `main` at `85eafb87f52a3852e208d29f59208a937dea975a`; dedicated branch `codex/audit-fs-22.06.24-shipping-profile-slug-conflict` was created from that exact SHA.
+- **Discovery:** after FS-22.06.23, re-read Shipping Profile create/update, tenant-scoped slug uniqueness migration, SeaORM database error classification, and Admin HTTP error policy.
+- **Confirmed finding SHIPPINGPROFILE-22.06.24-01:** the tenant-scoped unique `(tenant_id, slug)` database constraint protected concurrent correctness, but a late unique-key race was surfaced as generic `CommerceError::Database`, which the mounted Admin policy maps to storage-unavailable rather than the existing domain `DuplicateShippingProfileSlug` conflict.
+- **Remediation:** added a backend-neutral SeaORM `DbErr::sql_err()` classifier for the explicit shipping-profile tenant/slug unique constraint; concurrent create/update slug races now become `CommerceError::DuplicateShippingProfileSlug`, while unrelated database errors are preserved.
+- **Second pass:** re-read create/update race branches, classifier, transaction-error mapping, and source verifier; confirmed no `expect`/panic remains in the conflict path and no unrelated write behavior changed.
+- **External API verification:** SeaORM 2.0.3 documents `DbErr::sql_err()` as the portable unique/foreign-key classifier across MySQL/PostgreSQL/SQLite. citeturn382699search0
+- **Implementation status:** complete and integrated into `main` via PR #4384, squash merge `9f0357b030be241cce0810e6c5286673fdd70e13`.
+- **Post-merge reconciliation:** refreshed `main` at `9f0357b030be241cce0810e6c5286673fdd70e13`; production change plus the existing Shipping Profile atomicity verifier were integrated. CI remains pending/maintainer-owned; local execution remains unavailable.
+- **Status:** `FS-22.06.24` complete.
