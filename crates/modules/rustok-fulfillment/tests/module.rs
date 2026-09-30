@@ -22,7 +22,6 @@ fn module_has_migrations() {
 }
 
 
-#[cfg(unix)]
 #[test]
 fn migration_registry_covers_every_flat_migration_source() {
     use std::{
@@ -61,7 +60,6 @@ fn migration_registry_covers_every_flat_migration_source() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn migration_registry_exposes_ordered_unique_migration_names() {
     use std::collections::BTreeSet;
@@ -80,20 +78,9 @@ fn migration_registry_exposes_ordered_unique_migration_names() {
     );
     assert!(
         names.windows(2).all(|window| {
-            let left = window[0]
-                .trim_start_matches('m')
-                .split_once('_')
-                .and_then(|(_, rest)| rest.split_once('_'))
-                .map(|(number, _)| number);
-            let right = window[1]
-                .trim_start_matches('m')
-                .split_once('_')
-                .and_then(|(_, rest)| rest.split_once('_'))
-                .map(|(number, _)| number);
-            match (left, right) {
-                (Some(left), Some(right)) => left <= right || window[0].starts_with("m20260713_000111_"),
-                _ => true,
-            }
+            let left = window[0].split('_').take(2).collect::<Vec<_>>().join("_");
+            let right = window[1].split('_').take(2).collect::<Vec<_>>().join("_");
+            left <= right
         }),
         "migration registration should remain stable and chronological"
     );
