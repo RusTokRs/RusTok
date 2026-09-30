@@ -352,7 +352,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         ) {
             let result = deserialize_create_label_result(context, owner_operation, &operation)?;
             if operation.status != PROVIDER_OPERATION_COMMITTED {
-                self.commit_create_label(context, owner_operation, operation.id)
+                self.commit_create_label(owner_operation, operation.id)
                     .await?;
             }
             return Ok(result);
@@ -384,7 +384,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             ) {
                 let result = deserialize_create_label_result(context, owner_operation, &current)?;
                 if current.status != PROVIDER_OPERATION_COMMITTED {
-                    self.commit_create_label(context, owner_operation, current.id)
+                    self.commit_create_label(owner_operation, current.id)
                         .await?;
                 }
                 return Ok(result);
@@ -464,7 +464,6 @@ impl InProcessFulfillmentAdminCreateCommandPort {
 
     async fn commit_create_label(
         &self,
-        context: &PortContext,
         owner_operation: &'static str,
         operation_id: Uuid,
     ) -> Result<(), PortError> {
@@ -621,5 +620,72 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
             serde_json::Value::Object(current)
         }
         (_, patch) => patch,
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn provider_operation(payload: Value) -> provider_operation::Model {
+        let now = chrono::Utc::now().into();
+        provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            operation: "create_label".to_string(),
+            provider_id: "manual".to_string(),
+            idempotency_key: "caller-key".to_string(),
+            status: PROVIDER_OPERATION_PENDING.to_string(),
+            request_payload: payload,
+            provider_reference: None,
+            provider_result: None,
+            error_message: None,
+            created_at: now,
+            updated_at: now,
+            provider_completed_at: None,
+            committed_at: None,
+        }
+    }
+
+    #[test]
+    fn create_label_replay_rejects_changed_request_payload() {
+        let existing = provider_operation(serde_json::json!({
+            "provider_id": "manual",
+            "input": { "order_id": Uuid::new_v4() }
+        }));
+        let changed = serde_json::json!({
+            "provider_id": "manual",
+            "input": { "order_id": Uuid::new_v4() }
+        });
+
+        assert!(ensure_create_label_request_unchanged(&existing, &changed).is_err());
+    }
+
+    #[test]
+    fn create_label_replay_accepts_identical_request_payload() {
+        let payload = serde_json::json!({
+            "provider_id": "manual",
+            "input": { "order_id": Uuid::new_v4() }
+        });
+        let existing = provider_operation(payload.clone());
+
+        assert!(ensure_create_label_request_unchanged(&existing, &payload).is_ok());
+    }
+
+    #[test]
+    fn create_label_replay_rejects_non_create_operation() {
+        let mut existing = provider_operation(serde_json::json!({
+            "provider_id": "manual",
+            "input": {}
+        }));
+        existing.operation = "ship".to_string();
+
+        assert!(ensure_create_label_request_unchanged(
+            &existing,
+            &existing.request_payload
+        )
+        .is_err());
     }
 }
