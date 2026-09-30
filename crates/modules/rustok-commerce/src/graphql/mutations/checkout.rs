@@ -391,6 +391,7 @@ impl CommerceCheckoutMutation {
                         })
                         .collect()
                 }),
+                expected_translation_revision: input.expected_translation_revision,
                 currency_code: input.currency_code,
                 amount: parse_optional_decimal(input.amount.as_deref())?,
                 provider_id: input.provider_id,
