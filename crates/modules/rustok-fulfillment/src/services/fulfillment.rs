@@ -1249,6 +1249,22 @@ fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
     Ok(())
 }
 
+pub(crate) fn normalize_checkout_plan_hash(
+    checkout_plan_hash: &str,
+) -> FulfillmentResult<String> {
+    let checkout_plan_hash = checkout_plan_hash.trim().to_ascii_lowercase();
+    if checkout_plan_hash.len() != 64
+        || !checkout_plan_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(FulfillmentError::Validation(
+            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
+        ));
+    }
+    Ok(checkout_plan_hash)
+}
+
 fn validate_checkout_identity(
     checkout_operation_id: Uuid,
     checkout_fulfillment_index: u32,
@@ -1259,18 +1275,9 @@ fn validate_checkout_identity(
             "checkout operation identity must be non-nil".to_string(),
         ));
     }
-    let checkout_plan_hash = checkout_plan_hash.trim();
-    if checkout_plan_hash.len() != 64
-        || !checkout_plan_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Err(FulfillmentError::Validation(
-            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
-        ));
-    }
+    let checkout_plan_hash = normalize_checkout_plan_hash(checkout_plan_hash)?;
     let _ = checkout_fulfillment_index;
-    Ok(checkout_plan_hash.to_string())
+    Ok(checkout_plan_hash)
 }
 
 fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
@@ -2100,6 +2107,15 @@ mod tests {
         assert_eq!(fulfillment_list_offset(0, 0), 0);
         assert_eq!(fulfillment_list_offset(1, 100), 0);
         assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn checkout_plan_hash_normalization_is_canonical() {
+        let hash = "A".repeat(64);
+        assert_eq!(
+            super::normalize_checkout_plan_hash(&hash).expect("valid hash"),
+            "a".repeat(64)
+        );
     }
 
     #[test]
