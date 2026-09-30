@@ -207,14 +207,22 @@ fn map_post_sitemap_candidate(item: PostSummary) -> SeoSitemapCandidateRecord {
     let image = item.featured_image_url.and_then(|url| {
         SeoTargetImageRecord::from_parts(url, Some(image_alt), None, None, None)
     });
+    let route = format!("/modules/blog?slug={}", item.slug);
     SeoSitemapCandidateRecord {
         target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)
             .expect("builtin SEO target slug must stay valid"),
         target_id: item.id,
         locale: item.effective_locale,
-        route: format!("/modules/blog?slug={}", item.slug),
+        route: route.clone(),
         images: image.into_iter().collect(),
-        alternates: Vec::new(),
+        alternates: item
+            .available_locales
+            .into_iter()
+            .map(|locale| SeoTargetAlternateRoute {
+                locale,
+                route: route.clone(),
+            })
+            .collect(),
     }
 }
 
