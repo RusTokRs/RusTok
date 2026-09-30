@@ -523,7 +523,7 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
+pub(crate) fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > 100
