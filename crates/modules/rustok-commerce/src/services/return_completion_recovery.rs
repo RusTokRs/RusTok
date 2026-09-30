@@ -212,7 +212,7 @@ impl ReturnCompletionOrchestrationService {
         let total = query.clone().count(&self.db).await.map_err(storage_error)?;
         let operations = query
             .order_by_desc(return_completion_operation::Column::UpdatedAt)
-            .offset(page.saturating_sub(1).saturating_mul(per_page))
+            .offset(pagination_offset(page, per_page))
             .limit(per_page)
             .all(&self.db)
             .await
@@ -557,6 +557,10 @@ fn map_operation(
     }
 }
 
+fn pagination_offset(page: u64, per_page: u64) -> u64 {
+    page.saturating_sub(1).saturating_mul(per_page)
+}
+
 fn safe_last_error_message(
     error_code: Option<&str>,
     has_error_message: bool,
@@ -775,6 +779,13 @@ mod tests {
 mod safety_tests {
     use super::*;
     use chrono::Utc;
+
+    #[test]
+    fn pagination_offset_saturates_on_extreme_page_values() {
+        assert_eq!(pagination_offset(1, 100), 0);
+        assert_eq!(pagination_offset(2, 100), 100);
+        assert_eq!(pagination_offset(u64::MAX, 100), u64::MAX - (u64::MAX % 100));
+    }
 
     #[test]
     fn operator_response_redacts_persisted_error_detail() {
