@@ -886,3 +886,29 @@ async fn reopen_cancelled_fulfillment_restores_pending_or_shipped_state() {
         serde_json::json!("reopen")
     );
 }
+
+
+#[tokio::test]
+async fn list_fulfillments_rejects_page_offset_overflow() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let error = service
+        .list_fulfillments(
+            tenant_id,
+            rustok_fulfillment::dto::ListFulfillmentsInput {
+                page: u64::MAX,
+                per_page: 100,
+                status: None,
+                order_id: None,
+                customer_id: None,
+            },
+        )
+        .await
+        .expect_err("overflowing pagination must be rejected before querying storage");
+
+    assert!(matches!(
+        error,
+        FulfillmentError::Validation(message) if message == "fulfillment page is too large"
+    ));
+}
