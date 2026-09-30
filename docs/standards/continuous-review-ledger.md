@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `9a946747f9a1569fb46d0e8c01da9e751884d240`  
+**Current main SHA:** `9963294dea33d879c6fffbc099e61e0a3efb14ed`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3912,3 +3912,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, entrypoint coverage scan, tenant-owner comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.70` complete and ready for integration.
 - **Next primary module:** `FS-22.06.71 — same primary module, provider/metadata compatibility validation and remaining mutation semantics`.
+
+### FS-22.06.71 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Provider receipt metadata ownership
+
+- **Base:** `9963294dea33d879c6fffbc099e61e0a3efb14ed`; dedicated branch `audit/fs-22.06.71-fulfillment-provider-metadata` was created from refreshed `main`.
+- **Primary scope:** one production service module only — fulfillment creation metadata sanitization and the reserved `metadata.provider_operation` receipt boundary, with provider-backed lifecycle callers checked as direct evidence.
+- **Invariant map:** `metadata.provider_operation` is a server-owned commit receipt tied to a journaled provider operation; create inputs must not seed it; provider-backed lifecycle commands may attach the real receipt after journaling; ordinary lifecycle patches must preserve an existing legitimate receipt and may not introduce/replace one.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.71-01:** `create_fulfillment_with_identity_and_id` sanitized caller metadata for audit and checkout identity but did not remove the reserved `provider_operation` root. A direct create caller could therefore persist a fabricated or stale-looking provider commit receipt before any corresponding journaled operation existed.
+- **Production remediation:** `strip_fulfillment_metadata` now also removes `provider_operation`. The create path continues to use this sanitizer, while `ship/reship/cancel` provider-backed callers still attach their real journal operation through `local_commit_metadata`; non-provider `deliver/reopen` continue to strip incoming receipt patches.
+- **Regression coverage:** extended the owner metadata sanitization regression fixture to include a `provider_operation.id` and assert it is removed together with caller audit data.
+- **Adjacent-boundary audit:** provider journal `000112` commits only through an owner receipt whose operation must match tenant/fulfillment state; Admin provider-backed lifecycle construction attaches the journaled operation ID after execution; checkout fulfillment metadata may contain orchestration data but the service sanitizer now strips reserved provider receipt data before persistence.
+- **Immediate re-audit:** re-read the create persistence path, sanitizer, provider-backed `ship/reship/cancel` callers, and non-provider `deliver/reopen` strips. The remediation does not remove legitimate post-journal receipt attachment.
+- **Fresh second pass:** scanned the primary service for all `strip_fulfillment_metadata` and `strip_provider_operation_metadata` call sites and re-read the provider receipt commit contract. No create path still persists caller-supplied `provider_operation`.
+- **Quantity/lifecycle reconciliation:** persisted fulfillment item quantity bounds are already enforced by migration `000109`; no reachable arithmetic defect attributable to the provider-receipt remediation was introduced.
+- **Documentation:** Fulfillment README now states that provider receipt metadata is write-reserved and creation strips caller-supplied receipt data.
+- **Verification:** source inspection, direct caller tracing, migration/trigger tracing, call-site coverage scan, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.71` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.72 — same primary module, remaining metadata/compatibility invariants after the reserved receipt boundary`.
