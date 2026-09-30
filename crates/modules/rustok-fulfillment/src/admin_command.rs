@@ -798,6 +798,10 @@ fn map_fulfillment_error(
             "fulfillment.invalid_transition",
             "fulfillment lifecycle conflicts with the requested operation",
         ),
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => PortError::conflict(
+            "fulfillment.shipping_option_translation_revision_conflict",
+            "shipping option translation revision conflicts with the current state",
+        ),
         FulfillmentError::Database(_) => PortError::unavailable(
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
@@ -847,6 +851,9 @@ fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
         FulfillmentError::Validation(_) => "validation",
         FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
         FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
+            "shipping_option_translation_revision_conflict"
+        }
         FulfillmentError::InvalidTransition { .. } => "invalid_transition",
         FulfillmentError::Database(_) => "database",
     }
