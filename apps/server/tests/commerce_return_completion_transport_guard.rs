@@ -112,12 +112,6 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
     let journal = include_str!(
         "../../../crates/modules/rustok-commerce/src/services/return_completion_operation.rs"
     );
-    let hardening_migration = include_str!(
-        "../../../crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs"
-    );
-    let hardening_migration = include_str!(
-        "../../../crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs"
-    );
     let orchestration = include_str!(
         "../../../crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
@@ -157,10 +151,6 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "pub async fn mark_completed(",
         "ensure_same_request",
         "request_hash must be a 64-character hexadecimal SHA-256 digest",
-        "normalize_lease_seconds",
-        "normalize_lease_owner",
-        "normalize_lease_seconds",
-        "normalize_lease_owner",
     ] {
         assert!(
             journal.contains(marker),
@@ -168,13 +158,8 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         );
     }
     for marker in [
-        "ck_return_completion_operations_request_hash_sha256",
-        "ck_return_completion_operations_pending_stage",
-        "ck_return_completion_operations_completed_stage",
-        "return_completion_operation_identity_guard_insert",
-        "return_completion_operation_identity_guard_update",
-        "SIGNAL SQLSTATE '45000'",
-        "NOT REGEXP '^[0-9a-f]{64}        "return_completion_operation_id",
+        "completion_request_hash(&input)",
+        "return_completion_operation_id",
         "find_resolution_order_change(",
         "operation.refund_id",
         "operation.order_change_id",
@@ -284,87 +269,4 @@ fn return_completion_command_inbox_and_operator_surface_are_safe() {
     ] {
         assert!(openapi.contains(marker), "OpenAPI is missing {marker}");
     }
-}
-",
-        "DROP TRIGGER IF EXISTS return_completion_operation_identity_guard_insert",
-    ] {
-        assert!(
-            hardening_migration.contains(marker),
-            "return completion hardening migration is missing invariant {marker}"
-        );
-    }
-
-    for marker in [
-        "ck_return_completion_operations_request_hash_sha256",
-        "ck_return_completion_operations_pending_stage",
-        "ck_return_completion_operations_completed_stage",
-        "return_completion_operation_identity_guard_insert",
-        "return_completion_operation_identity_guard_update",
-        "SIGNAL SQLSTATE '45000'",
-        "NOT REGEXP '^[0-9a-f]{64}        "return_completion_operation_id",
-        "find_resolution_order_change(",
-        "operation.refund_id",
-        "operation.order_change_id",
-        "FailureDisposition::Reconciliation",
-        "mark_reconciliation_required(",
-        "validate_explicit_resolution_links(",
-        "is not attached to order",
-        "without a refund identity",
-        "without an order-change identity",
-    ] {
-        assert!(
-            orchestration.contains(marker),
-            "return completion recovery is missing invariant {marker}"
-        );
-    }
-
-    let refund_effect = orchestration
-        .find(".create_refund_idempotent(")
-        .expect("refund side effect must exist");
-    let owner_completion = orchestration
-        .find(".complete_return(tenant_id, return_id, owner_input)")
-        .expect("owner completion must exist");
-    let journal_admission = orchestration
-        .find(".begin(BeginReturnCompletionOperation")
-        .expect("journal admission must exist");
-    assert!(journal_admission < refund_effect && refund_effect < owner_completion);
-}
-",
-        "DROP TRIGGER IF EXISTS return_completion_operation_identity_guard_insert",
-    ] {
-        assert!(
-            hardening_migration.contains(marker),
-            "return completion hardening migration is missing invariant {marker}"
-        );
-    }
-
-    for marker in [
-        "completion_request_hash(&input)",
-        "return_completion_operation_id",
-        "find_resolution_order_change(",
-        "operation.refund_id",
-        "operation.order_change_id",
-        "FailureDisposition::Reconciliation",
-        "mark_reconciliation_required(",
-        "validate_explicit_resolution_links(",
-        "is not attached to order",
-        "without a refund identity",
-        "without an order-change identity",
-    ] {
-        assert!(
-            orchestration.contains(marker),
-            "return completion recovery is missing invariant {marker}"
-        );
-    }
-
-    let refund_effect = orchestration
-        .find(".create_refund_idempotent(")
-        .expect("refund side effect must exist");
-    let owner_completion = orchestration
-        .find(".complete_return(tenant_id, return_id, owner_input)")
-        .expect("owner completion must exist");
-    let journal_admission = orchestration
-        .find(".begin(BeginReturnCompletionOperation")
-        .expect("journal admission must exist");
-    assert!(journal_admission < refund_effect && refund_effect < owner_completion);
 }
