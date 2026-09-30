@@ -55,6 +55,39 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 
 ---
 
+## Статус починки (обновляется по мере работ)
+
+Исправлено в ветке `arena/01a0f3f0-rustok` (коммиты `9a1fab7`, `a71f52f`,
+`bb75810`, `33cd202`):
+
+| # | Статус | Примечание |
+|---|---|---|
+| A-01 | ✅ | контракт проверяет реального владельца `i18n-config.ts` + требует ре-экспорт |
+| A-02 | ✅ | parity и strict keys подключены к `ui-i18n-verify.yml`, path-фильтры синхронизированы |
+| A-03 | ✅ | `declare_module_i18n!` генерирует `#[cfg(test)]`-контракт на `validate()` |
+| A-08 | ✅ | q-совместимый парсер `apps/next-admin/src/i18n/accept-language.ts` |
+| A-11 | 📝 | задокументировано в README «Known Limitations» |
+| A-12 | ✅ | schema-валидация убрана с ленивого пути |
+| A-14 | 📝 | задокументировано (латентно: 0 термов в репозитории) |
+| A-15 | 📝 | задокументировано как legacy host policy |
+| A-16 | ✅ | `FluentError` / `LanguageIdentifierError` ре-экспортированы |
+| A-17 | ✅ | `t_for_locale` добавлен в `PreparedUiMessages` и `UiTranslator` |
+| A-18 | ✅ | мёртвый `next-fluent-verify.yml` удалён |
+| A-19 | ✅ | `@rustok/next-fluent` запинен на `14f870b` |
+| A-20 | ✅ | fail-closed каталог + `import.meta.url` вместо `__dirname` |
+| A-21…A-24 | ✅ | верификаторы переписаны на структурный FTL-парсер, мёртвый exclusion-list удалён |
+| A-26 | ✅ | `MAX_LOCALE_TAG_LEN` публичный |
+| A-27 | ✅ | prelude дополнен Accept-Language контрактом и константами |
+| A-33 | ⚠️ | **новая находка**: 105 сайтов обходили Fluent через `String::replace`; 59 переведены на `fluent_args!`, 46 под shrink-only baseline |
+| — | ✅ | **новая находка**: 90 ключей использовались кодом, но отсутствовали в каталогах (русский UI показывал английский) |
+
+Не начато: A-04 (осиротевшие каталоги brand / marketplace-listing /
+marketplace-seller), A-05/A-06/A-07/A-32 (owner-level унификация локалей),
+A-09 (CLDR `parentLocales`), A-10 (плюрализация 75 сообщений),
+A-25/A-28/A-29/A-30/A-31 (гигиена).
+
+---
+
 ## Blocker
 
 ### A-01 — Репозиторный i18n-контракт красный на `main`
