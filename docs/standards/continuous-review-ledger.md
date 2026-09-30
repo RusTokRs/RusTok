@@ -3066,3 +3066,29 @@ _No completed rounds yet. Round 1 is currently in progress._
 - The remaining work for the OrderRead slice is execution evidence: compile, mounted transport parity, deadline/failure behavior, restart behavior, and remote-adapter evidence.
 - Plan/evidence wording was corrected so it no longer claims that compatibility GET functions still exist or that their future deletion is pending.
 - This correction does **not** promote the OrderRead validation status: compile/runtime/parity evidence remains open.
+
+### FS-22.06.18 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs` Active Admin post-order read diagnostics
+- **Finding:** the mounted mapper redacted the `PortError` object but still emitted `error.code` verbatim as `internal_code`.
+- **Fix:** replaced raw owner-code logging with bounded `owner_code_length`, bounded `error_kind`, and identity/context shape facts; extended the Admin post-order read verifier.
+- **Scope:** four mounted Admin GET routes and their `OrderReadPort` behavior unchanged.
+- **Status:** complete, PR #4375, merge `bab597c28c4bfc57c04c4e10235f6110bc22f235`; local compile/test execution unavailable.
+
+### FS-22.06.19 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/changes.rs` Active Admin order-change diagnostics
+- **Finding:** the orchestration mapper logged the whole `PostOrderOrchestrationError` and raw tenant/actor/order-change/payment/refund UUIDs.
+- **Fix:** replaced raw diagnostics with bounded identity shape facts plus source owner, error kind, public code, status, and operation; extended the order-change verifier.
+- **Scope:** order-change state machine, idempotency, refund logic, and owner routing unchanged.
+- **Status:** complete, PR #4376, merge `00b430bdf139859e7d691feadc13cafc8caf4c50`; local compile/test execution unavailable.
+
+### FS-22.06.20 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/returns.rs` Active Admin return orchestration diagnostics
+- **Finding:** the shared return orchestration mapper serialized the whole `PostOrderOrchestrationError` and raw tenant/actor/order/return/refund UUIDs.
+- **Fix:** bounded identity shape facts and bounded error metadata now cross the log boundary; the return-decision verifier also guards the orchestration mapper.
+- **Scope:** return state machine, refund logic, permissions, idempotency, and owner routing unchanged.
+- **Status:** complete, PR #4377, merge `69bc1b3a23033f8cbd7d71411bc89543cd36ca44`; local compile/test execution unavailable.
+
+### FS-22.06.21 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/shipping.rs` Active Admin Shipping Option boundary
+- **Finding 1:** four mounted Shipping Option writes generated synthetic payload-derived idempotency keys instead of requiring caller-owned `Idempotency-Key`.
+- **Finding 2:** the Shipping Option owner-port mapper logged the internal owner code verbatim as `internal_code = %error.code`.
+- **Fix:** all four writes now require and propagate caller-owned `Idempotency-Key`; OpenAPI contracts were updated; the synthetic identity helper was removed; owner diagnostics now emit bounded `owner_code_length`; three existing shipping verifiers were updated.
+- **Scope:** Shipping Profile CRUD remains outside this bounded owner-option slice; Fulfillment owner still enforces `PortCallPolicy::write()`.
+- **Second pass:** production source and all three affected verifier files were re-read after edits; no remaining production references to the synthetic helper, raw internal owner code, or removed diagnostic shadow remain.
+- **Status:** complete, PR #4378, merge `6674a3e7c0abb0d413e3c171bf0ec4cabe7800ae`; GitHub PR checks were queued at integration time, and local compile/test execution was unavailable.
