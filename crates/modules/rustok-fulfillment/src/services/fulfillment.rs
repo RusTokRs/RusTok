@@ -429,6 +429,12 @@ impl FulfillmentService {
                 .await?;
         }
         validate_fulfillment_items(input.items.as_deref())?;
+        validate_object_metadata(&input.metadata, "fulfillment")?;
+        if let Some(items) = input.items.as_ref() {
+            for item in items {
+                validate_object_metadata(&item.metadata, "fulfillment item")?;
+            }
+        }
 
         let CreateFulfillmentInput {
             order_id,
@@ -459,7 +465,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(strip_fulfillment_metadata(metadata)),
+            metadata: Set(strip_fulfillment_metadata(metadata)?),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -478,7 +484,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
+                    metadata: Set(strip_fulfillment_item_checkout_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1334,13 +1340,21 @@ fn merge_fulfillment_metadata(
         }
     }
 
-    Ok(strip_fulfillment_identity_metadata(merged))
+    strip_fulfillment_identity_metadata(merged)
 }
 
-fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
-    strip_provider_operation_metadata(strip_fulfillment_identity_metadata(
-        strip_fulfillment_audit_metadata(value),
-    ))
+fn strip_fulfillment_metadata(value: serde_json::Value) -> FulfillmentResult<serde_json::Value> {
+    let value = match value {
+        Value::Object(_) => value,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    let value = strip_fulfillment_audit_metadata(value);
+    let value = strip_provider_operation_metadata(value);
+    strip_fulfillment_identity_metadata(value)
 }
 
 fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -1363,12 +1377,22 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
     }
 }
 
-fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::Value {
+pub(crate) fn strip_fulfillment_identity_metadata(
+    value: serde_json::Value,
+) -> FulfillmentResult<serde_json::Value> {
     let mut root = match value {
         serde_json::Value::Object(object) => object,
-        _ => return value,
+        _ => return Ok(value),
     };
-    if let Some(serde_json::Value::Object(mut checkout)) = root.remove("checkout") {
+    if let Some(checkout) = root.remove("checkout") {
+        let mut checkout = match checkout {
+            serde_json::Value::Object(object) => object,
+            _ => {
+                return Err(FulfillmentError::Validation(
+                    "fulfillment checkout metadata namespace must be a JSON object".to_string(),
+                ));
+            }
+        };
         for key in [
             "operation_id",
             "order_id",
@@ -1384,7 +1408,7 @@ fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::
             root.insert("checkout".to_string(), serde_json::Value::Object(checkout));
         }
     }
-    serde_json::Value::Object(root)
+    Ok(serde_json::Value::Object(root))
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
@@ -1477,6 +1501,75 @@ fn apply_allowed_shipping_profiles_to_metadata(
         Value::Object(shipping_profiles),
     );
     Ok(Value::Object(metadata_object))
+}
+
+pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    let Some(checkout) = root.remove("checkout") else {
+        return Ok(Value::Object(root));
+    };
+
+    let mut checkout = match checkout {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item checkout metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    for key in [
+        "operation_id",
+        "order_id",
+        "order_plan_hash",
+        "fulfillment_index",
+        "fulfillment_key",
+    ] {
+        checkout.remove(key);
+    }
+
+    if let Some(cart_line_item_id) = checkout.get("cart_line_item_id").cloned() {
+        let canonical = cart_line_item_id
+            .as_str()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .filter(|value| !value.is_nil())
+            .map(|value| Value::String(value.to_string()))
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "fulfillment item checkout cart_line_item_id must be a non-nil UUID string"
+                        .to_string(),
+                )
+            })?;
+        checkout.insert("cart_line_item_id".to_string(), canonical);
+    }
+
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
+    }
+
+    Ok(Value::Object(root))
+}
+
+fn validate_object_metadata(
+    metadata: &Value,
+    resource: &str,
+) -> FulfillmentResult<()> {
+    if !metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "{resource} metadata must be a JSON object",
+        )));
+    }
+    Ok(())
 }
 
 fn validate_fulfillment_items(
@@ -1666,11 +1759,21 @@ fn append_audit_event(
     };
     let mut audit = match metadata_object.remove("audit") {
         Some(Value::Object(object)) => object,
-        _ => Map::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+        None => Map::new(),
     };
     let mut events = match audit.remove("events") {
         Some(Value::Array(items)) => items,
-        _ => Vec::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit events must be a JSON array".to_string(),
+            ));
+        }
+        None => Vec::new(),
     };
     events.push(event);
     audit.insert("events".to_string(), Value::Array(events));
@@ -2138,11 +2241,107 @@ mod tests {
     }
 
     #[test]
+    fn item_checkout_metadata_removes_legacy_identity_keys() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "order_id": Uuid::new_v4().to_string(),
+                "order_plan_hash": "a".repeat(64),
+                "fulfillment_index": 4,
+                "fulfillment_key": "legacy",
+                "cart_line_item_id": cart_line_item_id.to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized =
+            super::strip_fulfillment_item_checkout_metadata(metadata)
+                .expect("valid item checkout metadata should sanitize");
+        let canonical_cart_line_item_id = cart_line_item_id.to_string();
+        assert_eq!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str),
+            Some(canonical_cart_line_item_id.as_str())
+        );
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+        assert_eq!(
+            sanitized.get("note").and_then(Value::as_str),
+            Some("keep")
+        );
+    }
+
+    #[test]
+    fn item_checkout_metadata_rejects_invalid_cart_line_identity() {
+        let metadata = serde_json::json!({
+            "checkout": {
+                "cart_line_item_id": "not-a-uuid"
+            }
+        });
+
+        assert!(
+            super::strip_fulfillment_item_checkout_metadata(metadata)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn fulfillment_metadata_rejects_malformed_checkout_namespace() {
+        let metadata = serde_json::json!({
+            "checkout": "not-an-object",
+            "customer_note": "keep"
+        });
+
+        assert!(super::strip_fulfillment_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn create_fulfillment_metadata_requires_object_shape() {
+        assert!(
+            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment")
+                .is_err()
+        );
+        assert!(
+            super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err()
+        );
+        assert!(super::validate_object_metadata(&serde_json::json!({}), "fulfillment").is_ok());
+    }
+
+    #[test]
     fn merge_fulfillment_metadata_rejects_non_object_persisted_metadata() {
         assert!(
             super::merge_fulfillment_metadata(
                 serde_json::json!("legacy scalar"),
                 serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_namespace() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": "legacy scalar"}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_events() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": {"events": "legacy scalar"}}),
+                serde_json::json!({"type": "ship"}),
             )
             .is_err()
         );
