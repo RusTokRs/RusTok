@@ -726,12 +726,25 @@ fn validate_fulfillment(
     let expected_items = plan
         .items
         .iter()
-        .map(|item| (item.order_line_item_id, item.quantity))
+        .map(|item| {
+            (
+                item.order_line_item_id,
+                (item.cart_line_item_id, item.quantity),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
     let actual_items = fulfillment
         .items
         .iter()
-        .map(|item| (item.order_line_item_id, item.quantity))
+        .map(|item| {
+            (
+                item.order_line_item_id,
+                (
+                    extract_cart_line_item_id(&item.metadata),
+                    item.quantity,
+                ),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
     if expected_items != actual_items {
         return Err(PortError::conflict(
@@ -740,6 +753,14 @@ fn validate_fulfillment(
         ));
     }
     Ok(())
+}
+
+fn extract_cart_line_item_id(metadata: &Value) -> Option<Uuid> {
+    metadata
+        .get("checkout")
+        .and_then(|checkout| checkout.get("cart_line_item_id"))
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
 }
 
 fn fulfillment_metadata(base: Value) -> Value {
@@ -1163,5 +1184,56 @@ fn fulfillment_error_to_port_error(
                 "fulfillment storage is temporarily unavailable",
             )
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkout_item_cart_identity_is_extracted_from_persisted_metadata() {
+        let id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "cart_line_item_id": id.to_string(),
+            }
+        });
+        assert_eq!(extract_cart_line_item_id(&metadata), Some(id));
+    }
+
+    #[test]
+    fn checkout_item_cart_identity_missing_metadata_fails_closed() {
+        let metadata = serde_json::json!({
+            "checkout": {}
+        });
+        assert_eq!(extract_cart_line_item_id(&metadata), None);
+    }
+
+    #[test]
+    fn checkout_request_rejects_duplicate_indexes_and_order_lines() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let line_id = Uuid::new_v4();
+        let cart_id = Uuid::new_v4();
+        let plan = CheckoutFulfillmentCommand {
+            index: 0,
+            shipping_option_id: None,
+            carrier: None,
+            tracking_number: None,
+            items: vec![CheckoutFulfillmentItemCommand {
+                order_line_item_id: line_id,
+                cart_line_item_id: cart_id,
+                quantity: 1,
+                metadata: Value::Null,
+            }],
+            metadata: Value::Null,
+        };
+        let duplicate_plan = plan.clone();
+        let error = validate_request(operation_id, order_id, &hash, &[plan, duplicate_plan])
+            .expect_err("duplicate checkout plan indexes must fail");
+        assert!(matches!(error.kind, PortErrorKind::Validation));
     }
 }
