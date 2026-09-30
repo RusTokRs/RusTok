@@ -254,9 +254,7 @@ mod tests {
         assert_eq!(RuntimeLocale::new("pt_br").unwrap().as_str(), "pt-BR");
         assert_eq!(TenantLocale::new("zh-hant").unwrap().as_str(), "zh-Hant");
         assert_eq!(
-            RuntimeLocale::new("iw-IL-u-ca-hebrew")
-                .unwrap()
-                .as_str(),
+            RuntimeLocale::new("iw-IL-u-ca-hebrew").unwrap().as_str(),
             "he-IL"
         );
         assert!(RuntimeLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());

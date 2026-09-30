@@ -103,9 +103,9 @@ jobs:
           workspaces: ". -> target"
       - name: Format
         run: |
-          # Surface the rustfmt diff in the job summary and as per-file
-          # annotations. A bare `--check` only fails, forcing every reviewer to
-          # open the raw log to learn which file is unformatted.
+          # A bare `--check` only fails, forcing every reviewer to download the
+          # raw log to learn what is unformatted. Publish the diff in the job
+          # summary and as annotations instead.
           fmt_log="$(mktemp)"
           status=0
           cargo fmt -p rustok-ui-i18n -- --check >>"$fmt_log" 2>&1 || status=1
@@ -114,18 +114,21 @@ jobs:
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
             crates/modules/rustok-page-builder/src/locale.rs >>"$fmt_log" 2>&1 || status=1
-          if [ "$status" -ne 0 ]; then
-            {
-              echo '### rustfmt differences'
-              echo '```diff'
-              head -c 60000 "$fmt_log"
-              echo '```'
-            } >>"$GITHUB_STEP_SUMMARY"
-            grep -oE '^Diff in [^ ]+' "$fmt_log" | sort -u \
-              | sed 's|^Diff in |::error file=|; s|$|::rustfmt: file is not formatted|'
-            cat "$fmt_log"
-            exit 1
+          if [ "$status" -eq 0 ]; then
+            exit 0
           fi
+          {
+            echo '### rustfmt differences'
+            echo '```diff'
+            head -c 60000 "$fmt_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          grep -oE '^Diff in [^ ]+' "$fmt_log" | sort -u \
+            | sed 's|^Diff in |::error file=|; s|$|::rustfmt: file is not formatted|'
+          escaped="$(sed 's/%/%25/g' "$fmt_log" | sed -z 's/\n/%0A/g' | head -c 6000)"
+          echo "::error title=rustfmt diff::${escaped}"
+          cat "$fmt_log"
+          exit 1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22

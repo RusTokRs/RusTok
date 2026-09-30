@@ -18,17 +18,17 @@ pub mod macros;
 pub mod messages;
 pub mod prelude;
 
+// `BundleBuildError` and `I18nError` name `FluentError` and
+// `LanguageIdentifierError` in public variants, so consumers must be able to
+// spell those types without taking their own `fluent-bundle`/`unic-langid`
+// dependency and keeping the versions aligned by hand.
 pub use fluent_bundle::{FluentArgs, FluentError, FluentValue};
-// `BundleBuildError` and `I18nError` expose these dependency types in their
-// public variants, so consumers must be able to name them without taking a
-// direct dependency on `fluent-bundle`/`unic-langid` and keeping the versions
-// aligned by hand.
-pub use unic_langid::LanguageIdentifierError;
 #[deprecated(
     since = "0.1.0",
     note = "Pass standard BCP-47 locale strings or use `unic_langid` directly if low-level parsing is needed."
 )]
 pub use unic_langid::LanguageIdentifier;
+pub use unic_langid::LanguageIdentifierError;
 
 pub use accept_language::{
     AcceptLanguageError, AcceptLanguagePreference, MAX_ACCEPT_LANGUAGE_LEN,
@@ -271,12 +271,16 @@ items-count = { $count ->
         // or published outside the monorepo, which is not a failure; an
         // unreadable directory is.
         fn visit_dirs(dir: &Path, ftl_files: &mut Vec<PathBuf>) {
-            let entries = fs::read_dir(dir)
-                .unwrap_or_else(|error| panic!("failed to read {dir:?}: {error}"));
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(error) => panic!("failed to read {dir:?}: {error}"),
+            };
             for entry in entries {
-                let path = entry
-                    .unwrap_or_else(|error| panic!("failed to read an entry of {dir:?}: {error}"))
-                    .path();
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => panic!("failed to read an entry of {dir:?}: {error}"),
+                };
+                let path = entry.path();
                 if path.is_dir() {
                     visit_dirs(&path, ftl_files);
                 } else if path.extension().and_then(|value| value.to_str()) == Some("ftl") {
@@ -302,10 +306,9 @@ items-count = { $count ->
             // prefix silently built every other catalog — `ar.ftl` included —
             // as English, so locale-specific plural categories were never
             // exercised.
-            let locale = file_path
-                .file_stem()
-                .and_then(|value| value.to_str())
-                .unwrap_or_else(|| panic!("catalog file name is not valid UTF-8: {file_path:?}"));
+            let Some(locale) = file_path.file_stem().and_then(|v| v.to_str()) else {
+                panic!("catalog file name is not valid UTF-8: {file_path:?}");
+            };
             build_fluent_bundle(locale, &content).unwrap_or_else(|e| {
                 panic!("Failed to parse Fluent resource in {file_path:?}: {e}")
             });
