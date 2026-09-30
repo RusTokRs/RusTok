@@ -2157,8 +2157,13 @@ mod tests {
 
     #[test]
     fn create_fulfillment_metadata_requires_object_shape() {
-        assert!(super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment").is_err());
-        assert!(super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err());
+        assert!(
+            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment")
+                .is_err()
+        );
+        assert!(
+            super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err()
+        );
         assert!(super::validate_object_metadata(&serde_json::json!({}), "fulfillment").is_ok());
     }
 
