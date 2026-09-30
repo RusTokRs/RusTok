@@ -1,5 +1,5 @@
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use sea_orm_migration::sea_orm::{DatabaseBackend, Statement};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,6 +16,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_rollback_safe(manager).await?;
+
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
                 manager
@@ -43,6 +45,40 @@ impl MigrationTrait for Migration {
         }
         Ok(())
     }
+}
+
+async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let invalid_executing_exists = manager
+        .get_connection()
+        .query_one(Statement::from_string(
+            manager.get_database_backend(),
+            r#"
+            SELECT 1
+            FROM fulfillment_provider_operations operation
+            LEFT JOIN fulfillments fulfillment
+              ON fulfillment.id = operation.fulfillment_id
+             AND fulfillment.tenant_id = operation.tenant_id
+            LEFT JOIN orders parent_order
+              ON parent_order.id = fulfillment.order_id
+             AND parent_order.tenant_id = fulfillment.tenant_id
+            WHERE operation.operation = 'create_label'
+              AND operation.status = 'executing'
+              AND (parent_order.id IS NULL OR parent_order.status <> 'paid')
+            LIMIT 1
+            "#
+            .to_owned(),
+        ))
+        .await?
+        .is_some();
+
+    if invalid_executing_exists {
+        return Err(DbErr::Custom(
+            "cannot roll back premature checkout label insert protection while an executing create-label operation has no valid paid order; reconcile it first"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
