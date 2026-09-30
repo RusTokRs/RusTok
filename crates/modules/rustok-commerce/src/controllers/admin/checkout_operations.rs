@@ -264,7 +264,7 @@ pub async fn compensate_checkout_operation(
             tenant.id,
             auth.user_id,
             id,
-            idempotency_key.clone(),
+            format!("admin-checkout-compensation:{}:{}", auth.user_id, id),
             idempotency_key,
         )
         .await
