@@ -331,6 +331,22 @@ pub(crate) fn storefront_cart_port_context(
     }
 }
 
+pub(crate) fn derived_storefront_idempotency_key(
+    base_key: &str,
+    operation: &str,
+    resource_id: Uuid,
+) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut digest = Sha256::new();
+    digest.update(base_key.as_bytes());
+    digest.update([0u8]);
+    digest.update(operation.as_bytes());
+    digest.update([0u8]);
+    digest.update(resource_id.as_bytes());
+    format!("storefront-{}", hex::encode(digest.finalize()))
+}
+
 pub(crate) fn required_storefront_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     const MAX_LENGTH: usize = 191;
     let value = headers
