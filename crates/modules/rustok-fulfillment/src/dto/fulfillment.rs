@@ -42,6 +42,8 @@ pub struct CreateShippingOptionInput {
 pub struct UpdateShippingOptionInput {
     #[validate(nested)]
     pub translations: Option<Vec<ShippingOptionTranslationInput>>,
+    #[validate(length(max = 128))]
+    pub expected_translation_revision: Option<String>,
     #[validate(length(equal = 3))]
     pub currency_code: Option<String>,
     pub amount: Option<Decimal>,
@@ -152,6 +154,7 @@ pub struct ShippingOptionResponse {
     pub requested_locale: Option<String>,
     pub effective_locale: Option<String>,
     pub available_locales: Vec<String>,
+    pub translation_revision: String,
     pub translations: Vec<ShippingOptionTranslationResponse>,
 }
 
