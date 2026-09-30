@@ -26,6 +26,39 @@ async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
     }
 }
 
+
+async fn insert_test_fulfillment(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+) {
+    let now = Utc::now().fixed_offset();
+    fulfillment::ActiveModel {
+        id: Set(fulfillment_id),
+        tenant_id: Set(tenant_id),
+        order_id: Set(Uuid::new_v4()),
+        shipping_option_id: Set(None),
+        customer_id: Set(None),
+        checkout_operation_id: Set(None),
+        checkout_fulfillment_index: Set(None),
+        checkout_plan_hash: Set(None),
+        status: Set("pending".to_string()),
+        carrier: Set(None),
+        tracking_number: Set(None),
+        delivered_note: Set(None),
+        cancellation_reason: Set(None),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now),
+        updated_at: Set(now),
+        shipped_at: Set(None),
+        delivered_at: Set(None),
+        cancelled_at: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("test fulfillment should be inserted");
+}
+
 #[tokio::test]
 async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconciliation() {
     let db = setup_test_db().await;
@@ -33,7 +66,30 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let wrong_tenant = Uuid::new_v4();
+    let foreign_begin = journal
+        .begin(BeginProviderOperation {
+            tenant_id: wrong_tenant,
+            fulfillment_id,
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "foreign-tenant-begin".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": wrong_tenant,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "foreign-tenant-begin",
+                "metadata": {}
+            }),
+        })
+        .await;
+    assert!(matches!(
+        foreign_begin,
+        Err(rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(id))
+            if id == fulfillment_id
+    ));
+
     let operation = journal
         .begin(BeginProviderOperation {
             tenant_id,
@@ -51,7 +107,6 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
         .await
         .expect("journal operation");
 
-    let wrong_tenant = Uuid::new_v4();
     assert!(
         journal
             .get(wrong_tenant, operation.id)
@@ -150,6 +205,7 @@ async fn manual_success_reconciliation_validates_provider_identity() {
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
     let operation = journal
         .begin(BeginProviderOperation {
