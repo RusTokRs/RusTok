@@ -84,7 +84,7 @@ for (const value of [
 
 for (const value of [
   "fn require_idempotency_key(headers: &HeaderMap)",
-  'headers.get("Idempotency-Key")',
+  '.get("Idempotency-Key")',
   "checkout_operation_idempotency_key_required",
   "checkout_operation_idempotency_key_invalid",
   "value.len() > ADMIN_CHECKOUT_OPERATION_MAX_IDEMPOTENCY_KEY_LENGTH",
