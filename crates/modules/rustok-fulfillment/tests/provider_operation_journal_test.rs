@@ -307,6 +307,18 @@ async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
 
     insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
 
+    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
+        .await
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
+    fulfillment_active.order_id = Set(order_id);
+    fulfillment_active
+        .update(&db)
+        .await
+        .expect("bind fulfillment to unpaid test order");
+
     let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
     migrations
