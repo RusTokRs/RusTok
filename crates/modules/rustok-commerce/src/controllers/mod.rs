@@ -7,7 +7,7 @@ pub(crate) mod marketplace_financial;
 #[cfg(feature = "marketplace-financial")]
 pub(crate) mod marketplace_reversal_financial;
 pub mod products;
-mod reconciliation;
+pub(crate) mod reconciliation;
 pub(crate) mod return_completion_operations;
 pub mod store;
 
