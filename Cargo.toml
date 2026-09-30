@@ -335,7 +335,10 @@ rustok-worker-transport = { path = "crates/workers/rustok-worker-transport" }
 rustok-graphql = { path = "crates/ui/rustok-graphql" }
 rustok-ui-core = { path = "crates/ui/rustok-ui-core" }
 rustok-grid = { path = "crates/ui/rustok-grid" }
-rustok-grid-leptos = { path = "crates/ui/rustok-grid/leptos" }
+# Keep the workspace default neutral; consumers select the Leptos backend
+# explicitly ("ssr", "hydrate", or "csr") because the adapter's package default
+# is SSR and cannot be overridden per dependency when inherited here.
+rustok-grid-leptos = { path = "crates/ui/rustok-grid/leptos", default-features = false }
 rustok-grid-dioxus = { path = "crates/ui/rustok-grid/dioxus" }
 rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
 rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }
