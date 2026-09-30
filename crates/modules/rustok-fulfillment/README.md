@@ -45,6 +45,7 @@
 - Shipping-option translation names are limited to 120 Unicode characters at the owner-service boundary, matching persisted schema and exact-locale mutation validation before storage.
 - Fulfillment lifecycle audit append requires object-shaped metadata; malformed scalar/array metadata is rejected instead of being silently discarded when the owner records lifecycle history.
 - Lifecycle metadata merge also rejects a non-object persisted metadata value before applying an object patch, preventing the merge step from silently replacing corrupted metadata before audit recording.
+- Checkout fulfillment creation requires object-shaped root and item metadata; the checkout projection rejects a non-object root or malformed `checkout` namespace instead of converting it to an empty object and silently losing data, while preserving the canonical item `cart_line_item_id` projection.
 - All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - Checkout fulfillment plan hashes are canonical lowercase 64-character hexadecimal values at the owner boundary; validation normalizes both incoming and persisted hashes so legacy typed rows with valid uppercase hex remain readable and adoptable.
 - `metadata.provider_operation` is write-reserved: fulfillment creation strips caller-supplied receipt data, while provider-backed lifecycle commands attach the receipt only after the provider operation has been journaled.
