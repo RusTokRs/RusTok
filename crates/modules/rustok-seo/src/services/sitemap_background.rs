@@ -164,7 +164,12 @@ impl SeoService {
                 .ok_or(SeoError::NotFound)?
         };
 
-        let result = if job.status == SITEMAP_JOB_SUBMITTING {
+        let module_enabled = self.runtime_module_enabled(job.tenant_id).await?;
+        let result = if !module_enabled {
+            Err(SeoError::configuration(
+                "SEO module was disabled after the sitemap job was queued",
+            ))
+        } else if job.status == SITEMAP_JOB_SUBMITTING {
             self.execute_sitemap_submission_phase(&job).await
         } else {
             self.execute_sitemap_generation_phase(&job).await
@@ -209,7 +214,7 @@ impl SeoService {
     ) -> SeoResult<()> {
         let tenant = self.load_background_sitemap_tenant(job.tenant_id).await?;
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) {
+        if !self.runtime_module_enabled(tenant.id).await? || !sitemaps_enabled(&settings) {
             return Err(SeoError::configuration(
                 "sitemap generation was disabled after the job was queued",
             ));

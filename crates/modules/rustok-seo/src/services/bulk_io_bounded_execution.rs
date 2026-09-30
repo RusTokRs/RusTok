@@ -199,13 +199,14 @@ impl SeoService {
             active.update(&self.db).await?
         };
 
-        let result = if !self
-            .load_settings(running.tenant_id)
-            .await?
-            .submodule_bulk_editor_enabled
+        let result = if !self.runtime_module_enabled(running.tenant_id).await?
+            || !self
+                .load_settings(running.tenant_id)
+                .await?
+                .submodule_bulk_editor_enabled
         {
             Err(SeoError::configuration(
-                "SEO bulk editor submodule was disabled after the job was queued",
+                "SEO bulk editor was disabled after the job was queued",
             ))
         } else {
             match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {

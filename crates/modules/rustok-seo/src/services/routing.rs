@@ -128,18 +128,18 @@ impl SeoService {
                     kind,
                     resolved.target_id,
                     Some(locale.to_string()),
-                    Some(resolved.canonical_url.clone()),
                     channel_slug,
                 )
                 .await?
         {
             if resolved.redirect_required {
-                let settings = self.load_settings(tenant.id).await?;
+                // The content URL table identifies the target and legacy alias; the
+                // registered SEO provider owns the public route. Content orchestration
+                // commonly stores compatibility routes such as `/modules/forum?...`,
+                // which must never leak into a public redirect or override a provider's
+                // localized route.
                 context.route.redirect = Some(SeoRedirectDecision {
-                    target_url: apply_canonical_policy(
-                        locale_prefixed_path(locale, resolved.canonical_url.as_str()),
-                        &settings,
-                    ),
+                    target_url: context.route.canonical_url.clone(),
                     status_code: 308,
                 });
             }
@@ -198,7 +198,6 @@ impl SeoService {
                     kind,
                     resolved.target_id,
                     Some(locale.to_string()),
-                    Some(resolved.canonical_url),
                     channel_slug,
                 )
                 .await;
@@ -236,7 +235,6 @@ impl SeoService {
         target_kind: SeoTargetSlug,
         target_id: Uuid,
         requested_locale: Option<String>,
-        canonical_override: Option<String>,
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
         let Some(state) = self
@@ -258,20 +256,6 @@ impl SeoService {
             .await?;
         let mut context = self.merge_page_context(tenant, state, explicit).await?;
         context.route.requested_locale = requested_locale;
-        if let Some(canonical_override) = canonical_override {
-            let settings = self.load_settings(tenant.id).await?;
-            let candidate = locale_prefixed_path(
-                context.route.effective_locale.as_str(),
-                canonical_override.as_str(),
-            );
-            if canonical_host_allowed(&candidate, settings.allowed_canonical_hosts.as_slice()) {
-                let canonical = apply_canonical_policy(candidate, &settings);
-                context.route.canonical_url = canonical.clone();
-                if let Some(open_graph) = context.document.open_graph.as_mut() {
-                    open_graph.url = Some(canonical);
-                }
-            }
-        }
         Ok(Some(context))
     }
 
@@ -626,13 +610,6 @@ fn truncate_chars(value: String, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
-fn apply_canonical_policy(value: String, settings: &SeoModuleSettings) -> String {
-    apply_canonical_protocol(
-        apply_canonical_trailing_slash(value, settings.canonical_trailing_slash_mode.as_str()),
-        settings.canonical_force_https,
-    )
-}
-
 fn canonical_host_allowed(value: &str, allowed_hosts: &[String]) -> bool {
     if !value.starts_with("http://") && !value.starts_with("https://") {
         return true;
@@ -705,12 +682,28 @@ pub(super) fn locale_prefixed_path(locale: &str, path: &str) -> String {
     } else {
         format!("/{path}")
     };
-    if locale.trim().is_empty() {
-        path
-    } else if path == "/" {
-        format!("/{locale}")
+    let locale = locale.trim();
+    if locale.is_empty() {
+        return path;
+    }
+
+    // Target providers do not all share the same route authority: some return a
+    // locale-neutral module route while page/forum providers return their already
+    // locale-qualified public route. Keep this boundary idempotent so the SEO
+    // service never turns `/en/foo` into `/en/en/foo`.
+    let locale_prefix = format!("/{locale}");
+    if path == locale_prefix
+        || path.starts_with(format!("{locale_prefix}/").as_str())
+        || path.starts_with(format!("{locale_prefix}?").as_str())
+        || path.starts_with(format!("{locale_prefix}#").as_str())
+    {
+        return path;
+    }
+
+    if path == "/" {
+        locale_prefix
     } else {
-        format!("/{locale}{path}")
+        format!("{locale_prefix}{path}")
     }
 }
 
@@ -768,6 +761,30 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn locale_prefixing_is_idempotent_for_provider_owned_public_routes() {
+        assert_eq!(
+            super::locale_prefixed_path("en", "/modules/pages?slug=about"),
+            "/en/modules/pages?slug=about"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "/en/modules/pages?slug=about"),
+            "/en/modules/pages?slug=about"
+        );
+        assert_eq!(
+            super::canonical_url_for_locale("en", "/en/forum/c/general"),
+            "/en/forum/c/general"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "/en?tab=overview"),
+            "/en?tab=overview"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "https://example.test/en/about"),
+            "https://example.test/en/about"
+        );
+    }
 
     #[test]
     fn canonical_trailing_slash_policy_handles_absolute_and_relative_urls() {
@@ -1047,6 +1064,22 @@ mod tests {
             .await
             .expect("forum topic should be created");
 
+        let now = chrono::Utc::now().to_rfc3339();
+        db.execute_unprepared(
+            format!(
+                "INSERT INTO content_url_aliases (id, tenant_id, target_kind, target_id, locale, alias_url, canonical_url, created_at, updated_at) VALUES ('{}', '{}', 'forum_topic', '{}', 'en', '/modules/forum?topic=legacy', '/modules/forum?topic={}', '{}', '{}')",
+                Uuid::new_v4(),
+                tenant_id,
+                topic.id,
+                topic.id,
+                now,
+                now,
+            )
+            .as_str(),
+        )
+        .await
+        .expect("legacy content alias should be inserted");
+
         let service = SeoService::with_builtin_registry(db.clone(), event_bus);
         assert!(
             service
@@ -1054,6 +1087,28 @@ mod tests {
                 .await
                 .expect("seo module enabled lookup should succeed"),
             "seo module should be enabled for tenant"
+        );
+
+        let legacy_alias_context = service
+            .resolve_page_context(
+                &tenant,
+                "en",
+                "/modules/forum?topic=legacy",
+            )
+            .await
+            .expect("legacy content alias SEO route should resolve")
+            .expect("legacy content alias SEO context should exist");
+        assert_eq!(
+            legacy_alias_context
+                .route
+                .redirect
+                .as_ref()
+                .map(|redirect| redirect.target_url.as_str()),
+            Some(legacy_alias_context.route.canonical_url.as_str())
+        );
+        assert!(
+            legacy_alias_context.route.canonical_url.starts_with("/en/forum/t/"),
+            "content aliases must redirect to the Forum route owner's public path"
         );
         let category_meta = service
             .seo_meta(

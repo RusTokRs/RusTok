@@ -868,23 +868,7 @@ pub(super) fn sitemaps_enabled(settings: &SeoModuleSettings) -> bool {
 }
 
 pub(super) fn sitemap_locale_path(locale: &str, path: &str) -> String {
-    if path.starts_with("http://") || path.starts_with("https://") {
-        return path.to_string();
-    }
-    let normalized_path = if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{path}")
-    };
-    let locale_prefix = format!("/{locale}");
-    let locale_prefix_with_separator = format!("{locale_prefix}/");
-    if normalized_path == locale_prefix
-        || normalized_path.starts_with(locale_prefix_with_separator.as_str())
-    {
-        normalized_path
-    } else {
-        locale_prefixed_path(locale, normalized_path.as_str())
-    }
+    locale_prefixed_path(locale, path)
 }
 
 pub(super) fn sitemap_public_url(public_origin: &str, path: &str) -> String {

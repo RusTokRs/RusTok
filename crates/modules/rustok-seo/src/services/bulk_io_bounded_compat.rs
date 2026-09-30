@@ -110,21 +110,32 @@ impl SeoService {
                 .ok_or(SeoError::NotFound)?
         };
 
-        let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
-            Some(SeoBulkJobOperationKind::ExportCsv) => {
-                self.execute_export_job_chunk_compat(&running).await
-            }
-            Some(SeoBulkJobOperationKind::ImportCsv) => {
-                match self.normalize_bulk_import_job_payload(&running).await {
-                    Ok(normalized) => self.execute_import_job_chunk(&normalized).await,
-                    Err(error) => Err(error),
+        let result = if !self.runtime_module_enabled(running.tenant_id).await?
+            || !self
+                .load_settings(running.tenant_id)
+                .await?
+                .submodule_bulk_editor_enabled
+        {
+            Err(SeoError::configuration(
+                "SEO bulk editor was disabled after the job was queued",
+            ))
+        } else {
+            match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
+                Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+                Some(SeoBulkJobOperationKind::ExportCsv) => {
+                    self.execute_export_job_chunk_compat(&running).await
                 }
+                Some(SeoBulkJobOperationKind::ImportCsv) => {
+                    match self.normalize_bulk_import_job_payload(&running).await {
+                        Ok(normalized) => self.execute_import_job_chunk(&normalized).await,
+                        Err(error) => Err(error),
+                    }
+                }
+                None => Err(SeoError::validation(format!(
+                    "unknown bulk operation kind `{}`",
+                    running.operation_kind
+                ))),
             }
-            None => Err(SeoError::validation(format!(
-                "unknown bulk operation kind `{}`",
-                running.operation_kind
-            ))),
         };
 
         if let Err(error) = result {

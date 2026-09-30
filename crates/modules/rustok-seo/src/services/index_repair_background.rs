@@ -194,14 +194,19 @@ mod index_repair_background_impl {
                     .ok_or(SeoError::NotFound)?
             };
 
-            let result = self
-                .run_index_repair_replay(
+            let result = if !self.runtime_module_enabled(job.tenant_id).await? {
+                Err(SeoError::configuration(
+                    "SEO module was disabled after the index repair job was queued",
+                ))
+            } else {
+                self.run_index_repair_replay(
                     job.tenant_id,
                     job.target_type.as_deref(),
                     job.limit.clamp(1, INDEX_REPAIR_JOB_MAX_LIMIT as i32) as usize,
                     job.replay_historical,
                 )
-                .await;
+                .await
+            };
 
             let result = match result {
                 Ok(result) => result,

@@ -244,6 +244,17 @@ impl SeoService {
         Ok(snapshot.map(|snapshot| snapshot.enabled).unwrap_or(false))
     }
 
+    /// Standalone library/test services have no host settings reader and historically treat the
+    /// module as available. The server runtime always supplies the reader, so background jobs
+    /// can fail closed when a tenant disables SEO after queueing work.
+    pub(super) async fn runtime_module_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
+        if self.static_settings_reader.is_some() {
+            self.is_enabled(tenant_id).await
+        } else {
+            Ok(true)
+        }
+    }
+
     pub async fn load_settings(&self, tenant_id: Uuid) -> SeoResult<SeoModuleSettings> {
         let Some(snapshot) = self.static_settings_snapshot(tenant_id).await? else {
             return Ok(SeoModuleSettings::default());

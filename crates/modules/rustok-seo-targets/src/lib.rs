@@ -604,6 +604,8 @@ pub struct SeoRouteMatchRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct SeoTargetAlternateRoute {
     pub locale: String,
+    /// Owner route for this locale. It may be locale-neutral or already carry the
+    /// locale segment; SEO composition treats both forms idempotently.
     pub route: String,
 }
 
@@ -784,6 +786,8 @@ pub struct SeoLoadedTargetRecord {
     pub effective_locale: String,
     pub title: String,
     pub description: Option<String>,
+    /// Owner-provided public route. Providers may return either a locale-neutral
+    /// compatibility route or their already locale-qualified canonical route.
     pub canonical_route: String,
     pub alternates: Vec<SeoTargetAlternateRoute>,
     pub open_graph: SeoTargetOpenGraphRecord,
@@ -807,6 +811,8 @@ pub struct SeoSitemapCandidateRecord {
     pub target_kind: SeoTargetSlug,
     pub target_id: Uuid,
     pub locale: String,
+    /// Owner route; SEO sitemap composition accepts both locale-neutral and
+    /// already locale-qualified routes.
     pub route: String,
     #[serde(default)]
     pub images: Vec<SeoTargetImageRecord>,
