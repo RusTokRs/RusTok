@@ -853,6 +853,7 @@ impl FulfillmentService {
                     ));
                     active.updated_at = Set(now.into());
                     active.update(&txn).await?;
+                    txn.commit().await?;
 
                     return self.get_fulfillment(tenant_id, fulfillment_id).await;
                 }
