@@ -156,7 +156,11 @@ for (const [value, label] of [
 ]) requireText(ownerDecisionMethod, value, label);
 
 for (const [value, label] of [
-  ['payment_read_context_for(base_context, "list_captured_collections", order_id)', 'Payment read context'],
+  ['payment_read_context_for(base_context, "read_refund_collection", id)', 'explicit Payment collection read context'],
+  ['.read_payment_collection_projection(', 'explicit Payment collection owner read call'],
+  ['ReadPaymentCollectionProjectionRequest { collection_id: id }', 'explicit Payment collection read request'],
+  ['validate_return_payment_collection_order(', 'explicit Payment collection order binding check'],
+  ['payment_read_context_for(base_context, "list_captured_collections", order_id)', 'implicit Payment read context'],
   ['.list_payment_collection_projections(', 'Payment owner read call'],
   ['ListPaymentCollectionProjectionsRequest {', 'Payment owner read request'],
   ['page: 1', 'legacy page'],
@@ -170,6 +174,10 @@ for (const [value, label] of [
 for (const value of ['PaymentService::new(', 'ListPaymentCollectionsInput']) {
   forbidText(ownerDecision, value, 'return-decision direct Payment lookup');
 }
+for (const value of [
+  'Some(id) => id,',
+  'let collection_id = match input.payment_collection_id {\n            Some(id) => id,',
+]) forbidText(refundMethod, value, 'explicit refund collection bypasses order binding');
 requireText(ownerDecision, 'context.idempotency_key = None;', 'read-only context strips write idempotency');
 
 for (const [value, label] of [
