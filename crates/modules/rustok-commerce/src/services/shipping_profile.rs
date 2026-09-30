@@ -3,7 +3,7 @@ use sea_orm::Condition;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Value,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionError, Value,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
@@ -27,6 +27,15 @@ use crate::{
 
 pub struct ShippingProfileService {
     db: DatabaseConnection,
+}
+
+fn map_shipping_profile_transaction_error(
+    error: TransactionError<CommerceError>,
+) -> CommerceError {
+    match error {
+        TransactionError::Connection(error) => CommerceError::Database(error),
+        TransactionError::Transaction(error) => error,
+    }
 }
 
 impl ShippingProfileService {
@@ -70,7 +79,8 @@ impl ShippingProfileService {
                     Ok::<(), CommerceError>(())
                 })
             })
-            .await?;
+            .await
+            .map_err(map_shipping_profile_transaction_error)?;
 
         self.get_shipping_profile(tenant_id, id, None, None).await
     }
@@ -211,7 +221,8 @@ impl ShippingProfileService {
                     Ok::<(), CommerceError>(())
                 })
             })
-            .await?;
+            .await
+            .map_err(map_shipping_profile_transaction_error)?;
 
         self.get_shipping_profile(tenant_id, shipping_profile_id, None, None)
             .await
