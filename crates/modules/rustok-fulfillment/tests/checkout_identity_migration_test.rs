@@ -153,7 +153,7 @@ async fn checkout_identity_allows_unrelated_metadata_updates() {
         Some("checkout:operation:fulfillment:0")
     );
     assert_eq!(
-        updated.metadata["checkout"]["operation_id"].as_str(),
-        Some(operation_id.to_string().as_str())
+        updated.metadata["checkout"]["operation_id"],
+        serde_json::Value::String(operation_id.to_string())
     );
 }
