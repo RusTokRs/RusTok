@@ -3694,3 +3694,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now records direct executing-state payment admission, legacy quarantine, and rollback quiescence.
 - **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.57` complete and integrated. Next primary module: `FS-22.06.58 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000117_enforce_checkout_fulfillment_identity.rs`.
+
+
+### FS-22.06.58 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000117_enforce_checkout_fulfillment_identity.rs` Legacy checkout identity metadata parity
+
+- **Base:** refreshed `main` at `1f81c54367207f792e5383a15f994b10ee3f0eb2`; implementation was integrated through PR #4413 as `bcb4e5b4ff1e2e0569c7bad18a86898fa66237cf`.
+- **Primary scope:** one production migration module only — pre-cutover legacy checkout identity enforcement on `fulfillments.metadata` across PostgreSQL, SQLite, and MySQL.
+- **Invariant map:** whenever legacy `checkout.fulfillment_key` is present, `checkout.operation_id` must also be non-empty; identity key immutability and per-tenant uniqueness remain separate invariants; the later `000119` typed migration remains the stronger cutover owner.
+- **Finding:** SQLite enforced the key/operation pair on INSERT but not metadata UPDATE. MySQL had no legacy INSERT guard and its UPDATE guard checked only immutable key identity. PostgreSQL already protected the pair through its CHECK constraint.
+- **Production remediation:** added SQLite UPDATE validation, added a MySQL legacy INSERT trigger, and extended the MySQL UPDATE trigger with the same key/operation pairing check before immutable-key enforcement. MySQL rollback now removes the added INSERT guard.
+- **Contract ownership:** stronger operation UUID/index/hash correlation is intentionally not added here; `m20260925_000119_type_checkout_fulfillment_identity` already performs that typed validation and migration cutover.
+- **Regression coverage:** added dedicated SQLite tests for invalid legacy INSERT, invalid metadata UPDATE that drops `operation_id`, and an unrelated metadata update that preserves identity.
+- **Fresh second pass:** re-read the final merged `000117`, the typed `000119` migration, FulfillmentService metadata stripping/materialization, checkout execution validation, and rollback paths. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Concurrency reconciliation:** PR #4413 was the actual integration of this fix; a duplicate PR #4414 was closed without merge after detecting that it contained the already-integrated commit.
+- **Documentation:** Fulfillment README and implementation plan now state the cross-backend legacy identity pairing contract.
+- **Verification:** source/static inspection, full branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.58` complete and integrated. Next primary module: `FS-22.06.59 — crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs`.
