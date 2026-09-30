@@ -13,6 +13,9 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const source = read(
   'crates/modules/rustok-commerce/src/controllers/return_completion_operations.rs',
 );
+const recovery = read(
+  'crates/modules/rustok-commerce/src/services/return_completion_recovery.rs',
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -238,9 +241,6 @@ for (const [value, label] of [
   ['for permission in permissions', 'retry checks every required permission'],
   ['status = 403, description = "orders:read is required"', 'orders read 403 OpenAPI contract'],
   ['status = 403, description = "orders:manage and payments:manage are required"', 'retry 403 OpenAPI contract'],
-  ['pagination_offset(', 'overflow-safe pagination helper'],
-  ['.saturating_sub(1).saturating_mul(per_page)', 'overflow-safe pagination arithmetic'],
-  ['safe_last_error_message(', 'safe operator error projection'],
 ]) requireText(source, value, label);
 
 for (const [value, label] of [
@@ -248,6 +248,18 @@ for (const [value, label] of [
   ['.offset((page - 1) * per_page)', 'overflow-prone pagination offset'],
   ['last_error_message: operation.last_error_message', 'raw persisted error projection'],
 ]) forbidText(source, value, label);
+
+for (const [value, label] of [
+  ['pagination_offset(', 'overflow-safe pagination helper'],
+  ['.saturating_sub(1).saturating_mul(per_page)', 'overflow-safe pagination arithmetic'],
+  ['safe_last_error_message(', 'safe operator error projection'],
+  ['last_error_message: safe_last_error_message(', 'safe persisted error projection'],
+]) requireText(recovery, value, label);
+
+for (const [value, label] of [
+  ['.offset((page - 1) * per_page)', 'overflow-prone pagination offset'],
+  ['last_error_message: operation.last_error_message', 'raw persisted error projection'],
+]) forbidText(recovery, value, label);
 
 const mapperUses = source.match(/map_operator_error\(/g) ?? [];
 if (mapperUses.length !== 4) {
