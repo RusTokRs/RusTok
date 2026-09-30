@@ -37,6 +37,7 @@
 
 - `fulfillment/shipping_option_copy` is the only current Fulfillment Translation target. It owns exact localized shipping-option `name` rows and their independent revision/change evidence.
 - Shipping-option write paths canonicalize locales through `TenantLocale`; the storage-only `und` provenance locale is never admitted as runtime translation input, while legacy persisted `und` rows remain read-only provenance and are excluded from runtime locale resolution.
+- Bulk shipping-option translation reads are ordered by owner ID and locale before runtime fallback resolution, so the existing first-available fallback and `available_locales` projection are deterministic across database executions.
 - The broad `fulfillment/fulfillment_copy` readiness row is an aggregate classification only and must not be registered as a second Translation provider.
 - `carrier` and `tracking_number` are identifiers; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
 - `delivered_note` and `cancellation_reason` belong to fulfillment history and preserve their original operational context. Translation must not retroactively rewrite those facts.
