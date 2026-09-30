@@ -43,6 +43,14 @@ pub struct ShippingOption {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(default)]
+    pub translations: Vec<ShippingOptionTranslation>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ShippingOptionTranslation {
+    pub locale: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +62,7 @@ pub struct ShippingOptionDraft {
     pub allowed_shipping_profile_slugs: Vec<String>,
     pub metadata_json: String,
     pub locale: String,
+    pub existing_translations: Vec<ShippingOptionTranslation>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
