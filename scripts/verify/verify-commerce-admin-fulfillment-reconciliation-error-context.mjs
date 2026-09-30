@@ -48,9 +48,8 @@ for (const [value, label] of [
   ['struct AdminReconciliationProviderOperationResponse {', 'safe provider-operation response projection'],
   ['provider_result_present: bool,', 'provider result presence projection'],
   ['error_present: bool,', 'error presence projection'],
-  ['provider_result: Option<Json>', 'provider result payload projection'],
-  ['request_payload: Json', 'request payload projection'],
-  ['error_message: Option<String>', 'error message projection'],
+  ['operation.provider_result.is_some()', 'provider result presence projection'],
+  ['operation.error_message.is_some()', 'error presence projection'],
 ]) requireText(source, value, label);
 
 const ownerMapper = between(
