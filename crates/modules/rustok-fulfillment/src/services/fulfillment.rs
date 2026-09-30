@@ -93,7 +93,7 @@ impl FulfillmentService {
         let allowed_shipping_profile_slugs =
             normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
         let metadata =
-            apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs);
+            apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs)?;
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
@@ -268,7 +268,7 @@ impl FulfillmentService {
             active.metadata = Set(apply_allowed_shipping_profiles_to_metadata(
                 metadata,
                 normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs),
-            ));
+            )?);
         }
 
         active.updated_at = Set(Utc::now().into());
@@ -1430,14 +1430,19 @@ fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String
 fn apply_allowed_shipping_profiles_to_metadata(
     metadata: Value,
     allowed_shipping_profile_slugs: Option<Vec<String>>,
-) -> Value {
+) -> FulfillmentResult<Value> {
     let Some(allowed_shipping_profile_slugs) = allowed_shipping_profile_slugs else {
-        return metadata;
+        return Ok(metadata);
     };
 
     let mut metadata_object = match metadata {
         Value::Object(object) => object,
-        _ => Map::new(),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "shipping option metadata must be a JSON object when allowed shipping profiles are specified"
+                    .to_string(),
+            ));
+        }
     };
     let mut shipping_profiles = match metadata_object.remove("shipping_profiles") {
         Some(Value::Object(object)) => object,
@@ -1456,7 +1461,7 @@ fn apply_allowed_shipping_profiles_to_metadata(
         "shipping_profiles".to_string(),
         Value::Object(shipping_profiles),
     );
-    Value::Object(metadata_object)
+    Ok(Value::Object(metadata_object))
 }
 
 fn validate_fulfillment_items(
@@ -2096,6 +2101,29 @@ mod tests {
             serde_json::json!({"type": "ship"}),
         )
         .is_err());
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_rejects_non_object_metadata() {
+        assert!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!("legacy scalar"),
+                Some(vec!["bulky".to_string()]),
+            )
+            .is_err()
+        );
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!({"customer_note": "keep"}),
+                Some(vec!["bulky".to_string()]),
+            )
+            .expect("object metadata is valid")
+            .get("shipping_profiles")
+            .and_then(|value| value.get("allowed_slugs"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+            Some(1)
+        );
     }
 
     #[test]

@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `58a32a618530a5327b406c2c051587706c14d403`  
+**Current main SHA:** `c695822b41a13db4ab24dd6b0a36adc2d3a13002`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3980,3 +3980,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, 14-call-site structural scan, transaction-path tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.75` complete and ready for integration.
 - **Next primary module:** `FS-22.06.76 — same primary module, remaining shipping-option metadata normalization and write/read compatibility pass`.
+
+### FS-22.06.76 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-profile projection metadata shape
+
+- **Base:** `c695822b41a13db4ab24dd6b0a36adc2d3a13002`; dedicated branch `audit/fs-22.06.76-fulfillment-profile-metadata` created from refreshed `main`.
+- **Primary scope:** one production service module only — materialization of typed `allowed_shipping_profile_slugs` into the metadata-backed compatibility projection.
+- **Invariant map:** when a typed shipping-profile restriction is supplied, the owner must materialize it without discarding unrelated metadata; malformed metadata must fail closed; no invented fallback envelope may replace caller data silently.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.76-01:** `apply_allowed_shipping_profiles_to_metadata` converted non-object metadata into an empty object whenever `allowed_shipping_profile_slugs` was `Some`. A direct create/update call could therefore lose the entire existing scalar/array metadata payload while adding the compatibility restriction.
+- **Production remediation:** the helper now returns `FulfillmentResult<Value>` and rejects non-object metadata when a typed shipping-profile restriction is supplied. Create and update propagate the error before persistence.
+- **Regression coverage:** added a pure test rejecting scalar metadata and a positive object-metadata case confirming `shipping_profiles.allowed_slugs` is materialized.
+- **Adjacent-boundary audit:** DTOs expose typed profile restrictions separately from generic JSON metadata; Commerce consumes `ShippingOptionResponse.allowed_shipping_profile_slugs` before metadata fallback. Invalid metadata therefore produces a typed owner error instead of a widened or silently rewritten compatibility projection.
+- **Immediate re-audit:** re-read create/update calls, helper return propagation, normalization, and response extraction. No caller still ignores the helper error.
+- **Fresh second pass:** traced the complete typed-profile path through DTO, Fulfillment projection, Commerce compatibility selection, and malformed metadata handling. Fully absent restrictions still preserve unrestricted semantics; present typed restrictions now require object metadata.
+- **Documentation:** Fulfillment README now states the object-metadata requirement when typed shipping-profile restrictions are supplied.
+- **Verification:** source inspection, caller tracing, response/consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.76` complete and ready for integration.
+- **Next primary module:** `FS-22.06.77 — same primary module, fresh full pass of shipping-option mutation invariants after metadata hardening`.
