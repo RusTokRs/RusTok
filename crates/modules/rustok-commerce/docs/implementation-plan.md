@@ -613,7 +613,7 @@ These are source-contract defects, not verification-only tasks.
   transports moved to `ReturnCompletionOrchestrationService`.
 - [x] Enforce return-completion operation SHA-256 request-hash and terminal
   stage/status invariants at the persistence layer across supported database backends.
-- [ ] Apply return-completion migrations on clean/upgraded SQLite/PostgreSQL.
+- [ ] Apply return-completion migrations on clean/upgraded SQLite/PostgreSQL/MySQL.
 - [ ] Execute replay, conflict, admission/claim contention, lease expiry, process-exit,
   restart, and reconciliation-resolution evidence.
 
