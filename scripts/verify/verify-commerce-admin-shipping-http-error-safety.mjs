@@ -39,7 +39,7 @@ const requireBefore = (content, first, second, label) => {
 const profileMapper = between(
   shipping,
   'fn map_shipping_profile_error(',
-  'fn admin_shipping_option_command_idempotency_key',
+  'fn require_idempotency_key(headers: &HeaderMap)',
   'shipping-profile mapper',
 );
 const ownerMapper = between(
@@ -101,8 +101,7 @@ for (const [value, label] of [
   ['"commerce_admin_fulfillment_failed"', 'owner invariant code'],
   ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'owner route context projection'],
   ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'owner port context projection'],
-  ['let error = AdminShippingOptionPortDiagnosticError {', 'owner diagnostic error shadow'],
-  ['internal_code = %error.code', 'owner stable code'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code length'],
   ['retryable = error.retryable', 'owner retryability'],
   ['HttpError::new(status, code, message)', 'owner static envelope'],
 ]) requireText(ownerMapper, value, label);
@@ -143,9 +142,11 @@ for (const [value, label] of [
   ['.update_shipping_option(command_context.clone(), request)', 'update option operation'],
   ['.deactivate_shipping_option(command_context.clone(), request)', 'deactivate option operation'],
   ['.reactivate_shipping_option(command_context.clone(), request)', 'reactivate option operation'],
-  ['admin_shipping_option_command_idempotency_key(', 'write admission identity'],
-  ['admin_shipping_option_command_port_context(', 'write port context'],
+  ['fn require_idempotency_key(headers: &HeaderMap)', 'caller-owned write admission helper'],
+  ['headers: HeaderMap,', 'caller-owned idempotency header'],
+  ['require_idempotency_key(&headers)?', 'caller-owned write identity'],
   ['.with_idempotency_key(idempotency_key)', 'write idempotency context'],
+  ['Idempotency-Key', 'OpenAPI idempotency contract'],
   ['ShippingProfileService::new(runtime.db_clone())', 'shipping-profile owner'],
   ['.list_shipping_profiles(', 'list profile operation'],
   ['.create_shipping_profile(tenant.id, input)', 'create profile operation'],
@@ -188,8 +189,14 @@ if (validationUses.length !== 3) {
   failures.push(`expected validation helper definition plus two uses, found ${validationUses.length}`);
 }
 const redactedDebugUses = shipping.match(/formatter\.write_str\("redacted"\)/g) ?? [];
-if (redactedDebugUses.length !== 2) {
-  failures.push(`expected two redacted diagnostic Debug implementations, found ${redactedDebugUses.length}`);
+if (redactedDebugUses.length !== 1) {
+  failures.push(`expected one redacted shipping diagnostic Debug implementation, found ${redactedDebugUses.length}`);
+}
+if (shipping.includes('admin_shipping_option_command_idempotency_key')) {
+  failures.push('synthetic shipping-option idempotency helper must be absent');
+}
+if (shipping.includes('internal_code = %error.code')) {
+  failures.push('raw shipping-option owner code must not be logged');
 }
 const traceUses = shipping.match(/tracing::error!\(/g) ?? [];
 if (traceUses.length !== 3) {

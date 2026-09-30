@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -13,8 +13,6 @@ use rustok_fulfillment::{
     ReadShippingOptionProjectionRequest, UpdateAdminShippingOptionRequest,
 };
 use rustok_web::{HttpError, HttpResult};
-use serde::Serialize;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
@@ -83,17 +81,6 @@ impl From<&PortContext> for AdminShippingOptionPortDiagnosticContext {
             locale: context.locale.len(),
             deadline_ms: context.deadline_ms,
         }
-    }
-}
-
-struct AdminShippingOptionPortDiagnosticError<'a> {
-    code: &'a str,
-    retryable: bool,
-}
-
-impl std::fmt::Debug for AdminShippingOptionPortDiagnosticError<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
     }
 }
 
@@ -189,44 +176,36 @@ fn map_shipping_profile_error(error: CommerceError) -> HttpError {
     HttpError::new(status, code, message)
 }
 
-fn admin_shipping_option_command_idempotency_key<T: Serialize>(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    shipping_option_id: Option<Uuid>,
-    operation: &'static str,
-    payload: &T,
-) -> HttpResult<String> {
-    let payload = serde_json::to_vec(payload).map_err(|_| {
-        let error = AdminShippingDiagnosticError;
-        tracing::error!(
-            error = ?error,
-            owner = ADMIN_SHIPPING_OPTION_OWNER,
-            tenant_id = %uuid_shape(tenant_id),
-            shipping_option_id = %optional_uuid_shape(shipping_option_id),
-            operation,
-            error_kind = "request_identity_serialization",
-            public_code = "commerce_admin_fulfillment_failed",
-            boundary = ADMIN_SHIPPING_BOUNDARY,
-            "commerce admin shipping option command identity could not be materialized"
-        );
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_fulfillment_failed",
-            "Fulfillment operation could not be completed safely",
-        )
-    })?;
-    let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(actor_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(shipping_option_id) = shipping_option_id {
-        digest.update(shipping_option_id.as_bytes());
+fn require_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
     }
-    digest.update(payload);
-    Ok(format!(
-        "commerce-admin-shipping-option:{operation}:{}",
-        hex::encode(digest.finalize())
-    ))
+
+    Ok(value)
 }
 
 fn admin_shipping_option_read_port_context(
@@ -314,12 +293,8 @@ fn map_admin_shipping_option_port_error(
     };
     let context = AdminShippingOptionDiagnosticContext::from(&context);
     let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);
-    let error = AdminShippingOptionPortDiagnosticError {
-        code: error.code.as_str(),
-        retryable: error.retryable,
-    };
+    let owner_code_length = error.code.chars().count();
     tracing::error!(
-        error = ?error,
         owner = ADMIN_SHIPPING_OPTION_OWNER,
         owner_operation,
         correlation_id = %port_context.correlation_id,
@@ -330,13 +305,13 @@ fn map_admin_shipping_option_port_error(
         channel = ?port_context.channel,
         locale = %port_context.locale,
         deadline_ms = ?port_context.deadline_ms,
-        internal_code = %error.code,
+        owner_code_length,
         retryable = error.retryable,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_SHIPPING_BOUNDARY,
-        "commerce admin shipping option owner call failed"
+        "commerce admin shipping option owner call failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
@@ -655,6 +630,7 @@ pub async fn list_shipping_options(
     post,
     path = "/admin/shipping-options",
     tag = "admin",
+    params(("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")),
     request_body = CreateShippingOptionInput,
     responses(
         (status = 201, description = "Shipping option created successfully", body = ShippingOptionResponse),
@@ -666,6 +642,7 @@ pub async fn create_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<CreateShippingOptionInput>,
 ) -> HttpResult<(StatusCode, Json<ShippingOptionResponse>)> {
     ensure_permissions(
@@ -682,13 +659,7 @@ pub async fn create_shipping_option(
     .await?;
 
     let request = CreateAdminShippingOptionRequest { input };
-    let idempotency_key = admin_shipping_option_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        None,
-        "create_shipping_option",
-        &request,
-    )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
         &auth,
@@ -773,7 +744,10 @@ pub async fn show_shipping_option(
     post,
     path = "/admin/shipping-options/{id}",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    params(
+        ("id" = Uuid, Path, description = "Shipping option ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = UpdateShippingOptionInput,
     responses(
         (status = 200, description = "Shipping option updated successfully", body = ShippingOptionResponse),
@@ -786,6 +760,7 @@ pub async fn update_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateShippingOptionInput>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
@@ -806,13 +781,7 @@ pub async fn update_shipping_option(
         shipping_option_id: id,
         input,
     };
-    let idempotency_key = admin_shipping_option_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "update_shipping_option",
-        &request,
-    )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
         &auth,
@@ -842,7 +811,10 @@ pub async fn update_shipping_option(
     post,
     path = "/admin/shipping-options/{id}/deactivate",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    params(
+        ("id" = Uuid, Path, description = "Shipping option ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     responses(
         (status = 200, description = "Shipping option deactivated successfully", body = ShippingOptionResponse),
         (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
@@ -854,6 +826,7 @@ pub async fn deactivate_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -865,13 +838,7 @@ pub async fn deactivate_shipping_option(
     let request = DeactivateAdminShippingOptionRequest {
         shipping_option_id: id,
     };
-    let idempotency_key = admin_shipping_option_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "deactivate_shipping_option",
-        &request,
-    )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
         &auth,
@@ -905,7 +872,10 @@ pub async fn deactivate_shipping_option(
     post,
     path = "/admin/shipping-options/{id}/reactivate",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Shipping option ID")),
+    params(
+        ("id" = Uuid, Path, description = "Shipping option ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     responses(
         (status = 200, description = "Shipping option reactivated successfully", body = ShippingOptionResponse),
         (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
@@ -917,6 +887,7 @@ pub async fn reactivate_shipping_option(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -928,13 +899,7 @@ pub async fn reactivate_shipping_option(
     let request = ReactivateAdminShippingOptionRequest {
         shipping_option_id: id,
     };
-    let idempotency_key = admin_shipping_option_command_idempotency_key(
-        tenant.id,
-        auth.user_id,
-        Some(id),
-        "reactivate_shipping_option",
-        &request,
-    )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let command_context = admin_shipping_option_command_port_context(
         tenant.id,
         &auth,

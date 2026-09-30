@@ -31,7 +31,9 @@ for (const marker of [
   'UpdateAdminShippingOptionRequest',
   'DeactivateAdminShippingOptionRequest',
   'ReactivateAdminShippingOptionRequest',
-  'admin_shipping_option_command_idempotency_key(',
+  'fn require_idempotency_key(headers: &HeaderMap)',
+  'headers: HeaderMap,',
+  'Idempotency-Key',
   '.with_idempotency_key(idempotency_key)',
   '.with_deadline(std::time::Duration::from_secs(2))',
   '.shipping_option_admin_command_port()',
@@ -70,6 +72,23 @@ for (const marker of [
   'no tests, Cargo commands, Node verifiers, formatter',
 ]) need(record, marker, 'dated source record');
 
+for (const marker of [
+  'admin_shipping_option_command_idempotency_key(',
+]) forbid(shipping, marker, 'synthetic shipping-option identity helper');
+
+const requiredKeyUses = shipping.match(/require_idempotency_key\(&headers\)/g) ?? [];
+if (requiredKeyUses.length !== 4) {
+  failures.push(`expected four caller-owned shipping-option idempotency admissions, found ${requiredKeyUses.length}`);
+}
+
+for (const marker of [
+  'admin_shipping_option_command_idempotency_key(',
+]) forbid(shipping, marker, 'synthetic shipping-option identity helper');
+
+const requiredKeyUses = (shipping.match(/require_idempotency_key\(&headers\)/g) || []).length;
+if (requiredKeyUses !== 4) {
+  failures.push('expected four caller-owned shipping-option idempotency admissions, found ' + requiredKeyUses);
+}
 if (failures.length > 0) {
   console.error('[verify-commerce-admin-shipping-option-command-owner-port-cutover] FAIL');
   failures.forEach((failure) => console.error(`- ${failure}`));
