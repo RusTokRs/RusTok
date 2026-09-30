@@ -270,6 +270,12 @@ impl SeoService {
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Routing)
         {
+            if !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+            {
+                continue;
+            }
             let route_match = provider
                 .resolve_route(
                     &self.target_runtime(),
@@ -763,6 +769,14 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn route_normalization_keeps_public_lookup_bounded() {
+        assert!(super::normalize_route("/".to_string().as_str()).is_ok());
+        assert!(super::normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_ok());
+        assert!(super::normalize_route(format!("/{}", "x".repeat(513)).as_str()).is_err());
+        assert!(super::normalize_route("//external.example/path").is_err());
+    }
+
+    #[test]
     fn locale_prefixing_is_idempotent_for_provider_owned_public_routes() {
         assert_eq!(
             super::locale_prefixed_path("en", "/modules/pages?slug=about"),
@@ -922,12 +936,12 @@ mod tests {
         .expect("create content_url_aliases table");
     }
 
-    async fn enable_seo_module(db: &DatabaseConnection, tenant_id: Uuid) {
+    async fn enable_module(db: &DatabaseConnection, tenant_id: Uuid, module_slug: &str) {
         let now = chrono::Utc::now();
         tenant_module::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            module_slug: Set("seo".to_string()),
+            module_slug: Set(module_slug.to_string()),
             enabled: Set(true),
             settings: Set(serde_json::json!({})),
             created_at: Set(now.into()),
@@ -935,7 +949,11 @@ mod tests {
         }
         .insert(db)
         .await
-        .expect("insert seo module row");
+        .expect("insert tenant module row");
+    }
+
+    async fn enable_seo_module(db: &DatabaseConnection, tenant_id: Uuid) {
+        enable_module(db, tenant_id, "seo").await;
     }
 
     async fn run_forum_migrations(db: &DatabaseConnection) {
@@ -1009,6 +1027,7 @@ mod tests {
         run_forum_migrations(&db).await;
         let tenant_id = Uuid::new_v4();
         enable_seo_module(&db, tenant_id).await;
+        enable_module(&db, tenant_id, "forum").await;
         let tenant = tenant_context(tenant_id);
         let transport = Arc::new(MemoryTransport::new());
         let _receiver = transport.subscribe();
@@ -1179,6 +1198,7 @@ mod tests {
         run_forum_migrations(&db).await;
         let tenant_id = Uuid::new_v4();
         enable_seo_module(&db, tenant_id).await;
+        enable_module(&db, tenant_id, "forum").await;
         let tenant = tenant_context(tenant_id);
         let transport = Arc::new(MemoryTransport::new());
         let _receiver = transport.subscribe();

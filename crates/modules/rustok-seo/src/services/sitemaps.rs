@@ -667,6 +667,12 @@ impl SeoService {
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
         {
+            if !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+            {
+                continue;
+            }
             let candidates = provider
                 .sitemap_candidates(
                     &self.target_runtime(),

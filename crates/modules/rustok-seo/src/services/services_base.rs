@@ -255,6 +255,28 @@ impl SeoService {
         }
     }
 
+    /// Public SEO reads must not expose targets whose owner module is disabled for the
+    /// tenant. Keep this decision on the host-composed static-settings port instead of
+    /// making SEO reach into the owner module's persistence tables.
+    pub(super) async fn owner_module_enabled(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> SeoResult<bool> {
+        let Some(reader) = self.static_settings_reader.as_ref() else {
+            // Standalone library services used by focused unit tests do not have the
+            // host module-control-plane reader and historically treat providers as available.
+            return Ok(true);
+        };
+
+        Ok(reader
+            .settings(tenant_id, module_slug)
+            .await
+            .map_err(map_settings_port_error)?
+            .map(|snapshot| snapshot.enabled)
+            .unwrap_or(false))
+    }
+
     pub async fn load_settings(&self, tenant_id: Uuid) -> SeoResult<SeoModuleSettings> {
         let Some(snapshot) = self.static_settings_snapshot(tenant_id).await? else {
             return Ok(SeoModuleSettings::default());
@@ -630,8 +652,16 @@ pub(super) fn normalize_route(route: &str) -> SeoResult<String> {
     if route.is_empty() {
         return Err(SeoError::validation("route must not be empty"));
     }
+    if route.len() > 512 {
+        return Err(SeoError::validation("route must be <= 512 chars"));
+    }
     if !route.starts_with('/') {
         return Err(SeoError::validation("route must start with `/`"));
+    }
+    if route.starts_with("//") {
+        return Err(SeoError::validation(
+            "route must not be a protocol-relative URL",
+        ));
     }
     if route.chars().any(char::is_whitespace) {
         return Err(SeoError::validation("route must not contain whitespace"));
