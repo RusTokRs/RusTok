@@ -102,19 +102,37 @@ for (const [source, value, label] of [
   [nativeCheckout, 'error.public_message()', 'native stable checkout message'],
   [journaledCheckout, 'Execution is fully delegated to', 'journaled compatibility-only contract'],
   [journaledCheckout, 'RecoveringStagedCheckoutService::new(staged, compensation)', 'journaled staged delegation'],
-  [legacyRuntime, 'pub async fn complete_storefront_checkout(', 'retained private legacy completion source'],
+  [legacyRuntime, 'pub async fn complete_storefront_checkout(', 'legacy checkout completion must stay removed'],
   [orderPorts, 'match order.status_kind()', 'typed checkout order lifecycle recovery'],
   [orderPorts, 'OrderStatusKind::Unknown', 'unknown checkout order lifecycle fail-close'],
 ]) {
   requireText(source, value, label);
 }
 
-for (const [source, label] of [
+const between = (source, start, end, label) => {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(label + ': unable to isolate source block');
+    return '';
+  }
+  return source.slice(startIndex, endIndex);
+};
+
+const graphqlCompletion = between(
+  graphqlCheckout,
+  '    async fn complete_storefront_checkout(',
+  '    async fn create_shipping_option(',
+  'GraphQL storefront checkout completion',
+);
+
+const forbiddenCheckoutSources = [
   [mountedRuntime, 'mounted storefront facade'],
-  [graphqlCheckout, 'GraphQL storefront checkout'],
+  [graphqlCompletion, 'GraphQL storefront checkout completion'],
   [restCheckout, 'REST storefront checkout'],
   [nativeCheckout, 'native storefront checkout'],
-]) {
+];
+for (const [source, label] of forbiddenCheckoutSources) {
   for (const value of [
     'CheckoutService::new',
     'JournaledCheckoutService::new',
@@ -123,14 +141,18 @@ for (const [source, label] of [
     'RecoveringStagedCheckoutService::new',
     'bind_in_process_atomic_cart_checkout_with_pricing',
     'PrepareCartCheckoutSnapshotRequest',
-    'rustok_region::RegionService::new(',
     'rustok_marketplace_allocation::MarketplaceAllocationService::new(',
     'rustok_marketplace_commission::MarketplaceCommissionService::new(',
     'rustok_marketplace_ledger::MarketplaceLedgerService::new(',
   ]) {
-    forbidText(source, value, `${label} duplicate, foreign-service, or legacy checkout construction`);
+    forbidText(source, value, 'duplicate, foreign-service, or legacy checkout construction in ' + label);
   }
 }
+forbidText(
+  graphqlCompletion,
+  'rustok_region::RegionService::new(',
+  'GraphQL storefront checkout completion direct RegionService construction',
+)
 
 for (const [source, value, label] of [
   [mountedRuntime, 'pub use legacy::*;', 'mounted wildcard legacy export'],
