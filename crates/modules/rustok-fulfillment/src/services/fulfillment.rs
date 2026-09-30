@@ -693,7 +693,7 @@ impl FulfillmentService {
             active.carrier = Set(Some(carrier.clone()));
             active.tracking_number = Set(Some(tracking_number.clone()));
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Ship,
                     now,
@@ -751,7 +751,7 @@ impl FulfillmentService {
         active.carrier = Set(Some(input.carrier.clone()));
         active.tracking_number = Set(Some(input.tracking_number.clone()));
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Ship,
                 now,
@@ -797,7 +797,7 @@ impl FulfillmentService {
             active.status = Set(STATUS_DELIVERED.to_string());
             active.delivered_note = Set(input.delivered_note.clone());
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Deliver,
                     now,
@@ -857,7 +857,7 @@ impl FulfillmentService {
         });
         active.delivered_note = Set(input.delivered_note.clone());
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Deliver,
                 now,
@@ -901,7 +901,7 @@ impl FulfillmentService {
                 active.cancellation_reason = Set(None);
                 active.cancelled_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_fulfillment_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata)?,
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -926,7 +926,7 @@ impl FulfillmentService {
                     active.delivered_note = Set(None);
                     active.delivered_at = Set(None);
                     active.metadata = Set(append_audit_event(
-                        merge_fulfillment_metadata(metadata, input.metadata),
+                        merge_fulfillment_metadata(metadata, input.metadata)?,
                         build_fulfillment_audit_event(
                             FulfillmentItemAction::Reopen,
                             now,
@@ -975,7 +975,7 @@ impl FulfillmentService {
                 active.delivered_note = Set(None);
                 active.delivered_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_fulfillment_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata)?,
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -1031,7 +1031,7 @@ impl FulfillmentService {
             active.delivered_note = Set(None);
             active.delivered_at = Set(None);
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Reship,
                     now,
@@ -1081,7 +1081,7 @@ impl FulfillmentService {
         active.delivered_note = Set(None);
         active.delivered_at = Set(None);
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Reship,
                 now,
@@ -1122,7 +1122,7 @@ impl FulfillmentService {
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Cancel,
                 now,
@@ -1299,7 +1299,15 @@ fn fulfillment_list_offset(page: u64, per_page: u64) -> u64 {
 fn merge_fulfillment_metadata(
     current: serde_json::Value,
     patch: serde_json::Value,
-) -> serde_json::Value {
+) -> FulfillmentResult<serde_json::Value> {
+    let current = match current {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
     let current_audit = current
         .as_object()
         .and_then(|object| object.get("audit"))
@@ -1319,7 +1327,7 @@ fn merge_fulfillment_metadata(
         }
     }
 
-    strip_fulfillment_identity_metadata(merged)
+    Ok(strip_fulfillment_identity_metadata(merged))
 }
 
 fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -2110,6 +2118,17 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_persisted_metadata() {
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
     }
 
     #[test]

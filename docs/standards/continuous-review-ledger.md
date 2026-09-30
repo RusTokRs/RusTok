@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `14d01eee2c8ac1985c3a9ac996073903b0ff8f90`  
+**Current main SHA:** `487667dbda6d83f9cea32fda7aecb7ef0ea8f2e0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4037,3 +4037,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.78` complete as a clean assessment.
 - **Next primary module iteration:** `FS-22.06.79 — same primary module, checkout fulfillment identity/create-adopt-read boundary`.
 - **Verification:** source inspection, direct caller tracing, persistence/constraint comparison, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+
+### FS-22.06.79 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata merge second-order safety
+
+- **Base:** `487667dbda6d83f9cea32fda7aecb7ef0ea8f2e0`; dedicated branch `audit/fs-22.06.79-fulfillment-checkout-identity` created from refreshed `main`.
+- **Primary scope:** one production service module only — lifecycle `merge_fulfillment_metadata` semantics immediately upstream of the owner audit append.
+- **Invariant map:** persisted lifecycle metadata must not be silently destroyed or replaced because of its representation shape; malformed existing metadata must fail closed before a lifecycle mutation is persisted; audit history preservation must remain effective after all merge steps.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.79-01:** after FS-22.06.75 made `append_audit_event` reject non-object metadata, `merge_fulfillment_metadata` still accepted a non-object current value and an object patch by returning the patch as the merged result. The subsequent audit append then saw an object and succeeded, so malformed persisted metadata could still be silently discarded despite the earlier fail-closed guard.
+- **Production remediation:** `merge_fulfillment_metadata` now requires the persisted current metadata to be a JSON object and returns `FulfillmentResult<Value>`; all 10 lifecycle production call sites propagate `?`. A non-object persisted value therefore aborts the mutation before audit append, update, or commit.
+- **Regression coverage:** added a focused pure test proving a non-object persisted metadata value cannot be replaced by an object patch.
+- **Immediate re-audit:** all 10 lifecycle merge callers were enumerated and verified to propagate the new `Result`; the helper was re-read together with `append_audit_event`, reserved metadata strippers, and lifecycle update blocks.
+- **Fresh second pass:** re-traced malformed current metadata through merge -> audit append -> persistence. No path remains where an object patch can silently replace a scalar/array current metadata value before the fail-closed check.
+- **Behavioral compatibility:** valid object metadata and object patches retain the existing shallow merge semantics; audit history is still restored after the merge so caller patches cannot replace owner audit evidence.
+- **Adjacent-boundary audit:** lifecycle callers in ship/deliver/reopen/reship/cancel all remain on the same owner helper; provider receipt and checkout identity stripping are unchanged.
+- **Status:** `FS-22.06.79` complete and ready for integration. The primary `fulfillment.rs` track remains open for further fresh passes.
+- **Next primary module iteration:** `FS-22.06.80 — same primary module, checkout identity create/adopt/read integrity pass after typed cutover`.
+- **Verification:** source inspection, 10-call-site structural scan, lifecycle transaction tracing, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
