@@ -103,12 +103,29 @@ jobs:
           workspaces: ". -> target"
       - name: Format
         run: |
-          cargo fmt -p rustok-ui-i18n -- --check
+          # Surface the rustfmt diff in the job summary and as per-file
+          # annotations. A bare `--check` only fails, forcing every reviewer to
+          # open the raw log to learn which file is unformatted.
+          fmt_log="$(mktemp)"
+          status=0
+          cargo fmt -p rustok-ui-i18n -- --check >>"$fmt_log" 2>&1 || status=1
           rustfmt --edition 2024 --check \
             apps/admin/src/i18n.rs \
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
-            crates/modules/rustok-page-builder/src/locale.rs
+            crates/modules/rustok-page-builder/src/locale.rs >>"$fmt_log" 2>&1 || status=1
+          if [ "$status" -ne 0 ]; then
+            {
+              echo '### rustfmt differences'
+              echo '```diff'
+              head -c 60000 "$fmt_log"
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            grep -oE '^Diff in [^ ]+' "$fmt_log" | sort -u \
+              | sed 's|^Diff in |::error file=|; s|$|::rustfmt: file is not formatted|'
+            cat "$fmt_log"
+            exit 1
+          fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
