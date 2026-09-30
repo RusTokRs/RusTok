@@ -291,6 +291,14 @@ impl AdminOrderChangeOrchestrationErrorContext {
     }
 }
 
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 fn adopt_order_change_order_error_identity(
     context: &mut AdminOrderChangeOrchestrationErrorContext,
     error: &OrderError,
@@ -386,23 +394,29 @@ fn map_admin_order_change_orchestration_error(
             (status, code, message, error_kind, *owner)
         }
     };
+    let tenant_id_non_nil = !context.tenant_id.is_nil();
+    let actor_id_non_nil = !context.actor_id.is_nil();
+    let order_id_shape = optional_uuid_shape(context.order_id);
+    let order_change_id_shape = optional_uuid_shape(context.order_change_id);
+    let payment_collection_id_shape = optional_uuid_shape(context.payment_collection_id);
+    let payment_id_shape = optional_uuid_shape(context.payment_id);
+    let refund_id_shape = optional_uuid_shape(context.refund_id);
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_CHANGE_ORCHESTRATION_OWNER,
         source_owner,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        order_id = ?context.order_id,
-        order_change_id = ?context.order_change_id,
-        payment_collection_id = ?context.payment_collection_id,
-        payment_id = ?context.payment_id,
-        refund_id = ?context.refund_id,
-        operation = %context.operation,
+        tenant_id_non_nil,
+        actor_id_non_nil,
+        order_id_shape,
+        order_change_id_shape,
+        payment_collection_id_shape,
+        payment_id_shape,
+        refund_id_shape,
+        operation = context.operation,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
-        "commerce admin order change orchestration failed"
+        "commerce admin order change orchestration failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
