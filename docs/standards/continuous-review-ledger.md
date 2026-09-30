@@ -3747,3 +3747,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** re-read the final 787-line migration, all three backend paths, current `000117`, typed checkout execution/entity/service, historical item-identity restoration change, tests, static verifier, README, and implementation plan. No additional repository-owned defect attributable to this primary module was confirmed.
 - **Verification:** source/static inspection, final branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.60` complete and integrated. Next primary module: `FS-22.06.61 — crates/modules/rustok-fulfillment/src/migrations/mod.rs`.
+
+
+### FS-22.06.62 Assessment — `crates/modules/rustok-fulfillment/src/ports.rs` ShippingSelectionPort contract fidelity
+
+- **Base:** refreshed `main` at `6d5667d694d8e5893c30c0fec52227fb68065b53`; implementation was integrated through PR #4418 as `8b63ad8c2baf0fb7bd4884aac65b72a9feab2052`.
+- **Primary scope:** one production port boundary — checkout shipping-selection request/response contracts, PortContext admission, tenant parsing, owner error mapping, and FBA registry fidelity.
+- **Finding:** the machine-readable FBA registry declared `idempotency_required=true` for the read-only `list_seller_shipping_options` operation. Canonical `PortCallPolicy::read()` requires deadline semantics but not write idempotency, and the existing FBA verifier already treats `list_*` as read-only and forbids write-idempotency semantics.
+- **Remediation:** registry now declares `idempotency_required=false` for listing and keeps `true` for selection. The selection implementation retains `PortCallPolicy::write()`, which is the canonical single admission point for idempotency + deadline, and its redundant second `require_write_semantics()` call was removed.
+- **Verifier hardening:** `verify-ecommerce-fba-registries.mjs` now explicitly rejects future read-only ports that declare `idempotency_required=true`, preventing machine-readable contract drift.
+- **Consumer/ownership audit:** the port is not a phantom internal abstraction; `fulfillment-fba-registry.json` names Commerce as the consumer and `FulfillmentService` as the in-process implementation. Current Cart/Commerce persistence remains responsible for actual cart shipping-selection state; this port returns owner projections and does not invent a second persistence owner.
+- **Tenant/context audit:** both operations enforce canonical policy before tenant parsing, and tenant parsing occurs before owner-service delegation. No raw tenant value is logged on parser failure.
+- **Error audit:** all current `FulfillmentError` variants map to stable public `PortError` kinds/codes/messages; diagnostics retain bounded aggregate facts instead of raw error/database/UUID payloads.
+- **Second pass:** re-read full `ports.rs`, FBA registry, canonical `PortContext` policy helpers, existing shipping-selection verifier, Cart checkout/shipping-selection persistence, provider registry, and Fulfillment docs. No additional repository-owned defect attributable to this primary port was confirmed.
+- **Verification:** source-level second pass and branch diff review completed. Local clone/Cargo/remediation-gate execution was attempted in the audit environment but GitHub DNS/network access was unavailable, so no local test/build result is claimed. CI/maintainer verification remains required.
+- **Status:** `FS-22.06.62` complete and integrated. Next primary module: `FS-22.06.63 — crates/modules/rustok-fulfillment/src/error.rs`.
