@@ -850,59 +850,6 @@ fn extract_cart_line_item_id(metadata: &Value) -> Option<Uuid> {
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn fulfillment_metadata(base: Value) -> Value {
-    let mut root = strip_checkout_identity_metadata(base);
-    root.insert(
-        "commerce_orchestration".to_string(),
-        serde_json::json!({"operation": "checkout_create_fulfillment"}),
-    );
-    Value::Object(root)
-}
-
-fn fulfillment_item_metadata(base: Value, cart_line_item_id: Uuid) -> Value {
-    let mut root = strip_checkout_identity_metadata(base);
-    let mut checkout = root
-        .remove("checkout")
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    checkout.insert(
-        "cart_line_item_id".to_string(),
-        Value::String(cart_line_item_id.to_string()),
-    );
-    if checkout.is_empty() {
-        root.remove("checkout");
-    } else {
-        root.insert("checkout".to_string(), Value::Object(checkout));
-    }
-    Value::Object(root)
-}
-
-fn strip_checkout_identity_metadata(value: Value) -> serde_json::Map<String, Value> {
-    let mut root = object_or_empty(value);
-    if let Some(Value::Object(mut checkout)) = root.remove("checkout") {
-        for key in [
-            "operation_id",
-            "order_id",
-            "order_plan_hash",
-            "fulfillment_index",
-            "fulfillment_key",
-        ] {
-            checkout.remove(key);
-        }
-        if !checkout.is_empty() {
-            root.insert("checkout".to_string(), Value::Object(checkout));
-        }
-    }
-    root
-}
-
-fn object_or_empty(value: Value) -> serde_json::Map<String, Value> {
-    match value {
-        Value::Object(object) => object,
-        _ => Default::default(),
-    }
-}
-
 fn require_operation_context(
     context: &PortContext,
     owner_operation: &'static str,
