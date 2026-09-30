@@ -609,7 +609,12 @@ impl FulfillmentService {
     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
-        let offset = (page.saturating_sub(1)) * per_page;
+        let offset = page
+            .saturating_sub(1)
+            .checked_mul(per_page)
+            .ok_or_else(|| {
+                FulfillmentError::Validation("fulfillment page is too large".to_string())
+            })?;
 
         let mut query = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id));
