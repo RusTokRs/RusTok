@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `f49adcaeb4470abd61baa5daf1211762eb2e11f8`  
+**Current main SHA:** `b8414c4436b0de0c44061134a3a3ed6fe073f8d0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3639,3 +3639,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now explicitly records the fail-closed rollback contract.
 - **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.54` complete and integrated. Next primary module: `FS-22.06.55 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000114_defer_checkout_create_label_until_paid.rs`.
+
+
+### FS-22.06.55 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000114_defer_checkout_create_label_until_paid.rs` Checkout create-label payment protection rollback safety
+
+- **Base:** refreshed `main` at `2e4c7599b68c337d8b2f83422938c389e7abf6ee`; implementation was integrated through PR #4410 as `b8414c4436b0de0c44061134a3a3ed6fe073f8d0`.
+- **Primary scope:** one production migration module only — checkout `create_label` enqueue/payment guard and rollback to the prior provider-operation lifecycle.
+- **Invariant map:** checkout label execution must not begin before the tenant-scoped order is paid; the guard must cover the actual provider retry path; rollback must not silently reopen premature external side effects; PostgreSQL and SQLite must preserve the same safety contract.
+- **Finding:** the original `down` removed the payment-execution guard unconditionally. A `pending` or `provider_error` checkout label operation for an unpaid order would become claimable after rollback; an already `executing` unpaid operation represented an equally unsafe retained state.
+- **Production remediation:** `Migration::down` now performs a state check before removing the guard. Rollback is refused when a `create_label` operation is `pending`, `provider_error`, or `executing` and the tenant-scoped fulfillment/order is missing or the order is not `paid`. No rollback-time data mutation is performed.
+- **Tenant/context check:** the rollback fence joins fulfillment and order on both identifier and tenant identity, so foreign/mismatched references are treated as unsafe rather than being accepted accidentally.
+- **Runtime path check:** `claim_execution` changes `pending|provider_error -> executing`, which is exactly the retry transition guarded by `000114`; later `000116` separately protects direct INSERT-as-executing and remains an adjacent strengthened boundary rather than a replacement for this guard.
+- **Order contract check:** the canonical order status model treats `paid` as the state that can transition to shipment; `000114` therefore retains an exact paid-state admission rule rather than accepting later states such as `shipped` or `delivered`.
+- **Backend parity:** PostgreSQL and SQLite use the same rollback-safety query contract before their backend-specific trigger removal. The previous rollback-time UPDATE was absent from both final restore paths.
+- **Regression coverage:** added `checkout_label_payment_rollback_blocks_retryable_unpaid_operation`, creating a real tenant-scoped unpaid order/fulfillment, installing migrations `000111`–`000114`, asserting rollback is rejected, preserving `pending` state, and verifying the payment guard still rejects execution.
+- **Second-pass correction:** the first test fixture used a different `order_id` on the fulfillment; this was caught during the re-audit and corrected so the test exercises the actual fulfillment-to-order relationship.
+- **Adjacent-boundary audit:** re-read provider journal/lifecycle service, recovery service, Order status contract, and migrations `000113`, `000115`, `000116`, and `000117`. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Documentation:** Fulfillment README now explicitly records the fail-closed checkout create-label rollback contract.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.55` complete and integrated. Next primary module: `FS-22.06.56 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000115_cleanup_cancelled_checkout_labels.rs`.
