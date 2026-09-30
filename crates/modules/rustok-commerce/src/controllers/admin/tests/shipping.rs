@@ -392,6 +392,39 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
         updated["allowed_shipping_profile_slugs"],
         json!(["cold-chain"])
     );
+    let stale_update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/admin/shipping-options/{option_id}"))
+                .header("Idempotency-Key", "admin-shipping-stale-update-test")
+                .header("content-type", "application/json")
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .body(Body::from(
+                    serde_json::to_string(&UpdateShippingOptionInput {
+                        translations: Some(vec![crate::dto::ShippingOptionTranslationInput {
+                            locale: "en".to_string(),
+                            name: "Stale write".to_string(),
+                        }]),
+                        expected_translation_revision: Some(translation_revision.clone()),
+                        currency_code: None,
+                        amount: None,
+                        provider_id: None,
+                        allowed_shipping_profile_slugs: None,
+                        metadata: None,
+                    })
+                    .expect("stale update payload should serialize"),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("stale update request should complete");
+    assert_eq!(
+        stale_update_response.status(),
+        StatusCode::CONFLICT,
+        "stale update should conflict"
+    );
 
     let show_response = app
         .clone()
