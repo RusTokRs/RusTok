@@ -27,7 +27,13 @@
     "pagination_and_success_envelopes_preserved": true,
     "string_classification_removed": false,
     "broad_ecommerce_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "retry_requires_both_manage_permissions": true,
+    "partial_retry_permission_denied_403": true,
+    "raw_persisted_error_message_public": false,
+    "safe_last_error_message_projection": true,
+    "pagination_offset_overflow_safe": true,
+    "three_route_401_403_openapi_contract": true
   },
   "execution": [],
   "validation": {
@@ -38,7 +44,10 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
-    "runtime_proven": false
+    "runtime_proven": false,
+    "validation_scope": [
+      "source review and static diff only; no commands executed"
+    ]
   },
   "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
 }
