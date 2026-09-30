@@ -24,6 +24,7 @@ const shipping = read(
   "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
 );
 const checkout = read("crates/modules/rustok-commerce/src/controllers/store/checkout.rs");
+const ecommerceWorkflow = read(".github/workflows/ecommerce-hardening.yml");
 const cartService = read("crates/modules/rustok-cart/src/services/cart.rs");
 const cartPorts = read("crates/modules/rustok-cart/src/ports.rs");
 const cartCargo = read("crates/modules/rustok-cart/Cargo.toml");
@@ -135,6 +136,12 @@ for (const value of [
   "with_idempotency_key(correlation_id)",
   "is_write: bool",
 ]) forbid(cartService, value, "synthetic Cart owner idempotency");
+
+need(
+  ecommerceWorkflow,
+  "node scripts/verify/verify-commerce-store-cart-idempotency.mjs",
+  "Ecommerce Hardening Store Cart verifier integration",
+);
 
 if (failures.length) {
   console.error("Commerce Store Cart idempotency verification failed:");
