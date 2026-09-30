@@ -319,7 +319,7 @@ impl ShippingProfileService {
         active: bool,
     ) -> CommerceResult<ShippingProfileResponse> {
         let row = self
-            .load_shipping_profile(tenant_id, shipping_profile_id)
+            .load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
             .await?;
         let mut model: shipping_profile::ActiveModel = row.into();
         model.active = Set(active);
