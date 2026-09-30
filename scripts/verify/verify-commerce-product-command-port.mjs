@@ -103,8 +103,18 @@ for (const method of ["create_product", "update_product"]) {
   );
   requireText(
     body,
-    "admin_product_command_idempotency_key(",
-    `${method} must bind its request payload into a deterministic write identity`,
+    "headers: HeaderMap,",
+    `${method} must accept the caller-owned idempotency header`,
+  );
+  requireText(
+    body,
+    "admin_product_command_idempotency_key(&headers)?;",
+    `${method} must validate the caller-owned idempotency key`,
+  );
+  requireText(
+    body,
+    "Idempotency-Key",
+    `${method} must publish the caller-owned idempotency contract`,
   );
   requireText(
     body,
@@ -114,6 +124,21 @@ for (const method of ["create_product", "update_product"]) {
 }
 
 const sharedProducts = read("crates/modules/rustok-commerce/src/controllers/products.rs");
+requireText(
+  sharedProducts,
+  'fn admin_product_command_idempotency_key(',
+  "shared Product command identity helper must require caller-owned identity",
+);
+requireText(
+  sharedProducts,
+  'headers.get("Idempotency-Key")',
+  "shared Product command identity helper must read Idempotency-Key",
+);
+requireText(
+  sharedProducts,
+  'format!("commerce-admin-product:{operation}:{resource_id}")',
+  "Product command correlation must be resource/operation scoped",
+);
 requireText(
   sharedProducts,
   ".with_idempotency_key(idempotency_key)",
@@ -127,4 +152,14 @@ requireText(
 
 if (!process.exitCode) {
   console.log("commerce product command-port guard: source contract OK");
+}
+
+const syntheticIdentity = sharedProducts.includes('fn admin_product_command_idempotency_key<T: Serialize>(');
+if (syntheticIdentity) {
+  fail('synthetic payload-derived Product command identity helper remains');
+}
+
+const callerIdentityUses = (adminProducts.match(/admin_product_command_idempotency_key\(&headers\)\?/g) || []).length;
+if (callerIdentityUses !== 2) {
+  fail('expected two caller-owned Product create/update identity uses, found ' + callerIdentityUses);
 }
