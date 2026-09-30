@@ -51,7 +51,6 @@ fn require_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     Ok(value)
 }
 
-
 type AdminCheckoutOperationHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 struct AdminCheckoutOperationErrorContext {
