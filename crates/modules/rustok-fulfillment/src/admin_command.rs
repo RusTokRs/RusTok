@@ -904,8 +904,6 @@ fn operation_request(
     Ok(FulfillmentProviderOperationRequest {
         tenant_id,
         fulfillment_id,
-        operation: operation.to_string(),
-        provider_id: provider_id.to_string(),
         idempotency_key: Some(idempotency_key.to_string()),
         metadata,
     })
