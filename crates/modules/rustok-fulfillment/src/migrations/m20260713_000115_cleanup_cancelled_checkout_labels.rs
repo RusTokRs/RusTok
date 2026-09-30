@@ -54,9 +54,28 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             WHERE operation.fulfillment_id = fulfillment.id
               AND fulfillment.order_id = parent_order.id
               AND fulfillment.tenant_id = parent_order.tenant_id
+              AND operation.tenant_id = parent_order.tenant_id
               AND parent_order.status = 'cancelled'
               AND operation.operation = 'create_label'
               AND operation.status = 'pending';
+
+            UPDATE fulfillment_provider_operations operation
+            SET status = 'reconciliation_required',
+                error_message = COALESCE(
+                    error_message,
+                    'order was cancelled while create-label provider execution was in progress'
+                ),
+                provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            FROM fulfillments fulfillment
+            JOIN orders parent_order
+              ON parent_order.id = fulfillment.order_id
+             AND parent_order.tenant_id = fulfillment.tenant_id
+            WHERE operation.fulfillment_id = fulfillment.id
+              AND operation.tenant_id = fulfillment.tenant_id
+              AND parent_order.status = 'cancelled'
+              AND operation.operation = 'create_label'
+              AND operation.status = 'executing';
 
             CREATE OR REPLACE FUNCTION cleanup_cancelled_order_pending_labels()
             RETURNS trigger AS $$
@@ -70,6 +89,22 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                       AND operation.tenant_id = NEW.tenant_id
                       AND operation.operation = 'create_label'
                       AND operation.status = 'pending';
+
+                    UPDATE fulfillment_provider_operations operation
+                    SET status = 'reconciliation_required',
+                        error_message = COALESCE(
+                            error_message,
+                            'order was cancelled while create-label provider execution was in progress'
+                        ),
+                        provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
+                        updated_at = CURRENT_TIMESTAMP
+                    FROM fulfillments fulfillment
+                    WHERE operation.fulfillment_id = fulfillment.id
+                      AND fulfillment.order_id = NEW.id
+                      AND fulfillment.tenant_id = NEW.tenant_id
+                      AND operation.tenant_id = NEW.tenant_id
+                      AND operation.operation = 'create_label'
+                      AND operation.status = 'executing';
                 END IF;
                 RETURN NEW;
             END;
@@ -100,6 +135,28 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     ON parent_order.id = fulfillment.order_id
                    AND parent_order.tenant_id = fulfillment.tenant_id
                   WHERE fulfillment.id = fulfillment_provider_operations.fulfillment_id
+                    AND fulfillment.tenant_id = fulfillment_provider_operations.tenant_id
+                    AND parent_order.status = 'cancelled'
+              );
+
+            UPDATE fulfillment_provider_operations
+            SET status = 'reconciliation_required',
+                error_message = COALESCE(
+                    error_message,
+                    'order was cancelled while create-label provider execution was in progress'
+                ),
+                provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE operation = 'create_label'
+              AND status = 'executing'
+              AND EXISTS (
+                  SELECT 1
+                  FROM fulfillments fulfillment
+                  JOIN orders parent_order
+                    ON parent_order.id = fulfillment.order_id
+                   AND parent_order.tenant_id = fulfillment.tenant_id
+                  WHERE fulfillment.id = fulfillment_provider_operations.fulfillment_id
+                    AND fulfillment.tenant_id = fulfillment_provider_operations.tenant_id
                     AND parent_order.status = 'cancelled'
               );
 
@@ -111,6 +168,24 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 DELETE FROM fulfillment_provider_operations
                 WHERE operation = 'create_label'
                   AND status = 'pending'
+                  AND tenant_id = NEW.tenant_id
+                  AND fulfillment_id IN (
+                      SELECT fulfillment.id
+                      FROM fulfillments fulfillment
+                      WHERE fulfillment.order_id = NEW.id
+                        AND fulfillment.tenant_id = NEW.tenant_id
+                  );
+
+                UPDATE fulfillment_provider_operations
+                SET status = 'reconciliation_required',
+                    error_message = COALESCE(
+                        error_message,
+                        'order was cancelled while create-label provider execution was in progress'
+                    ),
+                    provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE operation = 'create_label'
+                  AND status = 'executing'
                   AND tenant_id = NEW.tenant_id
                   AND fulfillment_id IN (
                       SELECT fulfillment.id
