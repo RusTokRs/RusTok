@@ -2285,7 +2285,7 @@ mod tests {
              )",
             "CREATE TABLE product_attribute_translations (\
                 id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, attribute_id TEXT NOT NULL, locale TEXT NOT NULL, \
-                name TEXT NOT NULL, description TEXT, \
+                label TEXT NOT NULL DEFAULT '', name TEXT, description TEXT, \
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
              )",
             "CREATE TABLE product_attribute_options (\
