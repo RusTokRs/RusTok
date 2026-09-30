@@ -22,16 +22,14 @@ Required tenant and actor UUIDs are represented only as `nil` or `non_nil`. Opti
 reservation, payment, refund, order, return, and change UUIDs are represented only as `absent`,
 `present_nil`, or `present_non_nil`.
 
-The typed error is replaced in the event by the stable marker `redacted`. The event still records the
-static route operation, owner, source owner, error kind, public code, HTTP status, boundary, and the
-existing static log message.
+The logger no longer serializes the typed error at all. It records only the bounded `*_state` identity facts plus static route operation, owner, source owner, error kind, public code, HTTP status, boundary, and the existing static log message.
 
 ## Preserved behavior
 
 This work does not change:
 
 - permission checks or route inputs;
-- operation, compensation, and sweep service calls;
+- checkout state-machine semantics, operation-journal claim/lease behavior, or response mapping;
 - typed policy matching;
 - source-owner routing;
 - not-found identity adoption;
@@ -58,3 +56,18 @@ correlation-safe mapper task remains open.
 
 No tests, Node verifiers, formatting, Cargo commands, workflows, or CI were run. No compile or runtime
 status is promoted.
+
+
+## Checkout compensation boundary update — 2026-09-30
+
+The active Admin compensation path now uses host-composed typed owner ports instead of constructing
+Payment/Order/Inventory/Cart owners directly inside Commerce. The HTTP compensation and compensation-sweep
+writes require a caller-owned `Idempotency-Key`; the sweep derives a bounded per-operation internal key from
+that caller identity plus the operation UUID.
+
+The Commerce compensation service no longer owns `PaymentService`, `OrderService`,
+`PaymentProviderOperationJournal`, or checkout-order identity implementations. Payment and Order cancellation
+remain inside their owner ports, while Commerce retains only orchestration state/journal coordination and the
+Cart/Inventory typed boundaries.
+
+This remains **source-ready / unvalidated**: no local build/test or verifier execution is claimed.
