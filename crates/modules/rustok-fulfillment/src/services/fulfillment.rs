@@ -828,6 +828,7 @@ impl FulfillmentService {
                 ));
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
+                txn.commit().await?;
 
                 self.get_fulfillment(tenant_id, fulfillment_id).await
             }
@@ -862,7 +863,7 @@ impl FulfillmentService {
                     input.items.as_deref(),
                     FulfillmentItemAction::Reopen,
                 )?;
-                        let adjustment_lookup =
+                let adjustment_lookup =
                     adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
                 let mut adjusted_entries = Vec::new();
                 for item in items {
