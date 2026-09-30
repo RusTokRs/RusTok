@@ -107,6 +107,7 @@ async fn update_shipping_option_normalizes_allowed_shipping_profile_slugs() {
                     locale: "en".to_string(),
                     name: "Freight".to_string(),
                 }]),
+                expected_translation_revision: Some(created.translation_revision.clone()),
                 currency_code: Some("eur".to_string()),
                 amount: Some(Decimal::from_str("14.99").expect("valid decimal")),
                 provider_id: Some(" custom-provider ".to_string()),
@@ -137,6 +138,69 @@ async fn update_shipping_option_normalizes_allowed_shipping_profile_slugs() {
         updated.metadata["shipping_profiles"]["allowed_slugs"],
         serde_json::json!(["bulky", "cold-chain"])
     );
+}
+
+#[tokio::test]
+async fn update_shipping_option_rejects_stale_translation_revision() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let created = service
+        .create_shipping_option(tenant_id, create_shipping_option_input())
+        .await
+        .expect("shipping option should be created");
+
+    let updated = service
+        .update_shipping_option(
+            tenant_id,
+            created.id,
+            UpdateShippingOptionInput {
+                translations: Some(vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Freight".to_string(),
+                }]),
+                expected_translation_revision: Some(created.translation_revision.clone()),
+                currency_code: None,
+                amount: None,
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: None,
+            },
+        )
+        .await
+        .expect("first translation update should succeed");
+
+    assert_ne!(updated.translation_revision, created.translation_revision);
+    assert_eq!(updated.name, "Freight");
+
+    let stale = service
+        .update_shipping_option(
+            tenant_id,
+            created.id,
+            UpdateShippingOptionInput {
+                translations: Some(vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Another stale write".to_string(),
+                }]),
+                expected_translation_revision: Some(created.translation_revision),
+                currency_code: None,
+                amount: None,
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: None,
+            },
+        )
+        .await;
+
+    assert!(matches!(
+        stale,
+        Err(FulfillmentError::ShippingOptionTranslationRevisionConflict(id)) if id == created.id
+    ));
+
+    let current = service
+        .get_shipping_option(tenant_id, created.id, Some("en"), Some("en"))
+        .await
+        .expect("current shipping option should load");
+    assert_eq!(current.name, "Freight");
 }
 
 #[tokio::test]
