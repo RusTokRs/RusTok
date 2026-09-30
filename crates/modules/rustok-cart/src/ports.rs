@@ -312,9 +312,9 @@ impl CartStorefrontPort for crate::CartService {
         request: CartStorefrontReadRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.get_cart(parse_port_tenant_id(&context)?, request.cart_id)
+        self.get_cart(crate::services::cart::parse_port_tenant_id(&context)?, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn create_storefront_cart(
@@ -322,15 +322,23 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontCreateRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.create_cart_with_channel(
-            parse_port_tenant_id(&context)?,
-            request.input,
-            request.channel_id,
-            request.channel_slug,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.create_cart",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.create_cart_with_channel_in_txn(
+                    txn,
+                    tenant_id,
+                    request.input,
+                    request.channel_id,
+                    request.channel_slug,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn add_storefront_line_item(
@@ -338,15 +346,23 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontAddLineItemRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.add_line_item_with_pricing_adjustment(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.input,
-            request.pricing_adjustment,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.add_line_item",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.add_line_item_with_pricing_adjustment_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.input,
+                    request.pricing_adjustment,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn update_storefront_context(
@@ -354,14 +370,22 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.update_context(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.input,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.update_context",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.update_context_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.input,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn update_storefront_line_item_quantity(
@@ -369,15 +393,23 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontLineItemQuantityRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.update_line_item_quantity(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.line_item_id,
-            request.quantity,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.update_line_item_quantity",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.update_line_item_quantity_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    request.quantity,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn update_storefront_line_item_pricing(
@@ -385,17 +417,25 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontLineItemPricingRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.update_line_item_pricing(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.line_item_id,
-            request.quantity,
-            request.unit_price,
-            request.pricing_adjustment,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.update_line_item_pricing",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.update_line_item_pricing_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                    request.quantity,
+                    request.unit_price,
+                    request.pricing_adjustment,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn remove_storefront_line_item(
@@ -403,14 +443,22 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontRemoveLineItemRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.remove_line_item(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.line_item_id,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.remove_line_item",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.remove_line_item_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.line_item_id,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 
     async fn reprice_storefront_line_items(
@@ -418,14 +466,22 @@ impl CartStorefrontPort for crate::CartService {
         context: PortContext,
         request: CartStorefrontRepriceRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_write_semantics()?;
-        self.reprice_line_items(
-            parse_port_tenant_id(&context)?,
-            request.cart_id,
-            request.updates,
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
+        let receipt_request = request.clone();
+        self.run_storefront_idempotent_write(
+            &context,
+            "storefront.reprice_line_items",
+            &receipt_request,
+            move |txn| {
+                Box::pin(self.reprice_line_items_in_txn(
+                    txn,
+                    tenant_id,
+                    request.cart_id,
+                    request.updates,
+                ))
+            },
         )
         .await
-        .map_err(cart_error_to_port_error)
     }
 }
 
@@ -536,14 +592,5 @@ impl CartPromotionPort for crate::CartService {
         }
         .map_err(cart_error_to_port_error)
     }
-}
-
-pub(crate) fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        PortError::validation(
-            "cart.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for cart ports",
-        )
-    })
 }
 
