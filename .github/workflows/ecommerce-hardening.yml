@@ -34,6 +34,8 @@ jobs:
           node-version: 22
       - name: Verify mounted checkout cutover
         run: node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs
+      - name: Verify Store Cart caller-owned idempotency
+        run: node scripts/verify/verify-commerce-store-cart-idempotency.mjs
       - name: Verify admin return-decision owner ports
         run: node scripts/verify/verify-commerce-rest-admin-return-decision-order-owner-port-cutover.mjs
       - name: Verify GraphQL return-decision owner ports
