@@ -329,6 +329,10 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             allowed_shipping_profile_slugs: allowed_profiles.get_untracked(),
             metadata_json: metadata_json.get_untracked().trim().to_string(),
             locale: submit_locale,
+            existing_translations: selected
+                .get_untracked()
+                .map(|option| option.translations.clone())
+                .unwrap_or_default(),
         };
         if draft.name.is_empty() {
             set_error.set(Some(required_label.clone()));
