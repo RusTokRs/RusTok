@@ -534,3 +534,52 @@ fn require_manage_permission(auth: &AuthContext) -> HttpResult<()> {
         "Permission denied: fulfillments:manage required",
     )
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_projection_excludes_persistence_payloads() {
+        let operation = provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            operation: "create_label".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "opaque-key".to_string(),
+            status: "reconciliation_required".to_string(),
+            request_payload: serde_json::json!({
+                "metadata": {
+                    "sensitive": "request-payload"
+                }
+            }),
+            provider_reference: Some("external-reference".to_string()),
+            provider_result: Some(serde_json::json!({
+                "tracking_number": "tracking-value",
+                "metadata": {
+                    "sensitive": "provider-result"
+                }
+            })),
+            error_message: Some("database detail that must not cross the HTTP boundary".to_string()),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            provider_completed_at: Some(Utc::now().into()),
+            committed_at: None,
+        };
+
+        let response: AdminReconciliationProviderOperationResponse = operation.into();
+        let value = serde_json::to_value(response).expect("response projection must serialize");
+
+        for field in ["request_payload", "provider_result", "error_message", "tenant_id"] {
+            assert!(
+                value.get(field).is_none(),
+                "sensitive persistence field {field} must not be exposed"
+            );
+        }
+        assert_eq!(value["provider_reference"], "external-reference");
+        assert_eq!(value["provider_result_present"], true);
+        assert_eq!(value["error_present"], true);
+    }
+}
