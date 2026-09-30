@@ -1276,6 +1276,36 @@ mod tests {
 
 
     #[test]
+    fn checkout_item_metadata_preserves_cart_line_identity_projection() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "cart_line_item_id": Uuid::new_v4().to_string()
+            },
+            "note": "keep"
+        });
+
+        let projected =
+            fulfillment_item_metadata(metadata, cart_line_item_id)
+                .expect("valid checkout metadata should project");
+        assert_eq!(
+            extract_cart_line_item_id(&projected),
+            Some(cart_line_item_id)
+        );
+        assert_eq!(
+            projected.get("note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(
+            projected
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+    }
+
+    #[test]
     fn checkout_item_cart_identity_is_extracted_from_persisted_metadata() {
         let id = Uuid::new_v4();
         let metadata = serde_json::json!({
