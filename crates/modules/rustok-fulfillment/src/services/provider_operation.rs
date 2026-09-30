@@ -392,20 +392,63 @@ impl FulfillmentProviderOperationJournal {
 
 
     pub async fn mark_committed(&self, id: Uuid) -> FulfillmentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
-        if model.status == PROVIDER_OPERATION_COMMITTED {
-            return Ok(model);
+        let current = self.get(id).await?;
+        if current.status == PROVIDER_OPERATION_COMMITTED {
+            return Ok(current);
         }
-        ensure_transition(&model.status, PROVIDER_OPERATION_COMMITTED)?;
+        ensure_transition(&current.status, PROVIDER_OPERATION_COMMITTED)?;
 
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_COMMITTED.to_string());
-        active.error_message = Set(None);
-        active.updated_at = Set(now.into());
-        active.committed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        let provider_completed_at = if current.provider_completed_at.is_none() {
+            Expr::value(Some(now))
+        } else {
+            Expr::col(provider_operation::Column::ProviderCompletedAt)
+        };
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_COMMITTED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                provider_completed_at,
+            )
+            .col_expr(
+                provider_operation::Column::CommittedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.is_in([
+                    PROVIDER_OPERATION_SUCCEEDED,
+                    PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+                ]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_COMMITTED {
+                return Ok(current);
+            }
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
+
 }
 
 fn normalize_begin_input(
