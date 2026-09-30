@@ -113,13 +113,16 @@ function parseOverviewTable(source, startHeading, endHeading, category) {
     const runtime = category === "extension"
       ? /^`([^`]+)`$/.exec(cells[2] ?? "")?.[1] ?? null
       : null;
+    const required = category === "extension"
+      ? (cells[3]?.toLowerCase() === "true")
+      : category === "core";
 
     addRecord(
       records,
       {
         slug,
         crate: crateName,
-        required: category === "core",
+        required,
         runtime,
         dependencies,
       },
