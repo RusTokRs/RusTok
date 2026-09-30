@@ -55,15 +55,8 @@ async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
             r#"
             SELECT 1
             FROM fulfillment_provider_operations operation
-            LEFT JOIN fulfillments fulfillment
-              ON fulfillment.id = operation.fulfillment_id
-             AND fulfillment.tenant_id = operation.tenant_id
-            LEFT JOIN orders parent_order
-              ON parent_order.id = fulfillment.order_id
-             AND parent_order.tenant_id = fulfillment.tenant_id
             WHERE operation.operation = 'create_label'
               AND operation.status = 'executing'
-              AND (parent_order.id IS NULL OR parent_order.status <> 'paid')
             LIMIT 1
             "#
             .to_owned(),
@@ -73,7 +66,7 @@ async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
 
     if invalid_executing_exists {
         return Err(DbErr::Custom(
-            "cannot roll back premature checkout label insert protection while an executing create-label operation has no valid paid order; reconcile it first"
+            "cannot roll back premature checkout label insert protection while a create-label provider execution is in flight; let it reach a terminal or reconciliation state first"
                 .to_string(),
         ));
     }
