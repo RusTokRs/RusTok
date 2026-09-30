@@ -340,20 +340,27 @@ mod permission_tests {
         let message = "Permission denied: orders:manage and payments:manage required";
 
         let only_orders = auth_with(vec![Permission::ORDERS_MANAGE]);
-        assert!(ensure_all_permissions(
+        let only_orders_error = ensure_all_permissions(
             &only_orders,
             &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
-            message
+            message,
         )
-        .is_err());
+        .expect_err("orders:manage alone must not authorize the retry");
+
+        assert_eq!(only_orders_error.status, axum::http::StatusCode::FORBIDDEN);
 
         let only_payments = auth_with(vec![Permission::PAYMENTS_MANAGE]);
-        assert!(ensure_all_permissions(
+        let only_payments_error = ensure_all_permissions(
             &only_payments,
             &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
-            message
+            message,
         )
-        .is_err());
+        .expect_err("payments:manage alone must not authorize the retry");
+
+        assert_eq!(
+            only_payments_error.status,
+            axum::http::StatusCode::FORBIDDEN
+        );
 
         let both = auth_with(vec![Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE]);
         assert!(ensure_all_permissions(
