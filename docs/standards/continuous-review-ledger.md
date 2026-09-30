@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b0b67a08886537291e2712ec29d8f6a1061a83bc`  
+**Current main SHA:** `80cb46a62b0d6f9342300b6e4ffddd953d1a3742`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3859,3 +3859,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, caller tracing, canonical-type comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.67` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.68 — same primary module, deterministic translation fallback ordering`.
+
+
+### FS-22.06.68 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Deterministic shipping-option translation fallback
+
+- **Base:** `80cb46a62b0d6f9342300b6e4ffddd953d1a3742`; dedicated branch `audit/fs-22.06.68-fulfillment-translation-order` was created from freshly refreshed `main`.
+- **Primary scope:** one production service module only — bulk translation loading for shipping-option read projections and the existing requested/default/first-available fallback path.
+- **Invariant map:** requested locale takes precedence, then tenant default locale; when neither exists the existing first-available fallback must remain deterministic; `available_locales` must be stable; storage-only `und` must remain excluded from runtime translation candidates.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.68-01:** `load_shipping_options_with_translations` fetched all translation rows without an `ORDER BY`. `resolve_translation` intentionally falls back to `translations.first()` after requested/default misses, so the effective fallback locale and response locale ordering depended on unspecified database row order.
+- **Semantics check:** neighboring Inventory, Pricing, and Region translation owners use the same first-available style after bulk-loading translations ordered by `(owner_id, locale)`. The remediation therefore preserves the existing fallback rule instead of introducing a new platform fallback locale.
+- **Production remediation:** bulk shipping-option translations are now ordered by `shipping_option_id` and `locale` before grouping. Single-option translation reads were already ordered by locale and remain unchanged.
+- **Projection consequence:** `available_locales` is now deterministic as well, because the same ordered source feeds the response projection.
+- **Immediate re-audit:** re-read the bulk loader, single-row loader, resolver, and `map_shipping_option`; verified requested/default matching still bypasses fallback ordering and only the existing no-match path consumes the deterministic first row.
+- **Fresh second pass:** compared Fulfillment ordering with Inventory/Pricing/Region owner translation loaders and re-scanned the primary module for unordered translation queries. No second unordered shipping-option translation read path remained.
+- **Regression-test decision:** no new unit test was added because the defect is the database query's unspecified ordering rather than a pure function contract, and a manually pre-sorted test would not prove the query. Static source comparison against the established sibling-owner pattern is recorded instead.
+- **Documentation:** Fulfillment README now states that bulk translation reads are ordered by owner ID and locale, preserving deterministic first-available fallback and `available_locales`.
+- **Verification:** source inspection, cross-owner pattern comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.68` complete and ready for integration.
+- **Next primary module:** `FS-22.06.69 — same primary module, deep fresh pass of the remaining shipping-option service mutation/translation semantics`.
