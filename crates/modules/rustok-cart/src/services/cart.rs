@@ -75,10 +75,6 @@ impl CartService {
         self
     }
 
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     pub(crate) async fn run_storefront_idempotent_write<T, F>(
         &self,
         context: &PortContext,
