@@ -1641,6 +1641,8 @@ async fn load_shipping_options_with_translations(
     let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
     let translations = entities::shipping_option_translation::Entity::find()
         .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids.clone()))
+        .order_by_asc(entities::shipping_option_translation::Column::ShippingOptionId)
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
         .all(db)
         .await?;
 
