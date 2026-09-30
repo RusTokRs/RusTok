@@ -394,6 +394,7 @@ fn merge_existing_translation(
 ) -> Vec<ShippingOptionTranslationInput> {
     let mut translations = existing
         .into_iter()
+        .filter(|translation| translation.locale != "und")
         .map(|translation| ShippingOptionTranslationInput {
             locale: translation.locale,
             name: translation.name,
@@ -499,6 +500,31 @@ mod tests {
                 (&"de".to_string(), &"Express DE".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn merge_existing_translation_excludes_storage_only_und() {
+        let translations = merge_existing_translation(
+            vec![
+                ShippingOptionTranslation {
+                    locale: "und".to_string(),
+                    name: "Legacy name".to_string(),
+                },
+                ShippingOptionTranslation {
+                    locale: "en".to_string(),
+                    name: "Express".to_string(),
+                },
+            ],
+            "de",
+            "Express DE",
+        );
+
+        assert_eq!(translations.len(), 2);
+        assert!(translations.iter().all(|value| value.locale != "und"));
+        assert!(translations.iter().any(|value| value.locale == "en"));
+        assert!(translations
+            .iter()
+            .any(|value| value.locale == "de" && value.name == "Express DE"));
     }
 
     #[test]
