@@ -353,6 +353,7 @@ pub struct GqlShippingOption {
     pub requested_locale: Option<String>,
     pub effective_locale: Option<String>,
     pub available_locales: Vec<String>,
+    pub translation_revision: String,
     pub translations: Vec<GqlShippingOptionTranslation>,
 }
 
@@ -1653,6 +1654,7 @@ pub struct CreateShippingOptionInputObject {
 #[graphql(name = "UpdateShippingOptionInput")]
 pub struct UpdateShippingOptionInputObject {
     pub translations: Option<Vec<ShippingOptionTranslationInput>>,
+    pub expected_translation_revision: Option<String>,
     pub currency_code: Option<String>,
     pub amount: Option<String>,
     pub provider_id: Option<String>,
@@ -2004,6 +2006,7 @@ impl From<dto::RegionResponse> for GqlRegion {
             requested_locale: value.requested_locale,
             effective_locale: value.effective_locale,
             available_locales: value.available_locales,
+            translation_revision: value.translation_revision,
             translations: value
                 .translations
                 .into_iter()
