@@ -234,7 +234,7 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
     'Permission::PRODUCTS_CREATE',
     '"create_product"',
     'None,',
-    '.create_product(tenant.id, auth.user_id, input)',
+    '.product_catalog_command_port()',
     'Ok((StatusCode::CREATED, Json(product)))',
     'create route',
   ],
@@ -243,7 +243,7 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
     'Permission::PRODUCTS_UPDATE',
     '"update_product"',
     'Some(id)',
-    '.update_product(tenant.id, auth.user_id, id, input)',
+    '.product_catalog_command_port()',
     'Ok(Json(product))',
     'update route',
   ],
@@ -252,16 +252,18 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
   requireText(block, 'validate_admin_product_shipping_profile_input(', `${label} shipping validation`);
   requireText(block, operation, `${label} operation`);
   requireText(block, productIdentity, `${label} product identity`);
+  requireText(block, 'headers: HeaderMap,', `${label} caller idempotency header`);
+  requireText(block, 'admin_product_command_idempotency_key(&headers)?;', `${label} caller-owned identity`);
+  requireText(block, 'admin_product_command_context(', `${label} resource-scoped context`);
   requireText(block, serviceCall, `${label} service contract`);
-  requireText(block, 'map_admin_product_error(', `${label} shared mapper`);
+  requireText(block, 'map_admin_product_port_error(', `${label} owner-port mapper`);
   requireText(block, response, `${label} response contract`);
 }
 
 for (const [value, label] of [
-  [
-    'products::{\n        AdminProductErrorContext, ListProductsParams, ProductListItem, map_admin_product_error,',
-    'shared product mapper import',
-  ],
+  ['AdminProductErrorContext, ListProductsParams, ProductListItem,', 'shared product context imports'],
+  ['admin_product_command_context, admin_product_command_idempotency_key,', 'shared Product command helpers'],
+  ['map_admin_product_port_error,', 'shared Product owner-port mapper'],
   [
     'super::super::products::list_products(state, tenant, auth, request_context, query).await',
     'list delegation',
@@ -292,10 +294,10 @@ if (sharedMapperUses.length !== 8) {
   );
 }
 const wrapperMapperUses =
-  adminProducts.match(/map_admin_product_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
+  adminProducts.match(/map_admin_product_port_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
 if (wrapperMapperUses.length !== 2) {
   failures.push(
-    `expected two context-aware product write mapper callsites, found ${wrapperMapperUses.length}`,
+    `expected two active Product owner-port mapper callsites, found ${wrapperMapperUses.length}`,
   );
 }
 const shippingValidationUses =

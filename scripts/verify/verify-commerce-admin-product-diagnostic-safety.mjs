@@ -224,8 +224,11 @@ for (const marker of [
   "Permission::PRODUCTS_UPDATE",
   '"create_product"',
   '"update_product"',
-  ".create_product(tenant.id, auth.user_id, input)",
-  ".update_product(tenant.id, auth.user_id, id, input)",
+  'headers: HeaderMap,',
+  'admin_product_command_idempotency_key(&headers)?;',
+  'admin_product_command_context(',
+  '.product_catalog_command_port()',
+  'map_admin_product_port_error(',
   "validate_admin_product_shipping_profile_input(",
   "map_admin_product_shipping_profile_error(",
 ]) requireText(adminSource, marker, `${paths.adminSource}: preserved admin wrapper contract`);

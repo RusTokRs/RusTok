@@ -15,7 +15,6 @@ use rustok_product::{
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, time::Instant};
 use utoipa::ToSchema;
@@ -175,45 +174,39 @@ pub(crate) fn map_admin_product_error(
     HttpError::new(status, code, message)
 }
 
-pub(crate) fn admin_product_command_idempotency_key<T: Serialize>(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    product_id: Option<Uuid>,
-    operation: &'static str,
-    payload: &T,
+pub(crate) fn admin_product_command_idempotency_key(
+    headers: &HeaderMap,
 ) -> HttpResult<String> {
-    let payload = serde_json::to_vec(payload).map_err(|_| {
-        tracing::error!(
-            owner = ADMIN_PRODUCT_OWNER,
-            tenant_id = %uuid_shape(tenant_id),
-            actor_id = %uuid_shape(actor_id),
-            product_id = %optional_uuid_shape(product_id),
-            operation,
-            error_kind = "request_identity_serialization",
-            public_code = "commerce_admin_product_failed",
-            boundary = ADMIN_PRODUCT_BOUNDARY,
-            "commerce admin product command identity could not be materialized"
-        );
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_product_failed",
-            "Product operation could not be completed safely",
-        )
-    })?;
-    let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(actor_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(product_id) = product_id {
-        digest.update(product_id.as_bytes());
-    }
-    digest.update(payload);
-    Ok(format!(
-        "commerce-admin-product:{operation}:{}",
-        hex::encode(digest.finalize())
-    ))
-}
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
 
+    if value.is_empty() || value.len() > MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
 pub(crate) fn admin_product_lifecycle_idempotency_key(
     headers: &HeaderMap,
     tenant_id: Uuid,
@@ -257,13 +250,18 @@ pub(crate) fn admin_product_command_context(
     tenant_id: Uuid,
     auth: &AuthContext,
     request_context: &RequestContext,
+    product_id: Option<Uuid>,
+    operation: &'static str,
     idempotency_key: String,
 ) -> PortContext {
+    let resource_id = product_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "new".to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        idempotency_key.clone(),
+        format!("commerce-admin-product:{operation}:{resource_id}"),
     )
     .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
@@ -272,7 +270,6 @@ pub(crate) fn admin_product_command_context(
         None => context,
     }
 }
-
 pub(crate) fn map_admin_product_port_error(
     context: AdminProductErrorContext,
     port_context: &PortContext,
@@ -329,6 +326,7 @@ pub(crate) fn map_admin_product_port_error(
         ),
     };
     let diagnostic = AdminProductDiagnosticContext::from(&context);
+    let owner_code_length = error.code.chars().count();
     tracing::error!(
         owner = ADMIN_PRODUCT_OWNER,
         owner_operation = context.operation,
@@ -337,15 +335,15 @@ pub(crate) fn map_admin_product_port_error(
         actor_id = %diagnostic.actor_id,
         product_id = ?diagnostic.product_id,
         operation = %diagnostic.operation,
-        internal_code = %error.code,
+        owner_code_length,
         retryable = error.retryable,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_PRODUCT_BOUNDARY,
-        "commerce admin product owner command failed"
+        "commerce admin product owner command failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+
 }
 
 /// Shared admin product list handler.

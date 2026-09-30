@@ -320,6 +320,7 @@ pub async fn list_products(
     post,
     path = "/admin/products",
     tag = "admin",
+    params(("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")),
     request_body = CreateProductInput,
     responses(
         (status = 201, description = "Product created successfully", body = ProductResponse),
@@ -331,6 +332,7 @@ pub async fn create_product(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<CreateProductInput>,
 ) -> HttpResult<(StatusCode, Json<ProductResponse>)> {
     ensure_permissions(
@@ -351,15 +353,15 @@ pub async fn create_product(
     )
     .await?;
 
-    let idempotency_key = admin_product_command_idempotency_key(
+    let idempotency_key = admin_product_command_idempotency_key(&headers)?;
+    let port_context = admin_product_command_context(
         tenant.id,
-        auth.user_id,
+        &auth,
+        &request_context,
         None,
         "create_product",
-        &input,
-    )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .create_product(port_context.clone(), input)
@@ -437,7 +439,10 @@ pub async fn show_product(
     post,
     path = "/admin/products/{id}",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Product ID")),
+    params(
+        ("id" = Uuid, Path, description = "Product ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = UpdateProductInput,
     responses(
         (status = 200, description = "Product updated successfully", body = ProductResponse),
@@ -449,6 +454,7 @@ pub async fn update_product(
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateProductInput>,
 ) -> HttpResult<Json<ProductResponse>> {
@@ -470,15 +476,15 @@ pub async fn update_product(
     )
     .await?;
 
-    let idempotency_key = admin_product_command_idempotency_key(
+    let idempotency_key = admin_product_command_idempotency_key(&headers)?;
+    let port_context = admin_product_command_context(
         tenant.id,
-        auth.user_id,
+        &auth,
+        &request_context,
         Some(id),
         "update_product",
-        &input,
-    )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .update_product(port_context.clone(), id, input)
