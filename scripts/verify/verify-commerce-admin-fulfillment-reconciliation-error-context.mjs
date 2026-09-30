@@ -11,6 +11,7 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read('crates/modules/rustok-commerce/src/controllers/reconciliation.rs');
+const openapi = read('crates/modules/rustok-commerce/src/openapi.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -235,6 +236,17 @@ for (const value of [
   'HttpError::bad_request(',
   'format!("failed to serialize provider result:',
 ]) forbidText(source, value, 'unsafe reconciliation diagnostic or public mapping');
+
+for (const [value, label] of [
+  ['crate::controllers::reconciliation::list_reconciliation_required', 'OpenAPI reconciliation list registration'],
+  ['crate::controllers::reconciliation::quarantine_stale_executing', 'OpenAPI quarantine registration'],
+  ['crate::controllers::reconciliation::resolve_unknown_as_failed', 'OpenAPI resolve-failed registration'],
+  ['crate::controllers::reconciliation::resolve_unknown_as_succeeded', 'OpenAPI resolve-succeeded registration'],
+  ['crate::controllers::reconciliation::retry_local_persistence', 'OpenAPI retry-local registration'],
+  ['crate::controllers::reconciliation::retry_create_label', 'OpenAPI retry-create-label registration'],
+]) {
+  if (!openapi.includes(value)) failures.push(`${label}: missing ${value}`);
+}
 
 const unauthorizedResponses = source.match(/status = 401/g) ?? [];
 if (unauthorizedResponses.length < 6) {
