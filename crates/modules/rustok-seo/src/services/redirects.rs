@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use moka::future::Cache;
@@ -21,7 +20,7 @@ use crate::entities::{seo_event_delivery, seo_index_cursor, seo_index_delivery, 
 use crate::{SeoError, SeoResult};
 
 use super::{
-    REDIRECT_CACHE, REDIRECT_CACHE_MAX_WEIGHT_BYTES, REDIRECT_CACHE_TTL_SECS, SeoService,
+    REDIRECT_CACHE, REDIRECT_CACHE_MAX_WEIGHT_BYTES, RedirectCacheEntry, SeoService,
     normalize_route,
 };
 
@@ -33,7 +32,8 @@ const INDEX_CURSOR_REPLAY_MODE_NOT_STARTED: &str = "not_started";
 
 static REDIRECT_LOOKUP_CACHE: Lazy<Cache<Uuid, Arc<RedirectLookup>>> = Lazy::new(|| {
     Cache::builder()
-        .time_to_live(Duration::from_secs(REDIRECT_CACHE_TTL_SECS))
+        // The underlying redirect-model cache owns tenant-specific expiry. The lookup cache is
+        // invalidated by source Arc replacement, so it must not impose a shorter fixed TTL.
         .weigher(redirect_lookup_cache_entry_weight)
         .max_capacity(REDIRECT_CACHE_MAX_WEIGHT_BYTES)
         .build()
@@ -88,10 +88,12 @@ impl RedirectLookup {
                 .or_insert(source_index);
         }
 
-        wildcard_prefix_lengths.sort_unstable();
+        // More specific wildcard patterns must win regardless of database return order: prefer
+        // the longest literal prefix, then the longest literal suffix.
+        wildcard_prefix_lengths.sort_unstable_by(|left, right| right.cmp(left));
         wildcard_prefix_lengths.dedup();
         for bucket in wildcards.values_mut() {
-            bucket.suffix_lengths.sort_unstable();
+            bucket.suffix_lengths.sort_unstable_by(|left, right| right.cmp(left));
             bucket.suffix_lengths.dedup();
         }
 
@@ -220,6 +222,11 @@ pub(super) async fn invalidate_all_redirect_lookup_cache() {
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
+        if !self.load_settings(tenant_id).await?.submodule_redirects_enabled {
+            return Err(SeoError::configuration(
+                "SEO redirects submodule is disabled",
+            ));
+        }
         let items = seo_redirect::Entity::find()
             .filter(seo_redirect::Column::TenantId.eq(tenant_id))
             .order_by(seo_redirect::Column::SourcePattern, Order::Asc)
@@ -234,9 +241,14 @@ impl SeoService {
         input: SeoRedirectInput,
     ) -> SeoResult<SeoRedirectRecord> {
         let settings = self.load_settings(tenant.id).await?;
+        if !settings.submodule_redirects_enabled {
+            return Err(SeoError::configuration(
+                "SEO redirects submodule is disabled",
+            ));
+        }
         let source_pattern =
             normalize_source_pattern(input.source_pattern.as_str(), input.match_type)?;
-        validate_target_url(
+        let target_url = normalize_target_url(
             input.target_url.as_str(),
             settings.allowed_redirect_hosts.as_slice(),
             "target_url",
@@ -257,7 +269,7 @@ impl SeoService {
             let mut active: seo_redirect::ActiveModel = existing.into();
             active.match_type = Set(input.match_type.as_str().to_string());
             active.source_pattern = Set(source_pattern);
-            active.target_url = Set(input.target_url);
+            active.target_url = Set(target_url.clone());
             active.status_code = Set(status_code);
             active.expires_at = Set(input.expires_at.map(|value| value.into()));
             active.is_active = Set(input.is_active);
@@ -269,7 +281,7 @@ impl SeoService {
                 tenant_id: Set(tenant.id),
                 match_type: Set(input.match_type.as_str().to_string()),
                 source_pattern: Set(source_pattern),
-                target_url: Set(input.target_url),
+                target_url: Set(target_url),
                 status_code: Set(status_code),
                 expires_at: Set(input.expires_at.map(|value| value.into())),
                 is_active: Set(input.is_active),
@@ -410,20 +422,42 @@ impl SeoService {
         &self,
         tenant_id: Uuid,
     ) -> SeoResult<Arc<Vec<seo_redirect::Model>>> {
-        REDIRECT_CACHE
-            .try_get_with(tenant_id, async {
-                let items = seo_redirect::Entity::find()
-                    .filter(seo_redirect::Column::TenantId.eq(tenant_id))
-                    .all(&self.db)
-                    .await?;
-                Ok::<_, sea_orm::DbErr>(Arc::new(items))
-            })
+        let settings = self.load_settings(tenant_id).await?;
+        let ttl_seconds = settings.redirect_cache_ttl_seconds.max(0) as u64;
+        if ttl_seconds > 0 {
+            if let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await {
+                if entry.loaded_at.elapsed().as_secs() < ttl_seconds {
+                    return Ok(Arc::clone(&entry.redirects));
+                }
+            }
+        }
+        REDIRECT_CACHE.invalidate(&tenant_id).await;
+
+        let items = seo_redirect::Entity::find()
+            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+            .order_by_asc(seo_redirect::Column::MatchType)
+            .order_by_asc(seo_redirect::Column::SourcePattern)
+            .order_by_asc(seo_redirect::Column::Id)
+            .all(&self.db)
             .await
             .map_err(|error| {
                 SeoError::Database(sea_orm::DbErr::Custom(format!(
                     "SEO redirect cache load failed: {error}"
                 )))
-            })
+            })?;
+        let redirects = Arc::new(items);
+        if ttl_seconds > 0 {
+            REDIRECT_CACHE
+                .insert(
+                    tenant_id,
+                    Arc::new(RedirectCacheEntry {
+                        redirects: Arc::clone(&redirects),
+                        loaded_at: std::time::Instant::now(),
+                    }),
+                )
+                .await;
+        }
+        Ok(redirects)
     }
 
     async fn load_redirect_lookup(&self, tenant_id: Uuid) -> SeoResult<Arc<RedirectLookup>> {
@@ -446,6 +480,10 @@ impl SeoService {
         tenant_id: Uuid,
         route: &str,
     ) -> SeoResult<Option<seo_redirect::Model>> {
+        let settings = self.load_settings(tenant_id).await?;
+        if !settings.submodule_redirects_enabled {
+            return Ok(None);
+        }
         let lookup = self.load_redirect_lookup(tenant_id).await?;
         Ok(lookup.matches(route, Utc::now().fixed_offset()))
     }
@@ -569,17 +607,26 @@ pub(super) fn normalize_hosts(hosts: &[String]) -> Vec<String> {
     normalized
 }
 
-pub(super) fn validate_target_url(
+pub(super) fn normalize_target_url(
     value: &str,
     allowed_hosts: &[String],
     field: &str,
-) -> SeoResult<()> {
+) -> SeoResult<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(SeoError::validation(format!("{field} must not be empty")));
     }
+
+    // `//host/path` is a network-path reference, not an application-relative route. If it is
+    // emitted in a Location header, browsers resolve it against the current scheme and navigate
+    // to an external origin. It must never be accepted by this relative URL branch.
+    if trimmed.starts_with("//") {
+        return Err(SeoError::validation(format!(
+            "{field} must not be a protocol-relative URL"
+        )));
+    }
     if trimmed.starts_with('/') {
-        return normalize_route(trimmed).map(|_| ());
+        return normalize_route(trimmed).map(|route| route);
     }
 
     let parsed = Url::parse(trimmed)
@@ -599,7 +646,7 @@ pub(super) fn validate_target_url(
         .map(|value| value.trim_end_matches('.').to_ascii_lowercase())
         .ok_or_else(|| SeoError::validation(format!("{field} must contain a host")))?;
     if allowed_hosts.iter().any(|item| item == &host) {
-        Ok(())
+        Ok(trimmed.to_string())
     } else {
         Err(SeoError::validation(format!(
             "{field} host `{host}` is not allowed"
@@ -612,13 +659,20 @@ pub(super) fn normalize_source_pattern(
     match_type: SeoRedirectMatchType,
 ) -> SeoResult<String> {
     let trimmed = value.trim();
-    if !trimmed.starts_with('/') {
-        return Err(SeoError::validation("source_pattern must start with `/`"));
+    if !trimmed.starts_with('/') || trimmed.starts_with("//") {
+        return Err(SeoError::validation(
+            "source_pattern must be an application-relative route",
+        ));
     }
     if matches!(match_type, SeoRedirectMatchType::Wildcard) {
         if trimmed.matches('*').count() > 1 {
             return Err(SeoError::validation(
                 "wildcard redirects support only one `*` token",
+            ));
+        }
+        if trimmed.chars().any(char::is_whitespace) {
+            return Err(SeoError::validation(
+                "source_pattern must not contain whitespace",
             ));
         }
         return Ok(trimmed.to_string());
@@ -657,7 +711,11 @@ mod tests {
     use chrono::{Duration as ChronoDuration, Utc};
     use uuid::Uuid;
 
-    use super::{RedirectLookup, build_seo_event_key, normalize_hosts, validate_target_url};
+    use super::{
+        RedirectLookup, build_seo_event_key, normalize_hosts, normalize_source_pattern,
+        normalize_target_url,
+    };
+    use crate::dto::SeoRedirectMatchType;
     use crate::entities::seo_redirect;
 
     fn redirect(
@@ -722,11 +780,11 @@ mod tests {
         let allowed_hosts = normalize_hosts(&["Allowed.Example.".to_string()]);
 
         assert!(
-            validate_target_url("https://allowed.example/path", &allowed_hosts, "target_url")
+            normalize_target_url("https://allowed.example/path", &allowed_hosts, "target_url")
                 .is_ok()
         );
         assert!(
-            validate_target_url(
+            normalize_target_url(
                 "javascript://allowed.example/path",
                 &allowed_hosts,
                 "target_url"
@@ -734,13 +792,21 @@ mod tests {
             .is_err()
         );
         assert!(
-            validate_target_url(
+            normalize_target_url(
                 "https://user:secret@allowed.example/path",
                 &allowed_hosts,
                 "target_url"
             )
             .is_err()
         );
+        assert!(normalize_target_url("//attacker.example/path", &allowed_hosts, "target_url").is_err());
+        assert_eq!(
+            normalize_target_url("  /target  ", &allowed_hosts, "target_url")
+                .expect("relative route should normalize"),
+            "/target"
+        );
+        assert!(normalize_source_pattern("/docs/* bad", SeoRedirectMatchType::Wildcard).is_err());
+        assert!(normalize_source_pattern("//attacker.example/*", SeoRedirectMatchType::Wildcard).is_err());
     }
 
     #[test]
@@ -758,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn redirect_lookup_preserves_first_matching_wildcard_order() {
+    fn redirect_lookup_prefers_more_specific_wildcard() {
         let lookup = RedirectLookup::from_source(Arc::new(vec![
             redirect("wildcard", "/docs/*", "/broad", true, None),
             redirect("wildcard", "/docs/guides/*", "/specific", true, None),
@@ -768,7 +834,7 @@ mod tests {
             .matches("/docs/guides/start", Utc::now().fixed_offset())
             .expect("wildcard redirect should match");
 
-        assert_eq!(matched.target_url, "/broad");
+        assert_eq!(matched.target_url, "/specific");
     }
 
     #[test]

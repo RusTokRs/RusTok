@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `9a946747f9a1569fb46d0e8c01da9e751884d240`  
+**Current main SHA:** `487667dbda6d83f9cea32fda7aecb7ef0ea8f2e0`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3912,3 +3912,144 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, entrypoint coverage scan, tenant-owner comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.70` complete and ready for integration.
 - **Next primary module:** `FS-22.06.71 — same primary module, provider/metadata compatibility validation and remaining mutation semantics`.
+
+### FS-22.06.71 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Provider receipt metadata ownership
+
+- **Base:** `24c9af45b6bd301d68bc943a79adad52b0171475`; because `main` advanced concurrently during the first attempt, the stale branch was not merged. A fresh branch was recreated from this SHA and the remediation was re-audited against the current tree.
+- **Primary scope:** one production service module only — fulfillment creation metadata sanitization and the reserved `metadata.provider_operation` receipt boundary.
+- **Invariant map:** `metadata.provider_operation` is a server-owned commit receipt tied to a journaled provider operation; create inputs must not seed it; provider-backed lifecycle commands may attach the real receipt after journaling; ordinary lifecycle patches may preserve a legitimate receipt but must not invent one.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.71-01:** `create_fulfillment_with_identity_and_id` previously sanitized audit and checkout identity metadata but allowed caller-supplied `provider_operation` data to persist on a newly created fulfillment. This could leave a fabricated/stale-looking provider receipt without a corresponding provider journal operation.
+- **Production remediation:** `strip_fulfillment_metadata` now composes audit, checkout-identity, and provider-receipt sanitization. The create path uses this sanitizer for both ordinary and checkout fulfillment creation.
+- **Regression coverage:** extended the existing fulfillment metadata sanitization test with a `provider_operation.id` fixture and an assertion that the reserved receipt is removed.
+- **Adjacent-boundary audit:** provider-backed Admin `ship/reship/cancel` attaches the actual journal operation ID through `local_commit_metadata` after provider execution; `deliver/reopen` strip incoming provider receipt patches; checkout metadata construction may include orchestration data but the owner service strips the reserved receipt before persistence.
+- **Concurrency reconciliation:** a first implementation branch became stale when `main` advanced concurrently with typed checkout-identity changes. That branch was deliberately not merged. The final implementation was recreated on a fresh `main` base and independently re-read before PR creation.
+- **Immediate re-audit:** create persistence, sanitizer, all provider-receipt stripping call sites, and provider-backed lifecycle attachment were re-read on the fresh base. No legitimate post-journal receipt path was removed.
+- **Fresh second pass:** scanned all `strip_fulfillment_metadata` and `strip_provider_operation_metadata` uses and rechecked migration `000112` receipt commit semantics. No create path remains capable of persisting caller-supplied `provider_operation`.
+- **Documentation:** Fulfillment README now states that provider receipt metadata is write-reserved and creation strips caller-supplied receipt data.
+- **Verification:** source inspection, direct caller tracing, migration/trigger tracing, fresh-base reconciliation, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.71` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.72 — same primary module, remaining metadata/compatibility invariants after the reserved receipt boundary`.
+
+### FS-22.06.72 Iteration 1 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Provider identifier admission
+
+- **Base:** `c5ed64b4302de7bfeada25717d1c2e121df5da6f`; dedicated branch `audit/fs-22.06.72-fulfillment-metadata-compat` created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option create/update provider identifier normalization and its canonical dependency on the Fulfillment provider registry.
+- **Invariant map:** a persisted shipping option must reference a provider identifier accepted by the provider registry; normalization and validation must occur before persistence so later provider execution cannot discover a malformed identifier as a runtime-only failure.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.72-01:** `create_shipping_option` and `update_shipping_option` only trimmed `provider_id` and accepted any non-empty value. The canonical provider registry validator rejects uppercase and non-ASCII/punctuation identifiers, so values such as `PayPal` or `foo.bar` could persist and later fail provider lookup/execution.
+- **Production remediation:** exposed the existing provider-registry validator as `pub(crate)` and centralized service normalization in `normalize_provider_id`. Both shipping-option create and update now trim, apply the manual default for blank input, validate against the canonical registry grammar, and persist only the validated identifier.
+- **Regression coverage:** added a pure service-helper test for invalid identifiers, trimming/canonicalization, and the blank-to-manual default path.
+- **Adjacent-boundary audit:** `providers.rs` remains the canonical identifier rule owner; all provider execution requests also validate through that function. The shipping-option service now enforces the same invariant before persistence, removing the previous late-validation gap.
+- **Immediate re-audit:** re-read both write paths, the shared helper, registry validator and all validator call sites. No alternate shipping-option provider write path in `fulfillment.rs` bypasses the canonical validator.
+- **Fresh second pass:** re-scanned provider writes in the primary module and re-read FBA registry/default provider contract. No second identifier syntax or normalization rule was found.
+- **Implementation note:** a tiny helper extraction was included so create/update do not duplicate defaulting/trimming/validation semantics.
+- **Documentation:** Fulfillment README now states that persisted shipping-option provider IDs use the canonical provider-registry identifier grammar.
+- **Verification:** source inspection, call-site tracing, registry contract comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.72` Iteration 1 complete; module track remains open.
+- **Next primary module iteration:** `FS-22.06.73 — same primary module, malformed `shipping_profiles` compatibility fail-open behavior`.
+
+### FS-22.06.73 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-profile compatibility fail-closed boundary
+
+- **Base:** `68278f94ba61a9261e464b29d3e67e8f7b2381e0`; dedicated branch `audit/fs-22.06.73-fulfillment-shipping-profiles` created from refreshed `main`.
+- **Primary scope:** one production service module only — extraction of persisted `shipping_profiles.allowed_slugs` into the typed `ShippingOptionResponse` compatibility projection.
+- **Invariant map:** an absent shipping-profile restriction may remain unrestricted; a present compatibility namespace must be structurally valid; malformed restriction metadata must never widen storefront eligibility.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.73-01:** `extract_allowed_shipping_profile_slugs` returned `None` when `shipping_profiles` was not an object, when `allowed_slugs` was missing, or when `allowed_slugs` was not an array. The storefront compatibility function treats `None` as no restriction, so malformed present metadata could fail open and make an option compatible with any required shipping profile.
+- **Production remediation:** the Fulfillment owner projection now distinguishes absence from malformed presence. If `shipping_profiles` exists but is structurally invalid or lacks `allowed_slugs`, it returns `Some(Vec::new())`; this preserves unrestricted semantics only when the entire `shipping_profiles` namespace is absent.
+- **Regression coverage:** added pure tests for malformed namespace, missing `allowed_slugs`, scalar `allowed_slugs`, and fully absent namespace.
+- **Adjacent-boundary audit:** `ShippingOptionResponse.allowed_shipping_profile_slugs` is consumed before metadata fallback by Commerce; `Some(empty)` therefore reaches the existing compatibility helper as a concrete restriction and rejects non-empty required profiles. No Commerce code change was required.
+- **Immediate re-audit:** re-read extraction, response construction, and Commerce compatibility semantics. Valid arrays still normalize/deduplicate as before; malformed present metadata no longer becomes `None`.
+- **Fresh second pass:** searched all Fulfillment `shipping_profiles` writers/readers and all current Commerce consumers. Fulfillment create/update remain the only owner write paths; typed profile input continues to produce an explicit `allowed_slugs` array.
+- **Compatibility note:** an entirely absent `shipping_profiles` namespace remains `None` by design, preserving the established meaning of an unrestricted shipping option. Only malformed present compatibility data is fail-closed.
+- **Documentation:** Fulfillment README now states the fail-closed malformed shipping-profile compatibility contract.
+- **Verification:** source inspection, direct consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.73` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.74 — same primary module, shipping-option metadata/object-shape and compatibility normalization residuals`.
+
+### FS-22.06.74 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Stable collection ordering
+
+- **Base:** `f07e975cffc19202d80d3c5f5baf28e3f317dae0`; implementation was refreshed onto that main after an earlier stale branch was intentionally discarded when main advanced with unrelated SEO work.
+- **Primary scope:** one production service module only — ordering of shipping-option, fulfillment, and fulfillment-item collection reads, including paginated lists and latest-by-order selection.
+- **Invariant map:** collection order must be deterministic; offset pagination requires a total order; latest-by-order requires a deterministic tie-breaker; item projection ordering must be stable.
+- **Finding FULFILLMENTSERVICE-22.06.74-01:** shipping options, fulfillments, and fulfillment items were ordered only by `created_at`. Equal timestamps are legal, so SQL did not define a total order.
+- **Production remediation:** added `id` tie-breakers while preserving existing timestamp direction: shipping-option lists `created_at,id` ascending; fulfillment latest/list `created_at,id` descending where appropriate; fulfillment-by-order and item loaders `created_at,id` ascending.
+- **Immediate re-audit / fresh second pass:** enumerated every `order_by_*` in the primary module and confirmed remaining single-key orders are intentional (checkout fulfillment index and translation locale ordering).
+- **Concurrency reconciliation:** stale PR #4432 was closed without merge; fresh PR #4433 was recreated on `f07e975c…` and merged as `58a32a618530a5327b406c2c051587706c14d403`.
+- **Verification:** source inspection, complete ordering enumeration, pagination/response impact analysis, fresh-base reconciliation, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.74` complete and integrated.
+- **Next primary module iteration:** `FS-22.06.75 — same primary module, malformed lifecycle metadata audit append`.
+
+### FS-22.06.75 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Metadata shape at lifecycle audit boundary
+
+- **Base:** `58a32a618530a5327b406c2c051587706c14d403`; dedicated branch `audit/fs-22.06.75-fulfillment-identity` created from refreshed `main`.
+- **Primary scope:** one production service module only — lifecycle metadata merge/append behavior, with all direct audit-event call sites re-read.
+- **Invariant map:** lifecycle metadata must be lossless for accepted inputs; owner audit history must never be silently dropped; malformed metadata representation must fail closed rather than being converted to an unrelated object; failures must abort the surrounding transaction before commit.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.75-01:** `append_audit_event` previously converted any non-object metadata value into an empty object before adding `audit.events`, silently discarding the original scalar/array metadata. Because lifecycle commands call this helper inside their transaction immediately before the fulfillment/item update, a malformed persisted or direct-call metadata value could be destroyed on a successful lifecycle mutation.
+- **Production remediation:** `append_audit_event` now returns `FulfillmentResult<Value>` and rejects non-object metadata with a stable validation error. All 14 lifecycle call sites propagate `?`; malformed metadata therefore aborts the transaction instead of being rewritten or lost.
+- **Regression coverage:** added a focused pure test proving non-object metadata is rejected. Existing object-based audit-history preservation coverage remains intact.
+- **Adjacent-boundary audit:** ship, deliver, reopen, reship, and cancel paths all use the same helper; item metadata append paths use it as well. Provider receipt stripping and owner audit preservation remain unchanged.
+- **Immediate re-audit:** enumerated all `append_audit_event` production call sites and verified every call propagates `Result`. A structural parenthesis scan found 14 calls and zero missing error-propagation sites.
+- **Fresh second pass:** re-read the complete metadata helper set (`merge_fulfillment_metadata`, reserved metadata strippers, `append_audit_event`) and all lifecycle update blocks. No other audit append path can silently coerce non-object metadata.
+- **Behavioral choice:** the service intentionally fails closed on malformed metadata rather than inventing a new storage envelope for scalar JSON values. This preserves canonical object-shaped metadata semantics without data-loss compatibility hacks.
+- **Documentation:** Fulfillment README now states that lifecycle audit append requires object-shaped metadata and malformed scalar/array metadata is rejected.
+- **Verification:** source inspection, 14-call-site structural scan, transaction-path tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.75` complete and ready for integration.
+- **Next primary module:** `FS-22.06.76 — same primary module, remaining shipping-option metadata normalization and write/read compatibility pass`.
+
+### FS-22.06.76 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-profile projection metadata shape
+
+- **Base:** `c695822b41a13db4ab24dd6b0a36adc2d3a13002`; dedicated branch `audit/fs-22.06.76-fulfillment-profile-metadata` created from refreshed `main`.
+- **Primary scope:** one production service module only — materialization of typed `allowed_shipping_profile_slugs` into the metadata-backed compatibility projection.
+- **Invariant map:** when a typed shipping-profile restriction is supplied, the owner must materialize it without discarding unrelated metadata; malformed metadata must fail closed; no invented fallback envelope may replace caller data silently.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.76-01:** `apply_allowed_shipping_profiles_to_metadata` converted non-object metadata into an empty object whenever `allowed_shipping_profile_slugs` was `Some`. A direct create/update call could therefore lose the entire existing scalar/array metadata payload while adding the compatibility restriction.
+- **Production remediation:** the helper now returns `FulfillmentResult<Value>` and rejects non-object metadata when a typed shipping-profile restriction is supplied. Create and update propagate the error before persistence.
+- **Regression coverage:** added a pure test rejecting scalar metadata and a positive object-metadata case confirming `shipping_profiles.allowed_slugs` is materialized.
+- **Adjacent-boundary audit:** DTOs expose typed profile restrictions separately from generic JSON metadata; Commerce consumes `ShippingOptionResponse.allowed_shipping_profile_slugs` before metadata fallback. Invalid metadata therefore produces a typed owner error instead of a widened or silently rewritten compatibility projection.
+- **Immediate re-audit:** re-read create/update calls, helper return propagation, normalization, and response extraction. No caller still ignores the helper error.
+- **Fresh second pass:** traced the complete typed-profile path through DTO, Fulfillment projection, Commerce compatibility selection, and malformed metadata handling. Fully absent restrictions still preserve unrestricted semantics; present typed restrictions now require object metadata.
+- **Documentation:** Fulfillment README now states the object-metadata requirement when typed shipping-profile restrictions are supplied.
+- **Verification:** source inspection, caller tracing, response/consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.76` complete and ready for integration.
+- **Next primary module:** `FS-22.06.77 — same primary module, fresh full pass of shipping-option mutation invariants after metadata hardening`.
+
+### FS-22.06.77 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option translation name length
+
+- **Base:** `ac06d4863a52bd720060ece3c5c333831ed323d7`; dedicated branch `audit/fs-22.06.77-fulfillment-shipping-translations` created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option translation input normalization on create/update.
+- **Invariant map:** persisted shipping-option translation names must be non-empty and no longer than the canonical 120 Unicode-character boundary; direct owner-service calls must enforce the same limit as exact-locale mutation and persistence.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.77-01:** `normalize_translation_inputs` rejected empty names but imposed no maximum length. The translation table stores names in a 120-character column, and `ShippingOptionTranslationService::normalize_name` already enforced the same 120-character rule. Direct create/update service calls could therefore reach persistence with an oversized translation name and rely on backend-specific storage failure behavior.
+- **Production remediation:** `normalize_translation_inputs` now rejects names above 120 Unicode characters before persistence.
+- **Regression coverage:** added a focused pure test with a 121-character name.
+- **Adjacent-boundary audit:** create and update both pass through `normalize_translation_inputs`; exact-locale translation mutation uses the same 120-character semantic limit; translation table schema is capped at 120. No alternate shipping-option write path bypasses the service normalizer.
+- **Immediate re-audit:** re-read create/update normalization flow, exact-locale validation, and persistence schema. The new check preserves existing trimming, empty-name rejection, locale canonicalization, and duplicate-locale detection.
+- **Fresh second pass:** searched the primary module for shipping-option translation name validation and write calls. The owner write surface has one shared normalizer; no oversized name can bypass it through create/update.
+- **Documentation:** Fulfillment README now states the 120 Unicode-character translation-name invariant.
+- **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.77` complete and ready for integration.
+- **Next primary module:** `FS-22.06.78 — same primary module, remaining shipping-option mutation boundary / lifecycle timestamp semantics`.
+
+### FS-22.06.78 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Remaining shipping-option mutation semantics
+
+- **Base:** `14d01eee2c8ac1985c3a9ac996073903b0ff8f90`; clean assessment performed against the freshly refreshed integrated tree after FS-22.06.77.
+- **Primary scope:** one production service module only — remaining shipping-option mutation semantics after the prior currency, provider-ID, locale, metadata-shape, profile-compatibility, ordering, and translation-name fixes.
+- **Invariant map:** create/update must enforce the same canonical validation contract; translation CAS must remain transactionally consistent; profile compatibility must fail closed; activation/deactivation must be idempotent; persisted projection must not silently lose data.
+- **Assessment:** no additional repository-owned defect was confirmed in the remaining shipping-option mutation surface. Translation creation requires at least one canonical non-empty locale/name and enforces the 120-character name bound; update CAS locks the shipping-option row and records translation change evidence in the same transaction; currency and provider identifiers use canonical validators; typed shipping-profile restrictions are validated by the Commerce owner boundary while Fulfillment persists a compatibility projection; malformed present profile metadata fails closed; activation/deactivation produces no duplicate change journal on a no-op.
+- **Checkout/lifecycle reconciliation:** checkout fulfillment and lifecycle state-machine paths inspected during the fresh pass retain parent-row locking and database lifecycle guards; no new shipping-option mutation regression was introduced by the prior fixes.
+- **Fresh second pass:** re-read the complete shipping-option create/update/activate/deactivate path, translation normalization/synchronization, compatibility materialization, and persistence constraints. No further repository-owned service defect was confirmed that justified another speculative patch.
+- **Status:** `FS-22.06.78` complete as a clean assessment.
+- **Next primary module iteration:** `FS-22.06.79 — same primary module, checkout fulfillment identity/create-adopt-read boundary`.
+- **Verification:** source inspection, direct caller tracing, persistence/constraint comparison, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+
+### FS-22.06.79 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata merge second-order safety
+
+- **Base:** `487667dbda6d83f9cea32fda7aecb7ef0ea8f2e0`; dedicated branch `audit/fs-22.06.79-fulfillment-checkout-identity` created from refreshed `main`.
+- **Primary scope:** one production service module only — lifecycle `merge_fulfillment_metadata` semantics immediately upstream of the owner audit append.
+- **Invariant map:** persisted lifecycle metadata must not be silently destroyed or replaced because of its representation shape; malformed existing metadata must fail closed before a lifecycle mutation is persisted; audit history preservation must remain effective after all merge steps.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.79-01:** after FS-22.06.75 made `append_audit_event` reject non-object metadata, `merge_fulfillment_metadata` still accepted a non-object current value and an object patch by returning the patch as the merged result. The subsequent audit append then saw an object and succeeded, so malformed persisted metadata could still be silently discarded despite the earlier fail-closed guard.
+- **Production remediation:** `merge_fulfillment_metadata` now requires the persisted current metadata to be a JSON object and returns `FulfillmentResult<Value>`; all 10 lifecycle production call sites propagate `?`. A non-object persisted value therefore aborts the mutation before audit append, update, or commit.
+- **Regression coverage:** added a focused pure test proving a non-object persisted metadata value cannot be replaced by an object patch.
+- **Immediate re-audit:** all 10 lifecycle merge callers were enumerated and verified to propagate the new `Result`; the helper was re-read together with `append_audit_event`, reserved metadata strippers, and lifecycle update blocks.
+- **Fresh second pass:** re-traced malformed current metadata through merge -> audit append -> persistence. No path remains where an object patch can silently replace a scalar/array current metadata value before the fail-closed check.
+- **Behavioral compatibility:** valid object metadata and object patches retain the existing shallow merge semantics; audit history is still restored after the merge so caller patches cannot replace owner audit evidence.
+- **Adjacent-boundary audit:** lifecycle callers in ship/deliver/reopen/reship/cancel all remain on the same owner helper; provider receipt and checkout identity stripping are unchanged.
+- **Status:** `FS-22.06.79` complete and ready for integration. The primary `fulfillment.rs` track remains open for further fresh passes.
+- **Next primary module iteration:** `FS-22.06.80 — same primary module, checkout identity create/adopt/read integrity pass after typed cutover`.
+- **Verification:** source inspection, 10-call-site structural scan, lifecycle transaction tracing, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.

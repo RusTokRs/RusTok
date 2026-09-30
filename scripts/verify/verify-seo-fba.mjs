@@ -33,7 +33,13 @@ if (!gap || gap.status !== 'product_consumer_composed_other_target_providers_pen
 const seoCargo = read('crates/modules/rustok-seo/Cargo.toml');
 if (!seoCargo.includes('rustok-media')) fail('SEO media consumer must depend on rustok-media');
 const seoTargets = read('crates/modules/rustok-seo/src/services/targets.rs');
-const seoService = read('crates/modules/rustok-seo/src/services/mod.rs');
+// `services/mod.rs` includes the implementation-bearing services_base.rs file textually; inspect
+// both sources so this verifier follows the Rust module boundary rather than requiring duplicate
+// provider wiring in the facade module.
+const seoService = [
+  read('crates/modules/rustok-seo/src/services/mod.rs'),
+  read('crates/modules/rustok-seo/src/services/services_base.rs'),
+].join('\n');
 const serverComposition = read('apps/server/src/services/module_event_dispatcher.rs');
 hasAll(seoTargets, ['MediaAssetReadPort', '.get_image_descriptor(', '.with_deadline(Duration::from_secs(2))', 'unwrap_or(image.url)'], 'SEO media consumer');
 hasAll(seoService, ['SeoMediaAssetReadProvider', 'with_media_asset_read_port', 'get::<SeoMediaAssetReadProvider>()'], 'SEO media provider injection');

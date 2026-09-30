@@ -67,7 +67,9 @@ for (const [value, label] of [
   ['job_entity::Column::Status.eq(INDEX_REPAIR_JOB_QUEUED)', 'queued job claim'],
   ['.run_index_repair_replay(', 'bounded legacy execution inside worker'],
   ['active.status = Set(INDEX_REPAIR_JOB_COMPLETED.to_string());', 'terminal checkpoint'],
-  ['fail_background_index_repair_job', 'durable failure checkpoint'],
+  ['async fn prune_index_repair_history(', 'bounded index repair history retention'],
+  ['SEO_HISTORY_PRUNE_BATCH_SIZE', 'bounded index repair retention batch'],
+  ['fail_background_index_repair_job', 'durable failure checkpoint']
 ]) {
   requireText(worker, value, label);
 }
@@ -81,8 +83,12 @@ for (const [value, label] of [
 for (const [value, label] of [
   ['SeoWorkerAuthorization::from_runtime_config(', 'host worker authorization'],
   ['settings.runtime.runs_background_workers()', 'host-mode authorization input'],
-  ['seo_bulk_worker_enabled', 'SEO worker switch authorization input'],
-  ['.execute_next_bulk_job(&authorization)', 'authorized server SEO poller lifecycle'],
+  ['seo_bulk_worker_enabled', 'SEO bulk worker switch authorization input'],
+  ['seo_sitemap_worker_enabled', 'SEO sitemap worker switch authorization input'],
+  ['seo_index_repair_worker_enabled', 'SEO index repair worker switch authorization input'],
+  ['.execute_next_bulk_job(&authorization)', 'authorized server SEO bulk poller lifecycle'],
+  ['.execute_next_sitemap_job(&authorization)', 'authorized server SEO sitemap poller lifecycle'],
+  ['.execute_next_index_repair_job(&authorization)', 'authorized server SEO index repair poller lifecycle'],
 ]) {
   requireText(hostLifecycle, value, label);
 }
@@ -100,6 +106,11 @@ requireText(
   migration,
   'idx_seo_index_repair_jobs_status_created',
   'worker claim index',
+);
+requireText(
+  read('crates/modules/rustok-seo/src/migrations/m20260930_000011_add_seo_queue_constraints.rs'),
+  'idx_seo_sitemap_jobs_one_active_per_tenant',
+  'sitemap active-job uniqueness',
 );
 forbidText(
   applications,

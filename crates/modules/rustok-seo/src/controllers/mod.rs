@@ -208,6 +208,7 @@ pub async fn robots_txt(
     tenant: TenantContext,
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
+    ensure_public_seo_enabled(&service, tenant.id).await?;
     let body = service
         .sitemaps()
         .render_robots(&tenant)
@@ -221,13 +222,13 @@ pub async fn sitemap_index(
     tenant: TenantContext,
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
-    if !service
+    ensure_public_seo_enabled(&service, tenant.id).await?;
+    let settings = service
         .settings()
         .load_settings(tenant.id)
         .await
-        .map_err(map_seo_http_error)?
-        .sitemap_enabled
-    {
+        .map_err(map_seo_http_error)?;
+    if !settings.sitemap_enabled || !settings.submodule_sitemaps_enabled {
         return Err(SeoHttpError::not_found("SEO sitemap index is disabled"));
     }
 
@@ -253,6 +254,7 @@ pub async fn sitemap_file(
     Path(name): Path<String>,
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
+    ensure_public_seo_enabled(&service, tenant.id).await?;
     let file = service
         .sitemaps()
         .sitemap_file(tenant.id, name.as_str())
@@ -452,6 +454,7 @@ pub async fn bulk_artifact_download(
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
     let service = runtime.service()?;
+    ensure_seo_module_enabled(&service, tenant.id).await?;
     let artifact = service
         .bulk()
         .bulk_artifact(tenant.id, job_id, artifact_id)
@@ -546,6 +549,21 @@ fn api_routes() -> axum::Router<SeoHttpRuntime> {
             "/bulk/jobs/{job_id}/artifacts/{artifact_id}",
             get(bulk_artifact_download),
         )
+}
+
+async fn ensure_public_seo_enabled(
+    service: &SeoApplicationServices,
+    tenant_id: Uuid,
+) -> SeoHttpResult<()> {
+    if !service
+        .settings()
+        .is_enabled(tenant_id)
+        .await
+        .map_err(map_seo_http_error)?
+    {
+        return Err(SeoHttpError::not_found("SEO module is disabled"));
+    }
+    Ok(())
 }
 
 fn ensure_seo_permission(

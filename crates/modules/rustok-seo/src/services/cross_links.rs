@@ -61,6 +61,12 @@ impl SeoService {
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Bulk)
         {
+            if !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+            {
+                continue;
+            }
             let provider_summaries = provider
                 .list_bulk_summaries(
                     &self.target_runtime(),

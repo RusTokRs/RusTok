@@ -446,6 +446,8 @@ async fn load_category_sitemap_candidate(
         target_id: mapped.target_id,
         locale: mapped.effective_locale,
         route: mapped.canonical_route,
+        images: mapped.open_graph.images,
+        alternates: mapped.alternates,
     }))
 }
 
@@ -510,6 +512,8 @@ async fn load_topic_sitemap_candidate(
         target_id: mapped.target_id,
         locale: mapped.effective_locale,
         route: mapped.canonical_route,
+        images: mapped.open_graph.images,
+        alternates: mapped.alternates,
     }))
 }
 

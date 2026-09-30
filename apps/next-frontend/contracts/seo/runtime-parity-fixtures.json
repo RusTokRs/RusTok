@@ -497,9 +497,9 @@
       "invariant": "event delivery idempotency",
       "path": "crates/modules/rustok-seo/src/services/events.rs",
       "mustContain": [
-        "load_delivery_by_idempotency_key",
-        "skipping duplicate SEO domain event emission",
-        "idx_seo_event_deliveries_idempotency"
+        "if existing.is_some()",
+        "publish_in_tx_with_envelope_id",
+        "idempotency_key"
       ]
     },
     {
@@ -507,8 +507,8 @@
       "path": "crates/modules/rustok-seo/src/services/events.rs",
       "mustContain": [
         "upsert_index_delivery",
-        "idx_seo_index_deliveries_unique_transition",
-        "skipping duplicate"
+        "idempotency_key",
+        "publish_entity_reindex_in_tx"
       ]
     },
     {
@@ -770,7 +770,7 @@
   "unitCoverageInventory": [
     {
       "batch": "D8.1 normalization and validation",
-      "path": "crates/modules/rustok-seo/src/services/sitemaps.rs",
+      "path": "crates/modules/rustok-seo/src/services/sitemaps/tests.rs",
       "commandWhenCompilationAllowed": "cargo test -p rustok-seo normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates --lib --config profile.dev.debug=0",
       "mustContain": [
         "normalize_sitemap_submission_endpoints_filters_invalid_and_deduplicates",

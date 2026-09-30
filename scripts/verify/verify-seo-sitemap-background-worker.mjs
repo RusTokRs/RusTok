@@ -63,6 +63,8 @@ for (const [value, label] of [
   ['SITEMAP_JOB_SUBMITTING.to_string()', 'generation-to-submission checkpoint'],
   ['SITEMAP_JOB_COMPLETED.to_string()', 'terminal completion'],
   ['SITEMAP_JOB_RUNNING,\n                SITEMAP_JOB_SUBMITTING', 'active job resume'],
+  ['async fn prune_sitemap_history(', 'bounded sitemap history retention'],
+  ['SEO_HISTORY_PRUNE_BATCH_SIZE', 'bounded sitemap retention batch'],
   ['active.is_some()', 'tenant-local queue deduplication'],
   ['urls.chunks(crate::services::SITEMAP_CHUNK_SIZE)', 'bounded sitemap files'],
 ]) {

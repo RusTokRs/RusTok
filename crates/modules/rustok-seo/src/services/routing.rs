@@ -1,3 +1,4 @@
+use url::Url;
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -8,7 +9,8 @@ use rustok_seo_targets::{
 
 use crate::dto::{
     SeoAlternateLink, SeoDocument, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
-    SeoPageContext, SeoRedirectDecision, SeoRouteContext,
+    SeoImageAsset, SeoModuleSettings, SeoOpenGraph, SeoPageContext, SeoRedirectDecision,
+    SeoRouteContext,
 };
 use crate::{SeoError, SeoResult};
 
@@ -51,32 +53,6 @@ impl SeoService {
         route: &str,
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
-        let canonical_service = CanonicalUrlService::new(self.db.clone());
-        if let Some(resolved) = canonical_service
-            .resolve_route(tenant.id, locale, route)
-            .await
-            .map_err(|err| SeoError::validation(err.to_string()))?
-            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
-            && let Some(mut context) = self
-                .load_target_page_context(
-                    tenant,
-                    kind,
-                    resolved.target_id,
-                    Some(locale.to_string()),
-                    Some(resolved.canonical_url.clone()),
-                    channel_slug,
-                )
-                .await?
-        {
-            if resolved.redirect_required {
-                context.route.redirect = Some(SeoRedirectDecision {
-                    target_url: locale_prefixed_path(locale, resolved.canonical_url.as_str()),
-                    status_code: 308,
-                });
-            }
-            return Ok(Some(context));
-        }
-
         if let Some(redirect) = self.match_redirect(tenant.id, route).await? {
             if redirect.target_url == route {
                 return Err(SeoError::validation("redirect loop detected"));
@@ -107,7 +83,11 @@ impl SeoService {
                     effective_locale: locale.to_string(),
                     canonical_url: route.to_string(),
                     redirect: Some(SeoRedirectDecision {
-                        target_url: redirect.target_url,
+                        target_url: if redirect.target_url.starts_with('/') {
+                            locale_prefixed_path(locale, redirect.target_url.as_str())
+                        } else {
+                            redirect.target_url
+                        },
                         status_code: redirect.status_code,
                     }),
                     alternates: Vec::new(),
@@ -130,6 +110,42 @@ impl SeoService {
                 },
             }));
         }
+
+
+        let canonical_service = CanonicalUrlService::new(self.db.clone());
+        if self
+            .load_settings(tenant.id)
+            .await?
+            .submodule_canonical_enabled
+            && let Some(resolved) = canonical_service
+                .resolve_route(tenant.id, locale, route)
+                .await
+                .map_err(|err| SeoError::validation(err.to_string()))?
+            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
+            && let Some(mut context) = self
+                .load_target_page_context(
+                    tenant,
+                    kind,
+                    resolved.target_id,
+                    Some(locale.to_string()),
+                    channel_slug,
+                )
+                .await?
+        {
+            if resolved.redirect_required {
+                // The content URL table identifies the target and legacy alias; the
+                // registered SEO provider owns the public route. Content orchestration
+                // commonly stores compatibility routes such as `/modules/forum?...`,
+                // which must never leak into a public redirect or override a provider's
+                // localized route.
+                context.route.redirect = Some(SeoRedirectDecision {
+                    target_url: context.route.canonical_url.clone(),
+                    status_code: 308,
+                });
+            }
+            return Ok(Some(context));
+        }
+
 
         let state = if let Some(route_match) = self
             .resolve_registered_route_match(tenant, locale, route, channel_slug)
@@ -166,10 +182,14 @@ impl SeoService {
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
         let canonical_service = CanonicalUrlService::new(self.db.clone());
-        if let Some(resolved) = canonical_service
-            .resolve_route(tenant.id, locale, route)
-            .await
-            .map_err(|err| SeoError::validation(err.to_string()))?
+        if self
+            .load_settings(tenant.id)
+            .await?
+            .submodule_canonical_enabled
+            && let Some(resolved) = canonical_service
+                .resolve_route(tenant.id, locale, route)
+                .await
+                .map_err(|err| SeoError::validation(err.to_string()))?
             && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
         {
             return self
@@ -178,7 +198,6 @@ impl SeoService {
                     kind,
                     resolved.target_id,
                     Some(locale.to_string()),
-                    Some(resolved.canonical_url),
                     channel_slug,
                 )
                 .await;
@@ -216,7 +235,6 @@ impl SeoService {
         target_kind: SeoTargetSlug,
         target_id: Uuid,
         requested_locale: Option<String>,
-        canonical_override: Option<String>,
         channel_slug: Option<&str>,
     ) -> SeoResult<Option<SeoPageContext>> {
         let Some(state) = self
@@ -238,12 +256,6 @@ impl SeoService {
             .await?;
         let mut context = self.merge_page_context(tenant, state, explicit).await?;
         context.route.requested_locale = requested_locale;
-        if let Some(canonical_override) = canonical_override {
-            context.route.canonical_url = locale_prefixed_path(
-                context.route.effective_locale.as_str(),
-                canonical_override.as_str(),
-            );
-        }
         Ok(Some(context))
     }
 
@@ -258,6 +270,12 @@ impl SeoService {
             .registry
             .providers_with_capability(SeoTargetCapabilityKind::Routing)
         {
+            if !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+            {
+                continue;
+            }
             let route_match = provider
                 .resolve_route(
                     &self.target_runtime(),
@@ -309,6 +327,7 @@ impl SeoService {
                 .as_ref()
                 .and_then(|item| super::trimmed_option(item.description.clone()))
                 .or(state.description.clone());
+            let (title, description) = apply_metadata_settings(title, description, &settings);
             let effective_locale = translation.effective_locale;
             let canonical_url = explicit
                 .meta
@@ -316,9 +335,17 @@ impl SeoService {
                 .clone()
                 .filter(|value| !value.trim().is_empty())
                 .map(|value| canonical_url_for_locale(effective_locale.as_str(), value.as_str()))
+                .filter(|value| canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice()))
                 .unwrap_or_else(|| {
                     locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str())
                 });
+            let canonical_url = apply_canonical_protocol(
+                apply_canonical_trailing_slash(
+                    canonical_url,
+                    settings.canonical_trailing_slash_mode.as_str(),
+                ),
+                settings.canonical_force_https,
+            );
             let open_graph = merge_open_graph(
                 &state.open_graph,
                 effective_translation
@@ -333,6 +360,7 @@ impl SeoService {
                 canonical_url.as_str(),
                 effective_locale.as_str(),
             );
+            let open_graph = apply_open_graph_settings(open_graph, &settings);
 
             return Ok(SeoPageContext {
                 route: SeoRouteContext {
@@ -342,15 +370,20 @@ impl SeoService {
                     effective_locale: effective_locale.clone(),
                     canonical_url: canonical_url.clone(),
                     redirect: None,
-                    alternates: with_x_default(
-                        state.alternates,
-                        settings.x_default_locale.as_deref(),
-                        tenant.default_locale.as_str(),
-                    ),
+                    alternates: if settings.hreflang_enabled && settings.submodule_hreflang_enabled {
+                        with_x_default(
+                            state.alternates,
+                            settings.x_default_locale.as_deref(),
+                            tenant.default_locale.as_str(),
+                        )
+                    } else {
+                        Vec::new()
+                    },
                 },
-                document: build_document(
-                    title,
-                    description,
+                document: apply_rich_snippets_setting(
+                    build_document(
+                        title,
+                        description,
                     apply_robots(
                         explicit.meta.no_index,
                         explicit.meta.no_follow,
@@ -399,8 +432,10 @@ impl SeoService {
                             explicit.meta.structured_data.is_some(),
                         ),
                     },
-                    None,
-                    None,
+                        None,
+                        None,
+                    ),
+                    settings.submodule_rich_snippets_enabled && settings.rich_snippets_enabled,
                 ),
             });
         }
@@ -432,16 +467,26 @@ impl SeoService {
             .description
             .clone()
             .or_else(|| state.description.clone());
+        let (effective_title, effective_description) =
+            apply_metadata_settings(effective_title, effective_description, &settings);
         let canonical_url = generated
             .canonical_url
             .as_deref()
             .map(|value| canonical_url_for_locale(state.effective_locale.as_str(), value))
+            .filter(|value| canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice()))
             .unwrap_or_else(|| {
                 locale_prefixed_path(
                     state.effective_locale.as_str(),
                     state.canonical_path.as_str(),
                 )
             });
+        let canonical_url = apply_canonical_protocol(
+            apply_canonical_trailing_slash(
+                canonical_url,
+                settings.canonical_trailing_slash_mode.as_str(),
+            ),
+            settings.canonical_force_https,
+        );
         let open_graph = merge_open_graph(
             &state.open_graph,
             generated.og_title.clone(),
@@ -450,6 +495,7 @@ impl SeoService {
             canonical_url.as_str(),
             state.effective_locale.as_str(),
         );
+        let open_graph = apply_open_graph_settings(open_graph, &settings);
         Ok(SeoPageContext {
             route: SeoRouteContext {
                 target_kind: Some(state.target_kind),
@@ -458,15 +504,20 @@ impl SeoService {
                 effective_locale: state.effective_locale.clone(),
                 canonical_url: canonical_url.clone(),
                 redirect: None,
-                alternates: with_x_default(
-                    state.alternates,
-                    settings.x_default_locale.as_deref(),
-                    tenant.default_locale.as_str(),
-                ),
+                alternates: if settings.hreflang_enabled && settings.submodule_hreflang_enabled {
+                    with_x_default(
+                        state.alternates,
+                        settings.x_default_locale.as_deref(),
+                        tenant.default_locale.as_str(),
+                    )
+                } else {
+                    Vec::new()
+                },
             },
-            document: build_document(
-                effective_title,
-                effective_description.clone(),
+            document: apply_rich_snippets_setting(
+                build_document(
+                    effective_title,
+                    effective_description.clone(),
                 generated
                     .robots
                     .as_deref()
@@ -498,8 +549,10 @@ impl SeoService {
                     ),
                     structured_data: field_state(SeoFieldSource::Fallback, true),
                 },
-                generated.twitter_title,
-                generated.twitter_description,
+                    generated.twitter_title,
+                    generated.twitter_description,
+                ),
+                settings.submodule_rich_snippets_enabled && settings.rich_snippets_enabled,
             ),
         })
     }
@@ -507,6 +560,123 @@ impl SeoService {
 
 fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
     SeoFieldState { source, present }
+}
+
+fn apply_rich_snippets_setting(
+    mut document: SeoDocument,
+    enabled: bool,
+) -> SeoDocument {
+    if !enabled {
+        document.structured_data_blocks.clear();
+        document.effective_state.structured_data.present = false;
+    }
+    document
+}
+
+fn apply_open_graph_settings(
+    mut open_graph: SeoOpenGraph,
+    settings: &SeoModuleSettings,
+) -> SeoOpenGraph {
+    if open_graph.site_name.is_none() {
+        open_graph.site_name = settings.og_site_name.clone();
+    }
+    if open_graph.images.is_empty()
+        && let Some(url) = settings.default_og_image_url.as_deref()
+    {
+        open_graph.images.push(SeoImageAsset {
+            url: url.to_string(),
+            alt: None,
+            width: None,
+            height: None,
+            mime_type: None,
+        });
+    }
+    open_graph
+}
+
+fn apply_metadata_settings(
+    mut title: String,
+    description: Option<String>,
+    settings: &SeoModuleSettings,
+) -> (String, Option<String>) {
+    if let Some(suffix) = settings.title_suffix.as_deref() {
+        let suffix = suffix.trim();
+        if !suffix.is_empty() && !title.ends_with(suffix) {
+            title.push_str(settings.title_separator.as_str());
+            title.push_str(suffix);
+        }
+    }
+    title = truncate_chars(title, settings.meta_title_max_length.max(1) as usize);
+    let description = description
+        .map(|value| truncate_chars(value, settings.meta_description_max_length.max(1) as usize));
+    (title, description)
+}
+
+fn truncate_chars(value: String, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+fn canonical_host_allowed(value: &str, allowed_hosts: &[String]) -> bool {
+    if !value.starts_with("http://") && !value.starts_with("https://") {
+        return true;
+    }
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+    if allowed_hosts.is_empty() {
+        return false;
+    }
+    url.host_str()
+        .map(|host| {
+            allowed_hosts
+                .iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(host))
+        })
+        .unwrap_or(false)
+}
+
+fn apply_canonical_protocol(value: String, force_https: bool) -> String {
+    if force_https && value.starts_with("http://") {
+        format!("https://{}", &value[7..])
+    } else {
+        value
+    }
+}
+
+fn apply_canonical_trailing_slash(value: String, mode: &str) -> String {
+    if mode == "preserve" {
+        return value;
+    }
+
+    if let Ok(mut url) = Url::parse(value.as_str()) {
+        let normalized_path = normalize_canonical_path(url.path(), mode);
+        url.set_path(normalized_path.as_str());
+        return url.to_string();
+    }
+
+    let split_at = value
+        .find(|character| character == '?' || character == '#')
+        .unwrap_or(value.len());
+    let (path, suffix) = value.split_at(split_at);
+    format!(
+        "{}{}",
+        normalize_canonical_path(path, mode),
+        suffix
+    )
+}
+
+fn normalize_canonical_path(path: &str, mode: &str) -> String {
+    match mode {
+        "always" if path != "/" && !path.ends_with('/') => format!("{path}/"),
+        "never" if path != "/" => path.trim_end_matches('/').to_string(),
+        _ => path.to_string(),
+    }
 }
 
 pub(super) fn locale_prefixed_path(locale: &str, path: &str) -> String {
@@ -518,12 +688,28 @@ pub(super) fn locale_prefixed_path(locale: &str, path: &str) -> String {
     } else {
         format!("/{path}")
     };
-    if locale.trim().is_empty() {
-        path
-    } else if path == "/" {
-        format!("/{locale}")
+    let locale = locale.trim();
+    if locale.is_empty() {
+        return path;
+    }
+
+    // Target providers do not all share the same route authority: some return a
+    // locale-neutral module route while page/forum providers return their already
+    // locale-qualified public route. Keep this boundary idempotent so the SEO
+    // service never turns `/en/foo` into `/en/en/foo`.
+    let locale_prefix = format!("/{locale}");
+    if path == locale_prefix
+        || path.starts_with(format!("{locale_prefix}/").as_str())
+        || path.starts_with(format!("{locale_prefix}?").as_str())
+        || path.starts_with(format!("{locale_prefix}#").as_str())
+    {
+        return path;
+    }
+
+    if path == "/" {
+        locale_prefix
     } else {
-        format!("/{locale}{path}")
+        format!("{locale_prefix}{path}")
     }
 }
 
@@ -581,6 +767,70 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn route_normalization_keeps_public_lookup_bounded() {
+        assert!(super::normalize_route("/".to_string().as_str()).is_ok());
+        assert!(super::normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_ok());
+        assert!(super::normalize_route(format!("/{}", "x".repeat(513)).as_str()).is_err());
+        assert!(super::normalize_route("//external.example/path").is_err());
+    }
+
+    #[test]
+    fn locale_prefixing_is_idempotent_for_provider_owned_public_routes() {
+        assert_eq!(
+            super::locale_prefixed_path("en", "/modules/pages?slug=about"),
+            "/en/modules/pages?slug=about"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "/en/modules/pages?slug=about"),
+            "/en/modules/pages?slug=about"
+        );
+        assert_eq!(
+            super::canonical_url_for_locale("en", "/en/forum/c/general"),
+            "/en/forum/c/general"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "/en?tab=overview"),
+            "/en?tab=overview"
+        );
+        assert_eq!(
+            super::locale_prefixed_path("en", "https://example.test/en/about"),
+            "https://example.test/en/about"
+        );
+    }
+
+    #[test]
+    fn canonical_trailing_slash_policy_handles_absolute_and_relative_urls() {
+        assert_eq!(
+            super::apply_canonical_trailing_slash(
+                "https://example.test/docs?from=seo#top".to_string(),
+                "always",
+            ),
+            "https://example.test/docs/?from=seo#top"
+        );
+        assert_eq!(
+            super::apply_canonical_trailing_slash("/docs/?from=seo".to_string(), "never"),
+            "/docs?from=seo"
+        );
+        assert_eq!(
+            super::apply_canonical_trailing_slash("/docs/".to_string(), "preserve"),
+            "/docs/"
+        );
+        assert!(super::canonical_host_allowed(
+            "https://allowed.example/docs",
+            &["allowed.example".to_string()]
+        ));
+        assert!(!super::canonical_host_allowed(
+            "https://user:secret@allowed.example/docs",
+            &[]
+        ));
+        assert!(!super::canonical_host_allowed("https://allowed.example/docs", &[]));
+        assert!(!super::canonical_host_allowed(
+            "https://other.example/docs",
+            &["allowed.example".to_string()]
+        ));
+    }
 
     async fn test_db() -> DatabaseConnection {
         let db_url = format!(
@@ -686,12 +936,12 @@ mod tests {
         .expect("create content_url_aliases table");
     }
 
-    async fn enable_seo_module(db: &DatabaseConnection, tenant_id: Uuid) {
+    async fn enable_module(db: &DatabaseConnection, tenant_id: Uuid, module_slug: &str) {
         let now = chrono::Utc::now();
         tenant_module::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            module_slug: Set("seo".to_string()),
+            module_slug: Set(module_slug.to_string()),
             enabled: Set(true),
             settings: Set(serde_json::json!({})),
             created_at: Set(now.into()),
@@ -699,7 +949,11 @@ mod tests {
         }
         .insert(db)
         .await
-        .expect("insert seo module row");
+        .expect("insert tenant module row");
+    }
+
+    async fn enable_seo_module(db: &DatabaseConnection, tenant_id: Uuid) {
+        enable_module(db, tenant_id, "seo").await;
     }
 
     async fn run_forum_migrations(db: &DatabaseConnection) {
@@ -773,6 +1027,7 @@ mod tests {
         run_forum_migrations(&db).await;
         let tenant_id = Uuid::new_v4();
         enable_seo_module(&db, tenant_id).await;
+        enable_module(&db, tenant_id, "forum").await;
         let tenant = tenant_context(tenant_id);
         let transport = Arc::new(MemoryTransport::new());
         let _receiver = transport.subscribe();
@@ -828,6 +1083,22 @@ mod tests {
             .await
             .expect("forum topic should be created");
 
+        let now = chrono::Utc::now().to_rfc3339();
+        db.execute_unprepared(
+            format!(
+                "INSERT INTO content_url_aliases (id, tenant_id, target_kind, target_id, locale, alias_url, canonical_url, created_at, updated_at) VALUES ('{}', '{}', 'forum_topic', '{}', 'en', '/modules/forum?topic=legacy', '/modules/forum?topic={}', '{}', '{}')",
+                Uuid::new_v4(),
+                tenant_id,
+                topic.id,
+                topic.id,
+                now,
+                now,
+            )
+            .as_str(),
+        )
+        .await
+        .expect("legacy content alias should be inserted");
+
         let service = SeoService::with_builtin_registry(db.clone(), event_bus);
         assert!(
             service
@@ -835,6 +1106,28 @@ mod tests {
                 .await
                 .expect("seo module enabled lookup should succeed"),
             "seo module should be enabled for tenant"
+        );
+
+        let legacy_alias_context = service
+            .resolve_page_context(
+                &tenant,
+                "en",
+                "/modules/forum?topic=legacy",
+            )
+            .await
+            .expect("legacy content alias SEO route should resolve")
+            .expect("legacy content alias SEO context should exist");
+        assert_eq!(
+            legacy_alias_context
+                .route
+                .redirect
+                .as_ref()
+                .map(|redirect| redirect.target_url.as_str()),
+            Some(legacy_alias_context.route.canonical_url.as_str())
+        );
+        assert!(
+            legacy_alias_context.route.canonical_url.starts_with("/en/forum/t/"),
+            "content aliases must redirect to the Forum route owner's public path"
         );
         let category_meta = service
             .seo_meta(
@@ -905,6 +1198,7 @@ mod tests {
         run_forum_migrations(&db).await;
         let tenant_id = Uuid::new_v4();
         enable_seo_module(&db, tenant_id).await;
+        enable_module(&db, tenant_id, "forum").await;
         let tenant = tenant_context(tenant_id);
         let transport = Arc::new(MemoryTransport::new());
         let _receiver = transport.subscribe();

@@ -126,6 +126,8 @@ pub struct PostSummary {
     pub slug: String,
     pub locale: String,
     pub effective_locale: String,
+    #[serde(default)]
+    pub available_locales: Vec<String>,
     pub excerpt: Option<String>,
     pub status: BlogPostStatus,
     pub author_id: Uuid,

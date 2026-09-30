@@ -130,7 +130,7 @@ The root `modules.toml` describes the monolith/release composition and requires 
 In the current Windows debug environment, building `apps/admin` as an SSR embedded artifact runs out of memory (`rustc-LLVM ERROR: out of memory`),
 so the external stack `apps/server -> apps/next-admin -> apps/admin` is launched via `modules.local.toml`.
 In `apps/server/config/development.yaml`, for this debug profile only maintenance workers are disabled:
-`runtime.background_workers.workflow_cron_enabled=false` and `runtime.background_workers.seo_bulk_enabled=false`.
+`runtime.background_workers.workflow_cron_enabled=false`, `runtime.background_workers.seo_bulk_enabled=false`, `runtime.background_workers.seo_sitemap_enabled=false`, and `runtime.background_workers.seo_index_repair_enabled=false`.
 This preserves the full HTTP/GraphQL/module surface for admin panels but prevents cron/bulk loops from consuming the DB pool during
 interactive debugging. The production/default runtime keeps workers enabled.
 

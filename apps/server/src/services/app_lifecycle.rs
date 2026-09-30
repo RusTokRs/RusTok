@@ -179,6 +179,15 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     let settings = runtime_ctx.settings().clone();
     #[cfg(feature = "mod-seo")]
     let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
+    #[cfg(feature = "mod-seo")]
+    let seo_sitemap_worker_enabled = settings.runtime.background_workers.seo_sitemap_enabled;
+    #[cfg(feature = "mod-seo")]
+    let seo_index_repair_worker_enabled =
+        settings.runtime.background_workers.seo_index_repair_enabled;
+    #[cfg(feature = "mod-seo")]
+    let seo_worker_enabled = seo_bulk_worker_enabled
+        || seo_sitemap_worker_enabled
+        || seo_index_repair_worker_enabled;
 
     if !settings.runtime.runs_background_workers() {
         tracing::info!(host_mode = ?settings.runtime.host_mode, "Skipping background workers for non-worker host mode");
@@ -211,10 +220,10 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_bulk_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+    if seo_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
         let authorization = SeoWorkerAuthorization::from_runtime_config(
             settings.runtime.runs_background_workers(),
-            seo_bulk_worker_enabled,
+            seo_worker_enabled,
         )
         .map_err(|_| {
             Error::Message(
@@ -226,9 +235,12 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
             runtime_ctx.clone(),
             stop_rx.clone(),
             authorization,
+            seo_bulk_worker_enabled,
+            seo_sitemap_worker_enabled,
+            seo_index_repair_worker_enabled,
         ));
-    } else if !seo_bulk_worker_enabled {
-        tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
+    } else if !seo_worker_enabled {
+        tracing::info!("SEO workers disabled by runtime.background_workers config");
     }
 
     if settings.runtime.runs_background_workers()
@@ -296,12 +308,29 @@ fn spawn_seo_bulk_worker_handle(
     runtime_ctx: ServerRuntimeContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
     authorization: SeoWorkerAuthorization,
+    bulk_enabled: bool,
+    sitemap_enabled: bool,
+    index_repair_enabled: bool,
 ) -> SeoBulkWorkerHandle {
     let instance_id = SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    tracing::info!(worker = "seo_bulk", instance_id, "Starting runtime worker");
+    tracing::info!(
+        worker = "seo",
+        instance_id,
+        bulk_enabled,
+        sitemap_enabled,
+        index_repair_enabled,
+        "Starting runtime worker"
+    );
     SeoBulkWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(seo_bulk_worker_loop(runtime_ctx, stop_rx, authorization)),
+        _handle: tokio::spawn(seo_worker_loop(
+            runtime_ctx,
+            stop_rx,
+            authorization,
+            bulk_enabled,
+            sitemap_enabled,
+            index_repair_enabled,
+        )),
     }
 }
 
@@ -342,10 +371,13 @@ async fn remote_executor_reaper_loop(
 }
 
 #[cfg(feature = "mod-seo")]
-async fn seo_bulk_worker_loop(
+async fn seo_worker_loop(
     runtime_ctx: ServerRuntimeContext,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
     authorization: SeoWorkerAuthorization,
+    bulk_enabled: bool,
+    sitemap_enabled: bool,
+    index_repair_enabled: bool,
 ) {
     let event_bus = transactional_event_bus_from_context(&runtime_ctx);
     let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
@@ -368,18 +400,56 @@ async fn seo_bulk_worker_loop(
             return;
         }
 
-        match service.bulk().execute_next_bulk_job(&authorization).await {
-            Ok(Some(job)) => tracing::info!(
-                job_id = %job.id,
-                operation = %job.operation_kind.as_str(),
-                status = %job.status.as_str(),
-                "Executed queued SEO bulk job"
-            ),
-            Ok(None) => {}
-            Err(error) => tracing::error!(
-                error = %error,
-                "SEO bulk worker failed to execute queued job"
-            ),
+        if bulk_enabled {
+            match service.bulk().execute_next_bulk_job(&authorization).await {
+                Ok(Some(job)) => tracing::info!(
+                    job_id = %job.id,
+                    operation = %job.operation_kind.as_str(),
+                    status = %job.status.as_str(),
+                    "Executed queued SEO bulk job"
+                ),
+                Ok(None) => {}
+                Err(error) => tracing::error!(
+                    error = %error,
+                    "SEO bulk worker failed to execute queued job"
+                ),
+            }
+        }
+
+        if sitemap_enabled {
+            match service.bulk().execute_next_sitemap_job(&authorization).await {
+                Ok(Some(job)) => tracing::info!(
+                    job_id = %job.id,
+                    status = %job.status,
+                    "Executed queued SEO sitemap job phase"
+                ),
+                Ok(None) => {}
+                Err(error) => tracing::error!(
+                    error = %error,
+                    "SEO sitemap worker failed to execute queued job"
+                ),
+            }
+        }
+
+        if index_repair_enabled {
+            match service
+                .bulk()
+                .execute_next_index_repair_job(&authorization)
+                .await
+            {
+                Ok(Some(result)) => tracing::info!(
+                    target_type = ?result.target_type,
+                    replay_mode = %result.replay_mode.as_str(),
+                    repaired_count = result.repaired_count,
+                    replayed_count = result.replayed_count,
+                    "Executed queued SEO index repair/replay job"
+                ),
+                Ok(None) => {}
+                Err(error) => tracing::error!(
+                    error = %error,
+                    "SEO index repair worker failed to execute queued job"
+                ),
+            }
         }
 
         tokio::select! {

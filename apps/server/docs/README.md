@@ -263,7 +263,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   HTTP and command dispatch resolve the shared effective module policy before
   invoking a binding and fail closed for a disabled or denied module; they do
   not reconstruct tenant enablement from transport-local SQL.
-- `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled` and `seo_bulk_enabled` are disabled so that cron/bulk loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
+- `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled`, `seo_bulk_enabled`, `seo_sitemap_enabled`, and `seo_index_repair_enabled` are disabled so that maintenance loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
 - The generic module-work host supplies artifact queues with an active-tenant
   enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM
   executor before artifact registrations run. The runtime CAS is obtained from

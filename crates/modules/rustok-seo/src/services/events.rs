@@ -6,8 +6,8 @@ use sea_orm::ActiveValue::Set;
 #[cfg(test)]
 use sea_orm::TransactionTrait;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -709,6 +709,30 @@ impl SeoService {
             .await;
     }
 
+    async fn count_index_deliveries(
+        &self,
+        tenant_id: Uuid,
+        target_type: Option<&str>,
+        status: &str,
+        attempt_filter: Option<bool>,
+    ) -> SeoResult<i32> {
+        let mut query = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_index_delivery::Column::Status.eq(status));
+        if let Some(target_type) = target_type {
+            query = query.filter(seo_index_delivery::Column::TargetType.eq(target_type));
+        }
+        if let Some(has_attempts) = attempt_filter {
+            query = if has_attempts {
+                query.filter(seo_index_delivery::Column::AttemptCount.gt(0))
+            } else {
+                query.filter(seo_index_delivery::Column::AttemptCount.eq(0))
+            };
+        }
+        let count = query.count(&self.db).await?;
+        Ok(count.min(i32::MAX as u64) as i32)
+    }
+
     pub async fn index_delivery_status(
         &self,
         tenant_id: Uuid,
@@ -716,44 +740,67 @@ impl SeoService {
     ) -> SeoResult<SeoIndexDeliveryStatusRecord> {
         let normalized_target_type = normalize_index_target_type(target_type)?;
 
-        let mut query = seo_index_delivery::Entity::find()
-            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id));
-        if let Some(target_type) = normalized_target_type.as_deref() {
-            query = query.filter(seo_index_delivery::Column::TargetType.eq(target_type));
-        }
-
-        let deliveries = query.all(&self.db).await?;
         let mut summary = SeoIndexDeliveryStatusRecord {
             target_type: normalized_target_type.clone(),
+            pending_count: self
+                .count_index_deliveries(
+                    tenant_id,
+                    normalized_target_type.as_deref(),
+                    INDEX_DELIVERY_STATUS_PENDING,
+                    None,
+                )
+                .await?,
+            sent_count: self
+                .count_index_deliveries(
+                    tenant_id,
+                    normalized_target_type.as_deref(),
+                    INDEX_DELIVERY_STATUS_SENT,
+                    None,
+                )
+                .await?,
+            retry_count: self
+                .count_index_deliveries(
+                    tenant_id,
+                    normalized_target_type.as_deref(),
+                    INDEX_DELIVERY_STATUS_FAILED,
+                    Some(true),
+                )
+                .await?,
+            failed_count: self
+                .count_index_deliveries(
+                    tenant_id,
+                    normalized_target_type.as_deref(),
+                    INDEX_DELIVERY_STATUS_FAILED,
+                    Some(false),
+                )
+                .await?,
+            dead_letter_count: self
+                .count_index_deliveries(
+                    tenant_id,
+                    normalized_target_type.as_deref(),
+                    INDEX_DELIVERY_STATUS_DEAD_LETTER,
+                    None,
+                )
+                .await?,
             ..SeoIndexDeliveryStatusRecord::default()
         };
 
-        for delivery in &deliveries {
-            match delivery.status.as_str() {
-                INDEX_DELIVERY_STATUS_PENDING => summary.pending_count += 1,
-                INDEX_DELIVERY_STATUS_SENT => summary.sent_count += 1,
-                INDEX_DELIVERY_STATUS_FAILED if delivery.attempt_count > 0 => {
-                    summary.retry_count += 1
-                }
-                INDEX_DELIVERY_STATUS_FAILED => summary.failed_count += 1,
-                INDEX_DELIVERY_STATUS_DEAD_LETTER => summary.dead_letter_count += 1,
-                _ => {}
-            }
+        let mut failure_query = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(
+                Condition::any()
+                    .add(seo_index_delivery::Column::Status.eq(INDEX_DELIVERY_STATUS_FAILED))
+                    .add(seo_index_delivery::Column::Status.eq(INDEX_DELIVERY_STATUS_DEAD_LETTER)),
+            )
+            .order_by_desc(seo_index_delivery::Column::UpdatedAt)
+            .limit(8);
+        if let Some(target_type) = normalized_target_type.as_deref() {
+            failure_query =
+                failure_query.filter(seo_index_delivery::Column::TargetType.eq(target_type));
         }
-
-        let mut failure_samples = deliveries
-            .into_iter()
-            .filter(|delivery| {
-                matches!(
-                    delivery.status.as_str(),
-                    INDEX_DELIVERY_STATUS_FAILED | INDEX_DELIVERY_STATUS_DEAD_LETTER
-                )
-            })
-            .collect::<Vec<_>>();
-        failure_samples.sort_by_key(|delivery| std::cmp::Reverse(delivery.updated_at));
+        let failure_samples = failure_query.all(&self.db).await?;
         summary.failure_samples = failure_samples
             .into_iter()
-            .take(8)
             .map(|delivery| SeoIndexFailureSampleRecord {
                 target_type: delivery.target_type,
                 target_id: delivery.target_id,

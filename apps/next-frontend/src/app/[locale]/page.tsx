@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { permanentRedirect, redirect } from "next/navigation";
 import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
 import { getTranslations } from "@rustok/next-fluent/server";
 
@@ -58,6 +59,13 @@ export default async function StorefrontHome({
   const enabledModules = await fetchEnabledModules(tenantSlug);
   const moduleSections = getModulesForSlot("home:afterHero", enabledModules);
   const seoResolution = await resolveHomeSeoContext(locale);
+  const redirectDecision = seoResolution.context?.route.redirect;
+  if (redirectDecision) {
+    if (redirectDecision.statusCode === 308) {
+      permanentRedirect(redirectDecision.targetUrl);
+    }
+    redirect(redirectDecision.targetUrl);
+  }
   const structuredDataScripts = buildSeoStructuredDataScripts(
     seoResolution.context,
   );

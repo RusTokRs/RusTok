@@ -59,12 +59,7 @@ pub(crate) async fn resolve_seo_page_context(
             &extensions,
         )
         .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let default_locale = tenant
-            .settings
-            .get("default_locale")
-            .and_then(|value| value.as_str())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_string());
+        let default_locale = tenant.default_locale.clone();
         let resolved = service
             .routing()
             .resolve_page_context_for_channel(
