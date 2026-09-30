@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `80cb46a62b0d6f9342300b6e4ffddd953d1a3742`  
+**Current main SHA:** `87d15eba9c92128aced13c174871511bf3f8c74a`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3877,3 +3877,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, cross-owner pattern comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.68` complete and ready for integration.
 - **Next primary module:** `FS-22.06.69 — same primary module, deep fresh pass of the remaining shipping-option service mutation/translation semantics`.
+
+### FS-22.06.69 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option mutation currency invariant
+
+- **Base:** `87d15eba9c92128aced13c174871511bf3f8c74a`; dedicated branch `audit/fs-22.06.69-fulfillment-shipping-mutation` was created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option create/update mutation validation, including currency, provider, translation, metadata compatibility, activation, transaction and change-journal sequencing.
+- **Invariant map:** persisted shipping-option currency is a three-letter alphabetic currency identity; service validation must prevent malformed values before persistence; the same invariant must hold for direct owner-service calls and provider execution boundaries.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.69-01:** `normalize_currency_code` checked only trimmed length `== 3`. The shipping-options table migration does not impose an alphabetic CHECK constraint, so direct service calls could persist values such as `$$$`. The provider-side validator already defines the intended canonical invariant as uppercase ASCII letters of length three, but that validation occurs only when a provider operation is later executed.
+- **Production remediation:** `normalize_currency_code` now requires exactly three ASCII alphabetic characters after trimming and canonicalizes to uppercase, matching the existing provider currency validator.
+- **Regression coverage:** added pure tests for rejection of symbol/numeric codes and canonicalization of a valid lower-case code; final source reread confirmed the symbol case is literally `$$$` in the repository test.
+- **Adjacent-boundary audit:** create and update shipping-option paths both use `normalize_currency_code`; provider quote/operation validation uses the same semantic rule; database schema was checked and confirmed not to enforce alphabetic content itself. No late-only validation path remains the sole guard.
+- **Immediate re-audit:** re-read the validator, both create/update call sites, provider validator, DTO constraints, and final regression cases. No mutation path bypasses the service currency normalizer.
+- **Fresh second pass:** re-read the shipping-option mutation and translation paths, compatibility metadata helpers, activation/change-journal transaction, and persistence uniqueness constraints. No additional confirmed currency-integrity defect remained in this remediation unit.
+- **Regression audit note:** an intermediate test-edit operation incorrectly transformed a literal `$` example because JavaScript replacement strings interpret `$` specially; this was detected during reread and corrected with a function-based replacement before PR preparation. The final branch contains the intended literal.
+- **Documentation:** Fulfillment README now states the owner-level three-letter alphabetic uppercase currency invariant.
+- **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.69` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.70 — same primary module, shipping-option tenant identity/data-integrity boundary and remaining mutation semantics`.
