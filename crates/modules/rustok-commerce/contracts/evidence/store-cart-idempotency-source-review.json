@@ -5,6 +5,11 @@
     "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
     "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
     "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
+    "crates/modules/rustok-cart/src/services/cart.rs",
+    "crates/modules/rustok-cart/src/ports.rs",
+    "crates/modules/rustok-cart/src/migrations/mod.rs",
+    "crates/modules/rustok-cart/tests/cart_service_test.rs",
+    "crates/modules/rustok-cart/tests/support.rs",
     "scripts/verify/verify-commerce-store-cart-idempotency.mjs",
     "crates/modules/rustok-commerce/docs/implementation-plan.md"
   ],
@@ -16,7 +21,12 @@
     "shipping_patch_key_propagated": true,
     "cart_reprice_key_propagated": true,
     "payment_collection_key_propagated": true,
-    "openapi_write_headers_declared": true
+    "openapi_write_headers_declared": true,
+    "durable_owner_receipt_admission": true,
+    "transactional_receipt_completion": true,
+    "failure_receipt_persistence": true,
+    "key_rebinding_fails_closed": true,
+    "receipt_schema_migration_dependency_declared": true
   },
   "validation": {
     "tests_run": false,
@@ -28,5 +38,5 @@
     "compile_proven": false,
     "runtime_proven": false
   },
-  "validation_disclosure": "Source-only review. No local Cargo, Node, rustfmt, test, or runtime execution was performed; CI evidence is not promoted here."
+  "validation_disclosure": "Source and test-code review completed. The new replay/failure test is authored but not executed locally. Container network access cannot reach GitHub and the environment has no Rust toolchain; PR CI remains the execution authority. No compile/runtime pass is promoted."
 }
