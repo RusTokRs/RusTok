@@ -6,10 +6,16 @@ use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
 use rustok_order::{
-    CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, OrderError,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, OrderError, OrderService,
+    ReadCheckoutOrderIdentityByOperationRequest, in_process_checkout_order_identity_port,
 };
+use rustok_outbox::TransactionalEventBus;
+use rustok_payment::dto::CancelPaymentInput;
+use rustok_payment::error::PaymentError;
+use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_payment::{
-    CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest, PaymentError,
+    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED, PaymentProviderOperationJournal, PaymentService,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;
@@ -23,7 +29,7 @@ use super::{
     CheckoutInventoryReservationError, CheckoutInventoryReservationJournal,
     CheckoutInventoryReservationStatus, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS,
-    PaymentOrchestrationError,
+    PaymentOrchestrationError, PaymentOrchestrationService,
 };
 
 const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;
@@ -67,8 +73,11 @@ pub struct CheckoutCompensationService {
     reservation_journal: CheckoutInventoryReservationJournal,
     reservation_port: Arc<dyn InventoryReservationIdentityPort>,
     cart_port: Arc<dyn CartCheckoutPort>,
-    payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
-    order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,
+    order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
+    payment_service: PaymentService,
+    payment_orchestration: PaymentOrchestrationService,
+    payment_operation_journal: PaymentProviderOperationJournal,
+    order_service: OrderService,
     lease_seconds: i64,
     port_deadline: Duration,
 }
@@ -76,21 +85,41 @@ pub struct CheckoutCompensationService {
 impl CheckoutCompensationService {
     pub fn new(
         db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
-        payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
-        order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,
     ) -> Self {
         Self {
             operation_journal: CheckoutOperationJournal::new(db.clone()),
-            reservation_journal: CheckoutInventoryReservationJournal::new(db),
+            reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             reservation_port,
             cart_port,
-            payment_compensation_port,
-            order_compensation_port,
+            order_identity_port: in_process_checkout_order_identity_port(db.clone()),
+            payment_service: PaymentService::new(db.clone()),
+            payment_orchestration: PaymentOrchestrationService::new(db.clone()),
+            payment_operation_journal: PaymentProviderOperationJournal::new(db.clone()),
+            order_service: OrderService::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(COMPENSATION_PORT_DEADLINE_SECONDS),
         }
+    }
+
+    pub fn with_payment_provider_registry(
+        mut self,
+        payment_provider_registry: PaymentProviderRegistry,
+    ) -> Self {
+        self.payment_orchestration = self
+            .payment_orchestration
+            .with_provider_registry(payment_provider_registry);
+        self
+    }
+
+    pub fn with_order_identity_port(
+        mut self,
+        order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
+    ) -> Self {
+        self.order_identity_port = order_identity_port;
+        self
     }
 
     pub fn with_lease_seconds(mut self, lease_seconds: i64) -> Self {
@@ -104,10 +133,8 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation_id: Uuid,
         lease_owner: impl Into<String>,
-        idempotency_key: impl Into<String>,
     ) -> CheckoutCompensationResult<checkout_operation::Model> {
         let lease_owner = lease_owner.into();
-        let idempotency_key = idempotency_key.into();
         let Some(operation) = self
             .operation_journal
             .claim_compensation(
@@ -128,7 +155,7 @@ impl CheckoutCompensationService {
         };
 
         let result = self
-            .compensate_claimed(tenant_id, actor_id, &operation, idempotency_key.as_str())
+            .compensate_claimed(tenant_id, actor_id, &operation)
             .await;
         match result {
             Ok(()) => self
@@ -165,7 +192,6 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         operation: &checkout_operation::Model,
-        idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
         if stage_rank(operation.stage.as_str())?
             >= stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())?
@@ -175,10 +201,15 @@ impl CheckoutCompensationService {
             ));
         }
 
-        self.compensate_payment(tenant_id, actor_id, operation, idempotency_key)
-            .await?;
-        self.compensate_order(tenant_id, actor_id, operation, idempotency_key)
-            .await?;
+        self.compensate_payment(tenant_id, operation).await?;
+
+        if let Some(order_id) = self
+            .resolve_compensation_order_id(tenant_id, operation)
+            .await?
+        {
+            self.compensate_order(tenant_id, actor_id, operation, order_id)
+                .await?;
+        }
 
         // Order cancellation releases adopted reservation rows through the
         // checkout lifecycle trigger. Any still-reserved rows are pre-adoption
@@ -189,42 +220,91 @@ impl CheckoutCompensationService {
         Ok(())
     }
 
+    async fn resolve_compensation_order_id(
+        &self,
+        tenant_id: Uuid,
+        operation: &checkout_operation::Model,
+    ) -> CheckoutCompensationResult<Option<Uuid>> {
+        let identity = self
+            .order_identity_port
+            .read_by_operation(
+                order_identity_context(tenant_id, operation, self.port_deadline, "read", false),
+                ReadCheckoutOrderIdentityByOperationRequest {
+                    checkout_operation_id: operation.id,
+                },
+            )
+            .await
+            .map_err(|error| boundary_error("read_order_identity", error))?;
+
+        match identity {
+            Some(identity) => {
+                validate_compensation_identity(tenant_id, operation, &identity)?;
+                Ok(Some(identity.order_id))
+            }
+            None if operation.order_id.is_none() => Ok(None),
+            None => Err(manual_reconciliation("checkout order identity is missing")),
+        }
+    }
+
     async fn compensate_payment(
         &self,
         tenant_id: Uuid,
-        actor_id: Uuid,
         operation: &checkout_operation::Model,
-        idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
         let Some(collection_id) = operation.payment_collection_id else {
             return Ok(());
         };
-
-        self.payment_compensation_port
-            .compensate_checkout_payment(
-                checkout_compensation_port_context(
-                    tenant_id,
-                    actor_id,
-                    operation,
-                    "payment",
-                    idempotency_key,
-                    self.port_deadline,
-                ),
-                CheckoutPaymentCompensationRequest {
-                    checkout_operation_id: operation.id,
-                    collection_id: Some(collection_id),
-                    reason: Some("checkout_compensation".to_string()),
-                    metadata: json!({
-                        "checkout": {
-                            "operation_id": operation.id,
-                            "compensation": true,
-                        }
-                    }),
-                },
+        let collection = self
+            .payment_service
+            .get_collection(tenant_id, collection_id)
+            .await?;
+        let provider_operations = self
+            .payment_operation_journal
+            .list_by_collection(tenant_id, collection_id)
+            .await?;
+        if provider_operations.iter().any(|provider_operation| {
+            matches!(
+                provider_operation.status.as_str(),
+                PROVIDER_OPERATION_EXECUTING
+                    | PROVIDER_OPERATION_SUCCEEDED
+                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
-            .await
-            .map_err(|error| boundary_error("compensate_payment", error))?;
+        }) {
+            return Err(manual_reconciliation(
+                "payment provider operation requires reconciliation",
+            ));
+        }
 
+        match collection.status.as_str() {
+            "pending" | "authorized" => {
+                self.payment_orchestration
+                    .cancel_collection(
+                        tenant_id,
+                        collection_id,
+                        CancelPaymentInput {
+                            reason: Some("checkout_compensation".to_string()),
+                            metadata: json!({
+                                "checkout": {
+                                    "operation_id": operation.id,
+                                    "compensation": true,
+                                }
+                            }),
+                        },
+                    )
+                    .await?;
+            }
+            "cancelled" => {}
+            "captured" => {
+                return Err(manual_reconciliation(
+                    "captured payment collection requires reconciliation",
+                ));
+            }
+            _ => {
+                return Err(compensation_conflict(
+                    "payment collection state does not allow compensation",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -233,37 +313,41 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         operation: &checkout_operation::Model,
-        idempotency_key: &str,
+        order_id: Uuid,
     ) -> CheckoutCompensationResult<()> {
-        let result = self
-            .order_compensation_port
-            .compensate_checkout_order(
-                checkout_compensation_port_context(
-                    tenant_id,
-                    actor_id,
-                    operation,
-                    "order",
-                    idempotency_key,
-                    self.port_deadline,
-                ),
-                CheckoutOrderCompensationRequest {
-                    checkout_operation_id: operation.id,
-                    cart_id: operation.cart_id,
-                    expected_order_id: operation.order_id,
-                    reason: Some("checkout_compensation".to_string()),
-                },
-            )
-            .await
-            .map_err(|error| boundary_error("compensate_order", error))?;
-
-        if let Some(snapshot) = result
-            && operation.order_id.is_some() && operation.order_id != Some(snapshot.order_id)
-        {
+        let order = self
+            .order_service
+            .get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await?;
+        if operation.order_id.is_some() && operation.order_id != Some(order.id) {
             return Err(compensation_conflict(
-                "order compensation result does not match checkout operation",
+                "order checkpoint does not match checkout operation",
             ));
         }
 
+        match order.status.as_str() {
+            "pending" | "confirmed" => {
+                self.order_service
+                    .cancel_order(
+                        tenant_id,
+                        actor_id,
+                        order_id,
+                        Some("checkout_compensation".to_string()),
+                    )
+                    .await?;
+            }
+            "cancelled" => {}
+            "paid" | "shipped" | "delivered" => {
+                return Err(manual_reconciliation(
+                    "order state requires manual cancellation reconciliation",
+                ));
+            }
+            _ => {
+                return Err(compensation_conflict(
+                    "order state does not allow compensation",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -372,23 +456,21 @@ impl CheckoutCompensationService {
     }
 }
 
-fn checkout_compensation_port_context(
+fn validate_compensation_identity(
     tenant_id: Uuid,
-    actor_id: Uuid,
     operation: &checkout_operation::Model,
-    action: &'static str,
-    idempotency_key: &str,
-    deadline: Duration,
-) -> PortContext {
-    PortContext::new(
-        tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
-        PLATFORM_FALLBACK_LOCALE,
-        format!("checkout:{}:compensation:{action}", operation.id),
-    )
-    .with_causation_id(operation.id.to_string())
-    .with_idempotency_key(idempotency_key.to_string())
-    .with_deadline(deadline)
+    identity: &CheckoutOrderIdentitySnapshot,
+) -> CheckoutCompensationResult<()> {
+    if identity.tenant_id != tenant_id
+        || identity.checkout_operation_id != operation.id
+        || identity.source_cart_id.is_some() && identity.source_cart_id != Some(operation.cart_id)
+        || operation.order_id.is_some() && operation.order_id != Some(identity.order_id)
+    {
+        return Err(compensation_conflict(
+            "order identity does not match checkout operation",
+        ));
+    }
+    Ok(())
 }
 
 fn inventory_context(
@@ -429,6 +511,34 @@ fn cart_context(
     if write {
         context.with_idempotency_key(format!(
             "checkout:{}:compensation:cart:{action}",
+            operation.id
+        ))
+    } else {
+        context
+    }
+}
+
+fn order_identity_context(
+    tenant_id: Uuid,
+    operation: &checkout_operation::Model,
+    deadline: Duration,
+    action: &str,
+    write: bool,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout-compensation"),
+        PLATFORM_FALLBACK_LOCALE,
+        format!(
+            "checkout:{}:compensation:order-identity:{action}",
+            operation.id
+        ),
+    )
+    .with_causation_id(operation.id.to_string())
+    .with_deadline(deadline);
+    if write {
+        context.with_idempotency_key(format!(
+            "checkout:{}:compensation:order-identity:{action}",
             operation.id
         ))
     } else {
