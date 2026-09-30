@@ -137,6 +137,7 @@ impl FulfillmentProviderOperationJournal {
                 Expr::current_timestamp(),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status
@@ -186,7 +187,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Some(now)),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -211,7 +213,7 @@ impl FulfillmentProviderOperationJournal {
                     Ok(model) => Ok(model),
                     Err(fallback_error) => {
                         tracing::error!(
-                            operation_id_non_nil = !id.is_nil(),
+                            operation_id_non_nil = !operation_id.is_nil(),
                             original_error = %source,
                             fallback_error = %fallback_error,
                             "fulfillment provider success checkpoint failed"
@@ -223,7 +225,7 @@ impl FulfillmentProviderOperationJournal {
         };
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(operation_id).await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED
@@ -238,7 +240,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(operation_id).await
     }
 
 
@@ -263,7 +265,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -271,7 +274,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(operation_id).await?;
             if current.status == PROVIDER_OPERATION_ERROR {
                 return Ok(current);
             }
@@ -281,7 +284,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(operation_id).await
     }
 
 
@@ -298,6 +301,7 @@ impl FulfillmentProviderOperationJournal {
         provider_result: Option<Value>,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -323,7 +327,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::current_timestamp(),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -331,7 +336,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -341,7 +346,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(operation_id).await
     }
 
 
@@ -351,7 +356,8 @@ impl FulfillmentProviderOperationJournal {
         operation_id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let current = self.get(id).await?;
+        validate_operation_identity(tenant_id, operation_id)?;
+        let current = self.get(operation_id).await?;
         if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(current);
         }
@@ -382,7 +388,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 provider_completed_at,
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.is_in([
                     PROVIDER_OPERATION_EXECUTING,
@@ -393,7 +400,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -403,7 +410,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(operation_id).await
     }
 
 
@@ -413,7 +420,7 @@ impl FulfillmentProviderOperationJournal {
         operation_id: Uuid,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
-        let current = self.get(id).await?;
+        let current = self.get(operation_id).await?;
         if current.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(current);
         }
@@ -446,7 +453,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::CommittedAt,
                 Expr::value(Some(now)),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.is_in([
                     PROVIDER_OPERATION_SUCCEEDED,
@@ -457,7 +465,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(operation_id).await?;
             if current.status == PROVIDER_OPERATION_COMMITTED {
                 return Ok(current);
             }
@@ -467,7 +475,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(operation_id).await
     }
 
 }
