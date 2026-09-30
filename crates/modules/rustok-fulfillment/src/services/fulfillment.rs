@@ -192,6 +192,7 @@ impl FulfillmentService {
 
         let UpdateShippingOptionInput {
             translations,
+            expected_translation_revision,
             currency_code,
             amount,
             provider_id,
@@ -207,6 +208,22 @@ impl FulfillmentService {
             ));
         }
         let translations = translations.map(normalize_translation_inputs).transpose()?;
+        match (&translations, &expected_translation_revision) {
+            (Some(_), Some(revision)) if !revision.trim().is_empty() => {}
+            (Some(_), _) => {
+                return Err(FulfillmentError::Validation(
+                    "expected_translation_revision is required when translations are updated"
+                        .to_string(),
+                ));
+            }
+            (None, Some(_)) => {
+                return Err(FulfillmentError::Validation(
+                    "expected_translation_revision is only valid when translations are updated"
+                        .to_string(),
+                ));
+            }
+            (None, None) => {}
+        }
 
         let txn = self.db.begin().await?;
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
@@ -215,6 +232,19 @@ impl FulfillmentService {
             .one(&txn)
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
+
+        if let Some(expected_revision) = expected_translation_revision.as_deref() {
+            let current_translations =
+                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+            let current_revision =
+                shipping_option_translation_resource_revision(&shipping_option, &current_translations);
+            if expected_revision != current_revision {
+                return Err(FulfillmentError::ShippingOptionTranslationRevisionConflict(
+                    shipping_option_id,
+                ));
+            }
+        }
+
         let mut active: entities::shipping_option::ActiveModel = shipping_option.into();
 
         if let Some(currency_code) = currency_code {
@@ -1582,6 +1612,8 @@ fn map_shipping_option(
     tenant_default_locale: Option<&str>,
 ) -> FulfillmentResult<ShippingOptionResponse> {
     validate_persisted_shipping_option_locales(&translations)?;
+    let translation_revision =
+        shipping_option_translation_resource_revision(&option, &translations);
     let available_locales = translations
         .iter()
         .filter(|translation| translation.locale != UNKNOWN_PROVENANCE_LOCALE)
@@ -1618,6 +1650,7 @@ fn map_shipping_option(
         requested_locale,
         effective_locale,
         available_locales,
+        translation_revision,
         translations: translations
             .into_iter()
             .map(|translation| ShippingOptionTranslationResponse {
