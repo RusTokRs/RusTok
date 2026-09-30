@@ -570,3 +570,45 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
         Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_hash_accepts_sha256_hex_and_canonicalizes_case() {
+        let uppercase = "A".repeat(64);
+        assert_eq!(
+            normalize_hash(uppercase).expect("valid SHA-256 hex"),
+            "a".repeat(64)
+        );
+    }
+
+    #[test]
+    fn normalize_hash_rejects_wrong_length() {
+        assert!(normalize_hash("a".repeat(63)).is_err());
+        assert!(normalize_hash("a".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn normalize_hash_rejects_non_hex_input() {
+        let mut value = "a".repeat(63);
+        value.push('g');
+        assert!(normalize_hash(value).is_err());
+    }
+
+    #[test]
+    fn normalize_lease_seconds_enforces_supported_bounds() {
+        assert!(normalize_lease_seconds(0).is_err());
+        assert!(normalize_lease_seconds(1).is_ok());
+        assert!(normalize_lease_seconds(MAX_RETURN_COMPLETION_LEASE_SECONDS).is_ok());
+        assert!(normalize_lease_seconds(MAX_RETURN_COMPLETION_LEASE_SECONDS + 1).is_err());
+    }
+
+    #[test]
+    fn normalize_lease_owner_enforces_non_empty_bounded_identity() {
+        assert!(normalize_lease_owner("   ".to_string()).is_err());
+        assert!(normalize_lease_owner("owner".to_string()).is_ok());
+        assert!(normalize_lease_owner("x".repeat(192)).is_err());
+    }
+}
