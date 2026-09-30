@@ -130,6 +130,26 @@ requireText(
 );
 requireText(
   migration,
+  'DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_insert;',
+  'MySQL typed cutover removes the legacy INSERT guard',
+);
+requireText(
+  migration,
+  "OR trim(COALESCE(json_extract(NEW.metadata, '$.checkout.operation_id'), '')) = ''",
+  'SQLite rollback restores legacy identity-pair validation on UPDATE',
+);
+requireText(
+  migration,
+  "JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id'))",
+  'MySQL rollback restores legacy identity-pair validation',
+);
+requireText(
+  migration,
+  'CREATE TRIGGER fulfillments_checkout_identity_guard_insert',
+  'MySQL rollback restores the legacy INSERT guard',
+);
+requireText(
+  migration,
   "= LOWER(f.checkout_operation_id)",
   'MySQL item cleanup requires owner identity match',
 );
