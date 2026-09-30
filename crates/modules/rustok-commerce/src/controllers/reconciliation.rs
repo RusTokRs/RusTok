@@ -11,6 +11,7 @@ use rustok_fulfillment::{
 };
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::CommerceHttpRuntime;
@@ -85,31 +86,66 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema, IntoParams)]
 pub struct ListReconciliationParams {
     pub limit: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct QuarantineStaleInput {
     pub stale_after_seconds: u64,
     pub limit: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ResolveUnknownFailedInput {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ResolveUnknownSucceededInput {
     pub provider_result: FulfillmentProviderOperationResult,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct QuarantineStaleResponse {
     pub quarantined: u64,
 }
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminReconciliationProviderOperationResponse {
+    pub id: Uuid,
+    pub fulfillment_id: Uuid,
+    pub operation: String,
+    pub provider_id: String,
+    pub status: String,
+    pub provider_reference: Option<String>,
+    pub provider_result_present: bool,
+    pub error_present: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub provider_completed_at: Option<String>,
+    pub committed_at: Option<String>,
+}
+
+impl From<provider_operation::Model> for AdminReconciliationProviderOperationResponse {
+    fn from(operation: provider_operation::Model) -> Self {
+        Self {
+            id: operation.id,
+            fulfillment_id: operation.fulfillment_id,
+            operation: operation.operation,
+            provider_id: operation.provider_id,
+            status: operation.status,
+            provider_reference: operation.provider_reference,
+            provider_result_present: operation.provider_result.is_some(),
+            error_present: operation.error_message.is_some(),
+            created_at: operation.created_at.to_rfc3339(),
+            updated_at: operation.updated_at.to_rfc3339(),
+            provider_completed_at: operation.provider_completed_at.map(|value| value.to_rfc3339()),
+            committed_at: operation.committed_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
 
 pub fn axum_router() -> Router<CommerceHttpRuntime> {
     Router::new()
@@ -124,12 +160,24 @@ pub fn axum_router() -> Router<CommerceHttpRuntime> {
         .route("/{id}/retry-create-label", post(retry_create_label))
 }
 
-async fn list_reconciliation_required(
+#[utoipa::path(
+    get,
+    path = "/admin/fulfillment-provider-operations/reconciliation",
+    tag = "admin",
+    params(ListReconciliationParams),
+    responses(
+        (status = 200, description = "Provider operations requiring reconciliation", body = Vec<AdminReconciliationProviderOperationResponse>),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 503, description = "Recovery storage is unavailable")
+    )
+)]
+pub async fn list_reconciliation_required(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListReconciliationParams>,
-) -> HttpResult<Json<Vec<provider_operation::Model>>> {
+) -> HttpResult<Json<Vec<AdminReconciliationProviderOperationResponse>>> {
     require_manage_permission(&auth)?;
     let operations = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .list_reconciliation_required(tenant.id, params.limit.unwrap_or(100))
@@ -145,10 +193,23 @@ async fn list_reconciliation_required(
                 error,
             )
         })?;
-    Ok(Json(operations))
+    Ok(Json(operations.into_iter().map(Into::into).collect()))
 }
 
-async fn quarantine_stale_executing(
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillment-provider-operations/quarantine-stale",
+    tag = "admin",
+    request_body = QuarantineStaleInput,
+    responses(
+        (status = 200, description = "Stale provider operations quarantined", body = QuarantineStaleResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 503, description = "Recovery storage is unavailable")
+    )
+)]
+pub async fn quarantine_stale_executing(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
@@ -174,13 +235,27 @@ async fn quarantine_stale_executing(
     Ok(Json(QuarantineStaleResponse { quarantined }))
 }
 
-async fn resolve_unknown_as_failed(
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillment-provider-operations/{id}/resolve-failed",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Provider operation ID")),
+    request_body = ResolveUnknownFailedInput,
+    responses(
+        (status = 200, description = "Provider operation resolved as failed", body = AdminReconciliationProviderOperationResponse),
+        (status = 400, description = "Invalid request or operation state"),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 503, description = "Recovery storage is unavailable")
+    )
+)]
+pub async fn resolve_unknown_as_failed(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(operation_id): Path<Uuid>,
     Json(input): Json<ResolveUnknownFailedInput>,
-) -> HttpResult<Json<provider_operation::Model>> {
+) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
     let operation = FulfillmentProviderOperationRecovery::new(runtime.db_clone())
         .resolve_unknown_as_failed(tenant.id, operation_id, input.reason)
@@ -196,16 +271,31 @@ async fn resolve_unknown_as_failed(
                 error,
             )
         })?;
-    Ok(Json(operation))
+    Ok(Json(operation.into()))
 }
 
-async fn resolve_unknown_as_succeeded(
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillment-provider-operations/{id}/resolve-succeeded",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Provider operation ID")),
+    request_body = ResolveUnknownSucceededInput,
+    responses(
+        (status = 200, description = "Provider operation resolved as succeeded", body = AdminReconciliationProviderOperationResponse),
+        (status = 400, description = "Invalid request or provider result"),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 500, description = "Provider result could not be encoded safely"),
+        (status = 503, description = "Recovery storage is unavailable")
+    )
+)]
+pub async fn resolve_unknown_as_succeeded(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(operation_id): Path<Uuid>,
     Json(input): Json<ResolveUnknownSucceededInput>,
-) -> HttpResult<Json<provider_operation::Model>> {
+) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
     let context = AdminReconciliationErrorContext::new(
         tenant.id,
@@ -220,10 +310,25 @@ async fn resolve_unknown_as_succeeded(
         .resolve_unknown_as_succeeded(tenant.id, operation_id, provider_reference, provider_result)
         .await
         .map_err(|error| map_reconciliation_fulfillment_error(context, error))?;
-    Ok(Json(operation))
+    Ok(Json(operation.into()))
 }
 
-async fn retry_local_persistence(
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillment-provider-operations/{id}/retry-local",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Provider operation ID")),
+    responses(
+        (status = 200, description = "Local fulfillment persistence retried", body = crate::dto::FulfillmentResponse),
+        (status = 400, description = "Invalid reconciliation request"),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 404, description = "Fulfillment or provider operation not found"),
+        (status = 409, description = "Fulfillment reconciliation is required or conflicts with current state"),
+        (status = 503, description = "Reconciliation storage is unavailable")
+    )
+)]
+pub async fn retry_local_persistence(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
@@ -247,7 +352,22 @@ async fn retry_local_persistence(
     Ok(Json(fulfillment))
 }
 
-async fn retry_create_label(
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillment-provider-operations/{id}/retry-create-label",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Provider operation ID")),
+    responses(
+        (status = 200, description = "Provider label creation retried", body = crate::dto::FulfillmentResponse),
+        (status = 400, description = "Invalid reconciliation request"),
+        (status = 401, description = "Authentication is required"),
+        (status = 403, description = "fulfillments:manage is required"),
+        (status = 404, description = "Fulfillment or provider operation not found"),
+        (status = 409, description = "Fulfillment reconciliation is required or conflicts with current state"),
+        (status = 503, description = "Reconciliation storage is unavailable")
+    )
+)]
+pub async fn retry_create_label(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
