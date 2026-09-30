@@ -5,6 +5,7 @@ use rustok_payment::CheckoutPaymentCompensationPort;
 use chrono::Utc;
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,6 +15,13 @@ use super::{CheckoutCompensationError, CheckoutCompensationService, CheckoutOper
 
 const DEFAULT_SWEEP_LIMIT: u64 = 25;
 const MAX_SWEEP_LIMIT: u64 = 100;
+
+fn per_operation_idempotency_key(request_key: &str, operation_id: Uuid) -> String {
+    let mut digest = Sha256::new();
+    digest.update(request_key.as_bytes());
+    digest.update(operation_id.as_bytes());
+    format!("checkout-compensation:{}", hex::encode(digest.finalize()))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckoutCompensationSweepFailure {
@@ -105,11 +113,7 @@ impl CheckoutCompensationSweepService {
                 worker_id.as_ref(),
                 operation.id
             );
-            let operation_key = format!(
-                "checkout-compensation:{}:{}",
-                request_key,
-                operation.id
-            );
+            let operation_key = per_operation_idempotency_key(request_key, operation.id);
             match self
                 .compensation
                 .compensate(
