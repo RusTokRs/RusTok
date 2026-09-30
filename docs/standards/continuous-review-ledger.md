@@ -3762,3 +3762,27 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Second pass:** re-read full `ports.rs`, FBA registry, canonical `PortContext` policy helpers, existing shipping-selection verifier, Cart checkout/shipping-selection persistence, provider registry, and Fulfillment docs. No additional repository-owned defect attributable to this primary port was confirmed.
 - **Verification:** source-level second pass and branch diff review completed. Local clone/Cargo/remediation-gate execution was attempted in the audit environment but GitHub DNS/network access was unavailable, so no local test/build result is claimed. CI/maintainer verification remains required.
 - **Status:** `FS-22.06.62` complete and integrated. Next primary module: `FS-22.06.63 — crates/modules/rustok-fulfillment/src/error.rs`.
+
+
+### FS-22.06.61 Assessment — `crates/modules/rustok-fulfillment/src/migrations/mod.rs` Fulfillment migration registry completeness
+
+- **Base:** refreshed `main` for this closeout at `28423a2a268bae7c1e48f71d85501c444729e6a2`; the audited implementation had already been integrated through PR #4417 as `6d5667d694d8e5893c30c0fec52227fb68065b53`.
+- **Primary scope:** migration registry completeness and ownership of an unregistered Fulfillment migration source.
+- **Finding:** `m20260713_000111_enforce_order_line_allocation.rs` existed in the repository but was never part of the executable migration vector, including in the pre-rename registry. The file implemented a complex multi-row allocation business rule in database triggers, which conflicts with the current `AGENTS.md` owner rule for complex business invariants.
+- **Remediation:** removed the stale unregistered allocation prototype instead of silently activating it. Added module tests that compare flat migration sources with `mod.rs` declarations and enforce unique/chronological registered migration names.
+- **Ownership check:** current Commerce manual fulfillment orchestration validates remaining order-line quantity before calling the Fulfillment owner, while the separate concurrent read-before-write allocation concern remains an owner-service audit topic rather than a reason to revive the stale trigger prototype.
+- **Second pass:** re-read `mod.rs`, every current Fulfillment migration source, Fulfillment create service, Commerce manual fulfillment orchestration, `000109` integrity migration, historical path/commit provenance, and applicable governance/docs. No additional registry-specific defect was confirmed.
+- **Verification:** source/static review and post-merge reconciliation confirmed 15 registered migration sources, no orphan allocation migration, and registry tests present. Local Cargo/remediation-gate execution was blocked by the audit environment's inability to resolve GitHub; no unrun check is claimed as passed.
+- **Status:** `FS-22.06.61` complete and integrated.
+
+
+### FS-22.06.63 Assessment — `crates/modules/rustok-fulfillment/src/error.rs` Fulfillment domain error contract
+
+- **Base:** `28423a2a268bae7c1e48f71d85501c444729e6a2` was the first stable main after FS-22.06.62 and is the base used for this clean-assessment closeout.
+- **Primary scope:** Fulfillment domain error variants, internal propagation, display semantics, and external boundary mapping.
+- **Assessment:** `FulfillmentError` matches the accepted neighboring Order, Cart, Payment, and Product error propagation pattern, including internal `Database(#[from] DbErr)`.
+- **Boundary audit:** current Fulfillment operator/read/write/selection boundaries pattern-match all variants and map them to stable `PortError` kinds/codes/messages. Raw database diagnostics, transition text, and resource identifiers are not exposed through those public mappings.
+- **Second pass:** re-read the complete `error.rs` and current mappers in `ports.rs`, `admin_command.rs`, `admin_create_command.rs`, `shipping_option_admin_command.rs`, `fulfillment_read.rs`, and `shipping_option_read.rs`; no repository-owned defect attributable to this error module was confirmed.
+- **Status:** `FS-22.06.63` complete as a clean assessment; no production source change was required. The earlier empty PR #4419 was closed and is not part of the integrated history.
+- **Verification:** source inspection and cross-module contract comparison only; local Cargo/remediation-gate execution remains unavailable in the current environment.
+- **Next primary module:** `FS-22.06.64 — crates/modules/rustok-fulfillment/src/services/mod.rs`.
