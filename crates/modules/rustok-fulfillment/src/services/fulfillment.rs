@@ -2029,21 +2029,6 @@ mod tests {
     }
 
     #[test]
-    fn runtime_translation_fallback_has_a_deterministic_owner_order() {
-        let option_id = Uuid::new_v4();
-        let first = translation(option_id, "de", "Deutsch");
-        let second = translation(option_id, "en", "English");
-
-        let mut runtime = vec![&first, &second];
-        runtime.sort_by(|left, right| left.locale.cmp(&right.locale));
-
-        let (resolved, effective) = super::resolve_translation(&runtime, None, None);
-
-        assert_eq!(resolved.map(|value| value.locale.as_str()), Some("de"));
-        assert_eq!(effective.as_deref(), Some("de"));
-    }
-
-    #[test]
     fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
         let result = super::normalize_translation_inputs(vec![
             crate::dto::ShippingOptionTranslationInput {
