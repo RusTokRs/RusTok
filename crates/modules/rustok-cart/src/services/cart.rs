@@ -11,8 +11,8 @@ pub use types::{
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set, TransactionTrait,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -70,6 +70,10 @@ impl CartService {
         self
     }
 
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn create_cart(
         &self,
@@ -81,8 +85,25 @@ impl CartService {
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
     pub async fn create_cart_with_channel(
         &self,
+        tenant_id: Uuid,
+        input: CreateCartInput,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+    ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self
+            .create_cart_with_channel_in_txn(&txn, tenant_id, input, channel_id, channel_slug)
+            .await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn create_cart_with_channel_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
         tenant_id: Uuid,
         input: CreateCartInput,
         channel_id: Option<Uuid>,
@@ -136,10 +157,11 @@ impl CartService {
             updated_at: Set(now.into()),
             completed_at: Set(None),
         }
-        .insert(&self.db)
+        .insert(txn)
         .await?;
 
-        self.get_cart(tenant_id, cart_id).await
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, cart_id = %cart_id))]
@@ -165,6 +187,19 @@ impl CartService {
         input: AddCartLineItemInput,
         pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self.add_line_item_with_pricing_adjustment_in_txn(&txn, tenant_id, cart_id, input, pricing_adjustment).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn add_line_item_with_pricing_adjustment_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Uuid ,
+    ) -> CartResult<CartResponse> {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
@@ -174,8 +209,7 @@ impl CartService {
             ));
         }
 
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "add_line_item")?;
         let now = Utc::now();
         let metadata = sanitize_line_item_metadata(input.metadata);
@@ -185,7 +219,7 @@ impl CartService {
             .and_then(rustok_api::normalize_locale_tag)
         {
             Some(locale) => locale,
-            None => load_tenant_default_locale(&txn, tenant_id).await?,
+            None => load_tenant_default_locale(txn, tenant_id).await?,
         };
         let line_item_id = generate_id();
         let shipping_profile_slug = normalize_line_item_shipping_profile(
@@ -209,7 +243,7 @@ impl CartService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
         entities::cart_line_item_translation::ActiveModel {
             id: Set(generate_id()),
@@ -219,7 +253,7 @@ impl CartService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         if let (Some(product_id), Some(variant_id)) = (input.product_id, input.variant_id) {
@@ -259,22 +293,22 @@ impl CartService {
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
-                .insert(&txn)
+                .insert(txn)
                 .await?;
             }
         }
         replace_pricing_adjustments(
-            &txn,
+            txn,
             cart_id,
             cart.currency_code.as_str(),
             vec![(line_item_id, pricing_adjustment)],
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
-        reconcile_cart_shipping_state(&txn, cart_id).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        recalculate_totals(txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        reconcile_cart_shipping_state(txn, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, cart_id = %cart_id))]
@@ -284,12 +318,24 @@ impl CartService {
         cart_id: Uuid,
         input: UpdateCartContextInput,
     ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self.update_context_in_txn(&txn, tenant_id, cart_id, input).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn update_context_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        input: UpdateCartContextInput ,
+    ) -> CartResult<CartResponse> {
         input
             .validate()
             .map_err(|error| CartError::Validation(error.to_string()))?;
 
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         if cart.status != STATUS_ACTIVE && cart.status != STATUS_CHECKING_OUT {
             return Err(CartError::InvalidTransition {
                 from: cart.status,
@@ -316,11 +362,11 @@ impl CartService {
         active.locale_code = Set(locale_code);
         active.selected_shipping_option_id = Set(input.selected_shipping_option_id);
         active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await?;
-        apply_shipping_selection_patch(&txn, &cart, &shipping_patch_input).await?;
+        active.update(txn).await?;
+        apply_shipping_selection_patch(txn, &cart, &shipping_patch_input).await?;
 
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     pub async fn set_adjustments(
@@ -409,19 +455,32 @@ impl CartService {
         line_item_id: Uuid,
         quantity: i32,
     ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self.update_line_item_quantity_in_txn(&txn, tenant_id, cart_id, line_item_id, quantity).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn update_line_item_quantity_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Uuid,
+        quantity: i32 ,
+    ) -> CartResult<CartResponse> {
         if quantity < 1 {
             return Err(CartError::Validation(
                 "quantity must be at least 1".to_string(),
             ));
         }
 
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "update_line_item_quantity")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
             .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
 
@@ -431,12 +490,12 @@ impl CartService {
         active.quantity = Set(quantity);
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
-        active.update(&txn).await?;
+        active.update(txn).await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
-        reconcile_cart_shipping_state(&txn, cart_id).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        recalculate_totals(txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        reconcile_cart_shipping_state(txn, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     pub async fn update_line_item_pricing(
@@ -448,19 +507,34 @@ impl CartService {
         unit_price: Decimal,
         pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self.update_line_item_pricing_in_txn(&txn, tenant_id, cart_id, line_item_id, quantity, unit_price, pricing_adjustment).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn update_line_item_pricing_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Uuid,
+        quantity: i32,
+        unit_price: Decimal,
+        pricing_adjustment: Option<CartPricingAdjustmentUpdate> ,
+    ) -> CartResult<CartResponse> {
         if quantity < 1 {
             return Err(CartError::Validation(
                 "quantity must be at least 1".to_string(),
             ));
         }
 
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "update_line_item_pricing")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
             .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
 
@@ -470,19 +544,19 @@ impl CartService {
         active.quantity = Set(quantity);
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
-        active.update(&txn).await?;
+        active.update(txn).await?;
         replace_pricing_adjustments(
-            &txn,
+            txn,
             cart.id,
             cart.currency_code.as_str(),
             vec![(line_item_id, pricing_adjustment)],
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
-        reconcile_cart_shipping_state(&txn, cart_id).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        recalculate_totals(txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        reconcile_cart_shipping_state(txn, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     pub async fn reprice_line_items(
@@ -491,21 +565,34 @@ impl CartService {
         cart_id: Uuid,
         updates: Vec<CartLineItemPricingUpdate>,
     ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = self.reprice_line_items_in_txn(&txn, tenant_id, cart_id, updates).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn reprice_line_items_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        updates: Vec<CartLineItemPricingUpdate>,
+    ) -> CartResult<CartResponse> {
         if updates.is_empty() {
-            return self.get_cart(tenant_id, cart_id).await;
+            let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+            return build_response(txn, cart).await;
         }
 
         let updates_map: HashMap<Uuid, CartLineItemPricingUpdate> = updates
             .into_iter()
             .map(|update| (update.line_item_id, update))
             .collect();
-        let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "reprice_line_items")?;
 
         let line_items = entities::cart_line_item::Entity::find()
             .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
-            .all(&txn)
+            .all(txn)
             .await?;
 
         let now = Utc::now();
@@ -518,22 +605,22 @@ impl CartService {
                 active.unit_price = Set(update.unit_price);
                 active.total_price = Set(update.unit_price * Decimal::from(quantity));
                 active.updated_at = Set(now.into());
-                active.update(&txn).await?;
+                active.update(txn).await?;
                 pricing_adjustments.push((line_item_id, update.pricing_adjustment.clone()));
             }
         }
         replace_pricing_adjustments(
-            &txn,
+            txn,
             cart.id,
             cart.currency_code.as_str(),
             pricing_adjustments,
         )
         .await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
-        reconcile_cart_shipping_state(&txn, cart_id).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        recalculate_totals(txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        reconcile_cart_shipping_state(txn, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
 
     pub async fn remove_line_item(
@@ -543,32 +630,47 @@ impl CartService {
         line_item_id: Uuid,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = self.remove_line_item_in_txn(&txn, tenant_id, cart_id, line_item_id).await?;
+        txn.commit().await?;
+        Ok(cart)
+    }
+
+    pub(crate) async fn remove_line_item_in_txn<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Uuid ,
+    ) -> CartResult<CartResponse> {
+        let txn = self.db.begin().await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "remove_line_item")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
             .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
         entities::cart_adjustment::Entity::delete_many()
             .filter(entities::cart_adjustment::Column::CartLineItemId.eq(line_item_id))
-            .exec(&txn)
+            .exec(txn)
             .await?;
         entities::cart_tax_line::Entity::delete_many()
             .filter(entities::cart_tax_line::Column::CartLineItemId.eq(line_item_id))
-            .exec(&txn)
+            .exec(txn)
             .await?;
         entities::cart_line_item_translation::Entity::delete_many()
             .filter(entities::cart_line_item_translation::Column::CartLineItemId.eq(line_item_id))
-            .exec(&txn)
+            .exec(txn)
             .await?;
         let active: entities::cart_line_item::ActiveModel = line_item.into();
-        active.delete(&txn).await?;
+        active.delete(txn).await?;
 
-        recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
-        reconcile_cart_shipping_state(&txn, cart_id).await?;
-        txn.commit().await?;
-        self.get_cart(tenant_id, cart_id).await
+        recalculate_totals(txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
+        reconcile_cart_shipping_state(txn, cart_id).await?;
+        let cart = load_cart_in_tx(txn, tenant_id, cart_id).await?;
+        build_response(txn, cart).await
     }
+
+
 }
