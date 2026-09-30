@@ -282,7 +282,15 @@ impl CartService {
         pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.add_line_item_with_pricing_adjustment_in_txn(&txn, tenant_id, cart_id, input, pricing_adjustment).await?;
+        let cart = self
+            .add_line_item_with_pricing_adjustment_in_txn(
+                &txn,
+                tenant_id,
+                cart_id,
+                input,
+                pricing_adjustment,
+            )
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
@@ -414,7 +422,9 @@ impl CartService {
         input: UpdateCartContextInput,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.update_context_in_txn(&txn, tenant_id, cart_id, input).await?;
+        let cart = self
+            .update_context_in_txn(&txn, tenant_id, cart_id, input)
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
@@ -551,7 +561,9 @@ impl CartService {
         quantity: i32,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.update_line_item_quantity_in_txn(&txn, tenant_id, cart_id, line_item_id, quantity).await?;
+        let cart = self
+            .update_line_item_quantity_in_txn(&txn, tenant_id, cart_id, line_item_id, quantity)
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
@@ -603,7 +615,17 @@ impl CartService {
         pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.update_line_item_pricing_in_txn(&txn, tenant_id, cart_id, line_item_id, quantity, unit_price, pricing_adjustment).await?;
+        let cart = self
+            .update_line_item_pricing_in_txn(
+                &txn,
+                tenant_id,
+                cart_id,
+                line_item_id,
+                quantity,
+                unit_price,
+                pricing_adjustment,
+            )
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
@@ -661,7 +683,9 @@ impl CartService {
         updates: Vec<CartLineItemPricingUpdate>,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.reprice_line_items_in_txn(&txn, tenant_id, cart_id, updates).await?;
+        let cart = self
+            .reprice_line_items_in_txn(&txn, tenant_id, cart_id, updates)
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
@@ -725,7 +749,9 @@ impl CartService {
         line_item_id: Uuid,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = self.remove_line_item_in_txn(&txn, tenant_id, cart_id, line_item_id).await?;
+        let cart = self
+            .remove_line_item_in_txn(&txn, tenant_id, cart_id, line_item_id)
+            .await?;
         txn.commit().await?;
         Ok(cart)
     }
