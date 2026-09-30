@@ -1250,39 +1250,11 @@ mod tests {
     }
 
     #[test]
-    fn checkout_plan_hash_is_canonicalized_before_identity_matching() {
+    fn checkout_plan_hash_is_canonicalized_to_lowercase() {
         let uppercase = "A".repeat(64);
-        let canonical = normalize_checkout_plan_hash(&uppercase).expect("hash should canonicalize");
+        let canonical =
+            normalize_checkout_plan_hash(&uppercase).expect("hash should canonicalize");
         assert_eq!(canonical, "a".repeat(64));
-
-        let record = CheckoutFulfillmentRecord {
-            index: 0,
-            order_id: Uuid::new_v4(),
-            plan_hash: Some(canonical.clone()),
-            fulfillment: FulfillmentResponse {
-                id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                order_id: Uuid::new_v4(),
-                shipping_option_id: None,
-                customer_id: None,
-                status: "pending".to_string(),
-                carrier: None,
-                tracking_number: None,
-                delivered_note: None,
-                cancellation_reason: None,
-                metadata: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-                shipped_at: None,
-                delivered_at: None,
-                cancelled_at: None,
-                items: Vec::new(),
-                checkout_operation_id: None,
-                checkout_fulfillment_index: None,
-                checkout_plan_hash: None,
-            },
-        };
-        let _ = record;
     }
 
     #[test]
