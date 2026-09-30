@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `ac06d4863a52bd720060ece3c5c333831ed323d7`  
+**Current main SHA:** `14d01eee2c8ac1985c3a9ac996073903b0ff8f90`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3964,6 +3964,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.73` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.74 — same primary module, shipping-option metadata/object-shape and compatibility normalization residuals`.
 
+### FS-22.06.74 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Stable collection ordering
+
+- **Base:** `f07e975cffc19202d80d3c5f5baf28e3f317dae0`; implementation was refreshed onto that main after an earlier stale branch was intentionally discarded when main advanced with unrelated SEO work.
+- **Primary scope:** one production service module only — ordering of shipping-option, fulfillment, and fulfillment-item collection reads, including paginated lists and latest-by-order selection.
+- **Invariant map:** collection order must be deterministic; offset pagination requires a total order; latest-by-order requires a deterministic tie-breaker; item projection ordering must be stable.
+- **Finding FULFILLMENTSERVICE-22.06.74-01:** shipping options, fulfillments, and fulfillment items were ordered only by `created_at`. Equal timestamps are legal, so SQL did not define a total order.
+- **Production remediation:** added `id` tie-breakers while preserving existing timestamp direction: shipping-option lists `created_at,id` ascending; fulfillment latest/list `created_at,id` descending where appropriate; fulfillment-by-order and item loaders `created_at,id` ascending.
+- **Immediate re-audit / fresh second pass:** enumerated every `order_by_*` in the primary module and confirmed remaining single-key orders are intentional (checkout fulfillment index and translation locale ordering).
+- **Concurrency reconciliation:** stale PR #4432 was closed without merge; fresh PR #4433 was recreated on `f07e975c…` and merged as `58a32a618530a5327b406c2c051587706c14d403`.
+- **Verification:** source inspection, complete ordering enumeration, pagination/response impact analysis, fresh-base reconciliation, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.74` complete and integrated.
+- **Next primary module iteration:** `FS-22.06.75 — same primary module, malformed lifecycle metadata audit append`.
+
 ### FS-22.06.75 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Metadata shape at lifecycle audit boundary
 
 - **Base:** `58a32a618530a5327b406c2c051587706c14d403`; dedicated branch `audit/fs-22.06.75-fulfillment-identity` created from refreshed `main`.
@@ -4012,3 +4025,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.77` complete and ready for integration.
 - **Next primary module:** `FS-22.06.78 — same primary module, remaining shipping-option mutation boundary / lifecycle timestamp semantics`.
+
+### FS-22.06.78 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Remaining shipping-option mutation semantics
+
+- **Base:** `14d01eee2c8ac1985c3a9ac996073903b0ff8f90`; clean assessment performed against the freshly refreshed integrated tree after FS-22.06.77.
+- **Primary scope:** one production service module only — remaining shipping-option mutation semantics after the prior currency, provider-ID, locale, metadata-shape, profile-compatibility, ordering, and translation-name fixes.
+- **Invariant map:** create/update must enforce the same canonical validation contract; translation CAS must remain transactionally consistent; profile compatibility must fail closed; activation/deactivation must be idempotent; persisted projection must not silently lose data.
+- **Assessment:** no additional repository-owned defect was confirmed in the remaining shipping-option mutation surface. Translation creation requires at least one canonical non-empty locale/name and enforces the 120-character name bound; update CAS locks the shipping-option row and records translation change evidence in the same transaction; currency and provider identifiers use canonical validators; typed shipping-profile restrictions are validated by the Commerce owner boundary while Fulfillment persists a compatibility projection; malformed present profile metadata fails closed; activation/deactivation produces no duplicate change journal on a no-op.
+- **Checkout/lifecycle reconciliation:** checkout fulfillment and lifecycle state-machine paths inspected during the fresh pass retain parent-row locking and database lifecycle guards; no new shipping-option mutation regression was introduced by the prior fixes.
+- **Fresh second pass:** re-read the complete shipping-option create/update/activate/deactivate path, translation normalization/synchronization, compatibility materialization, and persistence constraints. No further repository-owned service defect was confirmed that justified another speculative patch.
+- **Status:** `FS-22.06.78` complete as a clean assessment.
+- **Next primary module iteration:** `FS-22.06.79 — same primary module, checkout fulfillment identity/create-adopt-read boundary`.
+- **Verification:** source inspection, direct caller tracing, persistence/constraint comparison, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
