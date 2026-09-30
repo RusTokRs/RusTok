@@ -24,6 +24,9 @@ const shipping = read(
   "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
 );
 const checkout = read("crates/modules/rustok-commerce/src/controllers/store/checkout.rs");
+const cartService = read("crates/modules/rustok-cart/src/services/cart.rs");
+const cartPorts = read("crates/modules/rustok-cart/src/ports.rs");
+const cartCargo = read("crates/modules/rustok-cart/Cargo.toml");
 
 for (const value of [
   "headers: HeaderMap,",
@@ -91,6 +94,47 @@ const writeBodies = carts.match(/Some\(&idempotency_key\)/g) ?? [];
 if (writeBodies.length !== 5) {
   failures.push("expected five direct Store Cart write key bindings, found " + writeBodies.length);
 }
+
+for (const value of [
+  "rustok-outbox.workspace = true",
+]) need(cartCargo, value, "Cart shared receipt dependency");
+
+for (const value of [
+  "pub(crate) async fn run_storefront_idempotent_write<T, F>(",
+  "OwnerOperationScope::Tenant(tenant_id)",
+  '"cart",',
+  "idempotency::admit(",
+  "Admission::Replay(value)",
+  "Admission::ReplayError(error)",
+  "Admission::Run(lease)",
+  "idempotency::complete(&txn, lease, &response)",
+  "idempotency::fail(&self.db, lease, &mapped)",
+  "txn.commit().await",
+  "pub(crate) async fn create_cart_with_channel_in_txn",
+  "pub(crate) async fn add_line_item_with_pricing_adjustment_in_txn",
+  "pub(crate) async fn update_context_in_txn",
+  "pub(crate) async fn update_line_item_quantity_in_txn",
+  "pub(crate) async fn update_line_item_pricing_in_txn",
+  "pub(crate) async fn reprice_line_items_in_txn",
+  "pub(crate) async fn remove_line_item_in_txn",
+]) need(cartService, value, "Cart durable receipt owner boundary");
+
+for (const value of [
+  "self.run_storefront_idempotent_write(",
+  '"storefront.create_cart"',
+  '"storefront.add_line_item"',
+  '"storefront.update_context"',
+  '"storefront.update_line_item_quantity"',
+  '"storefront.update_line_item_pricing"',
+  '"storefront.remove_line_item"',
+  '"storefront.reprice_line_items"',
+]) need(cartPorts, value, "Cart storefront port receipt operation");
+
+for (const value of [
+  "Uuid::new_v4()",
+  "with_idempotency_key(correlation_id)",
+  "is_write: bool",
+]) forbid(cartService, value, "synthetic Cart owner idempotency");
 
 if (failures.length) {
   console.error("Commerce Store Cart idempotency verification failed:");
