@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `4842c410415fea3cdbed70b8ff7644f875858f77`  
+**Current main SHA:** `b0b67a08886537291e2712ec29d8f6a1061a83bc`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3841,3 +3841,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, direct caller tracing, arithmetic boundary analysis, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.66` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.67 — same primary module, direct-service locale admission / storage-only `und``.
+
+
+
+### FS-22.06.67 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option locale admission
+
+- **Base:** `b0b67a08886537291e2712ec29d8f6a1061a83bc`; dedicated branch `audit/fs-22.06.67-fulfillment-locale` was created from refreshed `main`.
+- **Primary scope:** one production service module only — direct service-level normalization of shipping-option translation input, with DTO deserialization and the dedicated exact-locale translation service inspected as adjacent canonical-type evidence.
+- **Invariant map:** runtime translation inputs must use the canonical tenant/runtime locale identity; storage-only `und` is provenance data, not a runtime translation locale; direct service construction must preserve the same admission contract as transport deserialization.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.67-01:** `normalize_translation_inputs` used generic `normalize_locale_tag`, which accepts the valid storage/provenance locale `und`. The public DTO separately uses `TenantLocale` and rejects `und`, so the direct owner-service API had a weaker contract than its transport boundary.
+- **Production remediation:** service-level translation normalization now canonicalizes through `TenantLocale::new`, rejecting storage-only `und` while preserving canonicalization of accepted locale forms and duplicate-locale detection.
+- **Regression coverage:** added a focused pure test proving direct service normalization rejects `und`.
+- **Adjacent-boundary audit:** DTO `ShippingOptionTranslationInput` already canonicalizes through `TenantLocale`; `ShippingOptionTranslationService::canonical_locale` uses the same owner type; persisted `und` is still tolerated only as storage provenance and excluded by runtime mapping. Create/update shipping-option methods both use the corrected service normalizer.
+- **Immediate re-audit:** re-read the final normalizer and its two write callers, DTO validation/deserialization, persisted-locale validation, and exact-locale service canonicalization. No weaker write-side locale admission path remained in `fulfillment.rs`.
+- **Fresh second pass:** independently searched the entire primary module for locale normalization and re-read the runtime resolution path. Generic locale normalization remains intentionally used only for requested/default runtime read values and is preceded by explicit exclusion of storage-only `und` from persisted runtime translations.
+- **Documentation:** Fulfillment README now states that write paths canonicalize through `TenantLocale`, reject `und`, and retain legacy `und` only as non-runtime provenance.
+- **Verification:** source inspection, caller tracing, canonical-type comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.67` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.68 — same primary module, deterministic translation fallback ordering`.
