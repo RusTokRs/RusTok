@@ -3066,3 +3066,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - The remaining work for the OrderRead slice is execution evidence: compile, mounted transport parity, deadline/failure behavior, restart behavior, and remote-adapter evidence.
 - Plan/evidence wording was corrected so it no longer claims that compatibility GET functions still exist or that their future deletion is pending.
 - This correction does **not** promote the OrderRead validation status: compile/runtime/parity evidence remains open.
+
+### FS-22.06.18 Assessment — `crates/modules/rustok-commerce/src/controllers/admin/post_order_reads.rs` Active Admin post-order read diagnostics
+
+- **Base:** refreshed `main` at `fe26b2d532fb220c56391e5894ab4f2f7076eb2e`; dedicated branch `codex/audit-fs-22.06.18-admin-post-order-read-diagnostics` was created from that exact SHA.
+- **Discovery:** re-read the complete active Admin post-order read controller, mounted router, OrderReadPort owner diagnostics, focused Admin read cutover verifier, and the broader ecommerce public-port safety contract.
+- **Confirmed finding ADMINPOSTORDERREAD-22.06.18-01:** the mounted mapper redacted the raw `PortError` value but still emitted the internal owner error code verbatim through `internal_code = %error.code`. This violated the bounded diagnostic contract already established in the Order owner port.
+- **Remediation:** replace raw internal code with `owner_code_length`; derive bounded `error_kind` from `PortErrorKind`; preserve only presence/shape facts for identifiers and request context; retain retryability, deadline, stable public code, and HTTP status. Extend the existing verifier to forbid raw owner/error/context diagnostics and require the bounded facts.
+- **Behavior preserved:** four GET routes, `ORDERS_READ` admission, pagination/filter semantics, host-selected `OrderReadPort`, public error status/code/message, and request context construction are unchanged.
+- **Fresh independent second pass:** re-read the changed controller/verifier, inspected the exact two-file diff, checked for raw owner error/context serialization patterns, and confirmed the mapper emits only bounded diagnostic facts. No additional confirmed repository-owned defect attributable to this primary module was found in this pass.
+- **Verification:** source inspection, direct caller/owner tracing, static diff review, immediate reread, independent second pass, PR inspection, and merge reconciliation completed. Local Cargo/Node/rustfmt/test execution was not performed; no local test/build result is claimed.
+- **Implementation status:** complete and integrated into `main` via PR #4375, squash merge `bab597c28c4bfc57c04c4e10235f6110bc22f235`.
+- **Post-merge reconciliation:** refreshed `main` at `bab597c28c4bfc57c04c4e10235f6110bc22f235`; the integrated commit contains the intended controller/verifier change only. Current post-merge workflow results were not yet published when reconciled.
+- **Status:** `FS-22.06.18` complete; broader step-10 correlation-safe mapper cleanup remains open elsewhere.
