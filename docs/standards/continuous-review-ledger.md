@@ -3290,3 +3290,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, caller/callee tracing, tenant-scope review, policy/deadline review, bounded-diagnostic audit, immediate reread, independent second pass, suspicious-pattern scan, and exact branch diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
 - **Implementation status:** complete on the dedicated branch; PR/integration pending.
 - **Status:** `FS-22.06.33` implementation ready for integration; maintainer/CI verification remains explicitly required.
+
+
+### FS-22.06.34 Assessment — `crates/modules/rustok-fulfillment/src/checkout_execution_typed.rs` Typed checkout lifecycle boundary
+
+- **Base:** refreshed `main` at `bc61a458851b8c8ac6f9fc708e4a4150fc9a3634`; dedicated branch `codex/audit-fs-22.06.34-checkout-execution-typed` was created from that exact SHA.
+- **Discovery:** re-read the typed checkout lifecycle wrapper, raw checkout execution adapter, crate-root exports, `FulfillmentStatusKind`, checkout-stage wiring, and repository references to the raw implementation.
+- **Invariant map:** the default in-process checkout fulfillment implementation must pass through the typed lifecycle wrapper; cancelled or unknown fulfillment statuses must fail closed after payment capture; the raw default implementation must not be publicly constructible as a bypass; the public trait must remain available for deliberate alternate adapters.
+- **Confirmed finding CHECKOUTEXECUTIONTYPED-22.06.34-01:** `InProcessCheckoutFulfillmentExecutionPort` and its constructor remained public and re-exported, even though `TypedCheckoutFulfillmentExecutionPort` is the boundary that rejects cancelled and unknown owner statuses as manual reconciliation.
+- **Remediation:** made the raw executor type and constructor `pub(crate)`, and removed the raw executor from the crate-root public re-export. The typed wrapper and its constructor remain public.
+- **Lifecycle review:** `Pending`, `Shipped`, and `Delivered` remain accepted because the checkout stage is explicitly resumeable and can encounter already-progressed fulfillment state. `Cancelled` and unknown statuses map to the stable reconciliation conflict. The underlying execution port already validates tenant/order/plan/item identity before lifecycle validation.
+- **Bypass review:** default-branch code search found no external use of the raw executor. The only intended construction path is the typed wrapper inside the Fulfillment crate. Public trait implementations remain an explicit extension point rather than a default-runtime bypass.
+- **Fresh independent second pass:** re-read the final typed wrapper, raw implementation visibility, crate exports, status enum, and lifecycle tests after the patch. Static checks confirmed raw type/constructor are crate-private, root export is removed, typed wrapper remains public, and cancelled/unknown test coverage is still present.
+- **Diff review:** production changes are limited to visibility in `checkout_execution.rs` and the root export list in `lib.rs`, plus this ledger entry. No lifecycle state semantics, schema, authorization, or provider behavior changed.
+- **Verification:** source inspection, public API audit, default wiring review, repository reference search, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer/CI verification remains required.
+- **Implementation status:** complete on the dedicated branch; PR/integration pending.
+- **Status:** `FS-22.06.34` implementation ready for integration; maintainer/CI verification remains explicitly required.
