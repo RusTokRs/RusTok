@@ -13,7 +13,7 @@ This slice hardens the complete Commerce Admin Fulfillment Reconciliation HTTP b
 - retry local fulfillment persistence;
 - retry provider label creation.
 
-The six mounted routes, their permissions, owner calls, provider composition, limits, stale-time clamp, and successful response DTOs remain unchanged.
+The six mounted routes, their permissions, owner calls, provider composition, limits, stale-time clamp, and fulfillment retry response envelope remain unchanged. Provider-operation inspection/resolution responses use a dedicated bounded HTTP projection instead of exposing the persistence model.
 
 ## Bounded diagnostic projection
 
@@ -26,7 +26,15 @@ Before each `tracing::error!` event:
 - optional provider-operation identity becomes `absent` / `present_nil` / `present_non_nil`;
 - owner, route operation, error kind, public code, HTTP status, boundary, and static event message remain observable.
 
-No validation detail, database cause, provider payload, transition detail, serialization detail, UUID, or actor identifier is emitted by these mappers.
+No validation detail, database cause, provider payload, request payload, transition detail, serialization detail, tenant UUID, or actor identifier is emitted by these mappers or the provider-operation response projection.
+
+## Provider-operation response projection
+
+The reconciliation list and unknown-outcome resolution routes return `AdminReconciliationProviderOperationResponse`. It contains only operation identity, lifecycle state, provider reference presence, result/error presence, and timestamps. The persisted request payload, provider result JSON, error message text, and tenant UUID are intentionally excluded from the HTTP response because provider-operation journal fields can contain arbitrary metadata and provider/backend diagnostics.
+
+## OpenAPI contract
+
+All six mounted routes are included in the Commerce OpenAPI document with their reachable 401 authentication and 403 `fulfillments:manage` authorization responses. The resolve-succeeded request schema retains the owner `FulfillmentProviderOperationResult` contract.
 
 ## Preserved HTTP policy
 
