@@ -25,9 +25,16 @@
     "owner_calls_preserved": true,
     "provider_registry_composition_preserved": true,
     "limits_and_stale_clamp_preserved": true,
-    "successful_response_envelopes_preserved": true,
+    "successful_response_envelopes_preserved": false,
     "broad_ecommerce_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "raw_provider_operation_http_response": false,
+    "safe_provider_operation_http_response": true,
+    "provider_operation_payload_fields_exposed": false,
+    "provider_operation_error_message_exposed": false,
+    "six_route_openapi_contracts_published": true,
+    "six_route_auth_responses_401_403": true,
+    "provider_operation_response_projection_preserved": true
   },
   "execution": [],
   "validation": {
@@ -38,7 +45,10 @@
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
-    "runtime_proven": false
+    "runtime_proven": false,
+    "validation_scope": [
+      "source review and static diff only; no commands executed"
+    ]
   },
   "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
 }
