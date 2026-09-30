@@ -18,7 +18,12 @@ pub mod macros;
 pub mod messages;
 pub mod prelude;
 
-pub use fluent_bundle::{FluentArgs, FluentValue};
+pub use fluent_bundle::{FluentArgs, FluentError, FluentValue};
+// `BundleBuildError` and `I18nError` expose these dependency types in their
+// public variants, so consumers must be able to name them without taking a
+// direct dependency on `fluent-bundle`/`unic-langid` and keeping the versions
+// aligned by hand.
+pub use unic_langid::LanguageIdentifierError;
 #[deprecated(
     since = "0.1.0",
     note = "Pass standard BCP-47 locale strings or use `unic_langid` directly if low-level parsing is needed."
@@ -32,7 +37,8 @@ pub use accept_language::{
     preferred_locale_from_accept_language, try_parse_accept_language,
 };
 pub use bundle::{
-    FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
+    FluentCatalog, FluentCatalogBuildReport, build_fluent_bundle, build_fluent_catalog,
+    build_fluent_catalog_report, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError, MessageKeyError};
 pub use lazy::{LazyUiLocaleTranslator, LazyUiMessages};
@@ -49,8 +55,8 @@ pub use locale::push_locale_candidate;
 )]
 pub use locale::push_unique;
 pub use locale::{
-    TextDirection, locale_candidates, locale_text_direction, normalize_admin_locale,
-    normalize_locale_tag, normalize_unicode_locale,
+    MAX_LOCALE_TAG_LEN, TextDirection, locale_candidates, locale_text_direction,
+    normalize_admin_locale, normalize_locale_tag, normalize_unicode_locale,
 };
 pub use messages::{
     MAX_MESSAGE_KEY_LEN, MessageEntrySchema, MessageSchema, PreparedUiMessages, ResolvedMessage,

@@ -108,6 +108,11 @@ impl<'a> UiTranslator<'a> {
         self.format_message(locale, key, None, fallback)
     }
 
+    /// Alias for [`Self::t`] so the `t!` macro accepts this facade too.
+    pub fn t_for_locale(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
+        self.t(locale, key, fallback)
+    }
+
     pub fn try_format_message<'args>(
         &self,
         locale: Option<&str>,
@@ -431,6 +436,11 @@ impl PreparedUiMessages {
     /// Resolves a simple translation key with an explicit literal fallback.
     pub fn t(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
         self.translator().t(locale, key, fallback)
+    }
+
+    /// Alias for [`Self::t`] so the `t!` macro accepts this facade too.
+    pub fn t_for_locale(&self, locale: Option<&str>, key: &str, fallback: &str) -> String {
+        self.t(locale, key, fallback)
     }
 }
 
@@ -947,15 +957,17 @@ impl UiMessages {
 
             match normalize_default_locale(self.default_locale) {
                 Ok(default_locale) => {
+                    // Cross-locale schema validation deliberately does NOT run here.
+                    // It re-parses every FTL resource with `fluent_syntax::parser`
+                    // on top of the `FluentResource`s this report already built and
+                    // then walks a reference graph, so the first lenient lookup in a
+                    // process paid for a second full parse of the whole catalog.
+                    // `declare_module_i18n!` now generates a fail-closed
+                    // `validate()` test for every declaring package, which is a
+                    // strictly stronger gate than a lazily cached diagnostic.
                     if let Err(error) =
                         ensure_default_locale_present(report.catalog(), &default_locale)
                     {
-                        report.push_diagnostic(error);
-                    } else if report.is_clean()
-                        && let Err(error) = validate_catalog_schemas(self.bundles, &default_locale)
-                    {
-                        // Lenient rendering remains available, but startup health can
-                        // now observe schema/reference defects without a second build.
                         report.push_diagnostic(error);
                     }
                 }
@@ -1012,8 +1024,11 @@ impl UiMessages {
 
     /// Returns typed diagnostics retained by the lazy lenient initialization.
     ///
-    /// Diagnostics include both skipped catalog entries and invalid/missing default
-    /// locale configuration. Calling this before the first lookup triggers the same
+    /// Diagnostics include skipped catalog entries and invalid/missing default
+    /// locale configuration. Cross-locale schema parity is intentionally not
+    /// evaluated here: it would re-parse the whole catalog on the first lookup.
+    /// Use [`Self::validate`] (generated as a test by `declare_module_i18n!`)
+    /// for the fail-closed schema contract. Calling this before the first lookup triggers the same
     /// one-time `OnceLock` initialization used by [`Self::fluent_catalog`]; it never
     /// rebuilds the catalog solely to recover diagnostics. The returned slice remains
     /// stable for the lifetime of this `UiMessages` value.

@@ -253,5 +253,32 @@ macro_rules! declare_module_i18n {
         pub fn initialization_diagnostics() -> &'static [$crate::BundleBuildError] {
             MESSAGES.initialization_diagnostics()
         }
+
+        /// Fail-closed catalog contract for the declaring package.
+        ///
+        /// Strict validation used to be reachable only if a package chose to
+        /// call `validate()` itself, and no package in the workspace did. The
+        /// macro therefore generates the gate so every declared catalog is
+        /// checked for FTL syntax, duplicate entries, unresolved and cyclic
+        /// message/term references, a present and canonical default locale,
+        /// and cross-locale value/attribute variable parity.
+        #[cfg(test)]
+        mod generated_module_i18n_contract {
+            #[test]
+            fn declared_catalog_is_valid() {
+                if let Err(error) = super::validate() {
+                    panic!("module i18n catalog failed strict validation: {error}");
+                }
+            }
+
+            #[test]
+            fn declared_catalog_initializes_without_diagnostics() {
+                let diagnostics = super::initialization_diagnostics();
+                assert!(
+                    diagnostics.is_empty(),
+                    "module i18n catalog reported initialization diagnostics: {diagnostics:?}"
+                );
+            }
+        }
     };
 }

@@ -14,7 +14,13 @@ use icu_locale::{
 };
 use unic_langid::LanguageIdentifier;
 
-pub(crate) const MAX_LOCALE_TAG_LEN: usize = 64;
+/// Maximum accepted raw locale-tag length in bytes, enforced before trimming
+/// or underscore normalization.
+///
+/// Hosts that persist a canonical locale identity usually apply a narrower
+/// storage bound on top of this (see `rustok_api::MAX_LOCALE_TAG_LEN`); making
+/// this one public lets them check the parsing contract instead of guessing it.
+pub const MAX_LOCALE_TAG_LEN: usize = 64;
 
 /// The resolved writing direction for a valid locale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +74,14 @@ pub(crate) fn canonicalize_language_identifier(langid: LanguageIdentifier) -> La
 /// Normalizes the admin UI effective locale to either "ru" or "en".
 ///
 /// If `locale` is absent, invalid, or not Russian, defaults to `"en"`.
+///
+/// # Known limitation
+///
+/// This is host policy that predates the world-locale contract and collapses
+/// every request to a two-language admin. It contradicts this crate's own
+/// boundary rule ("do not own the host's supported-locale policy here") and
+/// exists only for the packages that have not migrated to a Fluent catalog.
+/// New code must consume the host's effective locale instead.
 pub fn normalize_admin_locale(locale: Option<&str>) -> &'static str {
     let Some(locale) = locale.and_then(normalize_locale_tag) else {
         return "en";

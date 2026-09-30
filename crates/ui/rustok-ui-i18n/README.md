@@ -15,7 +15,7 @@ The crate is structured into focused domain modules:
 - `messages`: Core thread-safe UI message facade (`UiMessages`), fail-closed prepared runtime (`PreparedUiMessages`), borrowed translator (`UiTranslator`), prepared per-locale translator (`UiLocaleTranslator`), source-locale provenance (`ResolvedMessage`), compound-message attribute lookup, transitive message/term schema validation, stack-buffered safe kebab-case key conversion (`with_kebab_key`), strict/lenient candidate resolution, and cached lazy-initialization diagnostics.
 - `lazy`: Opt-in per-locale Fluent parsing (`LazyUiMessages`, `LazyUiLocaleTranslator`) for large embedded locale sets while preserving the same fallback, formatting, provenance, and validation contracts.
 - `error`: Typed errors (`BundleBuildError`, `I18nError`) for locale, catalog, lookup, and formatting failures. Both public error enums are non-exhaustive; downstream matches must retain a wildcard arm so new diagnostics can be added compatibly.
-- `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`).
+- `macros`: Ergonomic macros (`declare_module_i18n!`, `fluent_args!`, `t!`, `module_t!`). `declare_module_i18n!` also generates a `#[cfg(test)]` contract module so every declaring package runs fail-closed catalog validation as part of its own test suite.
 
 ## Responsibilities
 
@@ -92,6 +92,11 @@ Catalog construction has three explicit modes:
 errors and invalid/oversized/missing default-locale configuration from that same initialization; it does
 not rebuild the catalog solely to recover diagnostics.
 
+Cross-locale schema parity is deliberately **not** evaluated on that lenient path: it re-parses every FTL
+resource on top of the `FluentResource`s the report already built, which made the first lookup in a
+process pay for a second full parse of the catalog. The fail-closed contract lives in `validate()` /
+`prepare()`, and `declare_module_i18n!` generates the test that runs it for every declaring package.
+
 Within an individual Fluent resource, message/resource conflicts are handled by Project Fluent's
 `add_resource` validation and surface as `BundleBuildError::AddResource`; this crate does not silently invent
 an override policy for Rust catalogs.
@@ -152,6 +157,32 @@ default locale before comparing values and attributes with default-locale contra
 - Do not add runtime filesystem scanning or environment lookups in production paths.
 - Do not add module-specific message keys or business copy to this crate.
 - Treat exported dependency types and helper functions as compatibility surface until an explicit migration window narrows them; prefer additive facade APIs over silent removals.
+
+## Known Limitations / Pending Implementation
+
+These are tracked in [`docs/engineering-audit-2026-09-30.md`](./docs/engineering-audit-2026-09-30.md)
+and are **not** implemented by the current runtime:
+
+- **CLDR `parentLocales` are not applied.** The fallback chain peels variants,
+  region and script, so `es-MX` reaches `es` and then the default locale — it
+  never reaches an `es-419` catalog. The same applies to `en-GB -> en-001` and
+  `zh-Hant-MO -> zh-Hant-HK`. Modules that ship a macro-regional catalog must
+  currently also ship the specific regional locales they advertise.
+- **No locale-aware number/date formatting.** `NUMBER` and `DATETIME` are not
+  registered on the bundles, so an FTL that calls them fails to format, and
+  `{ $count }` renders without locale digit grouping. CLDR *plural selection*
+  does work; only formatting functions are missing.
+- **`normalize_admin_locale` is host policy inside this crate.** It collapses
+  every request to `ru` or `en` and exists only for packages that have not yet
+  migrated to a Fluent catalog. Do not use it in new code.
+- **Term variables are over-reported by schema extraction.** Variables that a
+  Fluent term references but that are not bound by explicit term arguments are
+  propagated into the calling message's contract, even though `fluent-bundle`
+  resolves a term only against its own arguments. No workspace catalog defines
+  terms today, so this is latent.
+- **`t!` targets the `UiMessages`-shaped facades.** `UiLocaleTranslator` and
+  `LazyUiLocaleTranslator` bind a locale up front and therefore expose a
+  three-argument `format`, which the macro's argument arms do not match.
 
 ## Docs
 
