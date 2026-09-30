@@ -25,7 +25,7 @@ impl FulfillmentStatusKind {
     }
 
     pub const fn can_ship(self) -> bool {
-        matches!(self, Self::Pending)
+        matches!(self, Self::Pending | Self::Shipped)
     }
 
     pub const fn can_deliver(self) -> bool {
@@ -50,6 +50,7 @@ mod tests {
     #[test]
     fn fulfillment_status_transitions_are_typed() {
         assert!(FulfillmentStatusKind::Pending.can_ship());
+        assert!(FulfillmentStatusKind::Shipped.can_ship());
         assert!(FulfillmentStatusKind::Shipped.can_deliver());
         assert!(FulfillmentStatusKind::Delivered.is_terminal());
         assert!(FulfillmentStatusKind::Cancelled.is_terminal());

@@ -3302,3 +3302,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** final reread confirmed raw type/constructor privacy, root export removal, typed wrapper public constructor, and existing cancelled/unknown lifecycle regression tests. No external raw-executor reference was found in default-branch code search.
 - **Verification:** source inspection, public API surface audit, default wiring review, repository reference search, immediate reread, and independent second pass completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.34` implementation integrated directly into `main`; maintainer/CI verification remains explicitly required.
+
+
+### FS-22.06.35 Assessment — `crates/modules/rustok-fulfillment/src/status.rs` Fulfillment capability contract
+
+- **Base:** refreshed `main` at `f9cc82dffc2c1eb9e8fca2f946a2223ecf2d42fd`; exact main state was re-read immediately before this change.
+- **Discovery:** re-read the complete typed status enum, all local consumers of `can_ship`, `can_deliver`, and `is_terminal`, Admin Fulfillment status admission, and `FulfillmentService` lifecycle transitions for ship/deliver/reopen/reship/cancel.
+- **Confirmed finding FULFILLMENTSTATUS-22.06.35-01:** `FulfillmentStatusKind::can_ship()` returned true only for `Pending`, while the production owner explicitly supports `ship_fulfillment` from both `pending` and `shipped` states to model partial/subsequent shipment operations. The public capability helper therefore advertised a stricter state contract than the actual owner lifecycle.
+- **Remediation:** `can_ship()` now returns true for `Pending | Shipped`, matching the service and Admin command admission contract. Existing `can_deliver()` and terminal-state semantics remain unchanged. The focused status test now covers the shipped-state capability as well.
+- **Usage check:** repository-local search found the capability helpers were not used by current runtime mutation paths; the defect was therefore an API/contract mismatch rather than an already-confirmed runtime rejection. The change prevents future callers from making an incorrect decision based on the typed status API.
+- **Fresh independent second pass:** re-read `status.rs`, Admin ship/deliver/reopen admission, and all corresponding service lifecycle conditions. Static comparison confirmed `can_ship` exactly matches the current ship lifecycle entry states and no other capability helper conflicts with the current owner state machine.
+- **Diff review:** production change is limited to `status.rs` capability semantics and its focused test, plus this ledger entry. No persistence, controller, permission, or provider logic changed.
+- **Verification:** source inspection, consumer search, service/status state-machine comparison, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.35` implementation integrated directly into `main`; maintainer/CI verification remains explicitly required.
