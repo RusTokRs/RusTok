@@ -731,7 +731,16 @@ fn strip_checkout_identity_metadata(
             ));
         }
     };
-    if let Some(Value::Object(mut checkout)) = root.remove("checkout") {
+    if let Some(checkout) = root.remove("checkout") {
+        let mut checkout = match checkout {
+            Value::Object(object) => object,
+            _ => {
+                return Err(PortError::validation(
+                    "fulfillment.checkout_metadata_invalid",
+                    "checkout metadata namespace must be a JSON object",
+                ));
+            }
+        };
         for key in [
             "operation_id",
             "order_id",
@@ -1308,6 +1317,16 @@ mod tests {
         assert!(fulfillment_item_metadata(Value::Array(Vec::new()), Uuid::new_v4()).is_err());
         assert!(strip_checkout_identity_metadata(Value::Bool(true)).is_err());
     }
+
+    fn checkout_fulfillment_metadata_rejects_malformed_checkout_namespace() {
+        let metadata = serde_json::json!({
+            "checkout": "not-an-object",
+            "customer_note": "keep"
+        });
+
+        assert!(fulfillment_metadata(metadata).is_err());
+    }
+
 
     #[test]
     fn checkout_item_cart_identity_is_extracted_from_persisted_metadata() {
