@@ -3275,3 +3275,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, caller/callee tracing, write-policy tracing, transaction/lock review, prior-controller reconciliation, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
 - **Implementation status:** audit complete; durable create-idempotency fix explicitly queued as a separate architecture iteration.
 - **Status:** `FS-22.06.32` complete with one queued production finding; continue to the next unreviewed Fulfillment module while preserving the queued durable-idempotency work.
+
+
+### FS-22.06.33 Assessment — `crates/modules/rustok-fulfillment/src/shipping_option_read.rs` Shipping Option read owner
+
+- **Base:** refreshed `main` at `32c6ee313cd691d8cc1c242a248c9502f7acfd37`; dedicated branch `codex/audit-fs-22.06.33-shipping-option-read` was created from that exact SHA.
+- **Discovery:** re-read the complete storefront/admin Shipping Option read ports, all three read entrypoints, tenant parsing, request/error fact projection, the underlying FulfillmentService read methods, and the mounted Commerce read callers.
+- **Invariant map:** reads require read-policy/deadline semantics; all resource reads must be tenant-scoped; admin read may see inactive options while storefront read may not; owner diagnostics must never bypass the bounded logging boundary or expose raw database diagnostics.
+- **Confirmed finding SHIPPINGOPTIONREAD-22.06.33-01:** the database error branch in `map_owner_error` emitted `eprintln!("DEBUG FULFILLMENT SERVICE DB ERROR: {err:?}")`, bypassing the structured bounded diagnostic path and potentially exposing raw backend/storage details to stderr.
+- **Remediation:** removed the raw `eprintln!`; the existing structured technical-failure log remains the sole diagnostic path and emits only bounded context/error-shape facts.
+- **Positive checks:** storefront list uses the active-only service method; admin list uses the all-options method; single-option read and list operations rely on tenant-qualified service queries; all three read ports enforce `PortCallPolicy::read()`; no caller-supplied actor/tenant UUID is used as a cross-tenant database locator outside the trusted context.
+- **Fresh independent second pass:** re-read final read-owner source, all three entrypoints, service call boundaries, error projection, and mounted callers. Static scan found no remaining `eprintln!`, `dbg!`, raw `error.code` diagnostic emission, or direct unscoped Shipping Option query in this owner.
+- **Diff review:** production changes are limited to the one-line diagnostic removal in `shipping_option_read.rs` plus this ledger entry. No service query, authorization policy, schema, or response shape was changed.
+- **Verification:** source inspection, caller/callee tracing, tenant-scope review, policy/deadline review, bounded-diagnostic audit, immediate reread, independent second pass, suspicious-pattern scan, and exact branch diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
+- **Implementation status:** complete on the dedicated branch; PR/integration pending.
+- **Status:** `FS-22.06.33` implementation ready for integration; maintainer/CI verification remains explicitly required.
