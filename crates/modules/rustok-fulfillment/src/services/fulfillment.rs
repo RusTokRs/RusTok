@@ -1398,19 +1398,26 @@ fn normalize_allowed_shipping_profile_slugs(values: Option<Vec<String>>) -> Opti
 }
 
 fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String>> {
-    metadata
-        .get("shipping_profiles")
-        .and_then(|profiles| profiles.get("allowed_slugs"))
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .filter_map(normalize_shipping_profile_slug)
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect()
-        })
+    let profiles = metadata.get("shipping_profiles")?;
+    let Some(profiles) = profiles.as_object() else {
+        return Some(Vec::new());
+    };
+    let Some(values) = profiles.get("allowed_slugs") else {
+        return Some(Vec::new());
+    };
+    let Some(values) = values.as_array() else {
+        return Some(Vec::new());
+    };
+
+    Some(
+        values
+            .iter()
+            .filter_map(Value::as_str)
+            .filter_map(normalize_shipping_profile_slug)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+    )
 }
 
 fn apply_allowed_shipping_profiles_to_metadata(
@@ -2066,6 +2073,34 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn malformed_shipping_profile_metadata_fails_closed() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": "not-an-object"
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {}
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": "not-an-array"
+                }
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({})),
+            None
+        );
     }
 
     #[test]
