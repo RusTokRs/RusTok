@@ -65,7 +65,6 @@ for (const value of [
   "runtime.checkout_order_compensation_port()",
   "CheckoutCompensationService::new(",
   ".compensate(",
-  "idempotency_key.clone()",
   "idempotency_key,",
 ]) need(compensate, value, "compensate route contract");
 
