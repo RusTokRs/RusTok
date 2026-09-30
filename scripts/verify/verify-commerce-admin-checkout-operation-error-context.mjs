@@ -145,7 +145,6 @@ for (const value of [
   "error = ?error",
   "error.message",
   "error.to_string()",
-  "format!(",
   "tenant_id = %context.tenant_id",
   "actor_id = %context.actor_id",
   "checkout_operation_id = ?context.checkout_operation_id",
