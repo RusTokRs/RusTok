@@ -1503,9 +1503,7 @@ fn apply_allowed_shipping_profiles_to_metadata(
     Ok(Value::Object(metadata_object))
 }
 
-fn strip_fulfillment_item_checkout_metadata(
-    value: Value,
-) -> FulfillmentResult<Value> {
+fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
     let mut root = match value {
         Value::Object(object) => object,
         _ => {
@@ -2260,12 +2258,13 @@ mod tests {
         let sanitized =
             super::strip_fulfillment_item_checkout_metadata(metadata)
                 .expect("valid item checkout metadata should sanitize");
+        let canonical_cart_line_item_id = cart_line_item_id.to_string();
         assert_eq!(
             sanitized
                 .get("checkout")
                 .and_then(|value| value.get("cart_line_item_id"))
                 .and_then(Value::as_str),
-            Some(cart_line_item_id.to_string().as_str())
+            Some(canonical_cart_line_item_id.as_str())
         );
         assert!(
             sanitized
