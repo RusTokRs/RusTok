@@ -166,8 +166,7 @@ jobs:
             head -c 60000 "$clippy_log"
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
-          escaped="$(grep -E '^(error|warning)' -A 6 "$clippy_log" \
-            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g' | head -c 6000)"
+          escaped="$(tail -c 5500 "$clippy_log" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
           echo "::error title=clippy::${escaped}"
           cat "$clippy_log"
           exit 1
