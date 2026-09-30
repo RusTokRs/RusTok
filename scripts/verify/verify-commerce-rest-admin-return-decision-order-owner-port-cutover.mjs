@@ -59,6 +59,12 @@ const paymentPortMapper = between(
   'fn map_admin_order_return_orchestration_error(',
   'REST return-decision Payment owner mapper',
 );
+const orchestrationMapper = between(
+  returns,
+  'fn map_admin_order_return_orchestration_error(',
+  '#[utoipa::path(',
+  'REST return orchestration mapper',
+);
 const ownerDecisionMethod = between(
   ownerDecision,
   'pub async fn create_return_decision(',
@@ -134,6 +140,33 @@ for (const source of [orderPortMapper, paymentPortMapper]) {
     forbidText(source, value, 'owner raw diagnostics');
   }
 }
+
+for (const value of [
+  'error = ?error',
+  'tenant_id = %context.tenant_id',
+  'actor_id = %context.actor_id',
+  'order_id = ?context.order_id',
+  'return_id = ?context.return_id',
+  'refund_id = ?context.refund_id',
+]) forbidText(
+  orchestrationMapper,
+  value,
+  'REST return orchestration raw diagnostics',
+);
+
+for (const [value, label] of [
+  ['tenant_id_non_nil = !context.tenant_id.is_nil()', 'bounded tenant shape'],
+  ['actor_id_non_nil = !context.actor_id.is_nil()', 'bounded actor shape'],
+  ['order_id_shape = optional_uuid_shape(context.order_id)', 'bounded order shape'],
+  ['return_id_shape = optional_uuid_shape(context.return_id)', 'bounded return shape'],
+  ['refund_id_shape = optional_uuid_shape(context.refund_id)', 'bounded refund shape'],
+  ['owner = ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER', 'bounded orchestration owner'],
+  ['source_owner', 'bounded source owner'],
+  ['error_kind', 'bounded orchestration error kind'],
+  ['public_code = code', 'stable public code'],
+  ['status = %status', 'HTTP status'],
+  ['"commerce admin order return orchestration failed with bounded diagnostics"', 'bounded orchestration diagnostics'],
+]) requireText(orchestrationMapper, value, label);
 
 for (const [value, label] of [
   ['Arc<dyn OrderPostOrderCommandPort>', 'Order owner dependency'],
