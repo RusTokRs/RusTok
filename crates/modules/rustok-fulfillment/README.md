@@ -44,6 +44,7 @@
 - Supplying typed shipping-profile restrictions requires object-shaped shipping-option metadata; non-object metadata is rejected rather than discarded when the compatibility projection is materialized.
 - Shipping-option translation names are limited to 120 Unicode characters at the owner-service boundary, matching persisted schema and exact-locale mutation validation before storage.
 - Fulfillment lifecycle audit append requires object-shaped metadata; malformed scalar/array metadata is rejected instead of being silently discarded when the owner records lifecycle history.
+- Lifecycle metadata merge also rejects a non-object persisted metadata value before applying an object patch, preventing the merge step from silently replacing corrupted metadata before audit recording.
 - All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - `metadata.provider_operation` is write-reserved: fulfillment creation strips caller-supplied receipt data, while provider-backed lifecycle commands attach the receipt only after the provider operation has been journaled.
 - Shipping-option `provider_id` values use the canonical Fulfillment provider-registry identifier grammar at the owner boundary, so persisted options cannot contain provider IDs that the registry would later reject.
