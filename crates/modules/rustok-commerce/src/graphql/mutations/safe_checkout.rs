@@ -109,6 +109,13 @@ mod checkout_boundary {
                 false,
                 "not_found",
             ),
+            PortErrorKind::Conflict
+                if error.code == "fulfillment.shipping_option_translation_revision_conflict" => (
+                "Shipping option translations changed; reload before saving".to_string(),
+                "SHIPPING_OPTION_TRANSLATION_CONFLICT",
+                false,
+                "translation_revision_conflict",
+            ),
             PortErrorKind::Conflict => (
                 "Shipping option operation conflicts with the current state".to_string(),
                 "SHIPPING_OPTION_STATE_CONFLICT",
