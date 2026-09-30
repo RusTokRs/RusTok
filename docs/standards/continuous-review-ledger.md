@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `c695822b41a13db4ab24dd6b0a36adc2d3a13002`  
+**Current main SHA:** `ac06d4863a52bd720060ece3c5c333831ed323d7`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3996,3 +3996,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, caller tracing, response/consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.76` complete and ready for integration.
 - **Next primary module:** `FS-22.06.77 — same primary module, fresh full pass of shipping-option mutation invariants after metadata hardening`.
+
+### FS-22.06.77 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option translation name length
+
+- **Base:** `ac06d4863a52bd720060ece3c5c333831ed323d7`; dedicated branch `audit/fs-22.06.77-fulfillment-shipping-translations` created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option translation input normalization on create/update.
+- **Invariant map:** persisted shipping-option translation names must be non-empty and no longer than the canonical 120 Unicode-character boundary; direct owner-service calls must enforce the same limit as exact-locale mutation and persistence.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.77-01:** `normalize_translation_inputs` rejected empty names but imposed no maximum length. The translation table stores names in a 120-character column, and `ShippingOptionTranslationService::normalize_name` already enforced the same 120-character rule. Direct create/update service calls could therefore reach persistence with an oversized translation name and rely on backend-specific storage failure behavior.
+- **Production remediation:** `normalize_translation_inputs` now rejects names above 120 Unicode characters before persistence.
+- **Regression coverage:** added a focused pure test with a 121-character name.
+- **Adjacent-boundary audit:** create and update both pass through `normalize_translation_inputs`; exact-locale translation mutation uses the same 120-character semantic limit; translation table schema is capped at 120. No alternate shipping-option write path bypasses the service normalizer.
+- **Immediate re-audit:** re-read create/update normalization flow, exact-locale validation, and persistence schema. The new check preserves existing trimming, empty-name rejection, locale canonicalization, and duplicate-locale detection.
+- **Fresh second pass:** searched the primary module for shipping-option translation name validation and write calls. The owner write surface has one shared normalizer; no oversized name can bypass it through create/update.
+- **Documentation:** Fulfillment README now states the 120 Unicode-character translation-name invariant.
+- **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.77` complete and ready for integration.
+- **Next primary module:** `FS-22.06.78 — same primary module, remaining shipping-option mutation boundary / lifecycle timestamp semantics`.
