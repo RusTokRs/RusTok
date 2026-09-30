@@ -621,6 +621,239 @@ async fn cancelled_order_quarantines_executing_checkout_label() {
 }
 
 #[tokio::test]
+async fn premature_checkout_label_insert_requires_paid_order() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+
+    ensure_test_orders_schema(&db).await;
+    insert_test_order(&db, tenant_id, order_id, "pending").await;
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
+        .await
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
+    fulfillment_active.order_id = Set(order_id);
+    fulfillment_active
+        .update(&db)
+        .await
+        .expect("bind fulfillment to unpaid test order");
+
+    let migrations = rustok_fulfillment::migrations::migrations();
+    let manager = SchemaManager::new(&db);
+    for index in 6..=10 {
+        migrations
+            .get(index)
+            .expect("required provider migration should exist")
+            .up(&manager)
+            .await
+            .expect("required provider migration should install");
+    }
+
+    let now = Utc::now().fixed_offset();
+    let result = rustok_fulfillment::entities::provider_operation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        fulfillment_id: Set(fulfillment_id),
+        operation: Set("create_label".to_string()),
+        provider_id: Set("carrier".to_string()),
+        idempotency_key: Set("premature-insert".to_string()),
+        status: Set("executing".to_string()),
+        request_payload: Set(serde_json::json!({
+            "tenant_id": tenant_id,
+            "fulfillment_id": fulfillment_id
+        })),
+        provider_reference: Set(None),
+        provider_result: Set(None),
+        error_message: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+        provider_completed_at: Set(None),
+        committed_at: Set(None),
+    }
+    .insert(&db)
+    .await;
+
+    assert!(
+        result.is_err(),
+        "an executing checkout label operation must not be inserted before payment"
+    );
+}
+
+#[tokio::test]
+async fn premature_checkout_label_migration_quarantines_existing_unpaid_execution() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+
+    ensure_test_orders_schema(&db).await;
+    insert_test_order(&db, tenant_id, order_id, "pending").await;
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
+        .await
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
+    fulfillment_active.order_id = Set(order_id);
+    fulfillment_active
+        .update(&db)
+        .await
+        .expect("bind fulfillment to unpaid test order");
+
+    let migrations = rustok_fulfillment::migrations::migrations();
+    let manager = SchemaManager::new(&db);
+    migrations
+        .get(6)
+        .expect("provider journal migration should exist")
+        .up(&manager)
+        .await
+        .expect("provider journal migration should install");
+
+    let now = Utc::now().fixed_offset();
+    let operation = rustok_fulfillment::entities::provider_operation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        fulfillment_id: Set(fulfillment_id),
+        operation: Set("create_label".to_string()),
+        provider_id: Set("carrier".to_string()),
+        idempotency_key: Set("quarantine-on-upgrade".to_string()),
+        status: Set("executing".to_string()),
+        request_payload: Set(serde_json::json!({
+            "tenant_id": tenant_id,
+            "fulfillment_id": fulfillment_id
+        })),
+        provider_reference: Set(None),
+        provider_result: Set(None),
+        error_message: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+        provider_completed_at: Set(None),
+        committed_at: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("legacy executing operation should be insertable before the new guard");
+
+    for index in 7..=9 {
+        migrations
+            .get(index)
+            .expect("required provider migration should exist")
+            .up(&manager)
+            .await
+            .expect("required provider migration should install");
+    }
+    migrations
+        .get(10)
+        .expect("premature insert guard migration should exist")
+        .up(&manager)
+        .await
+        .expect("premature insert guard migration should install");
+
+    let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("quarantined operation should remain readable");
+    assert_eq!(
+        current.status,
+        PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+    );
+    assert!(current.provider_completed_at.is_some());
+    assert_eq!(
+        current.error_message.as_deref(),
+        Some("create-label execution started before order payment")
+    );
+}
+
+#[tokio::test]
+async fn premature_checkout_label_rollback_requires_execution_quiescence() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+
+    ensure_test_orders_schema(&db).await;
+    insert_test_order(&db, tenant_id, order_id, "paid").await;
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let fulfillment_model = fulfillment::Entity::find_by_id(fulfillment_id)
+        .one(&db)
+        .await
+        .expect("load fulfillment")
+        .expect("fulfillment exists");
+    let mut fulfillment_active: fulfillment::ActiveModel = fulfillment_model.into();
+    fulfillment_active.order_id = Set(order_id);
+    fulfillment_active
+        .update(&db)
+        .await
+        .expect("bind fulfillment to paid test order");
+
+    let migrations = rustok_fulfillment::migrations::migrations();
+    let manager = SchemaManager::new(&db);
+    for index in 6..=10 {
+        migrations
+            .get(index)
+            .expect("required provider migration should exist")
+            .up(&manager)
+            .await
+            .expect("required provider migration should install");
+    }
+
+    let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let operation = journal
+        .begin(BeginProviderOperation {
+            tenant_id,
+            fulfillment_id,
+            operation: "create_label".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "rollback-quiescence".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": tenant_id,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "rollback-quiescence",
+                "metadata": {}
+            }),
+        })
+        .await
+        .expect("provider operation");
+
+    journal
+        .claim_execution(tenant_id, operation.id)
+        .await
+        .expect("claim")
+        .expect("operation should be executing");
+
+    let rollback = migrations
+        .get(10)
+        .expect("premature insert guard migration should exist")
+        .down(&manager)
+        .await;
+    assert!(
+        rollback.is_err(),
+        "rollback must be blocked while checkout label execution is in flight"
+    );
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("operation remains readable after blocked rollback");
+    assert_eq!(current.status, rustok_fulfillment::PROVIDER_OPERATION_EXECUTING);
+}
+
+#[tokio::test]
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
