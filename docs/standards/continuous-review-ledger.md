@@ -4094,3 +4094,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now records the object-shaped checkout metadata contract and preservation/fail-closed rules for item cart-line identity.
 - **Status:** `FS-22.06.81` complete and integrated on `main` as `d4c8afb42a7c16ad69a102bff9cc76ea22e79462`.
 - **Next primary module iteration:** `FS-22.06.82 — same primary module, fresh pass of fulfillment item metadata ownership and lifecycle projection boundaries`.
+
+### FS-22.06.82 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Fulfillment-item audit metadata ownership
+
+- **Base:** `d02c3fb5cf725349ee0e1caadc0941c76d83b3a6`; dedicated branch `audit/fs-22.06.82-fulfillment-item-metadata` was created from refreshed `main`.
+- **Primary scope:** one production service module only — fulfillment-item metadata ownership during lifecycle append, plus the shared audit helper used by root fulfillment metadata.
+- **Invariant map:** lifecycle audit evidence is owner-generated and append-only; an existing `audit` namespace must be an object when present; an existing `audit.events` value must be an array when present; malformed persisted evidence must fail closed rather than be silently replaced.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.82-01:** `append_audit_event` previously treated a present non-object `audit` value as if it were absent and treated a present non-array `audit.events` value as an empty event list. That silently discarded malformed historical audit data whenever root or fulfillment-item lifecycle progress was recorded.
+- **Production remediation:** `append_audit_event` now rejects malformed `audit` and `audit.events` structures with typed validation errors, while retaining the prior object-root requirement and append-one-event behavior for valid metadata.
+- **Root/item coverage:** the same helper is used by root fulfillment and item lifecycle mutation paths, so the fix closes both surfaces without duplicating audit semantics.
+- **Regression coverage:** added focused tests for malformed audit namespace and malformed audit events. Existing non-object metadata regression remains intact.
+- **Immediate re-audit:** enumerated all 14 production `append_audit_event` call sites across ship/deliver/reopen/reship/cancel, including item updates; each already propagates the helper result before persistence.
+- **Persistence reconciliation:** migration `000110` already enforces exact audit event-count growth on fulfillment lifecycle updates; the new helper prevents malformed source shapes from being coerced into a countable array before that guard runs.
+- **Fresh second pass:** re-read the shared helper, all root/item lifecycle callers, metadata sanitization helpers, and DB lifecycle trigger. No alternate item-level audit append path bypasses the hardened helper.
+- **Quantity/state reconciliation:** item quantity bounds and lifecycle serialization remain separately guarded by `000109`/`000110`; no quantity fix was needed in this metadata iteration.
+- **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/runtime evidence is claimed locally.
+- **Documentation:** Fulfillment README now records strict structured audit evidence for both fulfillment and fulfillment-item lifecycle history.
+- **Status:** `FS-22.06.82` implementation complete on dedicated branch; integration pending final merge gate.
+- **Next primary module iteration:** `FS-22.06.83 — same primary module, fulfillment-item checkout metadata residuals and reserved-key ownership`.
