@@ -1641,6 +1641,8 @@ async fn load_shipping_options_with_translations(
     let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
     let translations = entities::shipping_option_translation::Entity::find()
         .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids.clone()))
+        .order_by_asc(entities::shipping_option_translation::Column::ShippingOptionId)
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
         .all(db)
         .await?;
 
@@ -2024,6 +2026,21 @@ mod tests {
         assert_eq!(fulfillment_list_offset(0, 0), 0);
         assert_eq!(fulfillment_list_offset(1, 100), 0);
         assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn runtime_translation_fallback_has_a_deterministic_owner_order() {
+        let option_id = Uuid::new_v4();
+        let first = translation(option_id, "de", "Deutsch");
+        let second = translation(option_id, "en", "English");
+
+        let mut runtime = vec![&first, &second];
+        runtime.sort_by(|left, right| left.locale.cmp(&right.locale));
+
+        let (resolved, effective) = super::resolve_translation(&runtime, None, None);
+
+        assert_eq!(resolved.map(|value| value.locale.as_str()), Some("de"));
+        assert_eq!(effective.as_deref(), Some("de"));
     }
 
     #[test]
