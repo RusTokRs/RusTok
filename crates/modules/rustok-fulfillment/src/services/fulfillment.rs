@@ -429,6 +429,12 @@ impl FulfillmentService {
                 .await?;
         }
         validate_fulfillment_items(input.items.as_deref())?;
+        validate_object_metadata(&input.metadata, "fulfillment")?;
+        if let Some(items) = input.items.as_ref() {
+            for item in items {
+                validate_object_metadata(&item.metadata, "fulfillment item")?;
+            }
+        }
 
         let CreateFulfillmentInput {
             order_id,
@@ -1479,6 +1485,18 @@ fn apply_allowed_shipping_profiles_to_metadata(
     Ok(Value::Object(metadata_object))
 }
 
+fn validate_object_metadata(
+    metadata: &Value,
+    resource: &str,
+) -> FulfillmentResult<()> {
+    if !metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "{resource} metadata must be a JSON object",
+        )));
+    }
+    Ok(())
+}
+
 fn validate_fulfillment_items(
     items: Option<&[crate::dto::CreateFulfillmentItemInput]>,
 ) -> FulfillmentResult<()> {
@@ -2135,6 +2153,13 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_fulfillment_metadata_requires_object_shape() {
+        assert!(super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment").is_err());
+        assert!(super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err());
+        assert!(super::validate_object_metadata(&serde_json::json!({}), "fulfillment").is_ok());
     }
 
     #[test]
