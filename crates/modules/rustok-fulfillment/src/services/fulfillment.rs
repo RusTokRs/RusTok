@@ -2271,7 +2271,8 @@ mod tests {
             }
         });
 
-        let merged = super::merge_fulfillment_metadata(current, patch);
+        let merged = super::merge_fulfillment_metadata(current, patch)
+            .expect("valid metadata should merge");
 
         assert_eq!(
             merged.get("customer_note").and_then(Value::as_str),

@@ -172,7 +172,7 @@ where
         Ok(result)
     }
 
-    async fn find_open_session(
+    pub(crate) async fn find_open_session(
         &self,
         scope: &ArtifactDataScope,
         session_id: Uuid,
@@ -196,7 +196,7 @@ where
         })
     }
 
-    async fn claim_upload_completion(
+    pub(crate) async fn claim_upload_completion(
         &self,
         scope: &ArtifactDataScope,
         session_id: Uuid,
@@ -284,7 +284,7 @@ where
         Ok(ArtifactDataObjectUploadCompletion::Active(session))
     }
 
-    async fn completed_upload_object(
+    pub(crate) async fn completed_upload_object(
         &self,
         scope: &ArtifactDataScope,
         session_id: Uuid,

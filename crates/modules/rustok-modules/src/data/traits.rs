@@ -1,13 +1,13 @@
 //! Artifact data broker, hook, authorizer, and validator traits.
 
-use async_trait::async_trait;
-use sea_orm::DatabaseConnection;
-use uuid::Uuid;
-
 use super::*;
 use super::error::*;
 use super::types::*;
 
+/// Read and write calls are self-contained owner operations. An implementation
+/// must finish any storage transaction before returning; it must not expose a
+/// live transaction to a caller that may invoke untrusted code next.
+#[async_trait]
 pub trait ArtifactDataBroker: Send + Sync {
     async fn get(
         &self,
@@ -111,6 +111,10 @@ pub trait ArtifactDataSchemaValidator: Send + Sync {
 }
 
 
+/// implementation or replace this check through its broker capability.
+/// Current policy reads use the owner's write transaction. The host must
+/// additionally enforce operational, recovery/retention/hold, and revocation
+/// fences; a current grant read alone is not that proof.
 #[async_trait]
 pub trait ArtifactDataPurgeAuthorizer: Send + Sync {
     async fn authorize_purge_on(

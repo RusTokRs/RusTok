@@ -25,12 +25,12 @@ use super::validation::*;
 /// can resume without granting the artifact storage access.
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectUploadService<A> {
-    db: DatabaseConnection,
-    storage: StorageRuntime,
-    objects: SeaOrmArtifactDataObjectBroker<A>,
-    authorizer: A,
-    infrastructure: ControlPlaneInfrastructure,
-    quota: ArtifactDataQuota,
+    pub(crate) db: DatabaseConnection,
+    pub(crate) storage: StorageRuntime,
+    pub(crate) objects: SeaOrmArtifactDataObjectBroker<A>,
+    pub(crate) authorizer: A,
+    pub(crate) infrastructure: ControlPlaneInfrastructure,
+    pub(crate) quota: ArtifactDataQuota,
 }
 
 impl<A> SeaOrmArtifactDataObjectUploadService<A>
@@ -48,10 +48,10 @@ where
     }
 
     pub fn with_infrastructure(
-        db: DatabaseConnection,
-        storage: StorageRuntime,
-        authorizer: A,
-        infrastructure: ControlPlaneInfrastructure,
+        pub(crate) db: DatabaseConnection,
+        pub(crate) storage: StorageRuntime,
+        pub(crate) authorizer: A,
+        pub(crate) infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
         Self::with_infrastructure_and_quota(
             db,
@@ -63,11 +63,11 @@ where
     }
 
     pub fn with_infrastructure_and_quota(
-        db: DatabaseConnection,
-        storage: StorageRuntime,
-        authorizer: A,
-        infrastructure: ControlPlaneInfrastructure,
-        quota: ArtifactDataQuota,
+        pub(crate) db: DatabaseConnection,
+        pub(crate) storage: StorageRuntime,
+        pub(crate) authorizer: A,
+        pub(crate) infrastructure: ControlPlaneInfrastructure,
+        pub(crate) quota: ArtifactDataQuota,
     ) -> Self {
         Self {
             objects: SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(

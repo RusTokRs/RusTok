@@ -71,7 +71,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataBroker for CompletedPageBroker {
-        async fn get(
+        pub(crate) async fn get(
             &self,
             _: &ArtifactDataScope,
             _: &str,
@@ -81,7 +81,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn put(
+        pub(crate) async fn put(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataWrite,
@@ -91,7 +91,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn put_batch(
+        pub(crate) async fn put_batch(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataBatchWrite,
@@ -101,7 +101,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn delete(
+        pub(crate) async fn delete(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataDeleteRequest,
@@ -111,7 +111,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn list(
+        pub(crate) async fn list(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataPageRequest,
@@ -135,7 +135,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataUpgradeHook for UpgradeHook {
-        async fn transform_data(
+        pub(crate) async fn transform_data(
             &self,
             hook_binding_id: &str,
             input: ArtifactDataUpgradeInput,
@@ -152,7 +152,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataSchemaValidator for AcceptingSchemaValidator {
-        async fn validate_data_value(
+        pub(crate) async fn validate_data_value(
             &self,
             scope: &ArtifactDataScope,
             value: &Value,
@@ -168,7 +168,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataSchemaValidator for AllowSchemaValidator {
-        async fn validate_data_value(
+        pub(crate) async fn validate_data_value(
             &self,
             _: &ArtifactDataScope,
             _: &Value,
@@ -186,7 +186,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataPurgeAuthorizer for DataPurgeFixturePolicy {
-        async fn authorize_purge_on(
+        pub(crate) async fn authorize_purge_on(
             &self,
             transaction: &DatabaseTransaction,
             request: &ArtifactDataPurgeRequest,
@@ -222,7 +222,7 @@ use super::super::validation::*;
         }
     }
 
-    async fn seed_retired_data_purge_installation(
+    pub(crate) async fn seed_retired_data_purge_installation(
         database: &DatabaseConnection,
         scope: &ArtifactDataScope,
     ) -> Uuid {
@@ -333,7 +333,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataExportAuthorizer for AllowExportAuthorizer {
-        async fn authorize_export(
+        pub(crate) async fn authorize_export(
             &self,
             _: &ArtifactDataExportRequest,
         ) -> Result<(), ArtifactDataError> {
@@ -350,11 +350,11 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactBindingExecutor for RecordingUpgradeBindingExecutor {
-        fn supports_payload_kind(&self, _payload_kind: crate::ArtifactPayloadKind) -> bool {
+        pub(crate) fn supports_payload_kind(&self, _payload_kind: crate::ArtifactPayloadKind) -> bool {
             true
         }
 
-        async fn dispatch_binding(
+        pub(crate) async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,
         ) -> Result<Value, String> {
@@ -376,7 +376,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataBroker for UpgradeApplyBroker {
-        async fn get(
+        pub(crate) async fn get(
             &self,
             scope: &ArtifactDataScope,
             key: &str,
@@ -392,7 +392,7 @@ use super::super::validation::*;
                 .map(|(record, _)| record.clone()))
         }
 
-        async fn put(
+        pub(crate) async fn put(
             &self,
             scope: &ArtifactDataScope,
             write: ArtifactDataWrite,
@@ -418,7 +418,7 @@ use super::super::validation::*;
             Ok(record)
         }
 
-        async fn put_batch(
+        pub(crate) async fn put_batch(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataBatchWrite,
@@ -428,7 +428,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn delete(
+        pub(crate) async fn delete(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataDeleteRequest,
@@ -438,7 +438,7 @@ use super::super::validation::*;
             ))
         }
 
-        async fn list(
+        pub(crate) async fn list(
             &self,
             _: &ArtifactDataScope,
             _: ArtifactDataPageRequest,
@@ -456,7 +456,7 @@ use super::super::validation::*;
     }
 
     impl Default for RecordingCheckpointStore {
-        fn default() -> Self {
+        pub(crate) fn default() -> Self {
             Self {
                 requests: Arc::new(Mutex::new(Vec::new())),
                 fail_first: Arc::new(AtomicBool::new(true)),
@@ -466,7 +466,7 @@ use super::super::validation::*;
 
     #[async_trait]
     impl ArtifactDataMigrationCheckpointStore for RecordingCheckpointStore {
-        async fn record_data_upgrade_checkpoint(
+        pub(crate) async fn record_data_upgrade_checkpoint(
             &self,
             request: ArtifactMigrationCheckpointRequest,
         ) -> Result<u64, ArtifactDataError> {
@@ -481,7 +481,7 @@ use super::super::validation::*;
         }
     }
 
-    fn test_scope(tenant_id: Uuid, module_slug: &str) -> ArtifactDataScope {
+    pub(crate) fn test_scope(tenant_id: Uuid, module_slug: &str) -> ArtifactDataScope {
         ArtifactDataScope {
             tenant_id,
             data_owner_id: Uuid::new_v4(),
@@ -495,7 +495,7 @@ use super::super::validation::*;
         }
     }
 
-    async fn setup_test_serving_namespace<C: ConnectionTrait>(
+    pub(crate) async fn setup_test_serving_namespace<C: ConnectionTrait>(
         connection: &C,
         scope: &ArtifactDataScope,
     ) {

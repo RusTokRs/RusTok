@@ -100,7 +100,7 @@ impl<A> CapabilityBroker for SeaOrmArtifactDataObjectCapabilityBroker<A>
 where
     A: ArtifactDataAuthorizer + Clone,
 {
-    async fn invoke(
+    pub(crate) async fn invoke(
         &self,
         call: &CapabilityCall,
         _grant: &CapabilityGrant,
@@ -263,7 +263,7 @@ impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
 
 #[async_trait]
 impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrokerResolver {
-    async fn resolve_broker(
+    pub(crate) async fn resolve_broker(
         &self,
         execution: &ArtifactCapabilityExecution,
         capability: &rustok_sandbox::CapabilityName,

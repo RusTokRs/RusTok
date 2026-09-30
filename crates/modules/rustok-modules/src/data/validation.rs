@@ -162,7 +162,7 @@ impl SeaOrmArtifactDataSchemaValidator {
         }
     }
 
-    async fn data_contract_schema(
+    pub(crate) async fn data_contract_schema(
         &self,
         scope: &ArtifactDataScope,
     ) -> Result<(String, Value), ArtifactDataError> {
@@ -238,7 +238,7 @@ impl SeaOrmArtifactDataSchemaValidator {
 
 #[async_trait]
 impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
-    async fn validate_data_value(
+    pub(crate) async fn validate_data_value(
         &self,
         scope: &ArtifactDataScope,
         value: &Value,

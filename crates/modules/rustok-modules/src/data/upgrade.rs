@@ -1,20 +1,16 @@
 //! Artifact data upgrade hooks, planners, and appliers.
 
-use async_trait::async_trait;
-use rustok_sandbox::ExecutionPhase;
-use sea_orm::DatabaseConnection;
-use serde_json::json;
-use sha2::{Digest, Sha256};
-use uuid::Uuid;
-
 use super::*;
 use super::error::*;
 use super::traits::*;
 use super::types::*;
 use super::validation::*;
 
+/// Host-owned invocation of a pre-bound sandbox transformation. The hook has
+/// no storage handle and receives one record at a time.
+#[async_trait]
 pub trait ArtifactDataUpgradeHook: Send + Sync {
-    async fn transform_data(
+    pub(crate) async fn transform_data(
         &self,
         hook_binding_id: &str,
         input: ArtifactDataUpgradeInput,
@@ -52,7 +48,7 @@ impl<E> ArtifactDataUpgradeHook for ArtifactBindingDataUpgradeHook<E>
 where
     E: ArtifactBindingExecutor,
 {
-    async fn transform_data(
+    pub(crate) async fn transform_data(
         &self,
         hook_binding_id: &str,
         input: ArtifactDataUpgradeInput,

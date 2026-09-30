@@ -512,7 +512,7 @@ pub(crate) struct ArtifactDataPurgeTarget {
 }
 
 impl ArtifactDataPurgeTarget {
-    fn is_retired(&self) -> bool {
+    pub(crate) fn is_retired(&self) -> bool {
         self.admission_status == "inactive" && self.uninstalled
     }
 }

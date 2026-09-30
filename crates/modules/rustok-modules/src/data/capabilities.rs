@@ -76,7 +76,7 @@ where
     A: ArtifactDataAuthorizer,
     V: ArtifactDataSchemaValidator,
 {
-    async fn invoke(
+    pub(crate) async fn invoke(
         &self,
         call: &CapabilityCall,
         _grant: &CapabilityGrant,
@@ -190,7 +190,7 @@ pub(crate) struct ExactArtifactDataAuthorizer {
 
 #[async_trait]
 impl ArtifactDataAuthorizer for ExactArtifactDataAuthorizer {
-    async fn authorize_data(
+    pub(crate) async fn authorize_data(
         &self,
         scope: &ArtifactDataScope,
         _access: ArtifactDataAccess,
@@ -205,7 +205,7 @@ impl ArtifactDataAuthorizer for ExactArtifactDataAuthorizer {
 
 #[async_trait]
 impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerResolver {
-    async fn resolve_broker(
+    pub(crate) async fn resolve_broker(
         &self,
         execution: &ArtifactCapabilityExecution,
         capability: &rustok_sandbox::CapabilityName,
