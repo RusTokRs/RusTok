@@ -20,7 +20,7 @@ The operator still evaluates the existing typed `PostOrderOrchestrationError` be
 - leased, reconciliation, terminal, replay, or command conflict: `409` / `return_completion_operation_conflict`;
 - order recovery database/core failure: `503` / `return_completion_storage_unavailable`.
 
-The conflict message is now static: `Return completion operation conflicts with the current state`. Internal owner validation text is no longer returned to the client.
+The conflict message is now static: `Return completion operation conflicts with the current state`. Internal owner validation text is no longer returned to the client. Persisted `last_error_message` is also projected to a static operator-safe message; raw validation/database/provider detail remains internal.
 
 ## Bounded diagnostics
 
@@ -37,12 +37,16 @@ This work does not change:
 
 - the three mounted routes or their response DTOs;
 - `ORDERS_READ` authorization for list/detail;
-- combined `ORDERS_MANAGE` and `PAYMENTS_MANAGE` authorization for retry;
+- combined `ORDERS_MANAGE` and `PAYMENTS_MANAGE` authorization for retry (both permissions are required);
 - pagination, filtering, totals, and success envelopes;
 - `ReturnCompletionOrchestrationService` calls;
 - payment-provider registry composition;
 - existing internal string classifiers used to distinguish specialized operator states;
 - delegation of unmatched errors to the shared post-order mapper.
+
+## Pagination safety
+
+The recovery service now computes the list offset with saturating arithmetic, so extreme untrusted `page` values cannot overflow the `u64` offset calculation.
 
 ## Remaining boundary
 

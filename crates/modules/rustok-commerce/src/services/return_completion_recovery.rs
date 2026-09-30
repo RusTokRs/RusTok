@@ -212,7 +212,7 @@ impl ReturnCompletionOrchestrationService {
         let total = query.clone().count(&self.db).await.map_err(storage_error)?;
         let operations = query
             .order_by_desc(return_completion_operation::Column::UpdatedAt)
-            .offset((page - 1) * per_page)
+            .offset(pagination_offset(page, per_page))
             .limit(per_page)
             .all(&self.db)
             .await
@@ -537,7 +537,10 @@ fn map_operation(
             .lease_expires_at
             .map(|value| value.with_timezone(&Utc)),
         last_error_code: operation.last_error_code,
-        last_error_message: operation.last_error_message,
+        last_error_message: safe_last_error_message(
+            operation.last_error_code.as_deref(),
+            operation.last_error_message.is_some(),
+        ),
         requested_by_actor_id: command.map(|value| value.requested_by_actor_id),
         retry_count: command.map(|value| value.retry_count).unwrap_or(0),
         last_retry_actor_id: command.and_then(|value| value.last_retry_actor_id),
@@ -552,6 +555,29 @@ fn map_operation(
             .completed_at
             .map(|value| value.with_timezone(&Utc)),
     }
+}
+
+fn pagination_offset(page: u64, per_page: u64) -> u64 {
+    page.saturating_sub(1).saturating_mul(per_page)
+}
+
+fn safe_last_error_message(
+    error_code: Option<&str>,
+    has_error_message: bool,
+) -> Option<String> {
+    if !has_error_message {
+        return None;
+    }
+
+    let message = match error_code {
+        Some("return_completion_retryable") => "Return completion can be retried",
+        Some("return_completion_reconciliation_required") => {
+            "Return completion requires operator reconciliation"
+        }
+        Some("return_completion_failed") => "Return completion failed",
+        _ => "Return completion encountered an error",
+    };
+    Some(message.to_string())
 }
 
 fn ensure_same_command(
@@ -744,6 +770,58 @@ mod tests {
         assert_eq!(
             completion_request_hash(&completion_request_payload(&left)).unwrap(),
             completion_request_hash(&completion_request_payload(&right)).unwrap()
+        );
+    }
+}
+
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn pagination_offset_saturates_on_extreme_page_values() {
+        assert_eq!(pagination_offset(1, 100), 0);
+        assert_eq!(pagination_offset(2, 100), 100);
+        assert_eq!(pagination_offset(u64::MAX, 100), u64::MAX - (u64::MAX % 100));
+    }
+
+    #[test]
+    fn operator_response_redacts_persisted_error_detail() {
+        let operation = return_completion_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            return_id: Uuid::new_v4(),
+            request_hash: "a".repeat(64),
+            status: "retryable_error".to_string(),
+            stage: "created".to_string(),
+            refund_id: None,
+            order_change_id: None,
+            attempt_count: 1,
+            lease_owner: None,
+            lease_expires_at: None,
+            last_error_code: Some("return_completion_retryable".to_string()),
+            last_error_message: Some(
+                "postgres relation return_completion_commands failed: secret backend detail"
+                    .to_string(),
+            ),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            completed_at: None,
+        };
+
+        let response = map_operation(operation, None);
+        assert_eq!(
+            response.last_error_message.as_deref(),
+            Some("Return completion can be retried")
+        );
+        assert!(
+            !response
+                .last_error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("postgres")
         );
     }
 }
