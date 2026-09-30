@@ -5,8 +5,12 @@ use rustok_cart::{
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
-use rustok_order::{CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, OrderError};
-use rustok_payment::{CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest, PaymentError};
+use rustok_order::{
+    CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, OrderError,
+};
+use rustok_payment::{
+    CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest, PaymentError,
+};
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
