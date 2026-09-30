@@ -11,8 +11,8 @@ pub use types::{
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -184,7 +184,6 @@ impl CartService {
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
     pub async fn create_cart_with_channel(
         &self,
         tenant_id: Uuid,
@@ -297,7 +296,8 @@ impl CartService {
         txn: &C,
         tenant_id: Uuid,
         cart_id: Uuid,
-        line_item_id: Uuid ,
+        input: AddCartLineItemInput,
+        pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         input
             .validate()
@@ -428,7 +428,7 @@ impl CartService {
         txn: &C,
         tenant_id: Uuid,
         cart_id: Uuid,
-        input: UpdateCartContextInput ,
+        input: UpdateCartContextInput,
     ) -> CartResult<CartResponse> {
         input
             .validate()
@@ -566,7 +566,7 @@ impl CartService {
         tenant_id: Uuid,
         cart_id: Uuid,
         line_item_id: Uuid,
-        quantity: i32 ,
+        quantity: i32,
     ) -> CartResult<CartResponse> {
         if quantity < 1 {
             return Err(CartError::Validation(
@@ -620,7 +620,7 @@ impl CartService {
         line_item_id: Uuid,
         quantity: i32,
         unit_price: Decimal,
-        pricing_adjustment: Option<CartPricingAdjustmentUpdate> ,
+        pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         if quantity < 1 {
             return Err(CartError::Validation(
