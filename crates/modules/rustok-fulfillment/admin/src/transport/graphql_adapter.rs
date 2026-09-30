@@ -4,19 +4,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingOptionList,
-    ShippingProfile, ShippingProfileList,
+    ShippingOptionTranslation, ShippingProfile, ShippingProfileList,
 };
 
 pub type ApiError = GraphqlHttpError;
 
 const BOOTSTRAP_QUERY: &str = "query FulfillmentAdminBootstrap { currentTenant { id slug name } }";
-const SHIPPING_OPTIONS_QUERY: &str = "query FulfillmentAdminShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } } }";
-const SHIPPING_OPTION_QUERY: &str = "query FulfillmentAdminShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const SHIPPING_OPTIONS_QUERY: &str = "query FulfillmentAdminShippingOptions($tenantId: UUID!, $filter: ShippingOptionsFilter) { shippingOptions(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } } }";
+const SHIPPING_OPTION_QUERY: &str = "query FulfillmentAdminShippingOption($tenantId: UUID!, $id: UUID!) { shippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query FulfillmentAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active } } }";
-const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminCreateShippingOption($tenantId: UUID!, $input: CreateShippingOptionInput!) { createShippingOption(tenantId: $tenantId, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
-const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
-const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
-const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt } }";
+const CREATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminCreateShippingOption($tenantId: UUID!, $input: CreateShippingOptionInput!) { createShippingOption(tenantId: $tenantId, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
+const UPDATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminUpdateShippingOption($tenantId: UUID!, $id: UUID!, $input: UpdateShippingOptionInput!) { updateShippingOption(tenantId: $tenantId, id: $id, input: $input) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
+const DEACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminDeactivateShippingOption($tenantId: UUID!, $id: UUID!) { deactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
+const REACTIVATE_SHIPPING_OPTION_MUTATION: &str = "mutation FulfillmentAdminReactivateShippingOption($tenantId: UUID!, $id: UUID!) { reactivateShippingOption(tenantId: $tenantId, id: $id) { id tenantId name currencyCode amount providerId active allowedShippingProfileSlugs metadata createdAt updatedAt translations { locale name } } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -361,13 +361,20 @@ fn build_create_shipping_option_input(draft: ShippingOptionDraft) -> CreateShipp
 }
 
 fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShippingOptionInput {
+    let locale = draft.locale.trim().to_string();
+    let name = draft.name.trim().to_string();
+    let translations = if name.is_empty() {
+        None
+    } else {
+        Some(merge_existing_translation(
+            draft.existing_translations,
+            &locale,
+            &name,
+        ))
+    };
+
     UpdateShippingOptionInput {
-        translations: optional_text(draft.name.as_str()).map(|name| {
-            vec![ShippingOptionTranslationInput {
-                locale: draft.locale.trim().to_string(),
-                name,
-            }]
-        }),
+        translations,
         currency_code: optional_text(draft.currency_code.as_str())
             .map(|value| normalize_currency_code(value.as_str())),
         amount: optional_text(draft.amount.as_str()).map(|value| normalize_amount(value.as_str())),
@@ -375,6 +382,34 @@ fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShipp
         allowed_shipping_profile_slugs: Some(vec_or_empty(draft.allowed_shipping_profile_slugs)),
         metadata: optional_json_text(draft.metadata_json.as_str()),
     }
+}
+
+fn merge_existing_translation(
+    existing: Vec<ShippingOptionTranslation>,
+    locale: &str,
+    name: &str,
+) -> Vec<ShippingOptionTranslationInput> {
+    let mut translations = existing
+        .into_iter()
+        .map(|translation| ShippingOptionTranslationInput {
+            locale: translation.locale,
+            name: translation.name,
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(current) = translations
+        .iter_mut()
+        .find(|translation| translation.locale == locale)
+    {
+        current.name = name.to_string();
+    } else {
+        translations.push(ShippingOptionTranslationInput {
+            locale: locale.to_string(),
+            name: name.to_string(),
+        });
+    }
+
+    translations
 }
 
 fn vec_or_none(value: Vec<String>) -> Option<Vec<String>> {
@@ -410,4 +445,68 @@ fn normalize_amount(value: &str) -> String {
 
 fn optional_json_text(value: &str) -> Option<String> {
     optional_text(value)
+}
+#[cfg(test)]
+mod tests {
+    use super::{build_update_shipping_option_input, merge_existing_translation};
+    use crate::model::{ShippingOptionDraft, ShippingOptionTranslation};
+
+    fn draft(existing_translations: Vec<ShippingOptionTranslation>) -> ShippingOptionDraft {
+        ShippingOptionDraft {
+            name: "Express DE".to_string(),
+            currency_code: "EUR".to_string(),
+            amount: "12.50".to_string(),
+            provider_id: "manual".to_string(),
+            allowed_shipping_profile_slugs: Vec::new(),
+            metadata_json: String::new(),
+            locale: "de".to_string(),
+            existing_translations,
+        }
+    }
+
+    #[test]
+    fn update_input_preserves_unedited_shipping_option_translations() {
+        let input = build_update_shipping_option_input(draft(vec![
+            ShippingOptionTranslation {
+                locale: "en".to_string(),
+                name: "Express".to_string(),
+            },
+            ShippingOptionTranslation {
+                locale: "fr".to_string(),
+                name: "Express FR".to_string(),
+            },
+            ShippingOptionTranslation {
+                locale: "de".to_string(),
+                name: "Express old".to_string(),
+            },
+        ]));
+
+        let translations = input.translations.expect("translation update expected");
+        assert_eq!(
+            translations.iter().map(|value| (&value.locale, &value.name)).collect::<Vec<_>>(),
+            vec![
+                (&"en".to_string(), &"Express".to_string()),
+                (&"fr".to_string(), &"Express FR".to_string()),
+                (&"de".to_string(), &"Express DE".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_existing_translation_adds_missing_locale_without_dropping_existing() {
+        let translations = merge_existing_translation(
+            vec![ShippingOptionTranslation {
+                locale: "en".to_string(),
+                name: "Express".to_string(),
+            }],
+            "de",
+            "Express DE",
+        );
+
+        assert_eq!(translations.len(), 2);
+        assert!(translations.iter().any(|value| value.locale == "en"));
+        assert!(translations
+            .iter()
+            .any(|value| value.locale == "de" && value.name == "Express DE"));
+    }
 }
