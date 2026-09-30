@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b8414c4436b0de0c44061134a3a3ed6fe073f8d0`  
+**Current main SHA:** `3732dae46a74b74a6d3ecfe0facb8e1db8907ccf`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3658,3 +3658,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now explicitly records the fail-closed checkout create-label rollback contract.
 - **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.55` complete and integrated. Next primary module: `FS-22.06.56 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000115_cleanup_cancelled_checkout_labels.rs`.
+
+
+### FS-22.06.56 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000115_cleanup_cancelled_checkout_labels.rs` Cancelled checkout label cleanup and in-flight quarantine
+
+- **Base:** refreshed `main` at `0d36c74407c84344978effae64c59fad40f0394f`; implementation was integrated through PR #4411 as `3732dae46a74b74a6d3ecfe0facb8e1db8907ccf`.
+- **Primary scope:** one production migration module only — cleanup of checkout `create_label` provider operations when an order is cancelled, including migration-time reconciliation of pre-existing operations.
+- **Invariant map:** cancellation must remove unstarted checkout label work, must not leave in-flight external execution represented as ordinary executable state, tenant boundaries must remain enforced, and upgrade backfill/live cancellation must have identical safety semantics on PostgreSQL and SQLite.
+- **Finding:** the original migration deleted only `pending` create-label operations. An already `executing` operation could survive order cancellation, so an external label call could finish after cancellation while the durable journal remained in an in-flight execution state.
+- **Production remediation:** migration upgrade now quarantines existing `executing` checkout label operations attached to cancelled orders as `reconciliation_required`; the live cancellation trigger performs the same quarantine. Pending create-label operations continue to be deleted.
+- **Reason preservation:** the quarantine writes a deterministic cancellation-specific error message rather than preserving a stale provider error from a prior retry, so operator reconciliation sees the current business cause.
+- **Tenant integrity:** PostgreSQL and SQLite cleanup/quarantine predicates bind operation, fulfillment, and order through the same tenant identity; cross-tenant or mismatched references are not treated as valid cancellation targets.
+- **Lifecycle compatibility:** `executing -> reconciliation_required` is the already-admitted transition from `000113`. Provider success arriving after quarantine cannot silently commit the operation because the journal's success update requires `executing`.
+- **Concurrency audit:** Order cancellation is owner-transactional and row-locked; the cancellation trigger may serialize on the provider-operation row and converts any visible in-flight operation to the fail-closed reconciliation state. No local retry path remains after quarantine.
+- **Regression coverage:** added tests for both migration-time backfill and live cancellation. The live test verifies that pending labels are deleted and executing labels become non-claimable reconciliation records.
+- **Fresh second pass:** re-read the final migration, provider-operation lifecycle/recovery code, Order cancellation transaction/lock path, and adjacent checkout payment/identity migrations. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Documentation:** Fulfillment README now documents both upgrade-time and live cancellation quarantine behavior.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.56` complete and integrated. Next primary module: `FS-22.06.57 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000116_block_premature_label_operation_inserts.rs`.
