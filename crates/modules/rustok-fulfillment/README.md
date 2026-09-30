@@ -23,6 +23,7 @@
 - Provider operations with an unresolved external outcome remain fail-closed during migration rollback: the reconciliation migration refuses to roll back while any `reconciliation_required` operation has no persisted provider result; the operation must be resolved before the older lifecycle contract is restored.
 - Checkout `create_label` payment protection is also fail-closed on rollback: the payment-guard migration refuses to roll back while a retryable or executing create-label operation is tied to an unpaid or invalid tenant-scoped order, so removing the guard cannot reopen premature provider execution.
 - When an order is cancelled, any in-flight checkout `create_label` operation is moved to `reconciliation_required` rather than left executable; pending label operations are removed. This preserves the provider journal as the canonical fail-closed record for cancellation races.
+- The cancellation quarantine is applied both to existing rows during migration upgrade and to live order-cancellation transitions; cancellation becomes the recorded reason for the reconciliation state.
 - Support post-order follow-up fulfillments through the commerce facade, where manual create paths validate order-line ownership and remaining quantities before calling `FulfillmentService`.
 - Publish a module-owned Leptos admin UI package in `admin/` for shipping-option operations.
 
