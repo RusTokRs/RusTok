@@ -4092,5 +4092,5 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Concurrency reconciliation:** `main` advanced independently to Artifact commit `452757ab...` during the phase. Its changed files do not overlap Fulfillment/ledger, so the phase branch was not force-rebased; the current main SHA is recorded here and must be refreshed again immediately before integration.
 - **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/rustfmt/runtime evidence is claimed from the local environment.
 - **Documentation:** Fulfillment README now records the object-shaped checkout metadata contract and preservation/fail-closed rules for item cart-line identity.
-- **Status:** `FS-22.06.81` implementation complete on dedicated branch; integration pending final merge gate.
+- **Status:** `FS-22.06.81` complete and integrated on `main` as `d4c8afb42a7c16ad69a102bff9cc76ea22e79462`.
 - **Next primary module iteration:** `FS-22.06.82 — same primary module, fresh pass of fulfillment item metadata ownership and lifecycle projection boundaries`.
