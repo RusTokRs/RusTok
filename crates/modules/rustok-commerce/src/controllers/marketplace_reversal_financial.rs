@@ -118,6 +118,7 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     responses(
         (status = 200, description = "Marketplace reversal events requiring operator review", body = [MarketplaceReversalEventResponse]),
         (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission")
     )
 )]
 pub async fn list_operator_review(
@@ -142,7 +143,8 @@ pub async fn list_operator_review(
     params(("id" = Uuid, Path, description = "Marketplace reversal inbox ID")),
     responses(
         (status = 200, description = "Marketplace reversal event", body = MarketplaceReversalEventResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission"),
         (status = 404, description = "Reversal event not found")
     )
 )]
@@ -169,7 +171,8 @@ pub async fn show_event(
     params(("id" = Uuid, Path, description = "Marketplace reversal inbox ID")),
     responses(
         (status = 200, description = "Marketplace reversal event processed after explicit safe retry", body = MarketplaceReversalEventResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission"),
         (status = 409, description = "Reversal event is not safely retryable")
     )
 )]
@@ -196,7 +199,8 @@ pub async fn retry_event(
     request_body = MarketplaceReversalSweepInput,
     responses(
         (status = 200, description = "Bounded tenant-scoped marketplace reversal recovery sweep", body = MarketplaceReversalSweepResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission"),
         (status = 503, description = "Recovery storage unavailable")
     )
 )]
@@ -236,6 +240,7 @@ pub async fn run_recovery_sweep(
     responses(
         (status = 200, description = "Historical reversal adaptation failures requiring operator review", body = [MarketplaceReversalAdaptationFailureResponse]),
         (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission")
     )
 )]
 pub async fn list_adaptation_failures_operator_review(
@@ -260,7 +265,8 @@ pub async fn list_adaptation_failures_operator_review(
     params(("id" = Uuid, Path, description = "Marketplace reversal adaptation failure ID")),
     responses(
         (status = 200, description = "Marketplace reversal adaptation failure", body = MarketplaceReversalAdaptationFailureResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission"),
         (status = 404, description = "Adaptation failure not found")
     )
 )]
@@ -287,7 +293,8 @@ pub async fn show_adaptation_failure(
     params(("id" = Uuid, Path, description = "Marketplace reversal adaptation failure ID")),
     responses(
         (status = 200, description = "Adaptation failure resolved after explicit retry", body = MarketplaceReversalAdaptationFailureResponse),
-        (status = 401, description = "Unauthorized"),
+        (status = 401, description = "Unauthorized")
+        (status = 403, description = "Authenticated principal lacks the required payments:read or payments:manage permission"),
         (status = 409, description = "Adaptation remains invalid or is not retryable"),
         (status = 503, description = "Adaptation dependencies are temporarily unavailable")
     )
