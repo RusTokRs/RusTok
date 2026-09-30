@@ -1834,6 +1834,11 @@ fn normalize_translation_inputs(
                 "Shipping option name cannot be empty".to_string(),
             ));
         }
+        if name.chars().count() > 120 {
+            return Err(FulfillmentError::Validation(
+                "Shipping option name must be at most 120 characters".to_string(),
+            ));
+        }
         normalized.push(ShippingOptionTranslationInput {
             locale,
             name: name.to_string(),
@@ -2092,6 +2097,19 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_oversized_shipping_option_name() {
+        let name = "x".repeat(121);
+        let result = super::normalize_translation_inputs(vec![
+            crate::dto::ShippingOptionTranslationInput {
+                locale: "en".to_string(),
+                name,
+            },
+        ]);
+
+        assert!(result.is_err());
     }
 
     #[test]
