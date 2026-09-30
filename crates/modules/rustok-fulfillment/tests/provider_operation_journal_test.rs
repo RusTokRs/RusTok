@@ -201,6 +201,75 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
 }
 
 #[tokio::test]
+async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+    ensure_provider_journal_guards(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let operation = journal
+        .begin(BeginProviderOperation {
+            tenant_id,
+            fulfillment_id,
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "rollback-must-block".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": tenant_id,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "rollback-must-block",
+                "metadata": {}
+            }),
+        })
+        .await
+        .expect("journal operation");
+    journal
+        .claim_execution(tenant_id, operation.id)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    let unresolved = journal
+        .mark_execution_reconciliation_required(
+            tenant_id,
+            operation.id,
+            None,
+            None,
+            "external outcome is unknown",
+        )
+        .await
+        .expect("reconciliation state");
+
+    assert_eq!(unresolved.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
+    assert!(unresolved.provider_result.is_none());
+
+    let migration = rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .nth(8)
+        .expect("reconciliation migration should exist");
+    let rollback = migration.down(&SchemaManager::new(&db)).await;
+
+    assert!(
+        rollback.is_err(),
+        "rollback must be blocked while an external outcome is unresolved"
+    );
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("provider operation remains readable after blocked rollback");
+    assert_eq!(
+        current.status,
+        PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        "blocked rollback must not make an unresolved operation retryable"
+    );
+    assert!(current.provider_result.is_none());
+}
+
+#[tokio::test]
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
