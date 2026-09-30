@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_fulfillment::entities::fulfillment;
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, Set, Statement};
 use sea_orm_migration::MigrationTrait;
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -48,6 +48,146 @@ async fn insert_fulfillment(
     }
     .insert(db)
     .await
+}
+
+async fn insert_legacy_fulfillment(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    metadata: serde_json::Value,
+) -> Result<Uuid, sea_orm::DbErr> {
+    let id = Uuid::new_v4();
+    let now = Utc::now().fixed_offset();
+    let mut active = fulfillment::ActiveModel::default();
+    active.id = Set(id);
+    active.tenant_id = Set(tenant_id);
+    active.order_id = Set(Uuid::new_v4());
+    active.status = Set("pending".to_string());
+    active.metadata = Set(metadata);
+    active.created_at = Set(now);
+    active.updated_at = Set(now);
+    active.insert(db).await.map(|_| id)
+}
+
+#[tokio::test]
+async fn typed_checkout_identity_rollback_restores_current_legacy_sqlite_guards() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+
+    let migrations = rustok_fulfillment::migrations::migrations();
+    let manager = SchemaManager::new(&db);
+    migrations
+        .get(12)
+        .expect("legacy checkout identity migration should exist")
+        .up(&manager)
+        .await
+        .expect("legacy checkout identity migration should install");
+    migrations
+        .get(14)
+        .expect("typed checkout identity migration should exist")
+        .up(&manager)
+        .await
+        .expect("typed checkout identity migration should install");
+
+    let tenant_id = Uuid::new_v4();
+    let operation_id = Uuid::new_v4();
+    let valid = insert_fulfillment(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "operator_note": "typed"
+        }),
+    )
+    .await
+    .expect("typed checkout fulfillment should be inserted");
+
+    let mut typed = valid.clone();
+    typed.checkout_operation_id = Some(operation_id);
+    typed.checkout_fulfillment_index = Some(0);
+    typed.checkout_plan_hash = Some("a".repeat(64));
+    typed.metadata = serde_json::json!({
+        "operator_note": "typed"
+    });
+    let mut active: fulfillment::ActiveModel = typed.into();
+    let typed_model = active
+        .update(&db)
+        .await
+        .expect("typed checkout identity should be written");
+
+    assert_eq!(typed_model.checkout_operation_id, Some(operation_id));
+
+    migrations
+        .get(14)
+        .expect("typed checkout identity migration should exist")
+        .down(&manager)
+        .await
+        .expect("typed checkout identity rollback should restore legacy schema");
+
+    let triggers = db
+        .query_one(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT group_concat(sql, char(10)) FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'fulfillments'".to_owned(),
+        ))
+        .await
+        .expect("sqlite trigger catalog should be queryable")
+        .expect("sqlite trigger catalog row should exist");
+    let trigger_sql: Option<String> = triggers.try_get_by_index(0).expect("trigger sql should be text");
+    let trigger_sql = trigger_sql.unwrap_or_default();
+    assert!(
+        trigger_sql.contains("fulfillments_checkout_identity_guard_insert"),
+        "rollback must restore the current legacy INSERT guard"
+    );
+    assert!(
+        trigger_sql.contains("invalid fulfillment checkout identity"),
+        "rollback must restore legacy identity-pair validation"
+    );
+
+    let invalid_insert = insert_legacy_fulfillment(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "checkout": {
+                "fulfillment_key": "checkout:missing-operation:fulfillment:0"
+            }
+        }),
+    )
+    .await;
+    assert!(
+        invalid_insert.is_err(),
+        "rollback must retain the current legacy INSERT guard"
+    );
+
+    let valid_legacy = insert_legacy_fulfillment(
+        &db,
+        tenant_id,
+        serde_json::json!({
+            "checkout": {
+                "fulfillment_key": format!("checkout:{operation_id}:fulfillment:1"),
+                "operation_id": operation_id.to_string()
+            }
+        }),
+    )
+    .await
+    .expect("valid legacy identity should be inserted after rollback");
+
+    let invalid_update = db
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE fulfillments SET metadata = ? WHERE id = ?",
+            vec![
+                serde_json::json!({
+                    "checkout": {
+                        "fulfillment_key": format!("checkout:{operation_id}:fulfillment:1")
+                    }
+                })
+                .into(),
+                valid_legacy.into(),
+            ],
+        ))
+        .await;
+    assert!(
+        invalid_update.is_err(),
+        "rollback must retain legacy identity-pair validation on UPDATE"
+    );
 }
 
 #[tokio::test]
