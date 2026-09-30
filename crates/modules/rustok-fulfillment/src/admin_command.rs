@@ -945,7 +945,6 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use rustok_api::{PortActor, PortErrorKind};
@@ -966,8 +965,6 @@ mod tests {
             &context,
             Uuid::new_v4(),
             Uuid::new_v4(),
-            "ship",
-            "manual",
             serde_json::json!({"example": "value"}),
         )
         .expect("caller-owned key should produce provider request");
@@ -991,8 +988,6 @@ mod tests {
             &context,
             Uuid::new_v4(),
             Uuid::new_v4(),
-            "ship",
-            "manual",
             Value::Null,
         )
         .expect_err("missing caller-owned key must fail closed");
