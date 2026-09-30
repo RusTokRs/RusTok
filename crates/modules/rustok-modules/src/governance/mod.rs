@@ -23,6 +23,7 @@ pub mod staging;
 pub mod staging_alloy;
 pub mod staging_external;
 pub mod types;
+pub mod types_publication;
 pub mod upload;
 pub mod validation_evidence;
 pub mod validation_jobs;
@@ -34,6 +35,7 @@ pub use constants::*;
 pub use error::*;
 pub use snapshots::*;
 pub use types::*;
+pub use types_publication::*;
 pub use projections::SeaOrmModuleGovernanceService;
 
 #[cfg(test)]

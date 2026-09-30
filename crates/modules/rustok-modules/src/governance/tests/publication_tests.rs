@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait, Value};
 use semver::Version;
 use sha2::{Digest, Sha256};
@@ -18,9 +20,10 @@ use crate::{
     ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
     ControlPlaneInfrastructure, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
     ModuleCommandContext, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
-    ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
-    TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
-    MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
+    ModuleMarketplaceEntry, ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference,
+    TrustEvidenceKind, TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET,
+    MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
+    MODULE_BUILD_WIT_WORLD,
 };
 
 

@@ -1,4 +1,5 @@
 //! Governance integration and contract tests.
+#![allow(unused_imports)]
 
 use super::*;
 use super::actions_ownership::*;
@@ -22,6 +23,7 @@ use super::staging::*;
 use super::staging_alloy::*;
 use super::staging_external::*;
 use super::types::*;
+use super::types_publication::*;
 use super::upload::*;
 use super::validation_evidence::*;
 use super::validation_jobs::*;
@@ -33,6 +35,7 @@ mod fixtures;
 
 mod action_tests;
 mod error_and_contract_tests;
+mod marketplace_projection_tests;
 mod publication_evidence_tests;
 mod publication_tests;
 mod snapshot_projection_tests;
