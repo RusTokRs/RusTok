@@ -57,7 +57,7 @@ This work does not change:
 - fulfillment provider-registry composition;
 - the default limit of 100;
 - the stale interval clamp from 60 seconds through seven days;
-- successful provider-operation and fulfillment response envelopes.
+- successful fulfillment retry response envelopes; provider-operation inspection/resolution envelopes intentionally use the bounded projection described above.
 
 ## Remaining boundary
 
