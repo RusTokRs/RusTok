@@ -110,7 +110,7 @@ pub async fn create_cart(
                 auth.0.as_ref(),
                 tenant.id,
                 "create",
-                true,
+                Some(&idempotency_key),
             ),
             CartStorefrontCreateRequest {
                 input: crate::dto::CreateCartInput {
@@ -258,6 +258,7 @@ pub async fn update_cart_context(
         auth.0.as_ref(),
         tenant.default_locale.as_str(),
         &cart,
+        &idempotency_key,
         StoreCartContextPatch {
             email: input.email,
             region_id: input.region_id,
@@ -317,7 +318,7 @@ pub async fn add_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -424,7 +425,7 @@ pub async fn update_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -579,7 +580,7 @@ pub async fn remove_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
