@@ -12,7 +12,7 @@ use validator::Validate;
 
 use rustok_core::generate_id;
 
-use rustok_api::normalize_locale_tag;
+use rustok_api::{TenantLocale, UNKNOWN_PROVENANCE_LOCALE, normalize_locale_tag};
 
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
@@ -1566,13 +1566,13 @@ async fn load_shipping_options_with_translations(
             .push(translation);
     }
 
-    Ok(rows
+    rows
         .into_iter()
         .map(|row| {
             let translations = translations_by_option.remove(&row.id).unwrap_or_default();
             map_shipping_option(row, translations, requested_locale, tenant_default_locale)
         })
-        .collect())
+        .collect()
 }
 
 fn map_shipping_option(
@@ -1580,16 +1580,22 @@ fn map_shipping_option(
     translations: Vec<entities::shipping_option_translation::Model>,
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
-) -> ShippingOptionResponse {
+) -> FulfillmentResult<ShippingOptionResponse> {
+    validate_persisted_shipping_option_locales(&translations)?;
     let available_locales = translations
         .iter()
+        .filter(|translation| translation.locale != UNKNOWN_PROVENANCE_LOCALE)
         .map(|translation| translation.locale.clone())
+        .collect::<Vec<_>>();
+    let runtime_translations = translations
+        .iter()
+        .filter(|translation| translation.locale != UNKNOWN_PROVENANCE_LOCALE)
         .collect::<Vec<_>>();
     let requested_locale = requested_locale
         .and_then(normalize_locale_tag)
         .filter(|value| !value.is_empty());
     let (resolved, effective_locale) = resolve_translation(
-        &translations,
+        &runtime_translations,
         requested_locale.as_deref(),
         tenant_default_locale,
     );
@@ -1597,7 +1603,7 @@ fn map_shipping_option(
         .map(|translation| translation.name.clone())
         .unwrap_or_default();
 
-    ShippingOptionResponse {
+    Ok(ShippingOptionResponse {
         id: option.id,
         tenant_id: option.tenant_id,
         name,
@@ -1619,7 +1625,34 @@ fn map_shipping_option(
                 name: translation.name,
             })
             .collect(),
+    })
+}
+
+fn validate_persisted_shipping_option_locales(
+    translations: &[entities::shipping_option_translation::Model],
+) -> FulfillmentResult<()> {
+    let mut seen = HashSet::new();
+    for translation in translations {
+        if translation.locale == UNKNOWN_PROVENANCE_LOCALE {
+            continue;
+        }
+        let locale = TenantLocale::new(&translation.locale).map_err(|error| {
+            FulfillmentError::Validation(format!(
+                "Shipping option contains an invalid persisted locale: {error}"
+            ))
+        })?;
+        if locale.as_str() != translation.locale {
+            return Err(FulfillmentError::Validation(
+                "Shipping option contains a non-canonical persisted locale".to_string(),
+            ));
+        }
+        if !seen.insert(locale.into_inner()) {
+            return Err(FulfillmentError::Validation(
+                "Shipping option contains duplicate canonical persisted locales".to_string(),
+            ));
+        }
     }
+    Ok(())
 }
 
 fn normalize_translation_inputs(
@@ -1747,7 +1780,7 @@ fn translation_change_error_to_fulfillment_error(
 }
 
 fn resolve_translation<'a>(
-    translations: &'a [entities::shipping_option_translation::Model],
+    translations: &'a [&'a entities::shipping_option_translation::Model],
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> (
@@ -1757,7 +1790,7 @@ fn resolve_translation<'a>(
     let mut lookup = HashMap::new();
     for translation in translations {
         if let Some(normalized) = normalize_locale_tag(&translation.locale) {
-            lookup.insert(normalized, translation);
+            lookup.insert(normalized, *translation);
         }
     }
 
@@ -1773,7 +1806,7 @@ fn resolve_translation<'a>(
     }
     translations
         .first()
-        .map(|item| (Some(item), Some(item.locale.clone())))
+        .map(|item| (Some(**item), Some(item.locale.clone())))
         .unwrap_or((None, None))
 }
 
@@ -1819,5 +1852,52 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
         metadata: item.metadata,
         created_at: item.created_at.with_timezone(&Utc),
         updated_at: item.updated_at.with_timezone(&Utc),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_translation, validate_persisted_shipping_option_locales};
+    use crate::entities::shipping_option_translation;
+    use uuid::Uuid;
+
+    fn translation(locale: &str, name: &str) -> shipping_option_translation::Model {
+        shipping_option_translation::Model {
+            id: Uuid::new_v4(),
+            shipping_option_id: Uuid::new_v4(),
+            locale: locale.to_string(),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn persisted_locale_validation_allows_storage_only_und_but_never_treats_it_as_runtime() {
+        let und = translation("und", "Legacy name");
+        let en = translation("en", "Express");
+        validate_persisted_shipping_option_locales(&[und.clone(), en.clone()])
+            .expect("und is storage-only and valid persisted data");
+
+        let runtime = vec![&und, &en];
+        let (resolved, effective) = resolve_translation(&runtime[1..], Some("de"), None);
+        assert_eq!(resolved.map(|value| value.name.as_str()), Some("Express"));
+        assert_eq!(effective.as_deref(), Some("en"));
+
+        let only_und = vec![&und];
+        let (resolved, effective) = resolve_translation(&only_und, Some("de"), None);
+        assert!(resolved.is_some(), "helper receives only runtime rows by contract");
+        assert_eq!(effective.as_deref(), Some("und"));
+    }
+
+    #[test]
+    fn persisted_locale_validation_rejects_invalid_and_noncanonical_rows() {
+        let invalid = validate_persisted_shipping_option_locales(&[
+            translation("not@a-locale", "Broken"),
+        ]);
+        assert!(invalid.is_err());
+
+        let noncanonical = validate_persisted_shipping_option_locales(&[
+            translation("EN", "Broken"),
+        ]);
+        assert!(noncanonical.is_err());
     }
 }
