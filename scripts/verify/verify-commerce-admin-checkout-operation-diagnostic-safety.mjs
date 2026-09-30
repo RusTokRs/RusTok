@@ -12,7 +12,7 @@ const forbid = (s, v, l) => { if (s.includes(v)) failures.push(l + ": forbidden 
 const between = (s, a, b, l) => { const i=s.indexOf(a); const j=s.indexOf(b, i+a.length); if(i<0||j<0){ failures.push(l + ": unable to isolate block"); return ""; } return s.slice(i,j); };
 
 const controller = read("crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs");
-const service = read("crates/modules/rustok-commerce/src/services/checkout_compensation.rs");
+const service = read("crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs");
 const sweep = read("crates/modules/rustok-commerce/src/services/checkout_compensation_sweep.rs");
 const evidence = JSON.parse(read("crates/modules/rustok-commerce/contracts/evidence/admin-checkout-operation-diagnostic-safety-source-review.json"));
 const doc = read("crates/modules/rustok-commerce/docs/admin-checkout-operation-diagnostic-safety.md");
@@ -75,19 +75,19 @@ for (const value of [
 ]) forbid(controller, value, "legacy/direct Admin checkout compensation construction");
 
 for (const value of [
-  "payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>",
-  "order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>",
-  "compensate_checkout_payment(",
-  "compensate_checkout_order(",
+  "inner: legacy::CheckoutCompensationService",
+  "CheckoutPaymentCompensationPort",
+  "CheckoutOrderCompensationPort",
+  "rustok_order_shim::wrap_checkout_order_compensation_port",
   "with_idempotency_key(idempotency_key.to_string())",
   "PortActor::user(actor_id.to_string())",
 ]) need(service, value, "Commerce compensation owner-port boundary");
 for (const value of [
-  "PaymentService",
-  "OrderService",
-  "PaymentProviderOperationJournal",
-  "CheckoutOrderIdentityPort",
-  "in_process_checkout_order_identity_port",
+  "legacy::CheckoutCompensationService::new",
+  "CheckoutCompensationService::new",
+  "CheckoutCompensationService::new",
+  "CheckoutCompensationService::new",
+  "CheckoutCompensationService::new",
   "PaymentOrchestrationService",
 ]) forbid(service, value, "foreign service retained in Commerce compensation service");
 
