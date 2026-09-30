@@ -261,10 +261,9 @@ for (const [block, permission, operation, productIdentity, serviceCall, response
 }
 
 for (const [value, label] of [
-  [
-    'products::{\n        AdminProductErrorContext, ListProductsParams, ProductListItem, admin_product_command_context, admin_product_command_idempotency_key, map_admin_product_port_error,',
-    'shared product mapper import',
-  ],
+  ['AdminProductErrorContext, ListProductsParams, ProductListItem,', 'shared product context imports'],
+  ['admin_product_command_context, admin_product_command_idempotency_key,', 'shared Product command helpers'],
+  ['map_admin_product_port_error,', 'shared Product owner-port mapper'],
   [
     'super::super::products::list_products(state, tenant, auth, request_context, query).await',
     'list delegation',
@@ -295,10 +294,10 @@ if (sharedMapperUses.length !== 8) {
   );
 }
 const wrapperMapperUses =
-  adminProducts.match(/map_admin_product_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
+  adminProducts.match(/map_admin_product_port_error\(\s+AdminProductErrorContext::new\(/g) ?? [];
 if (wrapperMapperUses.length !== 2) {
   failures.push(
-    `expected two context-aware product write mapper callsites, found ${wrapperMapperUses.length}`,
+    `expected two active Product owner-port mapper callsites, found ${wrapperMapperUses.length}`,
   );
 }
 const shippingValidationUses =
