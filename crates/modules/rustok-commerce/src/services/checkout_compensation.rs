@@ -171,7 +171,7 @@ impl CheckoutCompensationService {
             ));
         }
 
-        self.compensate_payment(tenant_id, operation, idempotency_key)
+        self.compensate_payment(tenant_id, actor_id, operation, idempotency_key)
             .await?;
         self.compensate_order(tenant_id, actor_id, operation, idempotency_key)
             .await?;
@@ -188,6 +188,7 @@ impl CheckoutCompensationService {
     async fn compensate_payment(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
         operation: &checkout_operation::Model,
         idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
