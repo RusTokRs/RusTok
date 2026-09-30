@@ -207,7 +207,6 @@ pub(crate) fn admin_product_command_idempotency_key(
 
     Ok(value)
 }
-
 pub(crate) fn admin_product_lifecycle_idempotency_key(
     headers: &HeaderMap,
     tenant_id: Uuid,
@@ -251,13 +250,18 @@ pub(crate) fn admin_product_command_context(
     tenant_id: Uuid,
     auth: &AuthContext,
     request_context: &RequestContext,
+    product_id: Option<Uuid>,
+    operation: &'static str,
     idempotency_key: String,
 ) -> PortContext {
+    let resource_id = product_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "collection".to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        idempotency_key.clone(),
+        format!("commerce-admin-product:{operation}:{resource_id}"),
     )
     .with_idempotency_key(idempotency_key)
     .with_deadline(std::time::Duration::from_secs(2));
@@ -266,7 +270,6 @@ pub(crate) fn admin_product_command_context(
         None => context,
     }
 }
-
 pub(crate) fn map_admin_product_port_error(
     context: AdminProductErrorContext,
     port_context: &PortContext,
