@@ -198,6 +198,10 @@ fn map_fulfillment_error(
             "fulfillment.not_found",
             "fulfillment resource was not found",
         ),
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => PortError::conflict(
+            "fulfillment.shipping_option_translation_revision_conflict",
+            "shipping option translation revision conflicts with the current state",
+        ),
         FulfillmentError::InvalidTransition { .. } => PortError::conflict(
             "fulfillment.invalid_transition",
             "fulfillment lifecycle conflicts with the requested operation",
@@ -230,6 +234,9 @@ fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
         FulfillmentError::Validation(_) => "validation",
         FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
         FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
+            "shipping_option_translation_revision_conflict"
+        }
         FulfillmentError::InvalidTransition { .. } => "invalid_transition",
         FulfillmentError::Database(_) => "database",
     }
