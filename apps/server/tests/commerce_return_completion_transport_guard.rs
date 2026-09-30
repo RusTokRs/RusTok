@@ -115,6 +115,9 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
     let hardening_migration = include_str!(
         "../../../crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs"
     );
+    let hardening_migration = include_str!(
+        "../../../crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs"
+    );
     let orchestration = include_str!(
         "../../../crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs"
     );
@@ -154,6 +157,8 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "pub async fn mark_completed(",
         "ensure_same_request",
         "request_hash must be a 64-character hexadecimal SHA-256 digest",
+        "normalize_lease_seconds",
+        "normalize_lease_owner",
         "normalize_lease_seconds",
         "normalize_lease_owner",
     ] {
@@ -290,6 +295,50 @@ fn return_completion_command_inbox_and_operator_surface_are_safe() {
     }
 
     for marker in [
+        "ck_return_completion_operations_request_hash_sha256",
+        "ck_return_completion_operations_pending_stage",
+        "ck_return_completion_operations_completed_stage",
+        "return_completion_operation_identity_guard_insert",
+        "return_completion_operation_identity_guard_update",
+        "SIGNAL SQLSTATE '45000'",
+        "NOT REGEXP '^[0-9a-f]{64}        "return_completion_operation_id",
+        "find_resolution_order_change(",
+        "operation.refund_id",
+        "operation.order_change_id",
+        "FailureDisposition::Reconciliation",
+        "mark_reconciliation_required(",
+        "validate_explicit_resolution_links(",
+        "is not attached to order",
+        "without a refund identity",
+        "without an order-change identity",
+    ] {
+        assert!(
+            orchestration.contains(marker),
+            "return completion recovery is missing invariant {marker}"
+        );
+    }
+
+    let refund_effect = orchestration
+        .find(".create_refund_idempotent(")
+        .expect("refund side effect must exist");
+    let owner_completion = orchestration
+        .find(".complete_return(tenant_id, return_id, owner_input)")
+        .expect("owner completion must exist");
+    let journal_admission = orchestration
+        .find(".begin(BeginReturnCompletionOperation")
+        .expect("journal admission must exist");
+    assert!(journal_admission < refund_effect && refund_effect < owner_completion);
+}
+",
+        "DROP TRIGGER IF EXISTS return_completion_operation_identity_guard_insert",
+    ] {
+        assert!(
+            hardening_migration.contains(marker),
+            "return completion hardening migration is missing invariant {marker}"
+        );
+    }
+
+    for marker in [
         "completion_request_hash(&input)",
         "return_completion_operation_id",
         "find_resolution_order_change(",
@@ -318,87 +367,4 @@ fn return_completion_command_inbox_and_operator_surface_are_safe() {
         .find(".begin(BeginReturnCompletionOperation")
         .expect("journal admission must exist");
     assert!(journal_admission < refund_effect && refund_effect < owner_completion);
-}
-
-#[test]
-fn return_completion_command_inbox_and_operator_surface_are_safe() {
-    let entity = include_str!(
-        "../../../crates/modules/rustok-commerce/src/entities/return_completion_command.rs"
-    );
-    let migration = include_str!(
-        "../../../crates/modules/rustok-commerce/src/migrations/m20260716_000006_create_return_completion_commands.rs"
-    );
-    let recovery = include_str!(
-        "../../../crates/modules/rustok-commerce/src/services/return_completion_recovery.rs"
-    );
-    let services = include_str!("../../../crates/modules/rustok-commerce/src/services/mod.rs");
-    let controller = include_str!(
-        "../../../crates/modules/rustok-commerce/src/controllers/return_completion_operations.rs"
-    );
-    let controllers =
-        include_str!("../../../crates/modules/rustok-commerce/src/controllers/mod.rs");
-    let openapi = include_str!("../../../crates/modules/rustok-commerce/src/openapi.rs");
-
-    assert!(entity.contains("table_name = \"return_completion_commands\""));
-    for marker in [
-        "ux_return_completion_commands_return",
-        "request_payload",
-        "request completion command identity and payload are immutable",
-        "return completion command return tenant mismatch",
-        "retry_count cannot decrease",
-        "DROP FUNCTION IF EXISTS enforce_return_completion_command_integrity() CASCADE",
-    ] {
-        assert!(
-            migration.contains(marker)
-                || migration.contains(&marker.replace("request completion", "return completion")),
-            "return completion command migration is missing invariant {marker}"
-        );
-    }
-
-    for marker in [
-        "admit_command_and_operation(",
-        "let txn = self.db.begin()",
-        ".insert(&txn)",
-        "txn.commit()",
-        "ensure_same_command(",
-        "ensure_same_operation(",
-        "record_retry(tenant_id, command.id, retry_actor_id)",
-        "Column::TenantId.eq(tenant_id)",
-        "command.requested_by_actor_id",
-    ] {
-        assert!(
-            recovery.contains(marker),
-            "return completion recovery facade is missing invariant {marker}"
-        );
-    }
-    assert!(
-        !recovery.contains("tenant_id_for_command_placeholder"),
-        "return completion retry must not retain placeholder tenant scope"
-    );
-    let response_start = recovery
-        .find("pub struct ReturnCompletionOperationResponse")
-        .expect("safe operation response must exist");
-    let response_end = recovery[response_start..]
-        .find("/// Durable return-completion facade")
-        .map(|offset| response_start + offset)
-        .expect("safe operation response boundary must exist");
-    assert!(
-        !recovery[response_start..response_end].contains("request_payload"),
-        "operator projections must not expose the stored command payload"
-    );
-
-    assert!(services.contains("mod return_completion_recovery;"));
-    assert!(services.contains("ReturnCompletionOrchestrationService,"));
-    assert!(controller.contains("Permission::ORDERS_READ"));
-    assert!(controller.contains("Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE"));
-    assert!(controller.contains(".retry_operation(tenant.id, auth.user_id, id)"));
-    assert!(controllers.contains("/admin/return-completion-operations"));
-    for marker in [
-        "list_return_completion_operations",
-        "show_return_completion_operation",
-        "retry_return_completion_operation",
-        "ReturnCompletionOperationResponse",
-    ] {
-        assert!(openapi.contains(marker), "OpenAPI is missing {marker}");
-    }
 }
