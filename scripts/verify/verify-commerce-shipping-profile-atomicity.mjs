@@ -51,6 +51,22 @@ for (const [source, label] of [[create, 'create'], [update, 'update']]) {
   requireText(source, 'await?;', label + ' transactional propagation');
 }
 
+requireText(
+  service,
+  'fn map_shipping_profile_transaction_error(error: TransactionError<CommerceError>) -> CommerceError',
+  'explicit transaction error mapping',
+);
+requireText(
+  service,
+  'TransactionError::Connection(error) => CommerceError::Database(error)',
+  'connection-level transaction error mapping',
+);
+requireText(
+  service,
+  'TransactionError::Transaction(error) => error',
+  'transaction-body error preservation',
+);
+
 for (const [value, label] of [
   ['self.ensure_slug_available(txn,', 'create slug check inside transaction'],
   ['active_profile.insert(txn).await?', 'create profile insert inside transaction'],
