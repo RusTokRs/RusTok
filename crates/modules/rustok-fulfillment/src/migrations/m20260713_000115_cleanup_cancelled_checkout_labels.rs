@@ -61,10 +61,7 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 
             UPDATE fulfillment_provider_operations operation
             SET status = 'reconciliation_required',
-                error_message = COALESCE(
-                    error_message,
-                    'order was cancelled while create-label provider execution was in progress'
-                ),
+                error_message = 'order was cancelled while create-label provider execution was in progress',
                 provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
                 updated_at = CURRENT_TIMESTAMP
             FROM fulfillments fulfillment
@@ -141,10 +138,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 
             UPDATE fulfillment_provider_operations
             SET status = 'reconciliation_required',
-                error_message = COALESCE(
-                    error_message,
-                    'order was cancelled while create-label provider execution was in progress'
-                ),
+                error_message = 'order was cancelled while create-label provider execution was in progress',
                 provider_completed_at = COALESCE(provider_completed_at, CURRENT_TIMESTAMP),
                 updated_at = CURRENT_TIMESTAMP
             WHERE operation = 'create_label'
