@@ -3058,3 +3058,11 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete and integrated into `main` via PR #4367, squash merge `f52be0ca30c2d1d368dcdb00d635fee36923ba41`.
 - **Post-merge reconciliation:** refreshed `main` at `f52be0ca30c2d1d368dcdb00d635fee36923ba41`; the integrated commit has the expected previous main parent and the expected two-file implementation diff. The explicit collection read, exact order-binding check, focused regression, and static verifier are present on `main`.
 - **Status:** `FS-22.06.17` complete; maintainer/CI verification remains explicitly required because the agent environment did not execute the suite.
+
+### Audit correction 2026-09-30 — OrderRead admin post-order source state
+
+- The planned four admin post-order GET compatibility handlers are already absent from the current source: `admin/returns.rs` contains only return-decision and return-completion mutations, and `admin/changes.rs` contains only order-change apply orchestration.
+- The mounted router directs all four GET operations to `admin/post_order_reads.rs`, which uses the host-selected `OrderReadPort`.
+- The remaining work for the OrderRead slice is execution evidence: compile, mounted transport parity, deadline/failure behavior, restart behavior, and remote-adapter evidence.
+- Plan/evidence wording was corrected so it no longer claims that compatibility GET functions still exist or that their future deletion is pending.
+- This correction does **not** promote the OrderRead validation status: compile/runtime/parity evidence remains open.
