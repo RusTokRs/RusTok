@@ -1,5 +1,5 @@
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use sea_orm_migration::sea_orm::{DatabaseBackend, Statement};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -99,6 +99,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_rollback_safe(manager).await?;
+
         manager
             .drop_table(
                 Table::drop()
@@ -108,6 +110,31 @@ impl MigrationTrait for Migration {
             )
             .await
     }
+}
+
+async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let has_change_evidence = manager
+        .get_connection()
+        .query_one(Statement::from_string(
+            manager.get_database_backend(),
+            r#"
+            SELECT 1
+            FROM shipping_option_translation_change_journal
+            LIMIT 1
+            "#
+            .to_owned(),
+        ))
+        .await?
+        .is_some();
+
+    if has_change_evidence {
+        return Err(DbErr::Custom(
+            "cannot roll back the shipping-option translation change journal while durable change evidence exists; preserve or explicitly archive the journal first"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 #[derive(DeriveIden)]
