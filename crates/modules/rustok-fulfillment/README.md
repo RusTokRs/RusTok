@@ -42,6 +42,7 @@
 - Shipping-option currency codes are normalized as uppercase ASCII three-letter codes at the owner-service boundary, matching the provider currency invariant before persistence.
 - Malformed `shipping_profiles.allowed_slugs` compatibility metadata fails closed in Fulfillment projections: a present but structurally invalid shipping-profile namespace yields an empty allowed-profile set rather than silently removing the profile restriction; completely absent `shipping_profiles` retains the existing unrestricted semantics.
 - Supplying typed shipping-profile restrictions requires object-shaped shipping-option metadata; non-object metadata is rejected rather than discarded when the compatibility projection is materialized.
+- Shipping-option translation names are limited to 120 Unicode characters at the owner-service boundary, matching persisted schema and exact-locale mutation validation before storage.
 - Fulfillment lifecycle audit append requires object-shaped metadata; malformed scalar/array metadata is rejected instead of being silently discarded when the owner records lifecycle history.
 - All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - `metadata.provider_operation` is write-reserved: fulfillment creation strips caller-supplied receipt data, while provider-backed lifecycle commands attach the receipt only after the provider operation has been journaled.
