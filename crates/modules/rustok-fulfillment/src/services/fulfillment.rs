@@ -1758,8 +1758,9 @@ fn normalize_translation_inputs(
     let mut seen = HashSet::new();
     let mut normalized = Vec::with_capacity(translations.len());
     for translation in translations {
-        let locale = normalize_locale_tag(&translation.locale)
-            .ok_or_else(|| FulfillmentError::Validation("Invalid locale".to_string()))?;
+        let locale = TenantLocale::new(&translation.locale)
+            .map(TenantLocale::into_inner)
+            .map_err(|_| FulfillmentError::Validation("Invalid locale".to_string()))?;
         if !seen.insert(locale.clone()) {
             return Err(FulfillmentError::Validation(
                 "Duplicate locale in shipping option translations".to_string(),
@@ -2023,6 +2024,18 @@ mod tests {
         assert_eq!(fulfillment_list_offset(0, 0), 0);
         assert_eq!(fulfillment_list_offset(1, 100), 0);
         assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
+        let result = super::normalize_translation_inputs(vec![
+            crate::dto::ShippingOptionTranslationInput {
+                locale: "und".to_string(),
+                name: "Express".to_string(),
+            },
+        ]);
+
+        assert!(result.is_err());
     }
 
     #[test]
