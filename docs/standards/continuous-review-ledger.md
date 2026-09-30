@@ -4112,3 +4112,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now records strict structured audit evidence for both fulfillment and fulfillment-item lifecycle history.
 - **Status:** `FS-22.06.82` complete and integrated on `main` as `e41db9c303e239d172edfeae2b4d2c2b17c75238`.
 - **Next primary module iteration:** `FS-22.06.83 — same primary module, fulfillment-item checkout metadata residuals and reserved-key ownership`.
+
+### FS-22.06.83 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Fulfillment-item checkout metadata ownership
+
+- **Base:** `298e5f23833fcdcf94c81fd820f6cb61abb1f854`; dedicated branch `audit/fs-22.06.83-fulfillment-item-checkout-keys` was created from refreshed `main`.
+- **Primary scope:** one production service module plus its in-process checkout execution boundary — fulfillment-item metadata handling after typed checkout identity cutover, including reserved legacy keys and the `cart_line_item_id` projection.
+- **Invariant map:** typed checkout identity is canonical owner state; legacy checkout identity keys must not survive as a second writable source on item metadata; `checkout.cart_line_item_id` is the only item-level checkout identity projection consumed at runtime; when present it must be a non-nil canonical UUID string.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.83-01:** direct FulfillmentService item creation stripped only `audit` from item metadata. A caller could still persist legacy `checkout.operation_id`, `order_id`, `order_plan_hash`, `fulfillment_index`, or `fulfillment_key`, leaving a second source of checkout identity after typed cutover.
+- **Production remediation:** added canonical `strip_fulfillment_item_checkout_metadata` and applied it to every newly created fulfillment item. It rejects malformed checkout namespaces, removes the legacy identity keys, validates/canonicalizes an optional `cart_line_item_id`, and preserves unrelated metadata.
+- **Canonical owner reuse:** checkout execution now reuses the service-owned root/item identity sanitizers instead of carrying a second reserved-key list. This keeps owner semantics centralized while retaining transport-safe `PortError` mapping at the checkout boundary.
+- **Regression coverage:** added tests for stripping legacy item identity keys, rejecting invalid `cart_line_item_id`, and preserving the canonical cart-line projection. Existing checkout projection/read tests remain in place.
+- **Migration reconciliation:** typed identity migration `000119` removes legacy checkout identity keys from matched item rows during cutover and reconstructs them only during rollback. The new create-time sanitizer therefore matches the forward typed-state contract and does not interfere with rollback behavior.
+- **Immediate re-audit:** re-read item create persistence, service sanitizer, checkout projection, typed migration cleanup/rollback, and the single checkout consumer. No legitimate item `cart_line_item_id` path was removed.
+- **Fresh second pass:** searched all references to `strip_fulfillment_item_checkout_metadata`, `cart_line_item_id`, and legacy item checkout keys; confirmed a single production owner sanitizer and no alternate item-create path inside the inspected FulfillmentService.
+- **Structural refactor:** duplicate checkout reserved-key logic was removed from `checkout_execution.rs`; crate-private service helpers are the canonical source, preventing future key-list drift.
+- **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/runtime evidence is claimed locally.
+- **Documentation:** Fulfillment README now records item-level checkout identity ownership and canonical `cart_line_item_id` validation.
+- **Status:** `FS-22.06.83` implementation complete on dedicated branch; integration pending final merge gate.
+- **Next primary module iteration:** `FS-22.06.84 — same primary module, fulfillment-item audit/metadata projection after reserved checkout-key cleanup`.
