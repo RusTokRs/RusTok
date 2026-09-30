@@ -1,12 +1,17 @@
 //! External prebuilt artifact staging and security stage reconciliation.
 
-use rustok_storage::{DigestObjectKey, ObjectScope};
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
 
 use super::*;
-use crate::installation::OciArtifactReference;
+use super::helpers::*;
+use super::validation_evidence::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Stages an externally built payload only after the owner has recorded
+    /// its provenance-policy decision, source-evidence classification, and a
+    /// separate quarantine review. This is intentionally distinct from the
+    /// platform build path: it never manufactures a build-worker attestation.
     pub async fn stage_external_prebuilt(
         &self,
         command: ModuleExternalPrebuiltStageCommand,
@@ -324,11 +329,6 @@ impl SeaOrmModuleGovernanceService {
             request_revision: request_revision + 1,
         })
     }
-
-    /// Stages one reviewed immutable Alloy source revision for an already
-    /// submitted registry artifact. This path is deliberately neither a
-    /// platform build nor an external prebuilt: it records the exact Alloy
-    /// source/review pair without manufacturing build provenance.
 
 }
 

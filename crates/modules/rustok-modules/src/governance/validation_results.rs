@@ -3,8 +3,17 @@
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::helpers::*;
+use super::mapping::*;
+use super::staging_alloy::*;
+use super::staging_external::*;
+use super::validation_evidence::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Applies an automated validation result atomically. A host worker may
+    /// inspect and execute an artifact bundle, but it cannot independently
+    /// complete the job, mutate the request, or create follow-up stages.
     pub async fn apply_validation_job_result(
         &self,
         command: ModuleValidationJobResultCommand,
@@ -366,9 +375,5 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
-    /// Renews a remote validation lease through a conditional update. The
-    /// claim id, runner id, running state, remote ownership, and unexpired
-    /// lease are one compare-and-swap predicate.
 
 }

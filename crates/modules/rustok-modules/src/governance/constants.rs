@@ -88,8 +88,8 @@ pub(crate) const REMOTE_VALIDATION_FOLLOW_UP_STAGES: &[&str] =
 
 #[derive(Clone, Copy)]
 pub(crate) struct PublicationFollowUpStage {
-    key: &'static str,
-    runner_kind: &'static str,
+    pub(crate) key: &'static str,
+    pub(crate) runner_kind: &'static str,
 }
 
 pub(crate) const PLATFORM_BUILT_FOLLOW_UP_STAGES: &[PublicationFollowUpStage] = &[

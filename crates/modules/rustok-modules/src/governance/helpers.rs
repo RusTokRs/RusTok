@@ -1,11 +1,14 @@
 //! Low-level database formatting, hashing, and JSON column helpers.
 
+use rustok_storage::{DigestObjectKey, ObjectScope};
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, QueryResult, Statement, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
-use crate::installation::ArtifactVerificationEvidence;
+use crate::build::ModuleBuildPublicationReceipt;
+use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
+use crate::marketplace_content::ModuleMarketplaceContentProjection;
 
 pub(crate) fn required_json_text(
     row: &QueryResult,

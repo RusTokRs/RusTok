@@ -1,10 +1,11 @@
 //! Published artifact contracts, Rhai workspaces, and marketplace metadata projections.
 
-use sea_orm::{ConnectionTrait, DbBackend, QueryResult, Statement};
+use sea_orm::{ConnectionTrait, Statement};
 use semver::Version;
 
 use super::*;
-use crate::marketplace_content::ModuleMarketplaceContentProjection;
+use super::helpers::*;
+use super::projections::*;
 
 impl SeaOrmModuleGovernanceService {
     pub async fn published_artifact_contracts(

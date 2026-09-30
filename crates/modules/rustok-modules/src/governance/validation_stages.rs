@@ -1,10 +1,17 @@
 //! Validation stage reporting and remote stage completion.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::helpers::*;
+use super::receipts::*;
+use super::receipts_reviews::*;
+use super::validation_evidence::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Persists a manual validation-stage transition or a fresh queued attempt
+    /// with its stage and follow-up audit facts in one transaction.
     pub async fn report_validation_stage(
         &self,
         command: ModuleValidationStageReportCommand,
@@ -365,10 +372,10 @@ impl SeaOrmModuleGovernanceService {
         Ok(())
     }
 
-    /// Enqueues at most one active automated validation job and records its
-    /// request/job facts atomically. The worker is intentionally outside this
-    /// transaction and may begin only after the host observes this result.
 
+    /// Completes a remote lease and emits the terminal stage and follow-up gate
+    /// facts in the same transaction. Returns the canonical terminal state for
+    /// a host adapter that needs to shape a transport response.
     pub async fn complete_remote_validation_stage(
         &self,
         command: ModuleRemoteValidationTerminalCommand,
@@ -583,11 +590,5 @@ impl SeaOrmModuleGovernanceService {
             status: terminal_status.to_string(),
         })
     }
-
-    /// Publishes an approved request as one durable governance transition.
-    ///
-    /// The host performs authorization and assembles any override evidence;
-    /// this owner transaction persists the complete release projection, owner
-    /// binding, request finalization, and immutable audit facts together.
 
 }

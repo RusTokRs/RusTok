@@ -1,9 +1,12 @@
 //! Governance command validations.
 
 use semver::Version;
-use sha2::{Digest, Sha256};
 
 use super::*;
+use super::helpers::*;
+use super::mapping::*;
+use crate::build::ModuleBuildSignatureAuthority;
+use crate::marketplace_content::ModuleMarketplaceContentProjection;
 use crate::ModuleCommandContext;
 
 impl ModuleReleaseYankCommand {
@@ -181,7 +184,7 @@ impl ModulePublishRequestPublicationCommand {
 }
 
 impl ModuleValidationStageReportCommand {
-    fn normalized(mut self) -> Result<Self, ModuleGovernanceError> {
+    pub(crate) fn normalized(mut self) -> Result<Self, ModuleGovernanceError> {
         self.request_id = self.request_id.trim().to_string();
         self.stage_key = self.stage_key.trim().to_ascii_lowercase();
         self.status = self.status.trim().to_ascii_lowercase();
@@ -251,7 +254,7 @@ impl ModuleRemoteValidationTerminalCommand {
 }
 
 impl ModuleRemoteValidationClaimCommand {
-    fn normalized_supported_stages(&self) -> Result<Vec<String>, ModuleGovernanceError> {
+    pub(crate) fn normalized_supported_stages(&self) -> Result<Vec<String>, ModuleGovernanceError> {
         if self.runner_id.trim().is_empty() {
             return Err(ModuleGovernanceError::InvalidRemoteValidationLeaseCommand);
         }
@@ -559,7 +562,7 @@ impl ModuleAuthorSignatureEvidenceCommand {
         Ok(())
     }
 
-    fn publication_evidence(
+    pub(crate) fn publication_evidence(
         &self,
         subject_digest_sha256: String,
     ) -> ModulePublicationEvidenceCommand {
@@ -605,7 +608,7 @@ impl ModuleBuildServiceAttestationCommand {
         )
     }
 
-    fn publication_evidence(
+    pub(crate) fn publication_evidence(
         &self,
     ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {
         Ok(ModulePublicationEvidenceCommand {
@@ -660,7 +663,7 @@ impl ModulePlatformAdmissionCommand {
         )
     }
 
-    fn publication_evidence(
+    pub(crate) fn publication_evidence(
         &self,
         artifact_origin: ModulePublicationArtifactOrigin,
     ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {

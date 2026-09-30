@@ -3,8 +3,13 @@
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::helpers::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Renews a remote validation lease through a conditional update. The
+    /// claim id, runner id, running state, remote ownership, and unexpired
+    /// lease are one compare-and-swap predicate.
     pub async fn heartbeat_remote_validation_stage(
         &self,
         command: ModuleRemoteValidationHeartbeatCommand,
@@ -599,9 +604,5 @@ impl SeaOrmModuleGovernanceService {
         }
         Ok(requeued)
     }
-
-    /// Completes a remote lease and emits the terminal stage and follow-up gate
-    /// facts in the same transaction. Returns the canonical terminal state for
-    /// a host adapter that needs to shape a transport response.
 
 }

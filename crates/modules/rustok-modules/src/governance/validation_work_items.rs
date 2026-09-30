@@ -3,7 +3,12 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, QueryResult, Statement, Value};
 
 use super::*;
+use super::helpers::*;
 
+
+/// Loads the one immutable descriptor bound to the exact Alloy source stage
+/// that a validation lease is about to process. The worker receives this
+/// value in its lease and never queries mutable Alloy draft state.
 pub(crate) async fn alloy_descriptor_for_validation_work_item(
     transaction: &DatabaseTransaction,
     backend: DbBackend,
@@ -61,13 +66,13 @@ pub(crate) async fn alloy_descriptor_for_validation_work_item(
 }
 
 pub(crate) struct InvalidValidationWorkItem<'a> {
-    command: &'a ModuleValidationJobClaimCommand,
-    request_id: &'a str,
-    expected_request_revision: i64,
-    slug: &'a str,
-    version: &'a str,
-    attempt_number: i32,
-    queue_reason: &'a str,
+    pub(crate) command: &'a ModuleValidationJobClaimCommand,
+    pub(crate) request_id: &'a str,
+    pub(crate) expected_request_revision: i64,
+    pub(crate) slug: &'a str,
+    pub(crate) version: &'a str,
+    pub(crate) attempt_number: i32,
+    pub(crate) queue_reason: &'a str,
 }
 
 pub(crate) async fn terminalize_invalid_validation_work_item(

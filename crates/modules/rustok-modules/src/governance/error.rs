@@ -1,7 +1,13 @@
 //! Governance error types and categories.
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Transport-neutral classification for the canonical module-governance error
+/// contract. Hosts map this category to their own envelopes without recreating
+/// the owner lifecycle taxonomy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModuleGovernanceErrorCategory {
     InvalidInput,
     PermissionDenied,
@@ -433,4 +439,3 @@ impl ModuleGovernanceError {
         }
     }
 }
-

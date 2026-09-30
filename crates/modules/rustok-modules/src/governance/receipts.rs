@@ -3,15 +3,16 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
 
 use super::*;
+use super::helpers::*;
 use crate::ModuleCommandContext;
 
 pub(crate) struct ReleaseYankReceipt<'a> {
-    release_id: &'a str,
-    context: &'a ModuleCommandContext,
-    actor_principal: &'a serde_json::Value,
-    actor_can_manage_modules: bool,
-    reason: &'a str,
-    reason_code: &'a str,
+    pub(crate) release_id: &'a str,
+    pub(crate) context: &'a ModuleCommandContext,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) actor_can_manage_modules: bool,
+    pub(crate) reason: &'a str,
+    pub(crate) reason_code: &'a str,
 }
 
 pub(crate) async fn release_yank_replay(
@@ -125,14 +126,14 @@ pub(crate) async fn record_release_yank_receipt(
 }
 
 pub(crate) struct OwnerTransferReceipt<'a> {
-    slug: &'a str,
-    context: &'a ModuleCommandContext,
-    previous_owner_principal: &'a serde_json::Value,
-    new_owner_principal: &'a serde_json::Value,
-    actor_principal: &'a serde_json::Value,
-    actor_can_manage_modules: bool,
-    reason: &'a str,
-    reason_code: &'a str,
+    pub(crate) slug: &'a str,
+    pub(crate) context: &'a ModuleCommandContext,
+    pub(crate) previous_owner_principal: &'a serde_json::Value,
+    pub(crate) new_owner_principal: &'a serde_json::Value,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) actor_can_manage_modules: bool,
+    pub(crate) reason: &'a str,
+    pub(crate) reason_code: &'a str,
 }
 
 pub(crate) async fn owner_transfer_replay(
@@ -198,8 +199,8 @@ pub(crate) async fn record_owner_transfer_receipt(
 }
 
 pub(crate) struct AuthorSignatureEvidenceReceipt<'a> {
-    command: &'a ModuleAuthorSignatureEvidenceCommand,
-    subject_digest_sha256: String,
+    pub(crate) command: &'a ModuleAuthorSignatureEvidenceCommand,
+    pub(crate) subject_digest_sha256: String,
 }
 
 pub(crate) async fn author_signature_evidence_replay(
@@ -348,7 +349,7 @@ pub(crate) async fn record_author_signature_evidence_receipt(
 }
 
 pub(crate) struct PublishArtifactReceipt<'a> {
-    command: &'a ModulePublishArtifactAttachCommand,
+    pub(crate) command: &'a ModulePublishArtifactAttachCommand,
 }
 
 pub(crate) async fn publish_artifact_replay(
@@ -555,25 +556,15 @@ pub(crate) async fn record_validation_job_enqueue_receipt(
     Ok(())
 }
 
-struct PublishRequestReviewReceipt<'a> {
-    operation_kind: &'static str,
-    request_id: &'a str,
-    expected_revision: i64,
-    context: &'a ModuleCommandContext,
-    actor_principal: &'a serde_json::Value,
-    reason: &'a str,
-    reason_code: &'a str,
-}
-
 pub(crate) struct ValidationStageReportReceipt<'a> {
-    request_id: &'a str,
-    expected_revision: i64,
-    context: &'a ModuleCommandContext,
-    actor_principal: &'a serde_json::Value,
-    stage_key: &'a str,
-    status: &'a str,
-    reason_code: Option<&'a str>,
-    requeue: bool,
+    pub(crate) request_id: &'a str,
+    pub(crate) expected_revision: i64,
+    pub(crate) context: &'a ModuleCommandContext,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) stage_key: &'a str,
+    pub(crate) status: &'a str,
+    pub(crate) reason_code: Option<&'a str>,
+    pub(crate) requeue: bool,
 }
 
 pub(crate) async fn validation_stage_report_replay(

@@ -260,39 +260,27 @@ impl FulfillmentProviderOperationJournal {
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
         let error_message = normalize_error(error_message.into());
-        let update = provider_operation::Entity::update_many()
-            .col_expr(
-                provider_operation::Column::Status,
-                Expr::value(PROVIDER_OPERATION_ERROR),
-            )
-            .col_expr(
-                provider_operation::Column::ErrorMessage,
-                Expr::value(Some(error_message)),
-            )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
-            .filter(provider_operation::Column::TenantId.eq(tenant_id))
-            .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(
-                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
-            )
-            .exec(&self.db)
-            .await?;
-
-        if update.rows_affected == 0 {
-            let current = self.get(tenant_id, operation_id).await?;
-            if current.status == PROVIDER_OPERATION_ERROR {
-                return Ok(current);
-            }
-            return Err(FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: PROVIDER_OPERATION_ERROR.to_string(),
-            });
+        let current = self.get(tenant_id, operation_id).await?;
+        if current.status == PROVIDER_OPERATION_EXECUTING {
+            return self
+                .mark_execution_reconciliation_required(
+                    tenant_id,
+                    operation_id,
+                    None,
+                    None,
+                    error_message,
+                )
+                .await;
         }
-
-        self.get(tenant_id, operation_id).await
+        if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            || current.status == PROVIDER_OPERATION_ERROR
+        {
+            return Ok(current);
+        }
+        Err(FulfillmentError::InvalidTransition {
+            from: current.status,
+            to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
+        })
     }
 
 

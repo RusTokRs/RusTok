@@ -1,16 +1,22 @@
 //! Platform build staging and publication sources.
 
-use rustok_storage::{DigestObjectKey, ObjectScope};
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
+use uuid::Uuid;
 
 use super::*;
+use super::helpers::*;
+use super::mapping::*;
+use super::staging_alloy::*;
+use super::validation_evidence::*;
 use crate::build::{
-    ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority,
-    ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
+    ModuleBuildOutcome, ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
 };
-use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Stages one immutable completed platform build for a submitted registry
+    /// artifact. The owner reloads the durable build pair under tenant RLS and
+    /// binds its source, payload, and OCI receipt identities to this request.
     pub async fn stage_platform_build(
         &self,
         command: ModulePublishPlatformBuildStageCommand,
@@ -576,10 +582,5 @@ impl SeaOrmModuleGovernanceService {
             descriptor_digest,
         })
     }
-
-    /// Stages an externally built payload only after the owner has recorded
-    /// its provenance-policy decision, source-evidence classification, and a
-    /// separate quarantine review. This is intentionally distinct from the
-    /// platform build path: it never manufactures a build-worker attestation.
 
 }

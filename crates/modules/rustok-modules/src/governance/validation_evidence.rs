@@ -3,6 +3,7 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
 
 use super::*;
+use super::helpers::*;
 
 
 pub(crate) fn validation_stage_actor_label(
@@ -19,13 +20,13 @@ pub(crate) fn validation_stage_actor_label(
 }
 
 pub(crate) struct OwnerEvidenceStage<'a> {
-    request_id: &'a str,
-    slug: &'a str,
-    version: &'a str,
-    stage_key: &'a str,
-    actor_principal: &'a serde_json::Value,
-    detail: &'a str,
-    reason_code: &'a str,
+    pub(crate) request_id: &'a str,
+    pub(crate) slug: &'a str,
+    pub(crate) version: &'a str,
+    pub(crate) stage_key: &'a str,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) detail: &'a str,
+    pub(crate) reason_code: &'a str,
 }
 
 pub(crate) async fn pass_owner_evidence_validation_stage(
@@ -235,9 +236,3 @@ pub(crate) fn validation_stage_transition_allowed(
         next: next.to_string(),
     })
 }
-
-/// Transport-neutral classification for the canonical module-governance error
-/// contract. Hosts map this category to their own envelopes without recreating
-/// the owner lifecycle taxonomy.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]

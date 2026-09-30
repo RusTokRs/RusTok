@@ -1,20 +1,26 @@
-use semver::Version;
 //! Shared test fixtures and builder helpers for governance test suites.
 
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
 use super::*;
+use crate::build::{
+    ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
+    ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
+    ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildPublicationReceipt,
+    ModuleBuildRequest, ModuleBuildResult, ModuleBuildScenario, ModuleBuildSignatureAuthority,
+    ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationOutcome,
+    ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
+};
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
-use crate::publication_evidence::{
-    ModulePublicationTrustEvidence, ModulePublicationTrustReport,
-    ModulePublicationTrustSubject, ModulePublicationTrustVerifier,
+use crate::{
+    ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
+    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
+    ModuleCommandContext, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+    ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
+    TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
+    MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
 };
-use crate::publish_validation::{
-    ModulePublishValidationCheck, ModulePublishValidationDetails,
-    ModulePublishValidationResultOutcome,
-};
-use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
 
     pub(crate) fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {
         [
@@ -98,7 +104,7 @@ use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
         format!("sha256:{}", marker.to_string().repeat(64))
     }
 
-    fn completed_platform_build(
+    pub(crate) fn completed_platform_build(
         tenant_id: Uuid,
         build_request_id: Uuid,
     ) -> (ModuleBuildRequest, ModuleBuildResult) {
@@ -129,6 +135,94 @@ use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
                 world: MODULE_BUILD_WIT_WORLD.to_string(),
                 version: MODULE_BUILD_WIT_VERSION.to_string(),
             },
+            toolchain: ModuleBuildToolchain {
+                rust_toolchain: "1.85.0".to_string(),
+                component_target: MODULE_BUILD_COMPONENT_TARGET.to_string(),
+            },
+            authoring: ModuleBuildAuthoring {
+                sdk_version: "1.0.0".to_string(),
+                template_version: "1.0.0".to_string(),
+            },
+            dependency_policy: ModuleBuildDependencyPolicy {
+                lock_digest: stage_digest('b'),
+                allowed_registries: vec!["https://crates.io".to_string()],
+                allow_git_dependencies: false,
+                allow_build_scripts: false,
+                allow_native_links: false,
+            },
+            limits: ModuleBuildLimits {
+                cpu_cores: 2,
+                memory_bytes: 512 * 1024 * 1024,
+                disk_bytes: 2 * 1024 * 1024 * 1024,
+                process_limit: 32,
+                output_bytes: 1024 * 1024,
+                wall_clock_ms: 300_000,
+            },
+            network_policy: ModuleBuildNetworkPolicy::Denied,
+            validation_profiles: vec![
+                ModuleBuildValidationProfile::Check,
+                ModuleBuildValidationProfile::Test,
+                ModuleBuildValidationProfile::DependencyPolicy,
+                ModuleBuildValidationProfile::Vulnerability,
+            ],
+            attempt: 1,
+        };
+        let reference = |marker| OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/sample_module".to_string(),
+            digest: stage_digest(marker),
+        };
+        let result = ModuleBuildResult {
+            protocol_version: request.protocol_version,
+            request_id: request.request_id,
+            tenant_id,
+            attempt: request.attempt,
+            outcome: ModuleBuildOutcome::Succeeded,
+            source_digest: request.source.digest.clone(),
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            component_digest: Some(stage_digest('c')),
+            sbom_digest: Some(stage_digest('d')),
+            provenance_digest: Some(stage_digest('e')),
+            component_interface: Some(ModuleBuildComponentInterface {
+                exports: vec!["run".to_string()],
+                imports: Vec::new(),
+            }),
+            evidence: ModuleBuildEvidence {
+                log_reference: "cas://logs/platform-build".to_string(),
+                policy_report_reference: "cas://reports/platform-build".to_string(),
+                validation_results: request
+                    .validation_profiles
+                    .iter()
+                    .copied()
+                    .map(|profile| ModuleBuildValidationResult {
+                        profile,
+                        outcome: ModuleBuildValidationOutcome::Passed,
+                    })
+                    .collect(),
+                scenario_comparison: Some(rustok_sandbox::LocalSandboxScenarioComparison {
+                    scenario_digest: request.scenario.digest.clone(),
+                    result: rustok_sandbox::LocalSandboxScenarioResult::Success,
+                }),
+                diagnostics: Vec::new(),
+            },
+            publication: Some(ModuleBuildPublicationReceipt {
+                artifact: reference('f'),
+                signature_manifest: reference('a'),
+                signature_authority: ModuleBuildSignatureAuthority::BuildService,
+            }),
+            metrics: ModuleBuildMetrics {
+                duration_ms: 1,
+                peak_memory_bytes: 1,
+                output_bytes: 1,
+            },
+            retryable: false,
+            next_action: ModuleBuildNextAction::AdmitArtifact,
+        };
+        (request, result)
+    }
+
 
     pub(crate) fn governance_request_snapshot(
         status: &str,

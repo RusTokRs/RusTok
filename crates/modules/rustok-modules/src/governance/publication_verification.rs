@@ -3,6 +3,7 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement};
 
 use super::*;
+use super::helpers::*;
 
 #[derive(Clone, Debug)]
 pub(crate) struct VerifiedPublicationRequest {
@@ -20,11 +21,6 @@ pub(crate) struct VerifiedPublicationRequest {
     pub checksum_sha256: String,
     pub artifact_size: i64,
     pub artifact_origin: ModulePublicationArtifactOrigin,
-    pub delivery_media_type: String,
-    pub delivery_payload_digest: String,
-    pub delivery_storage_key: String,
-    pub delivery_size_bytes: i64,
-    pub command_approval_override: Option<serde_json::Value>,
     pub translations: Vec<(String, String, String)>,
 }
 
@@ -100,7 +96,6 @@ pub(crate) async fn verify_publish_request_prerequisites(
             if !release_exists {
                 return Err(ModuleGovernanceError::PublishedRequestMissingRelease);
             }
-            tx.rollback().await.map_err(store_error)?;
             return Err(ModuleGovernanceError::PublishedRequestMissingIdempotencyRecord);
         }
         if status != "approved" {
@@ -413,11 +408,6 @@ pub(crate) async fn verify_publish_request_prerequisites(
         checksum_sha256,
         artifact_size,
         artifact_origin,
-        delivery_media_type,
-        delivery_payload_digest,
-        delivery_storage_key,
-        delivery_size_bytes,
-        command_approval_override,
         translations,
     })
 }

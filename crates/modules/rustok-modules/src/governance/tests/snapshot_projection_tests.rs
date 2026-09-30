@@ -1,19 +1,28 @@
-use uuid::Uuid;
+use sea_orm::{ConnectionTrait, Database, DbBackend, Statement, TransactionTrait, Value};
 use semver::Version;
-use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
+use crate::marketplace::ModuleMarketplaceEntry;
 use super::fixtures::*;
 use super::*;
+use crate::build::{
+    ModuleBuildAuthoring, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
+    ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy,
+    ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildPublicationReceipt,
+    ModuleBuildRequest, ModuleBuildResult, ModuleBuildScenario, ModuleBuildSignatureAuthority,
+    ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationOutcome,
+    ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
+};
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
-use crate::publication_evidence::{
-    ModulePublicationTrustEvidence, ModulePublicationTrustReport,
-    ModulePublicationTrustSubject, ModulePublicationTrustVerifier,
+use crate::{
+    ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
+    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
+    ModuleCommandContext, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+    ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
+    TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
+    MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
 };
-use crate::publish_validation::{
-    ModulePublishValidationCheck, ModulePublishValidationDetails,
-    ModulePublishValidationResultOutcome,
-};
-use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
 
 
     #[test]

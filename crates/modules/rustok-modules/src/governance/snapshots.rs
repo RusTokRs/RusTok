@@ -2,8 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::*;
-
 /// Canonical, transport-neutral registry moderation policy exposed with the
 /// lifecycle snapshot. Hosts render these facts but do not reconstruct them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,10 +1,18 @@
 //! Validation job queue enqueue and leasing.
 
-use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::helpers::*;
+use super::receipts::*;
+use super::validation_evidence::*;
+use super::validation_work_items::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Enqueues at most one active automated validation job and records its
+    /// request/job facts atomically. The worker is intentionally outside this
+    /// transaction and may begin only after the host observes this result.
     pub async fn enqueue_validation_job(
         &self,
         command: ModuleValidationJobEnqueueCommand,
@@ -494,9 +502,5 @@ impl SeaOrmModuleGovernanceService {
         }
         Ok(None)
     }
-
-    /// Applies an automated validation result atomically. A host worker may
-    /// inspect and execute an artifact bundle, but it cannot independently
-    /// complete the job, mutate the request, or create follow-up stages.
 
 }

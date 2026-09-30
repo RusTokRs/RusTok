@@ -3,16 +3,17 @@
 use sea_orm::QueryResult;
 
 use super::*;
+use super::helpers::*;
 
 pub(crate) struct GovernanceRequestRow {
-    snapshot: ModuleGovernanceRequestSnapshot,
-    validated_at: Option<String>,
-    approved_at: Option<String>,
+    pub(crate) snapshot: ModuleGovernanceRequestSnapshot,
+    pub(crate) validated_at: Option<String>,
+    pub(crate) approved_at: Option<String>,
 }
 
 pub(crate) struct GovernanceEventRow {
-    snapshot: ModuleGovernanceEventSnapshot,
-    details: serde_json::Value,
+    pub(crate) snapshot: ModuleGovernanceEventSnapshot,
+    pub(crate) details: serde_json::Value,
 }
 
 pub(crate) fn map_governance_owner_snapshot(

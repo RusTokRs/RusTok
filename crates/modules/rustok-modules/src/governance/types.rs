@@ -1,11 +1,12 @@
 //! Governance commands, outcomes, publication sources, and artifact types.
 
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
+use crate::build::ModuleBuildPublicationReceipt;
+use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 
 /// Authenticated host input for a durable release-yank transition. The owner
 /// derives authorization from the durable release publisher and owner binding.

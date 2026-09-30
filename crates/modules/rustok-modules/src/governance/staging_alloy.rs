@@ -1,12 +1,18 @@
 //! Alloy authored artifact staging and sandbox security stage reconciliation.
 
-use rustok_storage::{DigestObjectKey, ObjectScope};
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
 
 use super::*;
-use crate::installation::OciArtifactReference;
+use super::helpers::*;
+use super::mapping::*;
+use super::validation_evidence::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Stages one reviewed immutable Alloy source revision for an already
+    /// submitted registry artifact. This path is deliberately neither a
+    /// platform build nor an external prebuilt: it records the exact Alloy
+    /// source/review pair without manufacturing build provenance.
     pub async fn stage_alloy_authored(
         &self,
         command: ModuleAlloyAuthoredStageCommand,
@@ -420,10 +426,6 @@ impl SeaOrmModuleGovernanceService {
         })
     }
 
-    /// Records one operator-supplied author signature for the exact artifact
-    /// currently attached to a publish request. The signed subject is loaded
-    /// under the owner request lock rather than trusted from the transport.
-
 }
 
 pub(crate) async fn alloy_authored_supply_chain_evidence(
@@ -597,7 +599,3 @@ pub(crate) async fn reconcile_alloy_authored_security_stage(
     )
     .await
 }
-
-/// Loads the one immutable descriptor bound to the exact Alloy source stage
-/// that a validation lease is about to process. The worker receives this
-/// value in its lease and never queries mutable Alloy draft state.

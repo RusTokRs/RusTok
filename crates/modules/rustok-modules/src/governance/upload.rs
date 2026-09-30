@@ -1,8 +1,14 @@
 //! Publish artifact upload slots and request initialization.
 
-use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::commands::valid_command_context_actor;
+use super::helpers::*;
+use super::mapping::*;
+use super::receipts::*;
+use super::validation_evidence::*;
+use crate::marketplace_content::ModuleMarketplaceContentProjection;
 
 impl SeaOrmModuleGovernanceService {
 
@@ -382,9 +388,5 @@ impl SeaOrmModuleGovernanceService {
         tx.commit().await.map_err(store_error)?;
         Ok(result)
     }
-
-    /// Stages one immutable completed platform build for a submitted registry
-    /// artifact. The owner reloads the durable build pair under tenant RLS and
-    /// binds its source, payload, and OCI receipt identities to this request.
 
 }

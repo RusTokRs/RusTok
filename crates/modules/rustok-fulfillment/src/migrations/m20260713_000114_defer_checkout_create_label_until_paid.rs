@@ -54,7 +54,7 @@ impl MigrationTrait for Migration {
 async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let unsafe_checkout_create_label_exists = manager
         .get_connection()
-        .query_one(Statement::from_string(
+        .query_one_raw(Statement::from_string(
             manager.get_database_backend(),
             r#"
             SELECT 1

@@ -3,7 +3,19 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
 
 use super::*;
+use super::helpers::*;
 use crate::ModuleCommandContext;
+
+pub(crate) struct PublishRequestReviewReceipt<'a> {
+    pub(crate) operation_kind: &'static str,
+    pub(crate) request_id: &'a str,
+    pub(crate) expected_revision: i64,
+    pub(crate) context: &'a ModuleCommandContext,
+    pub(crate) actor_principal: &'a serde_json::Value,
+    pub(crate) reason: &'a str,
+    pub(crate) reason_code: &'a str,
+}
+
 
 pub(crate) async fn lock_publish_request(
     tx: &DatabaseTransaction,

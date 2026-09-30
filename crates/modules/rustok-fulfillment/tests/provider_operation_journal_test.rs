@@ -271,7 +271,7 @@ async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() 
 
 #[tokio::test]
 async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
-    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+    use sea_orm::ConnectionTrait;
 
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
@@ -280,11 +280,9 @@ async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
     let order_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
 
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE orders (id BLOB NOT NULL PRIMARY KEY, tenant_id BLOB NOT NULL, status VARCHAR(32) NOT NULL)"
-            .to_string(),
-    ))
+    db.execute_unprepared(
+        "CREATE TABLE orders (id BLOB NOT NULL PRIMARY KEY, tenant_id BLOB NOT NULL, status VARCHAR(32) NOT NULL)",
+    )
     .await
     .expect("orders test table should be created");
 
@@ -294,13 +292,10 @@ async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
             .map(|byte| format!("{byte:02x}"))
             .collect()
     };
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        format!(
-            "INSERT INTO orders (id, tenant_id, status) VALUES (X'{order}', X'{tenant}', 'pending')",
-            order = id_hex(order_id),
-            tenant = id_hex(tenant_id),
-        ),
+    db.execute_unprepared(&format!(
+        "INSERT INTO orders (id, tenant_id, status) VALUES (X'{order}', X'{tenant}', 'pending')",
+        order = id_hex(order_id),
+        tenant = id_hex(tenant_id),
     ))
     .await
     .expect("unpaid test order should be inserted");

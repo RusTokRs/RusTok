@@ -3,8 +3,15 @@
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::helpers::*;
+use super::receipts_reviews::*;
+use super::staging_alloy::*;
+use super::staging_external::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Rejects a publish request and records the terminal governance fact in
+    /// the same transaction.
     pub async fn reject_publish_request(
         &self,
         command: ModulePublishRequestRejectCommand,
@@ -635,8 +642,5 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
-    /// Persists a manual validation-stage transition or a fresh queued attempt
-    /// with its stage and follow-up audit facts in one transaction.
 
 }

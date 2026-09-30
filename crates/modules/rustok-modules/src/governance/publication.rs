@@ -3,8 +3,18 @@
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
 use super::*;
+use super::admissions::*;
+use super::helpers::*;
+use super::publication_verification::*;
+use super::validation_evidence::*;
 
 impl SeaOrmModuleGovernanceService {
+
+    /// Publishes an approved request as one durable governance transition.
+    ///
+    /// The host performs authorization and assembles any override evidence;
+    /// this owner transaction persists the complete release projection, owner
+    /// binding, request finalization, and immutable audit facts together.
     pub async fn publish_request(
         &self,
         command: ModulePublishRequestPublicationCommand,
@@ -147,7 +157,13 @@ impl SeaOrmModuleGovernanceService {
             return Ok(());
         }
 
-        let verified = verify_publish_request_prerequisites(&tx, backend, &command).await?;
+        let verified = match verify_publish_request_prerequisites(&tx, backend, &command).await {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return Err(e);
+            }
+        };
         let slug = verified.slug;
         let version = verified.version;
         let crate_name = verified.crate_name;
@@ -162,11 +178,6 @@ impl SeaOrmModuleGovernanceService {
         let checksum_sha256 = verified.checksum_sha256;
         let artifact_size = verified.artifact_size;
         let artifact_origin = verified.artifact_origin;
-        let delivery_media_type = verified.delivery_media_type;
-        let delivery_payload_digest = verified.delivery_payload_digest;
-        let delivery_storage_key = verified.delivery_storage_key;
-        let delivery_size_bytes = verified.delivery_size_bytes;
-        let command_approval_override = verified.command_approval_override;
         let translations = verified.translations;
 
         let marketplace_approval = ModulePublicationEvidenceCommand {
