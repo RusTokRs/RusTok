@@ -214,6 +214,7 @@ impl ShippingProfileService {
                         .load_shipping_profile(txn, tenant_id, shipping_profile_id)
                         .await?;
                     let mut active: shipping_profile::ActiveModel = row.into();
+                    let requested_slug = normalized_slug.clone();
 
                     if let Some(slug) = normalized_slug {
                         self.ensure_slug_available(
@@ -229,15 +230,16 @@ impl ShippingProfileService {
                         active.metadata = Set(metadata);
                     }
 
-                    let requested_slug = active.slug.clone().into_value().ok();
                     active.updated_at = Set(Utc::now().into());
                     match active.update(txn).await {
                         Ok(_) => {}
-                        Err(error) if is_shipping_profile_slug_conflict(&error) => {
-                            if let Some(slug) = requested_slug {
-                                return Err(CommerceError::DuplicateShippingProfileSlug(slug));
-                            }
-                            return Err(CommerceError::Database(error));
+                        Err(error)
+                            if requested_slug.is_some()
+                                && is_shipping_profile_slug_conflict(&error) =>
+                        {
+                            return Err(CommerceError::DuplicateShippingProfileSlug(
+                                requested_slug.expect("requested slug was checked as Some"),
+                            ));
                         }
                         Err(error) => return Err(error.into()),
                     }
