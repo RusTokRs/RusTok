@@ -270,6 +270,114 @@ async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() 
 }
 
 #[tokio::test]
+async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE orders (id BLOB NOT NULL PRIMARY KEY, tenant_id BLOB NOT NULL, status VARCHAR(32) NOT NULL)"
+            .to_string(),
+    ))
+    .await
+    .expect("orders test table should be created");
+
+    let id_hex = |id: Uuid| -> String {
+        id.as_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    };
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        format!(
+            "INSERT INTO orders (id, tenant_id, status) VALUES (X'{order}', X'{tenant}', 'pending')",
+            order = id_hex(order_id),
+            tenant = id_hex(tenant_id),
+        ),
+    ))
+    .await
+    .expect("unpaid test order should be inserted");
+
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let migrations = rustok_fulfillment::migrations::migrations();
+    let manager = SchemaManager::new(&db);
+    migrations
+        .get(6)
+        .expect("provider journal migration should exist")
+        .up(&manager)
+        .await
+        .expect("provider journal schema should install");
+    migrations
+        .get(7)
+        .expect("provider receipt migration should exist")
+        .up(&manager)
+        .await
+        .expect("provider receipt schema should install");
+    migrations
+        .get(8)
+        .expect("reconciliation migration should exist")
+        .up(&manager)
+        .await
+        .expect("reconciliation schema should install");
+    migrations
+        .get(9)
+        .expect("checkout label payment migration should exist")
+        .up(&manager)
+        .await
+        .expect("checkout label payment guard should install");
+
+    let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let operation = journal
+        .begin(BeginProviderOperation {
+            tenant_id,
+            fulfillment_id,
+            operation: "create_label".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "rollback-payment-guard".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": tenant_id,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "rollback-payment-guard",
+                "metadata": {}
+            }),
+        })
+        .await
+        .expect("provider operation");
+
+    let rollback = migrations
+        .get(9)
+        .expect("checkout label payment migration should exist")
+        .down(&manager)
+        .await;
+    assert!(
+        rollback.is_err(),
+        "rollback must be blocked while a retryable create-label operation targets an unpaid order"
+    );
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("provider operation remains readable after blocked rollback");
+    assert_eq!(current.status, rustok_fulfillment::PROVIDER_OPERATION_PENDING);
+
+    assert!(
+        journal
+            .claim_execution(tenant_id, operation.id)
+            .await
+            .is_err(),
+        "payment guard must remain active after blocked rollback"
+    );
+}
+
+#[tokio::test]
 async fn manual_success_reconciliation_validates_provider_identity() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
