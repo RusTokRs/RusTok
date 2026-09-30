@@ -1,3 +1,4 @@
+# plural-exempt: bare numeric badge with no surrounding noun
 reactions-count = { $count }
 reactions-empty = No reactions are available for this item.
 reactions-error-load = Reactions are temporarily unavailable.

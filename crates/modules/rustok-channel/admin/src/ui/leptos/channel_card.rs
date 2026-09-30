@@ -580,7 +580,7 @@ pub(super) fn ChannelCard(
                         {crate::i18n::format(
                             ui_locale.as_deref(),
                             "channel.card.summary",
-                            Some(&rustok_ui_i18n::fluent_args!("targets" => channel.targets.len().to_string(), "modules" => channel.module_bindings.len().to_string(), "apps" => channel.oauth_apps.len().to_string())),
+                            Some(&rustok_ui_i18n::fluent_args!("targets" => channel.targets.len(), "modules" => channel.module_bindings.len(), "apps" => channel.oauth_apps.len())),
                             "{targets} target(s), {modules} module binding(s), {apps} app binding(s)",
                         )}
                     </p>

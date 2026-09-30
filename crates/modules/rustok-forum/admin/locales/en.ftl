@@ -124,8 +124,10 @@ forum-render-openTopicForReplies = Open a topic card to preview replies.
 forum-render-opened = Opened
 forum-render-pinned = Pinned
 forum-render-replies = Replies
+# plural-exempt: label form 'replies: N' needs no agreement
 forum-render-repliesCount = replies: { $count }
 forum-render-threadPath = thread/{ $category }/{ $slug }
+# plural-exempt: label form 'topics: N' needs no agreement
 forum-render-topicsCount = topics: { $count }
 forum-replies-body = Reply content
 forum-replies-bodyHint = Write a focused response using the shared discussion editor.
@@ -191,10 +193,12 @@ forum-topics-nothingSelected = Nothing selected
 forum-topics-openInspector = Open in inspector
 forum-topics-previewLabel = Thread preview
 forum-topics-previewTitle = Replies
+# plural-exempt: adjectival 'N ready' is invariant in English
 forum-topics-ready = { $count } ready
 forum-topics-seo-empty = Create or open a topic first. SEO stays attached to the forum thread editor.
 forum-topics-seo-subtitle = Explicit metadata, social tags and diagnostics for the selected forum topic.
 forum-topics-seo-title = Topic SEO
+# plural-exempt: adjectival 'N shown' is invariant in English
 forum-topics-shown = { $count } shown
 forum-topics-streamBody = Open a topic card to inspect replies and edit the thread without leaving the feed.
 forum-topics-streamLabel = Topic stream

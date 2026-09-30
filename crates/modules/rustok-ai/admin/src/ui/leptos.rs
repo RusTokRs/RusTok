@@ -2271,7 +2271,7 @@ pub(crate) fn recent_run_summary(
     crate::i18n::format(
         locale,
         "ai.summary.recentRuns",
-        Some(&rustok_ui_i18n::fluent_args!("count" => stats.total.to_string(), "failed" => stats.failed.to_string(), "waiting" => stats.waiting_approval.to_string(), "latency" => stats.average_latency_ms.to_string())),
+        Some(&rustok_ui_i18n::fluent_args!("count" => stats.total, "failed" => stats.failed, "waiting" => stats.waiting_approval, "latency" => stats.average_latency_ms)),
         "{count} run(s), {failed} failed, {waiting} waiting approval, avg {latency} ms",
     )
 }

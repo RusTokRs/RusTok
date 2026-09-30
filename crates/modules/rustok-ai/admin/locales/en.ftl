@@ -65,7 +65,11 @@ ai-common-mcpTooling = MCP tooling
 ai-common-noTextualContent = (no textual content)
 ai-common-noTextualDelta = (no textual delta)
 ai-diagnostics-averageRunLatency = Average run latency: { $value } ms
-ai-diagnostics-cachedEventsCount = { $count } cached event(s)
+ai-diagnostics-cachedEventsCount =
+    { $count ->
+        [one] { $count } cached event
+       *[other] { $count } cached events
+    }
 ai-diagnostics-completedRuns = Completed runs
 ai-diagnostics-directSelected = Direct selected
 ai-diagnostics-executionTargets = Execution targets
@@ -220,12 +224,20 @@ ai-status-waitingApproval = WAITING_APPROVAL
 ai-subtitle = Provider profiles, tool policies, operator chat sessions, tool traces, and approval gates for rustok-ai.
 ai-summary-bucketNoData = no data
 ai-summary-localeFlow = locale: { $requested } -> { $resolved }
-ai-summary-providerList = { $kind } · { $model } · { $count } capabilities · { $state }
+ai-summary-providerList =
+    { $count ->
+        [one] { $kind } · { $model } · { $count } capability · { $state }
+       *[other] { $kind } · { $model } · { $count } capabilities · { $state }
+    }
 ai-summary-recentRunMeta = { $provider } · { $target } · { $requested } -> { $resolved }
 ai-summary-recentRunStartedAt = { $started_at }{ $task_suffix }
 ai-summary-recentRunTaskSuffix =  · task { $slug }
 ai-summary-recentRunTitle = { $title } · { $status } · { $duration } ms
-ai-summary-recentRuns = { $count } run(s), { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+ai-summary-recentRuns =
+    { $count ->
+        [one] { $count } run, { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+       *[other] { $count } runs, { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+    }
 ai-summary-runPath = { $status } · { $mode } · path { $path }
 ai-summary-sessionList = status: { $status } · mode: { $mode } · latest: { $latest } · approvals: { $approvals }
 ai-summary-sessionProfile = provider: { $provider } · model: { $model } · mode: { $mode }

@@ -1,4 +1,10 @@
-media-asset-bytes = { $count } байт
+media-asset-bytes =
+    { $count ->
+        [one] { $count } байт
+        [few] { $count } байта
+        [many] { $count } байт
+       *[other] { $count } байта
+    }
 media-asset-notAvailable = н/д
 media-assets-title = Файлы
 media-badge = медиа

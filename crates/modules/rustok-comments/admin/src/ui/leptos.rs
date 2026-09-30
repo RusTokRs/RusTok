@@ -291,7 +291,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 crate::i18n::format(
                                     locale.get().as_str().into(),
                                     "comments.pagination.page",
-                                    Some(&rustok_ui_i18n::fluent_args!("count" => &page.get().to_string())),
+                                    Some(&rustok_ui_i18n::fluent_args!("page" => page.get())),
                                     "Page {count}",
                                 )
                             }}</span>
@@ -313,7 +313,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                             {crate::i18n::format(
                                                 locale.get().as_str().into(),
                                                 "comments.threads.total",
-                                                Some(&rustok_ui_i18n::fluent_args!("count" => &payload.total.to_string())),
+                                                Some(&rustok_ui_i18n::fluent_args!("count" => payload.total)),
                                                 "{count} matching threads",
                                             )}
                                         </div>
@@ -345,7 +345,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 {crate::i18n::format(
                                                                     locale.get().as_str().into(),
                                                                     "comments.threads.count",
-                                                                    Some(&rustok_ui_i18n::fluent_args!("count" => &view_model.comment_count.to_string())),
+                                                                    Some(&rustok_ui_i18n::fluent_args!("count" => view_model.comment_count)),
                                                                     "{count} comments",
                                                                 )}
                                                             </div>
@@ -402,7 +402,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                 {crate::i18n::format(
                                                     locale.get().as_str().into(),
                                                     "comments.detail.statusLine",
-                                                    Some(&rustok_ui_i18n::fluent_args!("count" => &detail_view_model.comment_count.to_string(), "status" => detail_view_model.status_label.to_string())),
+                                                    Some(&rustok_ui_i18n::fluent_args!("count" => detail_view_model.comment_count, "status" => detail_view_model.status_label.to_string())),
                                                     "{count} comments, status {status}",
                                                 )}
                                             </div>

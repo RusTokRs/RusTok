@@ -63,7 +63,13 @@ blog-table-publish = Опубликовать
 blog-table-slug = Слаг
 blog-table-status = Статус
 blog-table-title = Заголовок
-blog-table-total = { $count } пост(ов)
+blog-table-total =
+    { $count ->
+        [one] { $count } пост
+        [few] { $count } поста
+        [many] { $count } постов
+       *[other] { $count } поста
+    }
 blog-table-unpublish = Снять с публикации
 blog-title = Публикации блога
 richText-apply_link = Применить ссылку

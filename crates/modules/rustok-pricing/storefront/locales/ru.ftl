@@ -14,7 +14,13 @@ pricing-list-open = Открыть
 pricing-list-sales = { $count } на sale
 pricing-list-title = Pricing feed
 pricing-list-total = { $count } всего
-pricing-list-variants = { $count } вариантов
+pricing-list-variants =
+    { $count ->
+        [one] { $count } вариант
+        [few] { $count } варианта
+        [many] { $count } вариантов
+       *[other] { $count } варианта
+    }
 pricing-list-vendorFallback = Независимый бренд
 pricing-selected-basePriceListFallback = базовые цены
 pricing-selected-catalog = каталог

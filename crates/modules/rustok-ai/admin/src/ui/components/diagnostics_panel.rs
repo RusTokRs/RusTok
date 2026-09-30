@@ -136,7 +136,7 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                                     crate::i18n::format(
                                                         ui_locale_diagnostics.as_deref(),
                                                         "ai.diagnostics.cachedEventsCount",
-                                                        Some(&rustok_ui_i18n::fluent_args!("count" => bootstrap.recent_stream_events.len().to_string())),
+                                                        Some(&rustok_ui_i18n::fluent_args!("count" => bootstrap.recent_stream_events.len())),
                                                         "{count} cached event(s)",
                                                     )
                                                 }}

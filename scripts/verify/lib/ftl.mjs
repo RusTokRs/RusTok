@@ -17,7 +17,8 @@ const COMMENT_RE = /^#{1,3}(?:[ \t].*)?$/;
 
 /**
  * @typedef {{ kind: 'message'|'term', id: string, line: number,
- *             value: string|null, attributes: Map<string, string> }} FtlEntry
+ *             value: string|null, attributes: Map<string, string>,
+ *             comment: string }} FtlEntry
  */
 
 /**
@@ -36,6 +37,8 @@ export function parseFtl(source) {
   let current = null;
   /** @type {string|null} */
   let currentAttribute = null;
+  /** Comment lines seen since the last entry, attached to the next one. */
+  let pendingComment = [];
 
   const commit = () => {
     if (!current) return;
@@ -53,11 +56,13 @@ export function parseFtl(source) {
 
     if (line.trim() === "") {
       commit();
+      pendingComment = [];
       continue;
     }
 
     if (COMMENT_RE.test(line)) {
       commit();
+      pendingComment.push(line.replace(/^#{1,3}[ \t]?/, ""));
       continue;
     }
 
@@ -87,7 +92,9 @@ export function parseFtl(source) {
         line: lineNumber,
         value: entryMatch[3],
         attributes: new Map(),
+        comment: pendingComment.join("\n"),
       };
+      pendingComment = [];
       continue;
     }
 

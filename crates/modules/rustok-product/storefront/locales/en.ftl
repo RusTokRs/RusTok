@@ -19,6 +19,7 @@ product-list-sortDescending = Newest first
 product-list-sortDirectionLabel = Direction
 product-list-sortPublishedAt = Publication date
 product-list-title = Published products
+# plural-exempt: adjectival 'N total' is invariant in English
 product-list-total = { $count } total
 product-list-vendorFallback = Independent label
 product-selected-catalog = catalog

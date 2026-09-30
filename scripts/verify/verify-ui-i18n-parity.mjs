@@ -36,6 +36,12 @@ const scanRoots = ["apps", "crates", "packages"];
 const bundleDirNames = new Set(["locales", "messages"]);
 const skippedDirNames = new Set(["node_modules", "target", "dist", "out"]);
 const BASELINE_LOCALE = "en";
+/**
+ * Variables whose English rendering must agree in number. The authored English
+ * catalog is repository-owned, so "{ $count } comments" printing "1 comments"
+ * is an objective defect rather than a translator's stylistic choice.
+ */
+const COUNT_VARIABLE_RE = /^(count|total|qty|quantity|num)$|(_count|Count|_total|Total)$/;
 
 function walkDirectories(rootPath, onDirectory) {
   if (!fs.existsSync(rootPath)) return;
@@ -168,7 +174,28 @@ function compareFtlCatalog(directory, fileNames) {
     catalogs.set(locale, catalog);
   }
 
-  const baseline = catalogs.get(BASELINE_LOCALE);
+  const baselineCatalog = catalogs.get(BASELINE_LOCALE);
+  if (baselineCatalog) {
+    for (const [id, entry] of baselineCatalog.messages) {
+      for (const { part, pattern } of entryPatterns(entry)) {
+        const selectors = selectorVariables(pattern);
+        for (const variable of patternVariables(pattern)) {
+          if (!COUNT_VARIABLE_RE.test(variable)) continue;
+          if (selectors.has(variable)) continue;
+          // An entry may opt out with a reasoned FTL comment, for example a
+          // page number or an invariant adjectival phrase ("3 total").
+          if (/(^|\n)\s*plural-exempt:\s*\S/.test(entry.comment ?? "")) continue;
+          failures.push(
+            `${BASELINE_LOCALE}.ftl: '${id}${part === "value" ? "" : part}' interpolates the count ` +
+              `variable '$${variable}' without a plural select expression ` +
+              `(renders "1 items"); wrap it in \`{ $${variable} -> [one] .. *[other] .. }\``,
+          );
+        }
+      }
+    }
+  }
+
+  const baseline = baselineCatalog;
   if (!baseline) {
     failures.push(
       `missing '${BASELINE_LOCALE}.ftl' baseline (found: ${[...catalogs.keys()].sort().join(", ")})`,
@@ -244,13 +271,11 @@ function compareFtlCatalog(directory, fileNames) {
           );
         }
 
-        const baselineSelectors = selectorVariables(baselinePattern);
-        const localeSelectors = selectorVariables(localePattern);
-        for (const selector of difference(baselineSelectors, localeSelectors)) {
-          failures.push(
-            `${file}: '${display}${suffix}' drops the plural/select branch on '$${selector}' that the baseline defines`,
-          );
-        }
+        // Selector parity is deliberately NOT required across locales: a
+        // translation may legitimately avoid grammatical agreement (Russian
+        // "Комментариев: { $count }"), and languages differ in how many CLDR
+        // categories they have. Variable parity above is the cross-locale
+        // contract; the plural rule below applies to the authored baseline.
       }
     }
   }

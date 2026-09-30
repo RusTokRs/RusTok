@@ -1,5 +1,11 @@
 blog-badge = blog
-blog-body-rawFormat = Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символов.
+blog-body-rawFormat =
+    { $count ->
+        [one] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символ.
+        [few] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символа.
+        [many] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символов.
+       *[other] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символа.
+    }
 blog-comments-composer-editorLabel = Comment
 blog-comments-composer-emptyError = Write a comment before submitting.
 blog-comments-composer-hint = Formatting is preserved with the shared richtext editor.

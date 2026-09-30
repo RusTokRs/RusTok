@@ -393,7 +393,7 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
                     {crate::i18n::format(
                         locale.as_deref(),
                         "pricing.list.total",
-                        Some(&rustok_ui_i18n::fluent_args!("count" => &total.to_string())),
+                        Some(&rustok_ui_i18n::fluent_args!("count" => total)),
                         "{count} total",
                     )}
                 </span>
@@ -428,13 +428,13 @@ fn PricingRail(items: Vec<PricingProductListItem>, total: u64) -> impl IntoView 
                                     <span>{crate::i18n::format(
                                         locale.as_deref(),
                                         "pricing.list.variants",
-                                        Some(&rustok_ui_i18n::fluent_args!("count" => &product.variant_count.to_string())),
+                                        Some(&rustok_ui_i18n::fluent_args!("count" => product.variant_count)),
                                         "{count} variants",
                                     )}</span>
                                     <span>{crate::i18n::format(
                                         locale.as_deref(),
                                         "pricing.list.sales",
-                                        Some(&rustok_ui_i18n::fluent_args!("count" => &product.sale_variant_count.to_string())),
+                                        Some(&rustok_ui_i18n::fluent_args!("count" => product.sale_variant_count)),
                                         "{count} on sale",
                                     )}</span>
                                     <span>{product.published_at.unwrap_or(product.created_at)}</span>

@@ -1,5 +1,9 @@
 blog-badge = blog
-blog-body-rawFormat = Stored in `{ $format }` format. Raw body length: { $count } characters.
+blog-body-rawFormat =
+    { $count ->
+        [one] Stored in `{ $format }` format. Raw body length: { $count } character.
+       *[other] Stored in `{ $format }` format. Raw body length: { $count } characters.
+    }
 blog-comments-composer-editorLabel = Comment
 blog-comments-composer-emptyError = Write a comment before submitting.
 blog-comments-composer-hint = Formatting is preserved with the shared richtext editor.
