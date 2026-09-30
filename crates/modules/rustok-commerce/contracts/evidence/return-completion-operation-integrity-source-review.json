@@ -1,0 +1,38 @@
+{
+  "status": "return_completion_operation_integrity_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/modules/rustok-commerce/src/services/return_completion_operation.rs",
+    "crates/modules/rustok-commerce/src/migrations/m20260716_000004_create_return_completion_operations.rs",
+    "crates/modules/rustok-commerce/src/migrations/m20260716_000005_enforce_return_completion_resolution_identity.rs",
+    "crates/modules/rustok-commerce/src/migrations/m20260716_000006_create_return_completion_commands.rs",
+    "crates/modules/rustok-commerce/src/migrations/m20260930_000009_harden_return_completion_operation_identity.rs",
+    "crates/modules/rustok-commerce/src/migrations/mod.rs",
+    "crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs",
+    "crates/modules/rustok-commerce/src/services/return_completion_recovery.rs"
+  ],
+  "source_contract": {
+    "runtime_request_hash_is_exact_lowercase_sha256": true,
+    "database_request_hash_is_exact_lowercase_sha256": true,
+    "pending_requires_created_stage": true,
+    "completed_requires_completed_stage": true,
+    "postgres_integrity_guards_present": true,
+    "mysql_integrity_guards_present": true,
+    "sqlite_integrity_guards_present": true,
+    "mysql_hash_regex_is_case_sensitive": true,
+    "tenant_scoped_reads_and_cas": true,
+    "lease_owner_and_duration_are_bounded": true,
+    "command_and_operation_identity_remain_immutable": true,
+    "external_effect_identities_unchanged": true,
+    "runtime_migration_execution_proven": false
+  },
+  "execution": [],
+  "validation": {
+    "tests_run": false,
+    "migration_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "ci_run": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "No Cargo, migration runner, test suite, formatter, or CI commands were executed."
+}

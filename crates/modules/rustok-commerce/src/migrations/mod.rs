@@ -37,6 +37,7 @@ mod m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity;
 mod m20260721_000006_create_marketplace_reversal_adaptation_failures;
 mod m20260721_000007_align_language_agnostic_locale_contract;
 mod m20260909_000008_add_collection_translation_change_journal;
+mod m20260930_000009_harden_return_completion_operation_identity;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -84,6 +85,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20260909_000008_add_collection_translation_change_journal::Migration,
+    ));
+    migrations.push(Box::new(
+        m20260930_000009_harden_return_completion_operation_identity::Migration,
     ));
     migrations
 }
@@ -258,6 +262,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     dependencies.push(MigrationDependencyDescriptor::new(
         "m20260909_000008_add_collection_translation_change_journal",
         vec!["m20260721_000007_align_language_agnostic_locale_contract"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20260930_000009_harden_return_completion_operation_identity",
+        vec!["m20260716_000006_create_return_completion_commands"],
     ));
     dependencies
 }

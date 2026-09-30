@@ -611,7 +611,9 @@ These are source-contract defects, not verification-only tasks.
 - [x] Publish tenant-scoped operator list/show/retry without exposing command payloads.
 - [x] Remove superseded REST/GraphQL return-completion helper paths after both
   transports moved to `ReturnCompletionOrchestrationService`.
-- [ ] Apply return-completion migrations on clean/upgraded SQLite/PostgreSQL.
+- [x] Enforce return-completion operation SHA-256 request-hash and terminal
+  stage/status invariants at the persistence layer across supported database backends.
+- [ ] Apply return-completion migrations on clean/upgraded SQLite/PostgreSQL/MySQL.
 - [ ] Execute replay, conflict, admission/claim contention, lease expiry, process-exit,
   restart, and reconciliation-resolution evidence.
 
