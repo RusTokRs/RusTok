@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::services::fulfillment::CheckoutFulfillmentRecord;
+use crate::services::fulfillment::{normalize_checkout_plan_hash, CheckoutFulfillmentRecord};
 use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
     FulfillmentService,
@@ -87,7 +87,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         tenant_id: Uuid,
         request: EnsureCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
-        validate_request(
+        let order_plan_hash = validate_request(
             request.checkout_operation_id,
             request.order_id,
             request.order_plan_hash.as_str(),
@@ -125,14 +125,14 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                         input,
                         request.checkout_operation_id,
                         plan.index,
-                        request.order_plan_hash.as_str(),
+                        order_plan_hash.as_str(),
                     )
                     .await
                 {
                     Ok(created) => CheckoutFulfillmentRecord {
                         index: plan.index,
                         order_id: created.order_id,
-                        plan_hash: Some(request.order_plan_hash.clone()),
+                        plan_hash: Some(order_plan_hash.clone()),
                         fulfillment: created,
                     },
                     Err(error) => {
@@ -166,7 +166,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     tenant_id,
                     order_id: request.order_id,
                     customer_id: request.customer_id,
-                    plan_hash: request.order_plan_hash.as_str(),
+                    plan_hash: order_plan_hash.as_str(),
                     plan,
                 },
             )
@@ -194,7 +194,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         tenant_id: Uuid,
         request: ReadCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
-        validate_request(
+        let order_plan_hash = validate_request(
             request.checkout_operation_id,
             request.order_id,
             request.order_plan_hash.as_str(),
@@ -263,7 +263,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     tenant_id,
                     order_id: request.order_id,
                     customer_id: request.customer_id,
-                    plan_hash: request.order_plan_hash.as_str(),
+                    plan_hash: order_plan_hash.as_str(),
                     plan,
                 },
             )
@@ -614,20 +614,19 @@ fn validate_request(
     order_id: Uuid,
     plan_hash: &str,
     plans: &[CheckoutFulfillmentCommand],
-) -> Result<(), PortError> {
+) -> Result<String, PortError> {
     if checkout_operation_id.is_nil() || order_id.is_nil() {
         return Err(PortError::validation(
             "fulfillment.checkout_identity_invalid",
             "checkout operation and order identity must be non-nil UUIDs",
         ));
     }
-    let plan_hash = plan_hash.trim();
-    if plan_hash.len() != 64 || !plan_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(PortError::validation(
+    let plan_hash = normalize_checkout_plan_hash(plan_hash).map_err(|_| {
+        PortError::validation(
             "fulfillment.checkout_plan_hash_invalid",
             "checkout fulfillment plan hash must be a 64-character hexadecimal value",
-        ));
-    }
+        )
+    })?;
     let mut indexes = HashSet::new();
     let mut line_ids = HashSet::new();
     for plan in plans {
@@ -650,7 +649,7 @@ fn validate_request(
             }
         }
     }
-    Ok(())
+    Ok(plan_hash)
 }
 
 fn build_input(
@@ -700,9 +699,20 @@ fn validate_fulfillment(
         plan,
     } = expected;
 
+
+    let persisted_plan_hash = match record.plan_hash.as_deref() {
+        Some(value) => Some(normalize_checkout_plan_hash(value).map_err(|_| {
+            PortError::conflict(
+                "fulfillment.checkout_identity_conflict",
+                "fulfillment has an invalid persisted checkout plan hash",
+            )
+        })?),
+        None => None,
+    };
+
     if record.index != plan.index
         || record.order_id != order_id
-        || record.plan_hash.as_deref() != Some(plan_hash)
+        || persisted_plan_hash.as_deref() != Some(plan_hash)
     {
         return Err(PortError::conflict(
             "fulfillment.checkout_identity_conflict",
@@ -1241,6 +1251,40 @@ mod tests {
             "checkout": {}
         });
         assert_eq!(extract_cart_line_item_id(&metadata), None);
+    }
+
+    #[test]
+    fn persisted_uppercase_checkout_plan_hash_canonicalizes_to_identity_value() {
+        let persisted =
+            normalize_checkout_plan_hash(&"A".repeat(64)).expect("valid persisted hash");
+        assert_eq!(persisted, "a".repeat(64));
+    }
+
+    #[test]
+    fn checkout_request_canonicalizes_uppercase_plan_hash() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let plan = CheckoutFulfillmentCommand {
+            index: 0,
+            shipping_option_id: None,
+            carrier: None,
+            tracking_number: None,
+            items: vec![CheckoutFulfillmentItemCommand {
+                order_line_item_id: Uuid::new_v4(),
+                cart_line_item_id: Uuid::new_v4(),
+                quantity: 1,
+                metadata: Value::Null,
+            }],
+            metadata: Value::Null,
+        };
+        let canonical = validate_request(
+            operation_id,
+            order_id,
+            &"A".repeat(64),
+            &[plan],
+        )
+        .expect("uppercase hexadecimal plan hash should canonicalize");
+        assert_eq!(canonical, "a".repeat(64));
     }
 
     #[test]

@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `487667dbda6d83f9cea32fda7aecb7ef0ea8f2e0`  
+**Current main SHA:** `22d73e8a29aeb247159f98bb1d667ed85a4a3fd6`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4050,6 +4050,25 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh second pass:** re-traced malformed current metadata through merge -> audit append -> persistence. No path remains where an object patch can silently replace a scalar/array current metadata value before the fail-closed check.
 - **Behavioral compatibility:** valid object metadata and object patches retain the existing shallow merge semantics; audit history is still restored after the merge so caller patches cannot replace owner audit evidence.
 - **Adjacent-boundary audit:** lifecycle callers in ship/deliver/reopen/reship/cancel all remain on the same owner helper; provider receipt and checkout identity stripping are unchanged.
-- **Status:** `FS-22.06.79` complete and ready for integration. The primary `fulfillment.rs` track remains open for further fresh passes.
+- **Status:** `FS-22.06.79` complete and integrated on `main` as `0371a616517bd61955b5fbf32b671b34ed76ee2c`. The primary `fulfillment.rs` track remains open for further fresh passes.
 - **Next primary module iteration:** `FS-22.06.80 — same primary module, checkout identity create/adopt/read integrity pass after typed cutover`.
 - **Verification:** source inspection, 10-call-site structural scan, lifecycle transaction tracing, immediate reread, and independent fresh second pass only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+
+### FS-22.06.80 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Checkout fulfillment plan-hash create/adopt/read integrity
+
+- **Base:** `22d73e8a29aeb247159f98bb1d667ed85a4a3fd6`; dedicated branch `audit/fs-22.06.80-checkout-identity-current` was created from the refreshed `main`.
+- **Primary scope:** checkout fulfillment identity across `FulfillmentService::create_checkout_fulfillment` and the `CheckoutFulfillmentExecutionPort` ensure/adopt/read flow, with typed identity migration `000119` and Commerce checkout-plan hash ownership inspected as adjacent canonical evidence.
+- **Invariant map:** checkout plan hashes are canonical lowercase 64-character hexadecimal digests; the same canonical identity must be used for create, race adoption, retry, and read comparison; legacy valid hex values must remain readable after typed cutover; malformed persisted hashes must fail closed.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.80-01:** `FulfillmentService::validate_checkout_identity` accepted uppercase hex without canonicalizing it. `CheckoutFulfillmentExecutionPort` also passed the raw request hash into create/adopt/read expectations. Because typed identity comparison is string-based, semantically identical uppercase/lowercase hashes could create distinct textual values and make retries/reads inconsistent.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.80-02:** typed migration `000119` accepts hexadecimal hashes case-insensitively and its legacy backfill preserves the source casing. A service fix that canonicalized only incoming requests would therefore break adoption/read of pre-existing valid uppercase typed rows.
+- **Production remediation:** introduced the owner-level `normalize_checkout_plan_hash` helper and used it in `validate_checkout_identity`; `CheckoutFulfillmentExecutionPort::validate_request` now returns the canonical hash and ensure/read use that exact value for create, locally constructed records, and expected-plan comparison. Persisted `record.plan_hash` is normalized before identity comparison, preserving valid legacy uppercase rows while rejecting malformed persisted values through typed conflict handling.
+- **Regression coverage:** added focused unit coverage for canonical lowercase normalization at the service and checkout-execution boundaries.
+- **Create/adopt/read audit:** existing identity lookup remains tenant + checkout-operation + fulfillment-index scoped; uniqueness is enforced by `(tenant_id, checkout_operation_id, checkout_fulfillment_index)`; adopted records are still validated against order, customer, shipping option, carrier, tracking number, plan hash, and item/cart-line identities before acceptance.
+- **Migration reconciliation:** typed identity migration `000119` was re-read across PostgreSQL, SQLite, and MySQL paths. It validates 64-hex plan hashes but does not require lowercase; therefore service-level canonical comparison is the compatibility owner and no migration rewrite was introduced in this service phase.
+- **Immediate re-audit:** after the first implementation, a stale case-sensitive plan-hash comparison remained before the new normalized comparison and was detected by rereading the final function; the duplicate old comparison was removed. This prevented a false-positive fix that would still reject uppercase legacy rows.
+- **Fresh second pass:** rescanned all `order_plan_hash`/`checkout_plan_hash` uses in `checkout_execution.rs` and `fulfillment.rs`, verified both ensure/read paths receive the canonical request hash, verified service create persists the canonical value, and verified persisted uppercase values are normalized before comparison. `order_id` was separately checked against migration `000109`, which already fail-closes nonexistent/foreign tenant orders at persistence.
+- **Static contract audit:** the canonical typed-identity verifier continues to enforce typed columns, tenant-scoped uniqueness, and rollback compatibility; no conflicting lowercase-only database contract currently exists.
+- **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/rustfmt/runtime evidence is claimed beyond source/static inspection.
+- **Documentation:** Fulfillment README now documents canonical lowercase checkout plan hashes and legacy uppercase-row read compatibility.
+- **Status:** `FS-22.06.80` implementation complete on its dedicated branch; integration pending final merge gate.
+- **Next primary module iteration:** `FS-22.06.81 — same primary module, checkout fulfillment identity metadata projection and item cart-line identity residuals`.
