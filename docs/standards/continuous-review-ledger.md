@@ -3786,3 +3786,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.63` complete as a clean assessment; no production source change was required. The earlier empty PR #4419 was closed and is not part of the integrated history.
 - **Verification:** source inspection and cross-module contract comparison only; local Cargo/remediation-gate execution remains unavailable in the current environment.
 - **Next primary module:** `FS-22.06.64 — crates/modules/rustok-fulfillment/src/services/mod.rs`.
+
+
+### FS-22.06.64 Assessment — `crates/modules/rustok-fulfillment/src/services/mod.rs` Fulfillment service module/export boundary
+
+- **Base:** refreshed `main` at `68b9dcfccc394f794ef9ddd1ca4f7d4f782eea54`; dedicated branch created from that exact SHA for this clean assessment.
+- **Primary scope:** one production module boundary — service submodule registration, visibility, re-exports, and canonical public API exposure.
+- **Invariant map:** the service barrel must expose the canonical owner surface without duplicating sources of truth; internal helpers remain private; exported symbols must match the module's documented responsibilities and downstream contracts.
+- **Assessment:** `services/mod.rs` registers the expected Fulfillment service owners: `FulfillmentService`, provider-operation journal, provider-operation recovery, and shipping-option translation service. The private `translation_progress` module only extends `ShippingOptionTranslationService` with `pub(crate)` functionality and is not a public API leak.
+- **Public-surface audit:** selected service types are re-exported from `lib.rs`, while the module layout remains consistent with neighboring Cart/Payment service barrels. The additional `pub mod` exposure of the established Fulfillment service implementation modules is not a confirmed contract defect because those modules contain the same owner types already exposed through the crate root and no conflicting source of truth was found.
+- **Ownership audit:** service barrels do not introduce transport logic, persistence ownership, policy duplication, or cross-module dependencies; concrete business ownership remains inside the respective service modules.
+- **Adjacent audit:** re-read `services/fulfillment.rs`, `services/provider_operation.rs`, `services/provider_operation_recovery.rs`, `services/shipping_option_translation.rs`, `services/translation_progress.rs`, `lib.rs`, Fulfillment FBA/checkout contracts, and neighboring service barrels. No repository-owned defect attributable to this primary module was confirmed.
+- **Second pass:** independently re-read the final `services/mod.rs` and its complete export graph; all exported types in the barrel are also available through the documented crate-root API, and the private progress extension is not exported externally.
+- **Status:** `FS-22.06.64` complete as a clean assessment; no production source change was required.
+- **Verification:** source inspection and cross-module export comparison only. Local Cargo/remediation-gate execution remains unavailable in the current environment because repository checkout cannot resolve GitHub DNS.
+- **Next primary module:** `FS-22.06.65 — crates/modules/rustok-fulfillment/src/services/shipping_option_translation.rs`.
