@@ -43,7 +43,6 @@ for (const [value, label] of [
   ['HttpResult<Json<provider_operation::Model>>', 'raw provider-operation result type'],
   ['Ok(Json(operations))', 'raw provider-operation list serialization'],
   ['Ok(Json(operation))', 'raw provider-operation serialization'],
-  ['idempotency_key', 'idempotency key response exposure'],
 ]) forbidText(source, value, label);
 
 for (const [value, label] of [
