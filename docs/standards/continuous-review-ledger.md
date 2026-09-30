@@ -3315,3 +3315,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Diff review:** production change is limited to `status.rs` capability semantics and its focused test, plus this ledger entry. No persistence, controller, permission, or provider logic changed.
 - **Verification:** source inspection, consumer search, service/status state-machine comparison, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.35` implementation integrated directly into `main`; maintainer/CI verification remains explicitly required.
+
+
+### FS-22.06.36 Assessment — `crates/modules/rustok-fulfillment/src/fulfillment_read.rs` Fulfillment read owner
+
+- **Base:** refreshed `main` at `932971a1a6cc281625c02ccbbcea9440ddc099ec`; exact main state was re-read before closeout.
+- **Discovery:** re-read all three Fulfillment read-port entrypoints, tenant parsing, request/error fact projection, `FulfillmentService::get_fulfillment`, `list_fulfillments`, `find_by_order`, their pagination/status/filter semantics, and mounted Commerce read paths.
+- **Invariant map:** every read must be tenant-scoped; policy admission must occur before service access; page/per-page bounds must be enforced by the owner service; single-resource/not-found semantics must remain typed; technical diagnostics must not expose persistence payloads.
+- **Confirmed result:** no additional repository-owned production defect was found in this read owner. Single-resource and order reads use tenant-qualified queries; list reads scope `tenant_id` before optional status/order/customer filters; service pagination clamps page size to the established 1–100 range and avoids arithmetic underflow; database failures map to public `Unavailable` without raw diagnostics.
+- **Projection/privacy check:** `FulfillmentResponse` intentionally exposes the fulfillment metadata/items contract to its caller; this owner does not add extra persistence-only fields or log raw request/result payloads. The diagnostics path emits only bounded shape facts.
+- **Policy check:** all three port methods enforce `PortCallPolicy::read()` before parsing tenant context or reaching `FulfillmentService`.
+- **Fresh independent second pass:** re-read the full port source, service read methods, local consumer references, and mounted Commerce controller tree. No unscoped query, policy bypass, pagination overflow path, status-filter confusion, or raw stderr/debug output was confirmed.
+- **Diff review:** no production change required; only this ledger closeout is added.
+- **Verification:** source inspection, caller/service tracing, tenant-scope review, pagination analysis, projection/privacy review, immediate reread, independent second pass, and exact diff review completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer verification remains required.
+- **Status:** `FS-22.06.36` complete as a clean audit; continue to the next unreviewed Fulfillment module.
