@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `10500293dc8cd10336a49666c839edf77c36e9da`  
+**Current main SHA:** `4842c410415fea3cdbed70b8ff7644f875858f77`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3823,3 +3823,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, caller/callee tracing, migration/invariant tracing, immediate reread, independent fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** Iteration 1 complete, but the `fulfillment.rs` module track remains open because the two isolated findings above require subsequent dedicated iterations.
 - **Next primary module iteration:** `FS-22.06.66 — same primary module, pagination offset arithmetic`.
+
+
+
+### FS-22.06.66 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Pagination offset arithmetic
+
+- **Base:** `4842c410415fea3cdbed70b8ff7644f875858f77`; dedicated branch `audit/fs-22.06.66-fulfillment-pagination` was created from the freshly refreshed `main`.
+- **Primary scope:** one production service module only — `FulfillmentService::list_fulfillments` pagination normalization and offset arithmetic, with the mounted `FulfillmentReadPort` caller checked as the direct untrusted-input boundary.
+- **Invariant map:** pagination input is untrusted; normalization must keep page/per-page within their declared bounds; offset computation must never overflow; read behavior must remain tenant-filtered and preserve existing ordering/total semantics.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.66-01:** `page.saturating_sub(1) * per_page` still used ordinary multiplication. For sufficiently large untrusted page values, the multiplication can overflow in debug builds or wrap in release builds, producing an incorrect database offset rather than a bounded deterministic value.
+- **Production remediation:** extracted `fulfillment_list_offset` and changed the page multiplication to `saturating_mul` after the existing page/per-page normalization. The list query continues to use the same tenant filter, status/order/customer filters, sort, limit, and total count.
+- **Regression coverage:** added a pure unit test covering zero input, the first page, and `u64::MAX` page with a bounded page size; the extreme case now saturates to `u64::MAX` instead of overflowing.
+- **Adjacent-boundary audit:** the owner `FulfillmentReadPort` passes transport `u64` pagination values directly into this service, so the service remains the canonical arithmetic safety boundary. No alternate arithmetic path exists in the inspected read adapter.
+- **Immediate re-audit:** re-read `list_fulfillments`, the new helper, the direct read-port caller, and the focused test; no regression or changed filtering/ordering behavior was introduced.
+- **Fresh second pass:** a module-level pass rechecked remaining pagination arithmetic in `fulfillment.rs`; no other page/per-page multiplication path remained. The previously isolated direct-service `und` locale admission remains a separate next iteration and was not batched here.
+- **Implementation:** production source changed only in the primary service module; no architectural or ADR change was required.
+- **Verification:** source inspection, direct caller tracing, arithmetic boundary analysis, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.66` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.67 — same primary module, direct-service locale admission / storage-only `und``.
