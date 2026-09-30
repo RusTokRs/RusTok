@@ -119,6 +119,14 @@ fn admin_return_decision_order_context(
 
 
 
+fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(value) if value.is_nil() => "present_nil",
+        Some(_) => "present_non_nil",
+    }
+}
+
 fn admin_order_error_policy(error: &OrderError) -> AdminOrderReturnHttpPolicy {
     match error {
         OrderError::Validation(_) => (
@@ -425,21 +433,25 @@ fn map_admin_order_return_orchestration_error(
             "rustok_commerce",
         ),
     };
+    let tenant_id_non_nil = !context.tenant_id.is_nil();
+    let actor_id_non_nil = !context.actor_id.is_nil();
+    let order_id_shape = optional_uuid_shape(context.order_id);
+    let return_id_shape = optional_uuid_shape(context.return_id);
+    let refund_id_shape = optional_uuid_shape(context.refund_id);
     tracing::error!(
-        error = ?error,
         owner = ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER,
         source_owner,
-        tenant_id = %context.tenant_id,
-        actor_id = %context.actor_id,
-        order_id = ?context.order_id,
-        return_id = ?context.return_id,
-        refund_id = ?context.refund_id,
-        operation = %context.operation,
+        tenant_id_non_nil,
+        actor_id_non_nil,
+        order_id_shape,
+        return_id_shape,
+        refund_id_shape,
+        operation = context.operation,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
-        "commerce admin order return orchestration failed"
+        "commerce admin order return orchestration failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
