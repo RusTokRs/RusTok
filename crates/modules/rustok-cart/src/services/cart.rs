@@ -16,13 +16,18 @@ use sea_orm::{
 };
 use std::{
     collections::{BTreeSet, HashMap},
+    future::Future,
+    pin::Pin,
     sync::Arc,
 };
+use serde::Serialize;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use rustok_api::{PortContext, PortError};
 use rustok_core::generate_id;
+use rustok_outbox::idempotency::{self, Admission, OwnerOperationScope};
 use rustok_fulfillment::{
     ShippingOptionReadPort, in_process_shipping_option_read_port,
 };
@@ -72,6 +77,100 @@ impl CartService {
 
     pub(crate) fn database(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    pub(crate) async fn run_storefront_idempotent_write<T, F>(
+        &self,
+        context: &PortContext,
+        operation: &'static str,
+        request: &T,
+        action: F,
+    ) -> Result<CartResponse, PortError>
+    where
+        T: Serialize,
+        F: for<'a> FnOnce(
+            &'a DatabaseTransaction,
+        ) -> Pin<Box<dyn Future<Output = CartResult<CartResponse>> + 'a>>,
+    {
+        context.require_write_semantics()?;
+        let tenant_id = crate::ports::parse_port_tenant_id(context)?;
+        let idempotency_key = context
+            .idempotency_key
+            .as_deref()
+            .ok_or_else(|| PortError::validation(
+                "port.idempotency_key_required",
+                "idempotency key is required for cart writes",
+            ))?;
+
+        match idempotency::admit(
+            &self.db,
+            OwnerOperationScope::Tenant(tenant_id),
+            "cart",
+            idempotency_key,
+            operation,
+            request,
+        )
+        .await?
+        {
+            Admission::Replay(value) => serde_json::from_value(value).map_err(|_| {
+                PortError::invariant_violation(
+                    "cart.idempotency_replay_corrupt",
+                    "stored cart idempotency replay is corrupt",
+                )
+            }),
+            Admission::ReplayError(error) => Err(error),
+            Admission::Run(lease) => {
+                let txn = self.db.begin().await.map_err(|_| {
+                    PortError::unavailable(
+                        "cart.database_unavailable",
+                        "cart storage is temporarily unavailable",
+                    )
+                })?;
+
+                match action(&txn).await {
+                    Ok(response) => {
+                        if let Err(error) = idempotency::complete(&txn, lease, &response).await {
+                            let _ = txn.rollback().await;
+                            let _ = idempotency::fail(&self.db, lease, &error).await;
+                            return Err(error);
+                        }
+
+                        txn.commit().await.map_err(|_| {
+                            PortError::unavailable(
+                                "cart.database_unavailable",
+                                "cart storage is temporarily unavailable",
+                            )
+                        })
+                    }
+                    Err(error) => {
+                        let mapped = cart_error_to_port_error(error);
+                        if txn.rollback().await.is_err() {
+                            tracing::error!(
+                                owner = "rustok_cart",
+                                operation,
+                                action = "rollback",
+                                boundary = "cart_storefront_idempotency",
+                                "cart storefront mutation rollback failed"
+                            );
+                            return Err(PortError::unavailable(
+                                "cart.database_unavailable",
+                                "cart storage is temporarily unavailable",
+                            ));
+                        }
+                        if idempotency::fail(&self.db, lease, &mapped).await.is_err() {
+                            tracing::error!(
+                                owner = "rustok_cart",
+                                operation,
+                                action = "fail_receipt",
+                                boundary = "cart_storefront_idempotency",
+                                "cart storefront idempotency failure receipt could not be persisted"
+                            );
+                        }
+                        Err(mapped)
+                    }
+                }
+            }
+        }
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -673,4 +772,44 @@ impl CartService {
     }
 
 
+}
+
+pub(crate) fn cart_error_to_port_error(error: CartError) -> PortError {
+    match error {
+        CartError::Validation(message) => PortError::validation("cart.validation", message),
+        CartError::CartNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "cart.cart_not_found",
+            format!("cart {id} not found"),
+            false,
+        ),
+        CartError::CartLineItemNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "cart.line_item_not_found",
+            format!("cart line item {id} not found"),
+            false,
+        ),
+        CartError::InvalidTransition { from, to } => PortError::new(
+            rustok_api::PortErrorKind::Conflict,
+            "cart.invalid_transition",
+            format!("invalid cart status transition: {from} -> {to}"),
+            false,
+        ),
+        CartError::Database(error) => PortError::unavailable(
+            "cart.database_unavailable",
+            format!("cart storage unavailable: {error}"),
+        ),
+        CartError::TaxBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        }
+        | CartError::ShippingBoundary {
+            kind,
+            code,
+            message,
+            retryable,
+        } => PortError::new(kind, code, message, retryable),
+    }
 }
