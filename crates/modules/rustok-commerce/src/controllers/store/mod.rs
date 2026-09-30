@@ -15,7 +15,7 @@ pub use products::*;
 #[cfg(test)]
 mod tests;
 
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, PortError, RequestContext};
@@ -307,7 +307,7 @@ pub(crate) fn storefront_cart_port_context(
     auth: Option<&rustok_api::AuthContext>,
     resource_id: Uuid,
     operation: &str,
-    is_write: bool,
+    idempotency_key: Option<&str>,
 ) -> PortContext {
     let actor = auth
         .map(|value| PortActor::user(value.user_id.to_string()))
@@ -325,11 +325,40 @@ pub(crate) fn storefront_cart_port_context(
         .as_deref()
         .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context);
-    if is_write {
-        context.with_idempotency_key(correlation_id)
-    } else {
-        context
+    match idempotency_key {
+        Some(value) => context.with_idempotency_key(value.to_string()),
+        None => context,
     }
+}
+
+pub(crate) fn required_storefront_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
+    const MAX_LENGTH: usize = 191;
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::bad_request(
+                "idempotency_key_required",
+                "Idempotency-Key header is required for this write operation".to_string(),
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::bad_request(
+                "idempotency_key_invalid",
+                "Idempotency-Key header must be valid ASCII".to_string(),
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.chars().count() > MAX_LENGTH {
+        return Err(HttpError::bad_request(
+            "idempotency_key_invalid",
+            format!("Idempotency-Key must contain 1 to {MAX_LENGTH} characters"),
+        ));
+    }
+
+    Ok(value)
 }
 
 pub(crate) async fn ensure_storefront_channel_enabled_for_db(
