@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `87d15eba9c92128aced13c174871511bf3f8c74a`  
+**Current main SHA:** `9a946747f9a1569fb46d0e8c01da9e751884d240`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3894,3 +3894,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.69` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.70 — same primary module, shipping-option tenant identity/data-integrity boundary and remaining mutation semantics`.
+
+### FS-22.06.70 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Tenant identity admission
+
+- **Base:** `9a946747f9a1569fb46d0e8c01da9e751884d240`; dedicated branch `audit/fs-22.06.70-fulfillment-tenant-invariants` was created from refreshed `main`.
+- **Primary scope:** one production service module only — tenant identity admission across all public and crate-public `FulfillmentService` entrypoints that accept `tenant_id`, with direct storage paths checked for the same invariant.
+- **Invariant map:** a real tenant identity must be non-nil; all owner reads/writes must reject invalid tenant identity before querying or mutating persistence; the guard must also cover crate-internal entrypoints that bypass a public wrapper.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.70-01:** `Uuid::nil()` was accepted as a tenant identity by the service. The tenant owner creates tenant IDs through generated UUIDs, while the Fulfillment schema only has `NOT NULL` on `tenant_id` and no non-nil CHECK. A direct owner-service call could therefore create or read data under a tenant identity that cannot correspond to a real tenant.
+- **Production remediation:** added `validate_tenant_id` and applied it to every `pub async` and `pub(crate) async` FulfillmentService entrypoint carrying `tenant_id`, including shipping-option CRUD, fulfillment reads, lifecycle writes, and checkout find/list/create helpers. Private helpers remain behind these validated entrypoints.
+- **Regression coverage:** added a focused pure test proving the nil UUID is rejected and a generated non-nil UUID is accepted.
+- **Coverage audit:** automated source scan found 21 tenant-bearing public/crate-public async entrypoints; all 21 now perform the guard before owner work.
+- **Adjacent-boundary audit:** shipping-option admin/read ports already parse tenant IDs from trusted request context; checkout/read ports pass the parsed tenant through to the service; tenant creation uses generated IDs. The new guard therefore closes the direct owner-service gap without changing trusted context parsing or tenant-scoped SQL predicates.
+- **Immediate re-audit:** re-read shipping-option mutation, checkout creation/find/list, fulfillment read/list, and lifecycle mutation entrypoints after insertion; no caller requires a nil tenant sentinel and no validation is bypassed.
+- **Fresh second pass:** searched the complete primary module for tenant-bearing service entrypoints and verified every one is guarded. Existing internal tenant filters and row locks remain unchanged.
+- **Schema note:** the service guard fixes new direct owner-service admission. A future database migration could add a physical non-nil UUID CHECK for persisted tenant columns, but that is a separate migration-owner track and was not mixed into this service iteration.
+- **Documentation:** Fulfillment README now states the owner-service tenant identity invariant.
+- **Verification:** source inspection, entrypoint coverage scan, tenant-owner comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.70` complete and ready for integration.
+- **Next primary module:** `FS-22.06.71 — same primary module, provider/metadata compatibility validation and remaining mutation semantics`.
