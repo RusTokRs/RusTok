@@ -22,11 +22,14 @@ the immutable checkout plan and receives normalized owner projections. The owner
 uses `FulfillmentService::list_by_order` and `create_fulfillment`; mounted Commerce
 checkout no longer queries fulfillment persistence or constructs the service.
 
+Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract remains owned by the later `m20260925_000119_type_checkout_fulfillment_identity` migration.
+
 The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
 fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and a concurrency-safe uniqueness constraint are source-complete;
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
+The typed identity cutover also treats migration rollback as a compatibility boundary: current legacy SQLite/MySQL identity guards are restored exactly, MySQL legacy INSERT protection is removed during cutover, and PostgreSQL numeric legacy indices are bounded before BIGINT conversion.
 
 Complete shipping-option active list and lookup use `ShippingOptionReadPort`;
 administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shipping-option translation

@@ -56,7 +56,8 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     ELSE NULL
                 END,
                 checkout_fulfillment_index = CASE
-                    WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
+                    WHEN length(btrim(metadata #>> '{checkout,fulfillment_index}')) <= 10
+                        AND btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
                     THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint
                     ELSE NULL
                 END,
@@ -84,7 +85,8 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         AND lower(btrim(metadata #>> '{checkout,order_id}')) = order_id::text
                         AND btrim(metadata #>> '{checkout,order_plan_hash}') = checkout_plan_hash
                         AND CASE
-                            WHEN btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
+                            WHEN length(btrim(metadata #>> '{checkout,fulfillment_index}')) <= 10
+                                AND btrim(metadata #>> '{checkout,fulfillment_index}') ~ '^[0-9]+$'
                             THEN (btrim(metadata #>> '{checkout,fulfillment_index}'))::bigint = checkout_fulfillment_index
                             ELSE false
                         END
@@ -437,13 +439,46 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 
             UPDATE fulfillments
             SET metadata = json_set(
-                COALESCE(metadata, '{}'),
-                '$.checkout.operation_id', checkout_operation_id,
-                '$.checkout.order_id', order_id,
-                '$.checkout.order_plan_hash', checkout_plan_hash,
+                COALESCE(CAST(metadata AS TEXT), '{}'),
+                '$.checkout.operation_id', CASE
+                    WHEN typeof(checkout_operation_id) = 'blob' THEN
+                        lower(
+                            substr(hex(checkout_operation_id), 1, 8) || '-' ||
+                            substr(hex(checkout_operation_id), 9, 4) || '-' ||
+                            substr(hex(checkout_operation_id), 13, 4) || '-' ||
+                            substr(hex(checkout_operation_id), 17, 4) || '-' ||
+                            substr(hex(checkout_operation_id), 21, 12)
+                        )
+                    ELSE
+                        CAST(checkout_operation_id AS TEXT)
+                END,
+                '$.checkout.order_id', CASE
+                    WHEN typeof(order_id) = 'blob' THEN
+                        lower(
+                            substr(hex(order_id), 1, 8) || '-' ||
+                            substr(hex(order_id), 9, 4) || '-' ||
+                            substr(hex(order_id), 13, 4) || '-' ||
+                            substr(hex(order_id), 17, 4) || '-' ||
+                            substr(hex(order_id), 21, 12)
+                        )
+                    ELSE
+                        CAST(order_id AS TEXT)
+                END,
+                '$.checkout.order_plan_hash', CAST(checkout_plan_hash AS TEXT),
                 '$.checkout.fulfillment_index', checkout_fulfillment_index,
                 '$.checkout.fulfillment_key',
-                    'checkout:' || checkout_operation_id || ':fulfillment:' || checkout_fulfillment_index
+                    'checkout:' || (CASE
+                        WHEN typeof(checkout_operation_id) = 'blob' THEN
+                            lower(
+                                substr(hex(checkout_operation_id), 1, 8) || '-' ||
+                                substr(hex(checkout_operation_id), 9, 4) || '-' ||
+                                substr(hex(checkout_operation_id), 13, 4) || '-' ||
+                                substr(hex(checkout_operation_id), 17, 4) || '-' ||
+                                substr(hex(checkout_operation_id), 21, 12)
+                            )
+                        ELSE
+                            CAST(checkout_operation_id AS TEXT)
+                    END) || ':fulfillment:' || checkout_fulfillment_index
             )
             WHERE checkout_operation_id IS NOT NULL
               AND checkout_fulfillment_index IS NOT NULL
@@ -451,16 +486,27 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 
             UPDATE fulfillment_items
             SET metadata = json_set(
-                COALESCE(metadata, '{}'),
+                COALESCE(CAST(metadata AS TEXT), '{}'),
                 '$.checkout.operation_id',
-                    (SELECT f.checkout_operation_id
+                    (SELECT CASE
+                        WHEN typeof(f.checkout_operation_id) = 'blob' THEN
+                            lower(
+                                substr(hex(f.checkout_operation_id), 1, 8) || '-' ||
+                                substr(hex(f.checkout_operation_id), 9, 4) || '-' ||
+                                substr(hex(f.checkout_operation_id), 13, 4) || '-' ||
+                                substr(hex(f.checkout_operation_id), 17, 4) || '-' ||
+                                substr(hex(f.checkout_operation_id), 21, 12)
+                            )
+                        ELSE
+                            CAST(f.checkout_operation_id AS TEXT)
+                     END
                      FROM fulfillments AS f
                      WHERE f.id = fulfillment_items.fulfillment_id
                        AND f.checkout_operation_id IS NOT NULL
                        AND f.checkout_fulfillment_index IS NOT NULL
                        AND f.checkout_plan_hash IS NOT NULL),
                 '$.checkout.order_plan_hash',
-                    (SELECT f.checkout_plan_hash
+                    (SELECT CAST(f.checkout_plan_hash AS TEXT)
                      FROM fulfillments AS f
                      WHERE f.id = fulfillment_items.fulfillment_id
                        AND f.checkout_operation_id IS NOT NULL
@@ -505,6 +551,12 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN json_extract(OLD.metadata, '$.checkout.fulfillment_key')
                     IS NOT json_extract(NEW.metadata, '$.checkout.fulfillment_key')
                     THEN RAISE(ABORT, 'fulfillment checkout identity is immutable') END;
+                SELECT CASE WHEN json_extract(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
+                    AND (
+                        trim(json_extract(NEW.metadata, '$.checkout.fulfillment_key')) = ''
+                        OR trim(COALESCE(json_extract(NEW.metadata, '$.checkout.operation_id'), '')) = ''
+                    )
+                    THEN RAISE(ABORT, 'invalid fulfillment checkout identity') END;
             END;
 
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
@@ -552,6 +604,7 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 END
             WHERE JSON_EXTRACT(metadata, '$.checkout.fulfillment_key') IS NOT NULL;
 
+            DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_insert;
             DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_update;
             DROP INDEX ux_fulfillments_checkout_identity ON fulfillments;
             ALTER TABLE fulfillments DROP COLUMN checkout_fulfillment_identity;
@@ -723,10 +776,41 @@ async fn restore_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
                 ON fulfillments (tenant_id, checkout_fulfillment_identity);
 
+            CREATE TRIGGER fulfillments_checkout_identity_guard_insert
+            BEFORE INSERT ON fulfillments
+            FOR EACH ROW
+            BEGIN
+                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
+                    AND (
+                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
+                        OR TRIM(COALESCE(
+                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
+                            ''
+                        )) = ''
+                    )
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
+                END IF;
+            END;
+
             CREATE TRIGGER fulfillments_checkout_identity_guard_update
             BEFORE UPDATE ON fulfillments
             FOR EACH ROW
             BEGIN
+                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
+                    AND (
+                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
+                        OR TRIM(COALESCE(
+                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
+                            ''
+                        )) = ''
+                    )
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
+                END IF;
+
                 IF NOT (
                     OLD.checkout_fulfillment_identity <=> NEW.checkout_fulfillment_identity
                 ) THEN

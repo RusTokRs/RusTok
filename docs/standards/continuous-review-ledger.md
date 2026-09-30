@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `b8414c4436b0de0c44061134a3a3ed6fe073f8d0`  
+**Current main SHA:** `467b96f716a4e71e28db3d008ffe03cb74cfadf4`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3658,3 +3658,92 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now explicitly records the fail-closed checkout create-label rollback contract.
 - **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.55` complete and integrated. Next primary module: `FS-22.06.56 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000115_cleanup_cancelled_checkout_labels.rs`.
+
+
+### FS-22.06.56 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000115_cleanup_cancelled_checkout_labels.rs` Cancelled checkout label cleanup and in-flight quarantine
+
+- **Base:** refreshed `main` at `0d36c74407c84344978effae64c59fad40f0394f`; implementation was integrated through PR #4411 as `3732dae46a74b74a6d3ecfe0facb8e1db8907ccf`.
+- **Primary scope:** one production migration module only — cleanup of checkout `create_label` provider operations when an order is cancelled, including migration-time reconciliation of pre-existing operations.
+- **Invariant map:** cancellation must remove unstarted checkout label work, must not leave in-flight external execution represented as ordinary executable state, tenant boundaries must remain enforced, and upgrade backfill/live cancellation must have identical safety semantics on PostgreSQL and SQLite.
+- **Finding:** the original migration deleted only `pending` create-label operations. An already `executing` operation could survive order cancellation, so an external label call could finish after cancellation while the durable journal remained in an in-flight execution state.
+- **Production remediation:** migration upgrade now quarantines existing `executing` checkout label operations attached to cancelled orders as `reconciliation_required`; the live cancellation trigger performs the same quarantine. Pending create-label operations continue to be deleted.
+- **Reason preservation:** the quarantine writes a deterministic cancellation-specific error message rather than preserving a stale provider error from a prior retry, so operator reconciliation sees the current business cause.
+- **Tenant integrity:** PostgreSQL and SQLite cleanup/quarantine predicates bind operation, fulfillment, and order through the same tenant identity; cross-tenant or mismatched references are not treated as valid cancellation targets.
+- **Lifecycle compatibility:** `executing -> reconciliation_required` is the already-admitted transition from `000113`. Provider success arriving after quarantine cannot silently commit the operation because the journal's success update requires `executing`.
+- **Concurrency audit:** Order cancellation is owner-transactional and row-locked; the cancellation trigger may serialize on the provider-operation row and converts any visible in-flight operation to the fail-closed reconciliation state. No local retry path remains after quarantine.
+- **Regression coverage:** added tests for both migration-time backfill and live cancellation. The live test verifies that pending labels are deleted and executing labels become non-claimable reconciliation records.
+- **Fresh second pass:** re-read the final migration, provider-operation lifecycle/recovery code, Order cancellation transaction/lock path, and adjacent checkout payment/identity migrations. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Documentation:** Fulfillment README now documents both upgrade-time and live cancellation quarantine behavior.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.56` complete and integrated. Next primary module: `FS-22.06.57 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000116_block_premature_label_operation_inserts.rs`.
+
+
+### FS-22.06.57 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000116_block_premature_label_operation_inserts.rs` Premature checkout label execution insertion guard
+
+- **Base:** refreshed `main` at `ce7040130fb9b7771260f4e4ea417e89cbcf6251`; implementation was integrated through PR #4412 as `467b96f716a4e71e28db3d008ffe03cb74cfadf4`.
+- **Primary scope:** one production migration module only — database protection against direct insertion of checkout `create_label` operations already in `executing` state before payment, its legacy-state quarantine, and rollback semantics.
+- **Invariant map:** direct `create_label` insertion as `executing` requires a tenant-scoped paid order; legacy premature executions must become fail-closed reconciliation records; downgrade must not remove the protection while an external label operation is still in flight.
+- **Finding:** the original rollback removed the INSERT payment guard without a quiescence check. The downgrade could therefore occur while a checkout label execution was still active, changing the database admission contract mid-operation.
+- **Production remediation:** `Migration::down` now refuses rollback while any `create_label` provider operation remains `executing`. The existing insert guard remains unchanged: `create_label + executing` is accepted only for a tenant-scoped order in `paid` state.
+- **Historical-state remediation:** migration upgrade quarantines pre-existing `executing` checkout label operations whose tenant-scoped order is not paid, moving them to `reconciliation_required` with a deterministic reason.
+- **Tenant integrity:** both the INSERT guard and historical-state query require fulfillment/order tenant alignment; missing or foreign context cannot satisfy payment admission.
+- **Lifecycle compatibility:** `executing -> reconciliation_required` is the existing provider-operation transition admitted by `000113` and used by the cancellation quarantine in `000115`.
+- **Regression coverage:** added tests for premature direct INSERT rejection, upgrade-time quarantine of legacy unpaid execution, and rollback quiescence while a paid checkout label operation is actively executing.
+- **Adjacent-boundary audit:** re-read migrations `000111`–`000115`, provider journal/recovery services, Order paid/cancel/shipment lifecycle, and Fulfillment checkout/admin create-label callers. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Fresh second pass:** independently re-read the final migration after changing the rollback fence from an unpaid-only condition to explicit execution quiescence; all three test scenarios and PostgreSQL/SQLite paths were rechecked against the resulting contract.
+- **Documentation:** Fulfillment README now records direct executing-state payment admission, legacy quarantine, and rollback quiescence.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.57` complete and integrated. Next primary module: `FS-22.06.58 — crates/modules/rustok-fulfillment/src/migrations/m20260713_000117_enforce_checkout_fulfillment_identity.rs`.
+
+
+### FS-22.06.58 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260713_000117_enforce_checkout_fulfillment_identity.rs` Legacy checkout identity metadata parity
+
+- **Base:** refreshed `main` at `1f81c54367207f792e5383a15f994b10ee3f0eb2`; implementation was integrated through PR #4413 as `bcb4e5b4ff1e2e0569c7bad18a86898fa66237cf`.
+- **Primary scope:** one production migration module only — pre-cutover legacy checkout identity enforcement on `fulfillments.metadata` across PostgreSQL, SQLite, and MySQL.
+- **Invariant map:** whenever legacy `checkout.fulfillment_key` is present, `checkout.operation_id` must also be non-empty; identity key immutability and per-tenant uniqueness remain separate invariants; the later `000119` typed migration remains the stronger cutover owner.
+- **Finding:** SQLite enforced the key/operation pair on INSERT but not metadata UPDATE. MySQL had no legacy INSERT guard and its UPDATE guard checked only immutable key identity. PostgreSQL already protected the pair through its CHECK constraint.
+- **Production remediation:** added SQLite UPDATE validation, added a MySQL legacy INSERT trigger, and extended the MySQL UPDATE trigger with the same key/operation pairing check before immutable-key enforcement. MySQL rollback now removes the added INSERT guard.
+- **Contract ownership:** stronger operation UUID/index/hash correlation is intentionally not added here; `m20260925_000119_type_checkout_fulfillment_identity` already performs that typed validation and migration cutover.
+- **Regression coverage:** added dedicated SQLite tests for invalid legacy INSERT, invalid metadata UPDATE that drops `operation_id`, and an unrelated metadata update that preserves identity.
+- **Fresh second pass:** re-read the final merged `000117`, the typed `000119` migration, FulfillmentService metadata stripping/materialization, checkout execution validation, and rollback paths. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Concurrency reconciliation:** PR #4413 was the actual integration of this fix; a duplicate PR #4414 was closed without merge after detecting that it contained the already-integrated commit.
+- **Documentation:** Fulfillment README and implementation plan now state the cross-backend legacy identity pairing contract.
+- **Verification:** source/static inspection, full branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.58` complete and integrated. Next primary module: `FS-22.06.59 — crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs`.
+
+
+### FS-22.06.59 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs` Translation change evidence rollback safety
+
+- **Base:** refreshed `main` at `b8717d8295c37a8062cb66ad5e501b71df8bb7a6`; implementation was integrated through PR #4415 as `6a1ba5b8611e61d08577c3d0ac2f64facfad7190`.
+- **Primary scope:** one production migration module only — creation and rollback of the Fulfillment shipping-option translation change journal.
+- **Invariant map:** change sequence/revision history is durable owner evidence used by the Translation target cursor; translation lifecycle changes are recorded transactionally by the owner; rollback must not silently destroy that history.
+- **Finding:** `Migration::down` unconditionally dropped the change journal table, which could invalidate persisted translation change cursors and lose historical owner evidence that cannot be reconstructed from current translation rows.
+- **Production remediation:** rollback now performs a read-only existence check and refuses to drop the journal when any evidence row exists. Empty development journals can still be rolled back normally.
+- **Consumer audit:** `TranslationTargetProvider::read_changes` uses the journal high-water mark and ordered change rows to construct incremental cursors; the journal is therefore not merely a cache of current resource state.
+- **Atomicity audit:** `ShippingOptionTranslationService` locks the owning shipping option and records translation changes in the same transaction as localized-copy mutation; deactivate/reactivate also records lifecycle changes within the owner transaction.
+- **Backend audit:** the migration's schema shape and sequence type are consistent with the established owner-journal pattern across PostgreSQL/SQLite/MySQL-compatible paths. The new rollback fence is backend-neutral.
+- **Regression coverage:** added tests for blocked rollback with retained evidence and successful rollback when the journal is genuinely empty.
+- **Fresh second pass:** re-read the final migration, change recorder, target-provider cursor consumer, shipping-option mutation/lifecycle paths, and analogous owner journals. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Documentation:** Fulfillment README now records the journal as durable incremental-sync evidence and its non-destructive rollback contract.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.59` complete and integrated. Next primary module: `FS-22.06.60 — crates/modules/rustok-fulfillment/src/migrations/m20260925_000119_type_checkout_fulfillment_identity.rs`.
+
+
+### FS-22.06.60 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260925_000119_type_checkout_fulfillment_identity.rs` Typed checkout fulfillment identity cutover
+
+- **Base:** refreshed `main` at `678573fb36a9469613ae0327aad2296f707581c5`; implementation was integrated through PR #4416 as `ae5b8b59a5c3650f99acb64ad4ac1ad36828926b`.
+- **Primary scope:** one production migration module only — moving checkout fulfillment identity from legacy JSON metadata into typed owner columns, tenant-scoped uniqueness, immutable identity, data cleanup, and reversible compatibility handling.
+- **Invariant map:** the typed tuple `checkout_operation_id + checkout_fulfillment_index + checkout_plan_hash` is the canonical identity; metadata identity must leave the runtime path; migration must fail closed on malformed legacy data; rollback must reconstruct the current legacy contract rather than an obsolete predecessor.
+- **Finding 1:** PostgreSQL legacy numeric `checkout_fulfillment_index` was cast directly to BIGINT without a length bound. The canonical static verifier already required the cast to be bounded before conversion.
+- **Remediation 1:** backfill and migration validation now require at most 10 decimal digits before PostgreSQL BIGINT conversion.
+- **Finding 2:** MySQL did not remove the legacy `000117` INSERT guard during typed cutover, leaving stale legacy enforcement active after metadata identity had been removed.
+- **Remediation 2:** MySQL cutover now drops both legacy INSERT and UPDATE guards before installing typed guards.
+- **Finding 3:** SQLite and MySQL rollback reconstructed a weaker/obsolete version of `000117`, omitting the current key/operation pairing guard; MySQL rollback also omitted the current legacy INSERT guard.
+- **Remediation 3:** typed rollback now restores the actual current SQLite/MySQL legacy contract, including INSERT validation and UPDATE key/operation pairing plus immutable identity.
+- **Data/rollback audit:** fulfillment-item checkout identity restoration during rollback was intentionally retained; historical commit `1151e6e...` explicitly introduced that behavior, and current checkout creation historically populated those item identity fields.
+- **Regression coverage:** added SQLite rollback coverage for `000117 -> 000119 -> rollback`, asserting the restored legacy INSERT and UPDATE guards remain active.
+- **Static guard:** canonical `verify-fulfillment-checkout-typed-identity.mjs` now asserts MySQL legacy-trigger removal/restoration and the guarded PostgreSQL numeric cast.
+- **Tooling integrity correction:** an intermediate JS replacement used SQL text containing `$'` and temporarily inflated the migration file because JavaScript replacement strings interpret `$'` specially. The defect was detected by line-count/diff review; the migration was reconstructed from fresh `main` and the final diff reduced to the intended changes.
+- **Fresh independent second pass:** re-read the final 787-line migration, all three backend paths, current `000117`, typed checkout execution/entity/service, historical item-identity restoration change, tests, static verifier, README, and implementation plan. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** source/static inspection, final branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.60` complete and integrated. Next primary module: `FS-22.06.61 — crates/modules/rustok-fulfillment/src/migrations/mod.rs`.

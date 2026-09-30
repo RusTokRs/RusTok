@@ -1,5 +1,5 @@
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use sea_orm_migration::sea_orm::{DatabaseBackend, Statement};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,6 +16,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_rollback_safe(manager).await?;
+
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
                 manager
@@ -43,6 +45,33 @@ impl MigrationTrait for Migration {
         }
         Ok(())
     }
+}
+
+async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let invalid_executing_exists = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            manager.get_database_backend(),
+            r#"
+            SELECT 1
+            FROM fulfillment_provider_operations operation
+            WHERE operation.operation = 'create_label'
+              AND operation.status = 'executing'
+            LIMIT 1
+            "#
+            .to_owned(),
+        ))
+        .await?
+        .is_some();
+
+    if invalid_executing_exists {
+        return Err(DbErr::Custom(
+            "cannot roll back premature checkout label insert protection while a create-label provider execution is in flight; let it reach a terminal or reconciliation state first"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
