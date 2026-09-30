@@ -102,7 +102,6 @@ for (const [source, value, label] of [
   [nativeCheckout, 'error.public_message()', 'native stable checkout message'],
   [journaledCheckout, 'Execution is fully delegated to', 'journaled compatibility-only contract'],
   [journaledCheckout, 'RecoveringStagedCheckoutService::new(staged, compensation)', 'journaled staged delegation'],
-  [legacyRuntime, 'pub async fn complete_storefront_checkout(', 'legacy checkout completion must stay removed'],
   [orderPorts, 'match order.status_kind()', 'typed checkout order lifecycle recovery'],
   [orderPorts, 'OrderStatusKind::Unknown', 'unknown checkout order lifecycle fail-close'],
 ]) {
@@ -132,6 +131,12 @@ const forbiddenCheckoutSources = [
   [restCheckout, 'REST storefront checkout'],
   [nativeCheckout, 'native storefront checkout'],
 ];
+forbidText(
+  legacyRuntime,
+  'pub async fn complete_storefront_checkout(',
+  'legacy checkout completion must stay removed',
+);
+
 for (const [source, label] of forbiddenCheckoutSources) {
   for (const value of [
     'CheckoutService::new',
@@ -152,7 +157,8 @@ forbidText(
   graphqlCompletion,
   'rustok_region::RegionService::new(',
   'GraphQL storefront checkout completion direct RegionService construction',
-)
+);
+
 
 for (const [source, value, label] of [
   [mountedRuntime, 'pub use legacy::*;', 'mounted wildcard legacy export'],
