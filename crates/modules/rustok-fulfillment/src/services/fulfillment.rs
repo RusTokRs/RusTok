@@ -326,6 +326,25 @@ impl FulfillmentService {
             .await
     }
 
+    /// Create a fulfillment with a stable orchestration-owned ID.
+    ///
+    /// Durable orchestration journals use this ID as their local resource anchor so
+    /// retries rebuild the same fulfillment instead of creating a second resource.
+    pub(crate) async fn create_fulfillment_with_id(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CreateFulfillmentInput,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.create_fulfillment_with_identity_and_id(
+            tenant_id,
+            input,
+            None,
+            fulfillment_id,
+        )
+        .await
+    }
+
     pub(crate) async fn create_checkout_fulfillment(
         &self,
         tenant_id: Uuid,
@@ -353,6 +372,18 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
         identity: Option<CheckoutFulfillmentIdentity>,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let fulfillment_id = generate_id();
+        self.create_fulfillment_with_identity_and_id(tenant_id, input, identity, fulfillment_id)
+            .await
+    }
+
+    async fn create_fulfillment_with_identity_and_id(
+        &self,
+        tenant_id: Uuid,
+        input: CreateFulfillmentInput,
+        identity: Option<CheckoutFulfillmentIdentity>,
+        fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
         input
             .validate()
