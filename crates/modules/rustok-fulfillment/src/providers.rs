@@ -646,13 +646,19 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} request has nil fulfillment_id"
         )));
     }
-    if request
+    let idempotency_key = request
         .idempotency_key
         .as_deref()
-        .is_some_and(|key| key.trim().is_empty())
-    {
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| {
+            FulfillmentError::Validation(format!(
+                "fulfillment provider `{provider_id}` {operation} requires idempotency_key"
+            ))
+        })?;
+    if idempotency_key.len() > 191 {
         return Err(FulfillmentError::Validation(format!(
-            "fulfillment provider `{provider_id}` {operation} idempotency_key must not be blank"
+            "fulfillment provider `{provider_id}` {operation} idempotency_key must be at most 191 characters"
         )));
     }
     Ok(())
@@ -769,6 +775,27 @@ mod boundary_tests {
         assert!(validate_rate_quotes("carrier", "USD", &[quote.clone(), quote]).is_err());
     }
 
+    #[test]
+    fn rejects_missing_operation_idempotency_key() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: None,
+            metadata: Value::Null,
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_operation_idempotency_key() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: Some("x".repeat(192)),
+            metadata: Value::Null,
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+    }
     #[test]
     fn accepts_valid_operation_result() {
         let result = FulfillmentProviderOperationResult {
