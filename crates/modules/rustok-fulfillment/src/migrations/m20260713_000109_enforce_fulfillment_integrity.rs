@@ -198,7 +198,7 @@ impl MigrationTrait for Migration {
                         END;
 
                         CREATE TRIGGER fulfillments_integrity_guard_update
-                        BEFORE UPDATE OF tenant_id, order_id, shipping_option_id, status, carrier,
+                        BEFORE UPDATE OF tenant_id, order_id, shipping_option_id, customer_id, status, carrier,
                             tracking_number, shipped_at, delivered_at, cancelled_at
                         ON fulfillments FOR EACH ROW BEGIN
                             SELECT CASE WHEN NEW.status NOT IN ('pending', 'shipped', 'delivered', 'cancelled')
