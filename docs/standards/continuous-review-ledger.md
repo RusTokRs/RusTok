@@ -3929,3 +3929,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, direct caller tracing, migration/trigger tracing, fresh-base reconciliation, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.71` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.72 — same primary module, remaining metadata/compatibility invariants after the reserved receipt boundary`.
+
+### FS-22.06.72 Iteration 1 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Provider identifier admission
+
+- **Base:** `c5ed64b4302de7bfeada25717d1c2e121df5da6f`; dedicated branch `audit/fs-22.06.72-fulfillment-metadata-compat` created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option create/update provider identifier normalization and its canonical dependency on the Fulfillment provider registry.
+- **Invariant map:** a persisted shipping option must reference a provider identifier accepted by the provider registry; normalization and validation must occur before persistence so later provider execution cannot discover a malformed identifier as a runtime-only failure.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.72-01:** `create_shipping_option` and `update_shipping_option` only trimmed `provider_id` and accepted any non-empty value. The canonical provider registry validator rejects uppercase and non-ASCII/punctuation identifiers, so values such as `PayPal` or `foo.bar` could persist and later fail provider lookup/execution.
+- **Production remediation:** exposed the existing provider-registry validator as `pub(crate)` and centralized service normalization in `normalize_provider_id`. Both shipping-option create and update now trim, apply the manual default for blank input, validate against the canonical registry grammar, and persist only the validated identifier.
+- **Regression coverage:** added a pure service-helper test for invalid identifiers, trimming/canonicalization, and the blank-to-manual default path.
+- **Adjacent-boundary audit:** `providers.rs` remains the canonical identifier rule owner; all provider execution requests also validate through that function. The shipping-option service now enforces the same invariant before persistence, removing the previous late-validation gap.
+- **Immediate re-audit:** re-read both write paths, the shared helper, registry validator and all validator call sites. No alternate shipping-option provider write path in `fulfillment.rs` bypasses the canonical validator.
+- **Fresh second pass:** re-scanned provider writes in the primary module and re-read FBA registry/default provider contract. No second identifier syntax or normalization rule was found.
+- **Implementation note:** a tiny helper extraction was included so create/update do not duplicate defaulting/trimming/validation semantics.
+- **Documentation:** Fulfillment README now states that persisted shipping-option provider IDs use the canonical provider-registry identifier grammar.
+- **Verification:** source inspection, call-site tracing, registry contract comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.72` Iteration 1 complete; module track remains open.
+- **Next primary module iteration:** `FS-22.06.73 — same primary module, malformed `shipping_profiles` compatibility fail-open behavior`.
