@@ -3710,3 +3710,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README and implementation plan now state the cross-backend legacy identity pairing contract.
 - **Verification:** source/static inspection, full branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.58` complete and integrated. Next primary module: `FS-22.06.59 — crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs`.
+
+
+### FS-22.06.59 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260912_000118_add_shipping_option_translation_change_journal.rs` Translation change evidence rollback safety
+
+- **Base:** refreshed `main` at `b8717d8295c37a8062cb66ad5e501b71df8bb7a6`; implementation was integrated through PR #4415 as `6a1ba5b8611e61d08577c3d0ac2f64facfad7190`.
+- **Primary scope:** one production migration module only — creation and rollback of the Fulfillment shipping-option translation change journal.
+- **Invariant map:** change sequence/revision history is durable owner evidence used by the Translation target cursor; translation lifecycle changes are recorded transactionally by the owner; rollback must not silently destroy that history.
+- **Finding:** `Migration::down` unconditionally dropped the change journal table, which could invalidate persisted translation change cursors and lose historical owner evidence that cannot be reconstructed from current translation rows.
+- **Production remediation:** rollback now performs a read-only existence check and refuses to drop the journal when any evidence row exists. Empty development journals can still be rolled back normally.
+- **Consumer audit:** `TranslationTargetProvider::read_changes` uses the journal high-water mark and ordered change rows to construct incremental cursors; the journal is therefore not merely a cache of current resource state.
+- **Atomicity audit:** `ShippingOptionTranslationService` locks the owning shipping option and records translation changes in the same transaction as localized-copy mutation; deactivate/reactivate also records lifecycle changes within the owner transaction.
+- **Backend audit:** the migration's schema shape and sequence type are consistent with the established owner-journal pattern across PostgreSQL/SQLite/MySQL-compatible paths. The new rollback fence is backend-neutral.
+- **Regression coverage:** added tests for blocked rollback with retained evidence and successful rollback when the journal is genuinely empty.
+- **Fresh second pass:** re-read the final migration, change recorder, target-provider cursor consumer, shipping-option mutation/lifecycle paths, and analogous owner journals. No additional repository-owned defect attributable to this primary migration was confirmed.
+- **Documentation:** Fulfillment README now records the journal as durable incremental-sync evidence and its non-destructive rollback contract.
+- **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.59` complete and integrated. Next primary module: `FS-22.06.60 — crates/modules/rustok-fulfillment/src/migrations/m20260925_000119_type_checkout_fulfillment_identity.rs`.
