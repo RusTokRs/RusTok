@@ -1229,12 +1229,6 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN json_extract(OLD.metadata, '$.checkout.fulfillment_key')
                     IS NOT json_extract(NEW.metadata, '$.checkout.fulfillment_key')
                     THEN RAISE(ABORT, 'fulfillment checkout identity is immutable') END;
-                SELECT CASE WHEN json_extract(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        trim(json_extract(NEW.metadata, '$.checkout.fulfillment_key')) = ''
-                        OR trim(COALESCE(json_extract(NEW.metadata, '$.checkout.operation_id'), '')) = ''
-                    )
-                    THEN RAISE(ABORT, 'invalid fulfillment checkout identity') END;
             END;
 
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
@@ -1282,7 +1276,6 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 END
             WHERE JSON_EXTRACT(metadata, '$.checkout.fulfillment_key') IS NOT NULL;
 
-            DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_insert;
             DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_update;
             DROP INDEX ux_fulfillments_checkout_identity ON fulfillments;
             ALTER TABLE fulfillments DROP COLUMN checkout_fulfillment_identity;
@@ -1454,41 +1447,10 @@ async fn restore_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
                 ON fulfillments (tenant_id, checkout_fulfillment_identity);
 
-            CREATE TRIGGER fulfillments_checkout_identity_guard_insert
-            BEFORE INSERT ON fulfillments
-            FOR EACH ROW
-            BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-            END;
-
             CREATE TRIGGER fulfillments_checkout_identity_guard_update
             BEFORE UPDATE ON fulfillments
             FOR EACH ROW
             BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-
                 IF NOT (
                     OLD.checkout_fulfillment_identity <=> NEW.checkout_fulfillment_identity
                 ) THEN
@@ -1927,12 +1889,6 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN json_extract(OLD.metadata, '$.checkout.fulfillment_key')
                     IS NOT json_extract(NEW.metadata, '$.checkout.fulfillment_key')
                     THEN RAISE(ABORT, 'fulfillment checkout identity is immutable') END;
-                SELECT CASE WHEN json_extract(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        trim(json_extract(NEW.metadata, '$.checkout.fulfillment_key')) = ''
-                        OR trim(COALESCE(json_extract(NEW.metadata, '$.checkout.operation_id'), '')) = ''
-                    )
-                    THEN RAISE(ABORT, 'invalid fulfillment checkout identity') END;
             END;
 
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
@@ -1980,7 +1936,6 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 END
             WHERE JSON_EXTRACT(metadata, '$.checkout.fulfillment_key') IS NOT NULL;
 
-            DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_insert;
             DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_update;
             DROP INDEX ux_fulfillments_checkout_identity ON fulfillments;
             ALTER TABLE fulfillments DROP COLUMN checkout_fulfillment_identity;
@@ -2152,41 +2107,10 @@ async fn restore_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
                 ON fulfillments (tenant_id, checkout_fulfillment_identity);
 
-            CREATE TRIGGER fulfillments_checkout_identity_guard_insert
-            BEFORE INSERT ON fulfillments
-            FOR EACH ROW
-            BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-            END;
-
             CREATE TRIGGER fulfillments_checkout_identity_guard_update
             BEFORE UPDATE ON fulfillments
             FOR EACH ROW
             BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-
                 IF NOT (
                     OLD.checkout_fulfillment_identity <=> NEW.checkout_fulfillment_identity
                 ) THEN
@@ -2653,12 +2577,6 @@ async fn restore_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN json_extract(OLD.metadata, '$.checkout.fulfillment_key')
                     IS NOT json_extract(NEW.metadata, '$.checkout.fulfillment_key')
                     THEN RAISE(ABORT, 'fulfillment checkout identity is immutable') END;
-                SELECT CASE WHEN json_extract(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        trim(json_extract(NEW.metadata, '$.checkout.fulfillment_key')) = ''
-                        OR trim(COALESCE(json_extract(NEW.metadata, '$.checkout.operation_id'), '')) = ''
-                    )
-                    THEN RAISE(ABORT, 'invalid fulfillment checkout identity') END;
             END;
 
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
@@ -2706,7 +2624,6 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 END
             WHERE JSON_EXTRACT(metadata, '$.checkout.fulfillment_key') IS NOT NULL;
 
-            DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_insert;
             DROP TRIGGER IF EXISTS fulfillments_checkout_identity_guard_update;
             DROP INDEX ux_fulfillments_checkout_identity ON fulfillments;
             ALTER TABLE fulfillments DROP COLUMN checkout_fulfillment_identity;
@@ -2878,41 +2795,10 @@ async fn restore_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             CREATE UNIQUE INDEX ux_fulfillments_checkout_identity
                 ON fulfillments (tenant_id, checkout_fulfillment_identity);
 
-            CREATE TRIGGER fulfillments_checkout_identity_guard_insert
-            BEFORE INSERT ON fulfillments
-            FOR EACH ROW
-            BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-            END;
-
             CREATE TRIGGER fulfillments_checkout_identity_guard_update
             BEFORE UPDATE ON fulfillments
             FOR EACH ROW
             BEGIN
-                IF JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key') IS NOT NULL
-                    AND (
-                        TRIM(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.fulfillment_key'))) = ''
-                        OR TRIM(COALESCE(
-                            JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.checkout.operation_id')),
-                            ''
-                        )) = ''
-                    )
-                THEN
-                    SIGNAL SQLSTATE '45000'
-                        SET MESSAGE_TEXT = 'invalid fulfillment checkout identity';
-                END IF;
-
                 IF NOT (
                     OLD.checkout_fulfillment_identity <=> NEW.checkout_fulfillment_identity
                 ) THEN
