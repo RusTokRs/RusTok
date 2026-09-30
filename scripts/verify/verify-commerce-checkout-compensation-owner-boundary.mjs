@@ -92,6 +92,31 @@ for (const owner of ['rustok_payment', 'rustok_order', 'rustok_inventory', 'rust
 }
 
 for (const marker of [
+  'pub fn new(',
+  'payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>',
+  'order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>',
+  'idempotency_key: impl Into<String>',
+  'payment_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)',
+  'order_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)',
+]) requireText(retained, marker, 'active compensation constructor and caller identity');
+
+const constructorStart = retained.indexOf('impl CheckoutCompensationService {');
+const constructorEnd = retained.indexOf('pub async fn compensate(', constructorStart);
+const constructor = constructorStart >= 0 && constructorEnd >= 0
+  ? retained.slice(constructorStart, constructorEnd)
+  : '';
+for (const marker of [
+  'order_compensation_port: in_process_checkout_order_compensation_port(',
+  'payment_compensation_port: in_process_checkout_payment_compensation_port(',
+]) {
+  forbidText(
+    constructor,
+    marker,
+    'active compensation constructor foreign owner creation',
+  );
+}
+
+for (const marker of [
   'kind: error.kind',
   'code: error.code',
   'retryable: error.retryable',
@@ -110,8 +135,8 @@ for (const marker of [
 ]) forbidText(facade, marker, 'raw mounted diagnostics');
 
 for (const marker of [
-  'self.compensate_payment(tenant_id, actor_id, operation)',
-  'self.compensate_order(tenant_id, actor_id, operation)',
+  'self.compensate_payment(tenant_id, actor_id, operation, idempotency_key)',
+  'self.compensate_order(tenant_id, actor_id, operation, idempotency_key)',
   'self.release_remaining_reservations(tenant_id, operation)',
   'self.release_cart(tenant_id, operation)',
   'let message = compensation.to_string();',
