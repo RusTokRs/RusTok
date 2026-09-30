@@ -272,6 +272,7 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
             Request::builder()
                 .method("POST")
                 .uri("/admin/shipping-options")
+                .header("Idempotency-Key", "admin-shipping-create-test")
                 .header("content-type", "application/json")
                 .header("X-Tenant-ID", tenant_id.to_string())
                 .body(Body::from(
@@ -350,6 +351,7 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/admin/shipping-options/{option_id}"))
+                .header("Idempotency-Key", "admin-shipping-update-test")
                 .header("content-type", "application/json")
                 .header("X-Tenant-ID", tenant_id.to_string())
                 .body(Body::from(
@@ -428,6 +430,7 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/admin/shipping-options/{option_id}/deactivate"))
+                .header("Idempotency-Key", "admin-shipping-deactivate-test")
                 .header("X-Tenant-ID", tenant_id.to_string())
                 .body(Body::empty())
                 .expect("request"),
@@ -468,6 +471,7 @@ async fn admin_shipping_options_transport_supports_create_update_and_list() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/admin/shipping-options/{option_id}/reactivate"))
+                .header("Idempotency-Key", "admin-shipping-reactivate-test")
                 .header("X-Tenant-ID", tenant_id.to_string())
                 .body(Body::empty())
                 .expect("request"),
