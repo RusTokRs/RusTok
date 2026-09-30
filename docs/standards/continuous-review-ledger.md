@@ -3727,3 +3727,23 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Documentation:** Fulfillment README now records the journal as durable incremental-sync evidence and its non-destructive rollback contract.
 - **Verification:** repository source inspection, branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.59` complete and integrated. Next primary module: `FS-22.06.60 — crates/modules/rustok-fulfillment/src/migrations/m20260925_000119_type_checkout_fulfillment_identity.rs`.
+
+
+### FS-22.06.60 Assessment — `crates/modules/rustok-fulfillment/src/migrations/m20260925_000119_type_checkout_fulfillment_identity.rs` Typed checkout fulfillment identity cutover
+
+- **Base:** refreshed `main` at `678573fb36a9469613ae0327aad2296f707581c5`; implementation was integrated through PR #4416 as `ae5b8b59a5c3650f99acb64ad4ac1ad36828926b`.
+- **Primary scope:** one production migration module only — moving checkout fulfillment identity from legacy JSON metadata into typed owner columns, tenant-scoped uniqueness, immutable identity, data cleanup, and reversible compatibility handling.
+- **Invariant map:** the typed tuple `checkout_operation_id + checkout_fulfillment_index + checkout_plan_hash` is the canonical identity; metadata identity must leave the runtime path; migration must fail closed on malformed legacy data; rollback must reconstruct the current legacy contract rather than an obsolete predecessor.
+- **Finding 1:** PostgreSQL legacy numeric `checkout_fulfillment_index` was cast directly to BIGINT without a length bound. The canonical static verifier already required the cast to be bounded before conversion.
+- **Remediation 1:** backfill and migration validation now require at most 10 decimal digits before PostgreSQL BIGINT conversion.
+- **Finding 2:** MySQL did not remove the legacy `000117` INSERT guard during typed cutover, leaving stale legacy enforcement active after metadata identity had been removed.
+- **Remediation 2:** MySQL cutover now drops both legacy INSERT and UPDATE guards before installing typed guards.
+- **Finding 3:** SQLite and MySQL rollback reconstructed a weaker/obsolete version of `000117`, omitting the current key/operation pairing guard; MySQL rollback also omitted the current legacy INSERT guard.
+- **Remediation 3:** typed rollback now restores the actual current SQLite/MySQL legacy contract, including INSERT validation and UPDATE key/operation pairing plus immutable identity.
+- **Data/rollback audit:** fulfillment-item checkout identity restoration during rollback was intentionally retained; historical commit `1151e6e...` explicitly introduced that behavior, and current checkout creation historically populated those item identity fields.
+- **Regression coverage:** added SQLite rollback coverage for `000117 -> 000119 -> rollback`, asserting the restored legacy INSERT and UPDATE guards remain active.
+- **Static guard:** canonical `verify-fulfillment-checkout-typed-identity.mjs` now asserts MySQL legacy-trigger removal/restoration and the guarded PostgreSQL numeric cast.
+- **Tooling integrity correction:** an intermediate JS replacement used SQL text containing `$'` and temporarily inflated the migration file because JavaScript replacement strings interpret `$'` specially. The defect was detected by line-count/diff review; the migration was reconstructed from fresh `main` and the final diff reduced to the intended changes.
+- **Fresh independent second pass:** re-read the final 787-line migration, all three backend paths, current `000117`, typed checkout execution/entity/service, historical item-identity restoration change, tests, static verifier, README, and implementation plan. No additional repository-owned defect attributable to this primary module was confirmed.
+- **Verification:** source/static inspection, final branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.60` complete and integrated. Next primary module: `FS-22.06.61 — crates/modules/rustok-fulfillment/src/migrations/mod.rs`.
