@@ -56,3 +56,13 @@ embedded binary bytes; external/downloadable resources remain an adapter concern
 - [Engineering Audit (2026-09-27)](./engineering-audit-2026-09-27.md)
 - [Module UI Package Implementation Guide](../../../../docs/UI/module-package-implementation.md)
 - [Platform Documentation Map](../../../../docs/index.md)
+
+## Superseded material
+
+An earlier speculative research note (`deep-research-report (2).md`) described
+files and risks that did not match the implementation — `set_use_isolating(true)`,
+`OnceLock` initialization and typed parse errors were already present. It was a
+ten-line redirect with no inbound references and a shell-hostile file name, so
+it was removed; the verified successors are
+[`engineering-audit-2026-09-27.md`](./engineering-audit-2026-09-27.md) and
+[`engineering-audit-2026-09-30.md`](./engineering-audit-2026-09-30.md).

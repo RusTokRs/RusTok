@@ -51,7 +51,10 @@ impl PageBuilderLocaleContext {
             .or_else(|| tenant_default_locale.and_then(normalize_locale_tag));
         let fallback_locales = accepted
             .into_iter()
-            .skip_while(|candidate| locale.as_deref() == Some(candidate.as_str()))
+            // `skip_while` stopped at the first non-matching candidate, so it
+            // only ever removed a leading duplicate; `Self::new` did the real
+            // de-duplication. Filter expresses the intent without pretending.
+            .filter(|candidate| locale.as_deref() != Some(candidate.as_str()))
             .chain(tenant_default_locale.and_then(normalize_locale_tag))
             .chain(
                 configured_fallbacks

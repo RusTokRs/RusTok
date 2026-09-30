@@ -78,13 +78,28 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 | A-21…A-24 | ✅ | верификаторы переписаны на структурный FTL-парсер, мёртвый exclusion-list удалён |
 | A-26 | ✅ | `MAX_LOCALE_TAG_LEN` публичный |
 | A-27 | ✅ | prelude дополнен Accept-Language контрактом и константами |
+| A-29 | ✅ | локаль берётся из имени файла, ошибки чтения не проглатываются |
+| A-30 | ✅ | `deep-research-report (2).md` удалён (корневой (5) — вне i18n-скоупа, на него ссылается PRODUCTION_REMEDIATION_PLAN) |
+| A-31 | ✅ | `skip_while` заменён на `filter` |
+| A-10 | ✅ | 19 сообщений получили CLDR-селекторы (en/ru/ar), 13 — обоснованный `# plural-exempt` |
 | A-33 | ⚠️ | **новая находка**: 105 сайтов обходили Fluent через `String::replace`; 59 переведены на `fluent_args!`, 46 под shrink-only baseline |
 | — | ✅ | **новая находка**: 90 ключей использовались кодом, но отсутствовали в каталогах (русский UI показывал английский) |
 
+Дополнительно исправлена ошибка заимствования, внесённая коммитом `a71f52f`:
+семь сгенерированных `fluent_args!` передавали `&x.to_string()` — ссылку на
+временное значение. Все семь — числовые поля, теперь передаются как числа.
+
 Не начато: A-04 (осиротевшие каталоги brand / marketplace-listing /
 marketplace-seller), A-05/A-06/A-07/A-32 (owner-level унификация локалей),
-A-09 (CLDR `parentLocales`), A-10 (плюрализация 75 сообщений),
-A-25/A-28/A-29/A-30/A-31 (гигиена).
+A-09 (CLDR `parentLocales`), A-25/A-28 (гигиена API).
+
+**A-05/A-06 требуют компилятора.** Нижний регистр локалей (`ru-ru`) зашит не
+только в `fly::normalize_locale_tag`, но и в тесты `fly/src/locale_policy.rs`,
+`fly/src/translation.rs`, `fly/src/runtime_locale.rs`,
+`rustok-page-builder/src/locale.rs` и
+`rustok-page-builder/admin/src/editor/ssr_locale_policy.rs`. Смена конвенции
+на канонический BCP-47 затрагивает ~8 файлов тестов и поведение артефактов
+Page Builder — делать это вслепую нельзя.
 
 ---
 
