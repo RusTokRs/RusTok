@@ -233,13 +233,11 @@ impl ShippingProfileService {
                     active.updated_at = Set(Utc::now().into());
                     match active.update(txn).await {
                         Ok(_) => {}
-                        Err(error)
-                            if requested_slug.is_some()
-                                && is_shipping_profile_slug_conflict(&error) =>
-                        {
-                            return Err(CommerceError::DuplicateShippingProfileSlug(
-                                requested_slug.expect("requested slug was checked as Some"),
-                            ));
+                        Err(error) if is_shipping_profile_slug_conflict(&error) => {
+                            if let Some(slug) = requested_slug {
+                                return Err(CommerceError::DuplicateShippingProfileSlug(slug));
+                            }
+                            return Err(error.into());
                         }
                         Err(error) => return Err(error.into()),
                     }
