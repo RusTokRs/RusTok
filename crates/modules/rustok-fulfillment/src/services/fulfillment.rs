@@ -609,7 +609,7 @@ impl FulfillmentService {
     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
-        let offset = (page.saturating_sub(1)) * per_page;
+        let offset = fulfillment_list_offset(page, per_page);
 
         let mut query = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id));
@@ -1251,6 +1251,10 @@ fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
         ));
     }
     Ok(normalized)
+}
+
+fn fulfillment_list_offset(page: u64, per_page: u64) -> u64 {
+    page.saturating_sub(1).saturating_mul(per_page)
 }
 
 fn merge_fulfillment_metadata(
@@ -1945,7 +1949,9 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
 
 #[cfg(test)]
 mod tests {
-    use super::{map_shipping_option, validate_persisted_shipping_option_locales};
+    use super::{
+        fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
+    };
     use crate::entities::{shipping_option, shipping_option_translation};
     use chrono::Utc;
     use rust_decimal::Decimal;
@@ -2010,6 +2016,13 @@ mod tests {
             translation(option_id, "EN", "Broken"),
         ]);
         assert!(noncanonical.is_err());
+    }
+
+    #[test]
+    fn fulfillment_list_offset_saturates_extreme_page_values() {
+        assert_eq!(fulfillment_list_offset(0, 0), 0);
+        assert_eq!(fulfillment_list_offset(1, 100), 0);
+        assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
     }
 
     #[test]
