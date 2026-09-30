@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `f07e975cffc19202d80d3c5f5baf28e3f317dae0`  
+**Current main SHA:** `58a32a618530a5327b406c2c051587706c14d403`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3963,3 +3963,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source inspection, direct consumer tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
 - **Status:** `FS-22.06.73` complete and ready for integration.
 - **Next primary module iteration:** `FS-22.06.74 — same primary module, shipping-option metadata/object-shape and compatibility normalization residuals`.
+
+### FS-22.06.75 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Metadata shape at lifecycle audit boundary
+
+- **Base:** `58a32a618530a5327b406c2c051587706c14d403`; dedicated branch `audit/fs-22.06.75-fulfillment-identity` created from refreshed `main`.
+- **Primary scope:** one production service module only — lifecycle metadata merge/append behavior, with all direct audit-event call sites re-read.
+- **Invariant map:** lifecycle metadata must be lossless for accepted inputs; owner audit history must never be silently dropped; malformed metadata representation must fail closed rather than being converted to an unrelated object; failures must abort the surrounding transaction before commit.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.75-01:** `append_audit_event` previously converted any non-object metadata value into an empty object before adding `audit.events`, silently discarding the original scalar/array metadata. Because lifecycle commands call this helper inside their transaction immediately before the fulfillment/item update, a malformed persisted or direct-call metadata value could be destroyed on a successful lifecycle mutation.
+- **Production remediation:** `append_audit_event` now returns `FulfillmentResult<Value>` and rejects non-object metadata with a stable validation error. All 14 lifecycle call sites propagate `?`; malformed metadata therefore aborts the transaction instead of being rewritten or lost.
+- **Regression coverage:** added a focused pure test proving non-object metadata is rejected. Existing object-based audit-history preservation coverage remains intact.
+- **Adjacent-boundary audit:** ship, deliver, reopen, reship, and cancel paths all use the same helper; item metadata append paths use it as well. Provider receipt stripping and owner audit preservation remain unchanged.
+- **Immediate re-audit:** enumerated all `append_audit_event` production call sites and verified every call propagates `Result`. A structural parenthesis scan found 14 calls and zero missing error-propagation sites.
+- **Fresh second pass:** re-read the complete metadata helper set (`merge_fulfillment_metadata`, reserved metadata strippers, `append_audit_event`) and all lifecycle update blocks. No other audit append path can silently coerce non-object metadata.
+- **Behavioral choice:** the service intentionally fails closed on malformed metadata rather than inventing a new storage envelope for scalar JSON values. This preserves canonical object-shaped metadata semantics without data-loss compatibility hacks.
+- **Documentation:** Fulfillment README now states that lifecycle audit append requires object-shaped metadata and malformed scalar/array metadata is rejected.
+- **Verification:** source inspection, 14-call-site structural scan, transaction-path tracing, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.75` complete and ready for integration.
+- **Next primary module:** `FS-22.06.76 — same primary module, remaining shipping-option metadata normalization and write/read compatibility pass`.
