@@ -719,7 +719,9 @@ fn fulfillment_item_metadata(
     Ok(Value::Object(root))
 }
 
-fn strip_checkout_identity_metadata(value: Value) -> Result<serde_json::Map<String, Value>, PortError> {
+fn strip_checkout_identity_metadata(
+    value: Value,
+) -> Result<serde_json::Map<String, Value>, PortError> {
     let mut root = match value {
         Value::Object(object) => object,
         _ => {
@@ -1304,6 +1306,7 @@ mod tests {
     fn checkout_fulfillment_metadata_rejects_scalar_projection_input() {
         assert!(fulfillment_metadata(Value::String("legacy".to_string())).is_err());
         assert!(fulfillment_item_metadata(Value::Array(Vec::new()), Uuid::new_v4()).is_err());
+        assert!(strip_checkout_identity_metadata(Value::Bool(true)).is_err());
     }
 
     #[test]
