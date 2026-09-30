@@ -2938,6 +2938,8 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** re-read all seven OpenAPI response blocks after remediation, checked read/manage permission selection, the shared helper, controller error mapping, OpenAPI aggregation, tenant filters, lease predicates, idempotency flow, and reversal owner validation. No additional repository-owned defect attributable to this primary HTTP boundary was confirmed.
 - **Diff review:** implementation changes are limited to crates/modules/rustok-commerce/src/controllers/marketplace_reversal_financial.rs and this ledger entry relative to the exact main base. No financial state machine, ledger rules, tenant policy or persistence schema was changed.
 - **Verification:** source inspection and static branch-diff review were completed. The local cargo/gatekeeper checks were not executable from the available environment because the repository working tree/toolchain was not locally available; no test/build pass is claimed. Maintainer/CI verification remains required.
-- **Implementation status:** complete on the dedicated branch; ready for PR and merge integration.
+- **Implementation status:** complete and integrated into main via PR #4354, squash merge fe2cbb0a3bb1650a368aeee20d83b9dc9475cc56.
+- **Post-merge reconciliation:** refreshed main at fe2cbb0a3bb1650a368aeee20d83b9dc9475cc56; comparing the recorded base a18a5b6962f42180655f1c7bcf80148a09da691a to the merge is exactly one commit with the expected reversal controller and ledger changes. All seven protected reversal routes now advertise both their reachable 401 authentication and 403 authorization responses.
+- **Status:** FS-22.06.10 complete; maintainer/CI verification remains explicitly required because local cargo/gatekeeper checks were unavailable in the execution environment.
 
 
