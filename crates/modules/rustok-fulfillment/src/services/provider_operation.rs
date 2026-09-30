@@ -148,72 +148,128 @@ impl FulfillmentProviderOperationJournal {
         provider_reference: Option<String>,
         provider_result: Value,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
-        if matches!(
-            model.status.as_str(),
-            PROVIDER_OPERATION_SUCCEEDED
-                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                | PROVIDER_OPERATION_COMMITTED
-        ) {
-            return Ok(model);
-        }
-        ensure_transition(&model.status, PROVIDER_OPERATION_SUCCEEDED)?;
-
         let provider_reference = normalize_optional(provider_reference);
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_SUCCEEDED.to_string());
-        active.provider_reference = Set(provider_reference.clone());
-        active.provider_result = Set(Some(provider_result.clone()));
-        active.error_message = Set(None);
-        active.updated_at = Set(now.into());
-        active.provider_completed_at = Set(Some(now.into()));
-        match active.update(&self.db).await {
-            Ok(model) => Ok(model),
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_SUCCEEDED),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderReference,
+                Expr::value(provider_reference.clone()),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderResult,
+                Expr::value(Some(provider_result.clone())),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
+            )
+            .exec(&self.db)
+            .await;
+
+        let update = match update {
+            Ok(update) => update,
             Err(source) => {
-                let message = format!(
-                    "provider succeeded, but the journal could not persist the success state: {source}"
-                );
-                self.mark_execution_reconciliation_required(
-                    id,
-                    provider_reference,
-                    Some(provider_result),
-                    message,
-                )
-                .await
-                .map_err(|fallback| {
-                    FulfillmentError::Validation(format!(
-                        "failed to persist provider success for operation {id}: {source}; fallback reconciliation write also failed: {fallback}"
-                    ))
-                })
+                let fallback = self
+                    .mark_execution_reconciliation_required(
+                        id,
+                        provider_reference,
+                        Some(provider_result),
+                        format!(
+                            "provider succeeded, but the journal could not persist the success state: {source}"
+                        ),
+                    )
+                    .await;
+                return match fallback {
+                    Ok(model) => Ok(model),
+                    Err(fallback_error) => {
+                        tracing::error!(
+                            operation_id_non_nil = !id.is_nil(),
+                            original_error = %source,
+                            fallback_error = %fallback_error,
+                            "fulfillment provider success checkpoint failed"
+                        );
+                        Err(FulfillmentError::Database(source))
+                    }
+                };
             }
+        };
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if matches!(
+                current.status.as_str(),
+                PROVIDER_OPERATION_SUCCEEDED
+                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                    | PROVIDER_OPERATION_COMMITTED
+            ) {
+                return Ok(current);
+            }
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_SUCCEEDED.to_string(),
+            });
         }
+
+        self.get(id).await
     }
+
 
     pub async fn mark_provider_error(
         &self,
         id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let message = normalize_error(error_message.into());
-        let model = self.get(id).await?;
-        if model.status == PROVIDER_OPERATION_EXECUTING {
-            return self
-                .mark_execution_reconciliation_required(id, None, None, message)
-                .await;
-        }
-        if model.status != PROVIDER_OPERATION_ERROR {
+        let error_message = normalize_error(error_message.into());
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_ERROR),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(error_message)),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_ERROR {
+                return Ok(current);
+            }
             return Err(FulfillmentError::InvalidTransition {
-                from: model.status,
+                from: current.status,
                 to: PROVIDER_OPERATION_ERROR.to_string(),
             });
         }
 
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.error_message = Set(Some(message));
-        active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await.map_err(Into::into)
+        self.get(id).await
     }
+
 
     /// Record an ambiguous provider outcome directly from an executing claim.
     ///
@@ -227,61 +283,172 @@ impl FulfillmentProviderOperationJournal {
         provider_result: Option<Value>,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
-        if model.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-            return Ok(model);
-        }
-        if model.status != PROVIDER_OPERATION_EXECUTING {
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderReference,
+                Expr::value(normalize_optional(provider_reference)),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderResult,
+                Expr::value(provider_result),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(normalize_error(error_message.into()))),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                return Ok(current);
+            }
             return Err(FulfillmentError::InvalidTransition {
-                from: model.status,
+                from: current.status,
                 to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
             });
         }
 
-        let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string());
-        active.provider_reference = Set(normalize_optional(provider_reference));
-        active.provider_result = Set(provider_result);
-        active.error_message = Set(Some(normalize_error(error_message.into())));
-        active.updated_at = Set(now.into());
-        active.provider_completed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        self.get(id).await
     }
+
 
     pub async fn mark_reconciliation_required(
         &self,
         id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
-        if model.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-            return Ok(model);
+        let current = self.get(id).await?;
+        if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Ok(current);
         }
-        ensure_transition(&model.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED)?;
+        ensure_transition(
+            &current.status,
+            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        )?;
 
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string());
-        active.error_message = Set(Some(normalize_error(error_message.into())));
-        active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await.map_err(Into::into)
+        let provider_completed_at = if current.provider_completed_at.is_none() {
+            Expr::value(Some(Utc::now()))
+        } else {
+            Expr::col(provider_operation::Column::ProviderCompletedAt)
+        };
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(normalize_error(error_message.into()))),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                provider_completed_at,
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.is_in([
+                    PROVIDER_OPERATION_EXECUTING,
+                    PROVIDER_OPERATION_SUCCEEDED,
+                ]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                return Ok(current);
+            }
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
+
 
     pub async fn mark_committed(&self, id: Uuid) -> FulfillmentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
-        if model.status == PROVIDER_OPERATION_COMMITTED {
-            return Ok(model);
+        let current = self.get(id).await?;
+        if current.status == PROVIDER_OPERATION_COMMITTED {
+            return Ok(current);
         }
-        ensure_transition(&model.status, PROVIDER_OPERATION_COMMITTED)?;
+        ensure_transition(&current.status, PROVIDER_OPERATION_COMMITTED)?;
 
         let now = Utc::now();
-        let mut active: provider_operation::ActiveModel = model.into();
-        active.status = Set(PROVIDER_OPERATION_COMMITTED.to_string());
-        active.error_message = Set(None);
-        active.updated_at = Set(now.into());
-        active.committed_at = Set(Some(now.into()));
-        active.update(&self.db).await.map_err(Into::into)
+        let provider_completed_at = if current.provider_completed_at.is_none() {
+            Expr::value(Some(now))
+        } else {
+            Expr::col(provider_operation::Column::ProviderCompletedAt)
+        };
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_COMMITTED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                provider_completed_at,
+            )
+            .col_expr(
+                provider_operation::Column::CommittedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status.is_in([
+                    PROVIDER_OPERATION_SUCCEEDED,
+                    PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+                ]),
+            )
+            .exec(&self.db)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = self.get(id).await?;
+            if current.status == PROVIDER_OPERATION_COMMITTED {
+                return Ok(current);
+            }
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
+        }
+
+        self.get(id).await
     }
+
 }
 
 fn normalize_begin_input(
@@ -351,7 +518,9 @@ fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
                 PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_ERROR
             )
         }
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED => from == PROVIDER_OPERATION_SUCCEEDED,
+        PROVIDER_OPERATION_RECONCILIATION_REQUIRED => {
+            matches!(from, PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_SUCCEEDED)
+        },
         PROVIDER_OPERATION_COMMITTED => matches!(
             from,
             PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
@@ -376,6 +545,11 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
 
 fn normalize_error(value: String) -> String {
     let value = value.trim();
+    let value = if value.is_empty() {
+        "provider operation failed"
+    } else {
+        value
+    };
     if value.len() <= 2000 {
         value.to_string()
     } else {
@@ -428,4 +602,21 @@ mod tests {
         .expect_err("non-object payload must be rejected");
         assert!(matches!(error, FulfillmentError::Validation(_)));
     }
+
+    #[test]
+    fn provider_operation_allows_executing_to_reconciliation() {
+        assert!(
+            ensure_transition(
+                PROVIDER_OPERATION_EXECUTING,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn empty_provider_error_is_normalized_to_safe_default() {
+        assert_eq!(normalize_error("   ".to_string()), "provider operation failed");
+    }
+
 }
