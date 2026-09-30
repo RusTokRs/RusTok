@@ -454,7 +454,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(strip_fulfillment_identity_metadata(metadata)),
+            metadata: Set(strip_fulfillment_metadata(metadata)),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -473,7 +473,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(item.metadata),
+                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1257,7 +1257,40 @@ fn merge_fulfillment_metadata(
     current: serde_json::Value,
     patch: serde_json::Value,
 ) -> serde_json::Value {
-    strip_fulfillment_identity_metadata(merge_metadata(current, patch))
+    let current_audit = current
+        .as_object()
+        .and_then(|object| object.get("audit"))
+        .cloned();
+    let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
+
+    if let Some(audit) = current_audit {
+        match &mut merged {
+            Value::Object(object) => {
+                object.insert("audit".to_string(), audit);
+            }
+            _ => {
+                let mut object = Map::new();
+                object.insert("audit".to_string(), audit);
+                merged = Value::Object(object);
+            }
+        }
+    }
+
+    strip_fulfillment_identity_metadata(merged)
+}
+
+fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
+    strip_fulfillment_identity_metadata(strip_fulfillment_audit_metadata(value))
+}
+
+fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        Value::Object(mut object) => {
+            object.remove("audit");
+            Value::Object(object)
+        }
+        other => other,
+    }
 }
 
 fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -1977,5 +2010,70 @@ mod tests {
             translation(option_id, "EN", "Broken"),
         ]);
         assert!(noncanonical.is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_merge_preserves_owner_audit_history() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "audit": {
+                "events": [
+                    {"type": "ship"},
+                    {"type": "deliver"}
+                ]
+            }
+        });
+        let patch = serde_json::json!({
+            "customer_note": "updated",
+            "audit": {
+                "events": [
+                    {"type": "fabricated"},
+                    {"type": "fabricated"}
+                ]
+            }
+        });
+
+        let merged = super::merge_fulfillment_metadata(current, patch);
+
+        assert_eq!(
+            merged.get("customer_note").and_then(Value::as_str),
+            Some("updated")
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .and_then(|events| events.first())
+                .and_then(|event| event.get("type"))
+                .and_then(Value::as_str),
+            Some("ship")
+        );
+    }
+
+    #[test]
+    fn fulfillment_metadata_sanitization_removes_user_audit_data() {
+        let value = serde_json::json!({
+            "audit": {
+                "events": [{"type": "fabricated"}]
+            },
+            "customer_note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_metadata(value);
+
+        assert_eq!(
+            sanitized.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(sanitized.get("audit").is_none());
     }
 }

@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `68b9dcfccc394f794ef9ddd1ca4f7d4f782eea54`  
+**Current main SHA:** `10500293dc8cd10336a49666c839edf77c36e9da`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3804,3 +3804,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** source/static inspection and cross-module API comparison only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.64` complete and integrated as a ledger-only closeout.
 - **Next primary module:** `FS-22.06.65 — crates/modules/rustok-fulfillment/src/services/fulfillment.rs`.
+
+
+
+### FS-22.06.65 Iteration 1 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata audit ownership
+
+- **Base:** `10500293dc8cd10336a49666c839edf77c36e9da`; dedicated branch `audit/fs-22.06.65-fulfillment-service` was created from this refreshed `main`.
+- **Primary scope:** one production service module only — fulfillment/shipping-option creation and mutation metadata handling, lifecycle state mutation, persistence invariants, checkout identity helpers, quantity adjustment rules, translation resolution, and direct owner callers as evidence for the module contract.
+- **Invariant map:** lifecycle audit history is owner-generated evidence and must not be caller-replaceable; checkout/provider reserved metadata must remain owner-controlled; item progress and lifecycle transitions must remain transactionally consistent; tenant identity must remain scoped below the service; translation runtime state must not admit storage-only provenance.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.65-01:** lifecycle metadata patches could replace the existing root `audit` object. Because `append_audit_event` appends to the patched audit structure and the database guard checks only that the resulting event count is `old + 1`, a caller could replace historical events with fabricated events of the same cardinality while still passing the persistence guard. Fulfillment and fulfillment-item create inputs could also seed an initial fabricated `audit` section.
+- **Production remediation:** lifecycle metadata merge now removes `audit` from the incoming patch and restores the previously persisted owner audit section before appending the new event. Fulfillment creation strips `audit` from root metadata, and fulfillment-item creation strips it from item metadata. Existing checkout-identity sanitization remains unchanged.
+- **Regression coverage:** added pure service tests proving a caller audit patch cannot replace existing owner events and that initial fulfillment metadata sanitization removes user-supplied audit data.
+- **Adjacent-boundary audit:** re-read migration `000110` lifecycle/audit guard, provider-receipt migration `000112`, Admin ship/reship/cancel metadata construction, Admin Create local fulfillment creation, checkout fulfillment metadata construction, and the Fulfillment README. Provider-backed receipt behavior remains intact because only `audit` is newly reserved; `provider_operation` remains available to the existing journaled ship/reship/cancel owner paths and stripped from non-provider deliver/reopen paths.
+- **Immediate re-audit:** all lifecycle `active.metadata` writes were checked to ensure they continue through `merge_fulfillment_metadata`; all fulfillment-item lifecycle writes append audit events to persisted item metadata that is now sanitized at creation. The changed helper introduces no transport, transaction, or ownership dependency.
+- **Fresh second pass:** independently re-read the complete current `fulfillment.rs`, entity models, lifecycle integrity migrations, checkout execution caller, Admin command/create callers, translation owner service, and module docs. No regression attributable to the audit-preservation remediation was found.
+- **Additional findings isolated for later iterations of the same primary module:** pagination offset uses non-saturating multiplication on untrusted `page`; `normalize_translation_inputs` uses generic locale normalization and can admit storage-only `und` through direct service construction even though `TenantLocale` forbids it. These are separate root causes and were intentionally not batched into this remediation unit.
+- **Documentation:** Fulfillment README now explicitly states that `metadata.audit` is owner-generated lifecycle evidence and cannot be seeded/replaced by caller metadata.
+- **Verification:** source inspection, caller/callee tracing, migration/invariant tracing, immediate reread, independent fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** Iteration 1 complete, but the `fulfillment.rs` module track remains open because the two isolated findings above require subsequent dedicated iterations.
+- **Next primary module iteration:** `FS-22.06.66 — same primary module, pagination offset arithmetic`.
