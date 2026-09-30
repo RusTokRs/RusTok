@@ -1,6 +1,7 @@
 //! SeaORM implementation of ArtifactDataObjectUploadService.
 
 use bytes::Bytes;
+use rustok_storage::{ObjectKey, ObjectScope, ObjectZone};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,

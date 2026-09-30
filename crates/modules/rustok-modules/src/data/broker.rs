@@ -7,6 +7,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::ArtifactDataIndexField;
+
 use super::*;
 use super::constants::*;
 use super::error::*;

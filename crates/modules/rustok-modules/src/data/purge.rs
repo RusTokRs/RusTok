@@ -1,5 +1,6 @@
 //! Artifact data purge service and preview targets.
 
+use rustok_events::DomainEvent;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
