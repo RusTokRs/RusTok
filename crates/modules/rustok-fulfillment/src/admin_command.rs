@@ -184,10 +184,9 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             metadata,
         } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
-            "ship",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -333,10 +332,9 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             metadata,
         } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
-            "reship",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -435,10 +433,9 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await?;
         let CancelFulfillmentInput { reason, metadata } = request.input;
         let provider_request = operation_request(
+            &context,
             tenant_id,
             request.fulfillment_id,
-            "cancel",
-            provider_id.as_str(),
             merge_metadata(
                 metadata.clone(),
                 serde_json::json!({
@@ -550,14 +547,13 @@ impl InProcessFulfillmentAdminCommandPort {
                 | PROVIDER_OPERATION_SUCCEEDED
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
         ) {
-            let result = deserialize_provider_result(&journal_operation)
-                .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
             if journal_operation.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-                return Err(PortError::validation(
-                    "fulfillment.provider_reconciliation_pending",
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
                     "fulfillment provider operation requires reconciliation",
                 ));
             }
+            let result = deserialize_provider_result(&journal_operation)?;
             return Ok(JournaledProviderResult {
                 operation_id: journal_operation.id,
                 result,
@@ -565,7 +561,7 @@ impl InProcessFulfillmentAdminCommandPort {
             });
         }
         if journal_operation.status == PROVIDER_OPERATION_EXECUTING {
-            return Err(PortError::validation(
+            return Err(PortError::conflict(
                 "fulfillment.provider_operation_in_progress",
                 "fulfillment provider operation is already executing",
             ));
@@ -589,21 +585,20 @@ impl InProcessFulfillmentAdminCommandPort {
                     | PROVIDER_OPERATION_SUCCEEDED
                     | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             ) {
-                let result = deserialize_provider_result(&current)
-                    .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
                 if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
-                    return Err(PortError::validation(
-                        "fulfillment.provider_reconciliation_pending",
+                    return Err(PortError::conflict(
+                        "fulfillment.reconciliation_required",
                         "fulfillment provider operation requires reconciliation",
                     ));
                 }
+                let result = deserialize_provider_result(&current)?;
                 return Ok(JournaledProviderResult {
                     operation_id: current.id,
                     result,
                     committed: current.status == PROVIDER_OPERATION_COMMITTED,
                 });
             }
-            return Err(PortError::validation(
+            return Err(PortError::conflict(
                 "fulfillment.provider_operation_in_progress",
                 "fulfillment provider operation is already executing",
             ));
@@ -636,9 +631,9 @@ impl InProcessFulfillmentAdminCommandPort {
                     .await
                     .is_err()
                 {
-                    return Err(PortError::validation(
+                    return Err(PortError::unavailable(
                         "fulfillment.provider_journal_failed",
-                        "fulfillment provider operation failed and could not be checkpointed",
+                        "fulfillment provider operation could not be safely checkpointed",
                     ));
                 }
                 return Err(map_fulfillment_error(context, owner_operation, error));
@@ -646,7 +641,7 @@ impl InProcessFulfillmentAdminCommandPort {
         };
 
         let result_payload = serde_json::to_value(&provider_result).map_err(|_| {
-            PortError::validation(
+            PortError::invariant_violation(
                 "fulfillment.provider_result_invalid",
                 "fulfillment provider result could not be normalized",
             )
@@ -739,8 +734,8 @@ impl InProcessFulfillmentAdminCommandPort {
                     format!("fulfillment.local_{operation}_journal_commit_failed"),
                 )
                 .await;
-            return Err(PortError::validation(
-                "fulfillment.journal_commit_failed",
+            return Err(PortError::conflict(
+                "fulfillment.reconciliation_required",
                 "fulfillment operation completed but its journal could not be committed",
             ));
         }
@@ -872,63 +867,51 @@ fn log_port_error(
 }
 
 fn operation_request(
+    context: &PortContext,
     tenant_id: Uuid,
     fulfillment_id: Uuid,
-    operation: &'static str,
-    provider_id: &str,
     metadata: Value,
 ) -> Result<FulfillmentProviderOperationRequest, PortError> {
-    let immutable_payload = serde_json::json!({
-        "tenant_id": tenant_id,
-        "fulfillment_id": fulfillment_id,
-        "operation": operation,
-        "provider_id": provider_id,
-        "metadata": metadata,
-    });
-    let key = stable_operation_key(fulfillment_id, operation, &immutable_payload)?;
+    let idempotency_key = context
+        .idempotency_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            PortError::validation(
+                "fulfillment.provider_idempotency_key_missing",
+                "fulfillment provider operation requires caller-owned idempotency identity",
+            )
+        })?;
+
+    if idempotency_key.len() > 191 {
+        return Err(PortError::validation(
+            "fulfillment.provider_idempotency_key_invalid",
+            "fulfillment provider idempotency identity is too long",
+        ));
+    }
+
     Ok(FulfillmentProviderOperationRequest {
         tenant_id,
         fulfillment_id,
-        idempotency_key: Some(key),
+        idempotency_key: Some(idempotency_key.to_string()),
         metadata,
-    })
-}
-
-fn stable_operation_key(
-    fulfillment_id: Uuid,
-    operation: &str,
-    payload: &Value,
-) -> Result<String, PortError> {
-    let bytes = serde_json::to_vec(payload).map_err(|_| {
-        PortError::validation(
-            "fulfillment.provider_identity_invalid",
-            "fulfillment provider identity could not be normalized",
-        )
-    })?;
-    let first = fnv1a64(&bytes, 0xcbf29ce484222325);
-    let second = fnv1a64(&bytes, 0x84222325cbf29ce4);
-    Ok(format!(
-        "fulfillment:{fulfillment_id}:{operation}:{first:016x}{second:016x}"
-    ))
-}
-
-fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
-    bytes.iter().fold(offset_basis, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
     })
 }
 
 fn deserialize_provider_result(
     operation: &provider_operation::Model,
-) -> Result<FulfillmentProviderOperationResult, FulfillmentError> {
+) -> Result<FulfillmentProviderOperationResult, PortError> {
     let value = operation.provider_result.clone().ok_or_else(|| {
-        FulfillmentError::Validation(
-            "fulfillment provider operation has no persisted provider result".to_string(),
+        PortError::invariant_violation(
+            "fulfillment.provider_result_missing",
+            "fulfillment provider operation has no persisted provider result",
         )
     })?;
     serde_json::from_value(value).map_err(|_| {
-        FulfillmentError::Validation(
-            "fulfillment provider operation has an invalid persisted provider result".to_string(),
+        PortError::invariant_violation(
+            "fulfillment.provider_result_invalid",
+            "fulfillment provider operation has an invalid persisted provider result",
         )
     })
 }
@@ -959,5 +942,57 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
             Value::Object(current)
         }
         (_, patch) => patch,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{PortActor, PortErrorKind};
+
+    use super::*;
+
+    #[test]
+    fn provider_operation_uses_caller_owned_idempotency_key() {
+        let context = PortContext::new(
+            "tenant-1",
+            PortActor::user("actor-1"),
+            "en",
+            "commerce-admin-fulfillment:ship:test",
+        )
+        .with_idempotency_key("caller-owned-key");
+
+        let request = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            serde_json::json!({"example": "value"}),
+        )
+        .expect("caller-owned key should produce provider request");
+
+        assert_eq!(
+            request.idempotency_key.as_deref(),
+            Some("caller-owned-key")
+        );
+    }
+
+    #[test]
+    fn provider_operation_rejects_missing_idempotency_key() {
+        let context = PortContext::new(
+            "tenant-1",
+            PortActor::user("actor-1"),
+            "en",
+            "commerce-admin-fulfillment:ship:test",
+        );
+
+        let error = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Value::Null,
+        )
+        .expect_err("missing caller-owned key must fail closed");
+
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.provider_idempotency_key_missing");
     }
 }
