@@ -414,7 +414,7 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) {
+        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant.id).await? {
             return Ok(disabled_sitemap_status());
         }
 
@@ -493,7 +493,7 @@ impl SeoService {
 
     pub async fn render_robots(&self, tenant: &TenantContext) -> SeoResult<String> {
         let settings = self.load_settings(tenant.id).await?;
-        if !sitemaps_enabled(&settings) {
+        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant.id).await? {
             return Ok(render_robots_body_with_settings("", &settings));
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
@@ -508,12 +508,31 @@ impl SeoService {
         let public_origin = PublicOrigin::resolve(tenant)?;
         let base_url = public_origin.as_str();
 
+        let sitemap_available =
+            sitemaps_enabled(&settings) && self.public_sitemap_modules_enabled(tenant.id).await?;
         Ok(SeoRobotsPreviewRecord {
-            body: render_robots_body_with_settings(base_url, &settings),
+            body: render_robots_body_with_settings(
+                sitemap_available.then_some(base_url).unwrap_or_default(),
+                &settings,
+            ),
             public_url: format!("{base_url}/robots.txt"),
-            sitemap_index_url: sitemaps_enabled(&settings)
-                .then(|| format!("{base_url}/sitemap.xml")),
+            sitemap_index_url: sitemap_available.then(|| format!("{base_url}/sitemap.xml")),
         })
+    }
+
+    async fn public_sitemap_modules_enabled(&self, tenant_id: Uuid) -> SeoResult<bool> {
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
+        {
+            if !self
+                .owner_module_enabled(tenant_id, provider.owner_module_slug())
+                .await?
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     pub async fn latest_sitemap_index(
@@ -521,7 +540,7 @@ impl SeoService {
         tenant_id: Uuid,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) {
+        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant_id).await? {
             return Ok(None);
         }
         let latest_job = seo_sitemap_job::Entity::find()
@@ -547,7 +566,7 @@ impl SeoService {
         path: &str,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
         let settings = self.load_settings(tenant_id).await?;
-        if !sitemaps_enabled(&settings) {
+        if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant_id).await? {
             return Ok(None);
         }
         seo_sitemap_file::Entity::find()
@@ -934,7 +953,7 @@ fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings
     if let Some(delay) = settings.crawl_delay {
         lines.push(format!("Crawl-delay: {delay}"));
     }
-    if sitemaps_enabled(settings) {
+    if sitemaps_enabled(settings) && !base_url.is_empty() {
         lines.push(format!("Sitemap: {base_url}/sitemap.xml"));
     }
     format!("{}\n", lines.join("\n"))
