@@ -16,6 +16,9 @@ const source = read(
 const recovery = read(
   'crates/modules/rustok-commerce/src/services/return_completion_recovery.rs',
 );
+const orchestration = read(
+  'crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs',
+);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -234,6 +237,47 @@ for (const value of [
   'HttpError::new(\n                StatusCode::CONFLICT,\n                "return_completion_operation_conflict",\n                message,',
   'HttpError::new(StatusCode::CONFLICT, "return_completion_operation_conflict", message)',
 ]) forbidText(source, value, 'unsafe raw conflict envelope');
+
+for (const [value, label] of [
+  [
+    'ReturnCompletionOperationError::Database(_) => PostOrderOrchestrationError::OwnerPort',
+    'return completion journal database error mapping',
+  ],
+  ['PortError::unavailable(', 'journal storage unavailable mapping'],
+  [
+    '"commerce.return_completion_operation_storage_unavailable"',
+    'journal storage public code',
+  ],
+  [
+    'ReturnCompletionOperationError::Conflict(_) => PostOrderOrchestrationError::OwnerPort',
+    'return completion journal conflict mapping',
+  ],
+  ['PortError::conflict(', 'journal conflict mapping'],
+  [
+    '"commerce.return_completion_operation_conflict"',
+    'journal conflict public code',
+  ],
+  [
+    'ReturnCompletionOperationError::NotFound(_) => PostOrderOrchestrationError::OwnerPort',
+    'return completion journal not-found mapping',
+  ],
+  ['PortError::not_found(', 'journal not-found mapping'],
+]) requireText(orchestration, value, label);
+
+for (const [value, label] of [
+  [
+    'implicit_refund_collection_request(order_id)',
+    'implicit refund collection request helper',
+  ],
+  [
+    'status: Some("captured".to_string())',
+    'implicit refund requires captured payment collection',
+  ],
+  [
+    'order_id: Some(order_id)',
+    'order-scoped refund selection',
+  ],
+]) requireText(orchestration, value, label);
 
 for (const [value, label] of [
   ['ensure_all_permissions(', 'retry all-permissions helper'],

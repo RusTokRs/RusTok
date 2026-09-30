@@ -27,8 +27,8 @@ use uuid::Uuid;
 use super::post_order::{PostOrderOrchestrationError, PostOrderOrchestrationResult};
 use super::return_completion_operation::{
     BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-    ReturnCompletionOperationCheckpoint, ReturnCompletionOperationJournal,
-    ReturnCompletionOperationStage,
+    ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
+    ReturnCompletionOperationJournal, ReturnCompletionOperationStage,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -596,14 +596,7 @@ impl ReturnCompletionOrchestrationService {
                     "list_payment_collections",
                     operation_id,
                 ),
-                ListPaymentCollectionProjectionsRequest {
-                    page: 1,
-                    per_page: 1,
-                    status: None,
-                    order_id: Some(order_id),
-                    cart_id: None,
-                    customer_id: None,
-                },
+                implicit_refund_collection_request(order_id),
             )
             .await
             .map_err(|error| self.owner_port_error("rustok_payment", error))?;
@@ -1056,10 +1049,46 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
     }
 }
 
-fn map_journal_error(
-    error: super::return_completion_operation::ReturnCompletionOperationError,
-) -> PostOrderOrchestrationError {
-    PostOrderOrchestrationError::Validation(error.to_string())
+fn map_journal_error(error: ReturnCompletionOperationError) -> PostOrderOrchestrationError {
+    match error {
+        ReturnCompletionOperationError::Database(_) => PostOrderOrchestrationError::OwnerPort {
+            owner: "rustok_commerce.return_completion_operation",
+            error: PortError::unavailable(
+                "commerce.return_completion_operation_storage_unavailable",
+                "return completion operation storage is temporarily unavailable",
+            ),
+        },
+        ReturnCompletionOperationError::Conflict(_) => PostOrderOrchestrationError::OwnerPort {
+            owner: "rustok_commerce.return_completion_operation",
+            error: PortError::conflict(
+                "commerce.return_completion_operation_conflict",
+                "return completion operation conflicts with the current state",
+            ),
+        },
+        ReturnCompletionOperationError::NotFound(_) => PostOrderOrchestrationError::OwnerPort {
+            owner: "rustok_commerce.return_completion_operation",
+            error: PortError::not_found(
+                "commerce.return_completion_operation_not_found",
+                "return completion operation was not found",
+            ),
+        },
+        ReturnCompletionOperationError::Validation(message) => {
+            PostOrderOrchestrationError::Validation(message)
+        }
+    }
+}
+
+fn implicit_refund_collection_request(
+    order_id: Uuid,
+) -> ListPaymentCollectionProjectionsRequest {
+    ListPaymentCollectionProjectionsRequest {
+        page: 1,
+        per_page: 1,
+        status: Some("captured".to_string()),
+        order_id: Some(order_id),
+        cart_id: None,
+        customer_id: None,
+    }
 }
 
 #[cfg(test)]
@@ -1120,5 +1149,59 @@ mod tests {
             completion_request_hash(&left).unwrap(),
             completion_request_hash(&right).unwrap()
         );
+    }
+
+    #[test]
+    fn journal_database_errors_map_to_retryable_owner_failures() {
+        let mapped = map_journal_error(ReturnCompletionOperationError::Database(
+            sea_orm::DbErr::Custom("storage unavailable".to_string()),
+        ));
+        match mapped {
+            PostOrderOrchestrationError::OwnerPort { error, .. } => {
+                assert_eq!(error.kind, PortErrorKind::Unavailable);
+                assert!(error.retryable);
+                assert_eq!(
+                    error.code,
+                    "commerce.return_completion_operation_storage_unavailable"
+                );
+                assert_eq!(
+                    error.message,
+                    "return completion operation storage is temporarily unavailable"
+                );
+            }
+            other => panic!("unexpected mapped error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn journal_conflicts_map_to_conflict_owner_failures() {
+        let mapped = map_journal_error(ReturnCompletionOperationError::Conflict(
+            "lease lost".to_string(),
+        ));
+        match mapped {
+            PostOrderOrchestrationError::OwnerPort { error, .. } => {
+                assert_eq!(error.kind, PortErrorKind::Conflict);
+                assert!(!error.retryable);
+                assert_eq!(
+                    error.code,
+                    "commerce.return_completion_operation_conflict"
+                );
+                assert_eq!(
+                    error.message,
+                    "return completion operation conflicts with the current state"
+                );
+            }
+            other => panic!("unexpected mapped error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn implicit_refund_collection_selection_requires_captured_payment() {
+        let order_id = Uuid::new_v4();
+        let request = implicit_refund_collection_request(order_id);
+        assert_eq!(request.page, 1);
+        assert_eq!(request.per_page, 1);
+        assert_eq!(request.status.as_deref(), Some("captured"));
+        assert_eq!(request.order_id, Some(order_id));
     }
 }
