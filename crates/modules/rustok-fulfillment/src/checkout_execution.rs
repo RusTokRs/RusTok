@@ -104,7 +104,14 @@ impl InProcessCheckoutFulfillmentExecutionPort {
 
         let mut records = Vec::with_capacity(request.plans.len());
         for plan in &request.plans {
-            let input = build_input(&request, plan);
+            let input = build_input(&request, plan).map_err(|error| {
+                map_checkout_fulfillment_local_port_error(
+                    context,
+                    ENSURE_OPERATION,
+                    "build_input",
+                    error,
+                )
+            })?;
             let existing = self
                 .find_checkout_fulfillment(
                     context,
@@ -655,28 +662,99 @@ fn validate_request(
 fn build_input(
     request: &EnsureCheckoutFulfillmentsRequest,
     plan: &CheckoutFulfillmentCommand,
-) -> CreateFulfillmentInput {
-    CreateFulfillmentInput {
+) -> Result<CreateFulfillmentInput, PortError> {
+    let items = plan
+        .items
+        .iter()
+        .map(|item| {
+            Ok(CreateFulfillmentItemInput {
+                order_line_item_id: item.order_line_item_id,
+                quantity: item.quantity,
+                metadata: fulfillment_item_metadata(
+                    item.metadata.clone(),
+                    item.cart_line_item_id,
+                )?,
+            })
+        })
+        .collect::<Result<Vec<_>, PortError>>()?;
+
+    Ok(CreateFulfillmentInput {
         order_id: request.order_id,
         shipping_option_id: plan.shipping_option_id,
         customer_id: request.customer_id,
         carrier: plan.carrier.clone(),
         tracking_number: plan.tracking_number.clone(),
-        items: Some(
-            plan.items
-                .iter()
-                .map(|item| CreateFulfillmentItemInput {
-                    order_line_item_id: item.order_line_item_id,
-                    quantity: item.quantity,
-                    metadata: fulfillment_item_metadata(
-                        item.metadata.clone(),
-                        item.cart_line_item_id,
-                    ),
-                })
-                .collect(),
-        ),
-        metadata: fulfillment_metadata(plan.metadata.clone()),
+        items: Some(items),
+        metadata: fulfillment_metadata(plan.metadata.clone())?,
+    })
+}
+
+fn fulfillment_metadata(base: Value) -> Result<Value, PortError> {
+    let mut root = strip_checkout_identity_metadata(base)?;
+    root.insert(
+        "commerce_orchestration".to_string(),
+        serde_json::json!({"operation": "checkout_create_fulfillment"}),
+    );
+    Ok(Value::Object(root))
+}
+
+fn fulfillment_item_metadata(
+    base: Value,
+    cart_line_item_id: Uuid,
+) -> Result<Value, PortError> {
+    let mut root = strip_checkout_identity_metadata(base)?;
+    let mut checkout = root
+        .remove("checkout")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    checkout.insert(
+        "cart_line_item_id".to_string(),
+        Value::String(cart_line_item_id.to_string()),
+    );
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
     }
+    Ok(Value::Object(root))
+}
+
+fn strip_checkout_identity_metadata(
+    value: Value,
+) -> Result<serde_json::Map<String, Value>, PortError> {
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => {
+            return Err(PortError::validation(
+                "fulfillment.checkout_metadata_invalid",
+                "checkout fulfillment metadata must be a JSON object",
+            ));
+        }
+    };
+    if let Some(checkout) = root.remove("checkout") {
+        let mut checkout = match checkout {
+            Value::Object(object) => object,
+            _ => {
+                return Err(PortError::validation(
+                    "fulfillment.checkout_metadata_invalid",
+                    "checkout metadata namespace must be a JSON object",
+                ));
+            }
+        };
+        for key in [
+            "operation_id",
+            "order_id",
+            "order_plan_hash",
+            "fulfillment_index",
+            "fulfillment_key",
+        ] {
+            checkout.remove(key);
+        }
+        if !checkout.is_empty() {
+            root.insert("checkout".to_string(), Value::Object(checkout));
+        }
+    }
+    Ok(root)
 }
 
 struct FulfillmentExpectation<'a> {
@@ -698,7 +776,6 @@ fn validate_fulfillment(
         plan_hash,
         plan,
     } = expected;
-
 
     let persisted_plan_hash = match record.plan_hash.as_deref() {
         Some(value) => Some(normalize_checkout_plan_hash(value).map_err(|_| {
@@ -771,59 +848,6 @@ fn extract_cart_line_item_id(metadata: &Value) -> Option<Uuid> {
         .and_then(|checkout| checkout.get("cart_line_item_id"))
         .and_then(Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
-}
-
-fn fulfillment_metadata(base: Value) -> Value {
-    let mut root = strip_checkout_identity_metadata(base);
-    root.insert(
-        "commerce_orchestration".to_string(),
-        serde_json::json!({"operation": "checkout_create_fulfillment"}),
-    );
-    Value::Object(root)
-}
-
-fn fulfillment_item_metadata(base: Value, cart_line_item_id: Uuid) -> Value {
-    let mut root = strip_checkout_identity_metadata(base);
-    let mut checkout = root
-        .remove("checkout")
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    checkout.insert(
-        "cart_line_item_id".to_string(),
-        Value::String(cart_line_item_id.to_string()),
-    );
-    if checkout.is_empty() {
-        root.remove("checkout");
-    } else {
-        root.insert("checkout".to_string(), Value::Object(checkout));
-    }
-    Value::Object(root)
-}
-
-fn strip_checkout_identity_metadata(value: Value) -> serde_json::Map<String, Value> {
-    let mut root = object_or_empty(value);
-    if let Some(Value::Object(mut checkout)) = root.remove("checkout") {
-        for key in [
-            "operation_id",
-            "order_id",
-            "order_plan_hash",
-            "fulfillment_index",
-            "fulfillment_key",
-        ] {
-            checkout.remove(key);
-        }
-        if !checkout.is_empty() {
-            root.insert("checkout".to_string(), Value::Object(checkout));
-        }
-    }
-    root
-}
-
-fn object_or_empty(value: Value) -> serde_json::Map<String, Value> {
-    match value {
-        Value::Object(object) => object,
-        _ => Default::default(),
-    }
 }
 
 fn require_operation_context(
@@ -1233,6 +1257,53 @@ fn fulfillment_error_to_port_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checkout_fulfillment_metadata_rejects_scalar_projection_input() {
+        assert!(fulfillment_metadata(Value::String("legacy".to_string())).is_err());
+        assert!(fulfillment_item_metadata(Value::Array(Vec::new()), Uuid::new_v4()).is_err());
+        assert!(strip_checkout_identity_metadata(Value::Bool(true)).is_err());
+    }
+
+    #[test]
+    fn checkout_fulfillment_metadata_rejects_malformed_checkout_namespace() {
+        let metadata = serde_json::json!({
+            "checkout": "not-an-object",
+            "customer_note": "keep"
+        });
+
+        assert!(fulfillment_metadata(metadata).is_err());
+    }
+
+
+    #[test]
+    fn checkout_item_metadata_preserves_cart_line_identity_projection() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "cart_line_item_id": Uuid::new_v4().to_string()
+            },
+            "note": "keep"
+        });
+
+        let projected = fulfillment_item_metadata(metadata, cart_line_item_id)
+            .expect("valid checkout metadata should project");
+        assert_eq!(
+            extract_cart_line_item_id(&projected),
+            Some(cart_line_item_id)
+        );
+        assert_eq!(
+            projected.get("note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(
+            projected
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+    }
 
     #[test]
     fn checkout_item_cart_identity_is_extracted_from_persisted_metadata() {
