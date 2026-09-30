@@ -333,6 +333,9 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                 .get_untracked()
                 .map(|option| option.translations.clone())
                 .unwrap_or_default(),
+            expected_translation_revision: selected
+                .get_untracked()
+                .map(|option| option.translation_revision.clone()),
         };
         if draft.name.is_empty() {
             set_error.set(Some(required_label.clone()));
