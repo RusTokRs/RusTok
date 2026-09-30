@@ -3,7 +3,7 @@ use sea_orm::Condition;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionError, Value,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, SqlErr, TransactionError, Value,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
@@ -27,6 +27,15 @@ use crate::{
 
 pub struct ShippingProfileService {
     db: DatabaseConnection,
+}
+
+fn is_shipping_profile_slug_conflict(error: &sea_orm::DbErr) -> bool {
+    let Some(SqlErr::UniqueConstraintViolation(details)) = error.sql_err() else {
+        return false;
+    };
+    let details = details.to_ascii_lowercase();
+    details.contains("idx_shipping_profiles_tenant_slug_unique")
+        || (details.contains("tenant_id") && details.contains("slug"))
 }
 
 fn map_shipping_profile_transaction_error(
@@ -64,6 +73,7 @@ impl ShippingProfileService {
                     self.ensure_slug_available(txn, tenant_id, &slug, None).await?;
 
                     let now = Utc::now();
+                    let requested_slug = slug.clone();
                     let active_profile = shipping_profile::ActiveModel {
                         id: Set(id),
                         tenant_id: Set(tenant_id),
@@ -73,7 +83,15 @@ impl ShippingProfileService {
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
                     };
-                    active_profile.insert(txn).await?;
+                    match active_profile.insert(txn).await {
+                        Ok(_) => {}
+                        Err(error) if is_shipping_profile_slug_conflict(&error) => {
+                            return Err(CommerceError::DuplicateShippingProfileSlug(
+                                requested_slug,
+                            ));
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
 
                     insert_translations(txn, id, &normalized_translations).await?;
                     Ok::<(), CommerceError>(())
@@ -211,8 +229,18 @@ impl ShippingProfileService {
                         active.metadata = Set(metadata);
                     }
 
+                    let requested_slug = active.slug.clone().into_value().ok();
                     active.updated_at = Set(Utc::now().into());
-                    active.update(txn).await?;
+                    match active.update(txn).await {
+                        Ok(_) => {}
+                        Err(error) if is_shipping_profile_slug_conflict(&error) => {
+                            if let Some(slug) = requested_slug {
+                                return Err(CommerceError::DuplicateShippingProfileSlug(slug));
+                            }
+                            return Err(CommerceError::Database(error));
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
 
                     if let Some(translations) = normalized_translations {
                         replace_translations(txn, shipping_profile_id, &translations).await?;
