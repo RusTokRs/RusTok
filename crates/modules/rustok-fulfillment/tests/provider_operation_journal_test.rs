@@ -270,6 +270,45 @@ async fn manual_success_reconciliation_validates_provider_identity() {
     assert_eq!(reconciled.provider_reference.as_deref(), Some("label-1"));
 }
 
+
+#[tokio::test]
+async fn provider_operation_insert_cannot_cross_fulfillment_tenant_boundary() {
+    let db = setup_test_db().await;
+    support::ensure_fulfillment_schema(&db).await;
+    ensure_provider_journal_guards(&db).await;
+
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+    let now = Utc::now().fixed_offset();
+    let result = rustok_fulfillment::entities::provider_operation::ActiveModel {
+        id: sea_orm::Set(Uuid::new_v4()),
+        tenant_id: sea_orm::Set(foreign_tenant_id),
+        fulfillment_id: sea_orm::Set(fulfillment_id),
+        operation: sea_orm::Set("ship".to_string()),
+        provider_id: sea_orm::Set("carrier".to_string()),
+        idempotency_key: sea_orm::Set("cross-tenant-insert".to_string()),
+        status: sea_orm::Set("pending".to_string()),
+        request_payload: sea_orm::Set(serde_json::json!({"source":"integrity-test"})),
+        provider_reference: sea_orm::Set(None),
+        provider_result: sea_orm::Set(None),
+        error_message: sea_orm::Set(None),
+        created_at: sea_orm::Set(now),
+        updated_at: sea_orm::Set(now),
+        provider_completed_at: sea_orm::Set(None),
+        committed_at: sea_orm::Set(None),
+    }
+    .insert(&db)
+    .await;
+
+    assert!(
+        result.is_err(),
+        "provider operation storage must reject a fulfillment from another tenant"
+    );
+}
+
 #[tokio::test]
 async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_write() {
     let db = setup_test_db().await;
