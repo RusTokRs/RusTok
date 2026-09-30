@@ -472,8 +472,9 @@ These are source-contract defects, not verification-only tasks.
   runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals, public
   envelopes, actor/channel/effective-locale/deadline context, and unchanged mutation,
   payment, and fulfillment ownership.
-- [ ] Execute compile and mounted parity for the four admin post-order GET routes, then
-  remove their unmounted compatibility handlers.
+- [ ] Execute compile and mounted parity for the four admin post-order GET routes.
+  The superseded compatibility GET handlers are already absent from the source;
+  only validation evidence remains.
 - [ ] Retain compile, mounted parity, deadline/failure, restart, and remote-adapter
   evidence for order and post-order projections before status promotion.
 - [ ] Correct Product's declared dependency contract or extract its direct
@@ -1018,8 +1019,9 @@ Source inspection is not execution evidence.
 15. [x] Cut mounted admin return/order-change detail/list reads to the host-selected
     runtime while preserving `ORDERS_READ`, filters, clamped pagination, totals,
     public envelopes, request context, and existing mutation/payment/fulfillment ownership.
-16. [ ] Run compile and mounted parity for the four admin post-order GET routes, then
-    remove the unmounted compatibility handlers.
+16. [ ] Run compile and mounted parity for the four admin post-order GET routes.
+    The superseded GET handlers in `admin/returns.rs` and `admin/changes.rs`
+    were already removed from the source; only compile/parity evidence remains.
 17. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 18. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 19. [x] Mount authenticated request-scoped listing native composition.
