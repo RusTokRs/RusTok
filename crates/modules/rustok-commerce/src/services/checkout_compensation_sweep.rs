@@ -3,6 +3,7 @@ use rustok_cart::CartCheckoutPort;
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::CheckoutOrderCompensationPort;
 use rustok_payment::CheckoutPaymentCompensationPort;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -49,6 +50,7 @@ pub struct CheckoutCompensationSweepService {
 impl CheckoutCompensationSweepService {
     pub fn new(
         db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
         payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
@@ -57,6 +59,7 @@ impl CheckoutCompensationSweepService {
         Self {
             compensation: CheckoutCompensationService::new(
                 db.clone(),
+                event_bus,
                 reservation_port,
                 cart_port,
                 payment_compensation_port,
