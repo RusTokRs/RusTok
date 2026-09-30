@@ -18,6 +18,7 @@
 - Provide create/update/lifecycle read-side service operations for shipping-option management that the commerce facade exposes over admin REST and GraphQL.
 - Return typed fulfillment items from `FulfillmentResponse` instead of forcing post-order flows to reconstruct line-item scope from metadata blobs alone.
 - Support partial `ship` / `deliver` adjustments on typed fulfillment items and append language-agnostic audit events to fulfillment/item metadata while keeping `delivered_note` as a typed field.
+- Treat `metadata.audit` on fulfillment and fulfillment-item records as owner-generated lifecycle evidence: create inputs cannot seed it, and lifecycle metadata patches cannot replace existing audit history.
 - Support explicit `reopen` / `reship` recovery flows on top of typed fulfillment items, so delivered or cancelled fulfillments can return to actionable post-order states without language-dependent metadata hacks.
 - Treat `metadata.provider_operation` as a reserved provider commit receipt: provider-backed `ship` / `reship` / `cancel` flows may attach it after journaling, while ordinary `deliver` / `reopen` metadata patches cannot introduce or replace it.
 - Provider operations with an unresolved external outcome remain fail-closed during migration rollback: the reconciliation migration refuses to roll back while any `reconciliation_required` operation has no persisted provider result; the operation must be resolved before the older lifecycle contract is restored.
@@ -28,12 +29,17 @@
 - Before the typed checkout-identity cutover, the legacy metadata contract requires `checkout.fulfillment_key` and a non-empty `checkout.operation_id` together. PostgreSQL, SQLite, and MySQL now enforce that pair on both insert and metadata update; immutable-key enforcement remains separate.
 - The shipping-option translation change journal is durable incremental-sync evidence, not a rebuildable cache: its change sequence and historical resource revisions are consumed by the Translation target cursor. Rollback refuses to drop a non-empty journal rather than silently invalidating that cursor history.
 - The typed checkout-identity migration is a clean cutover: MySQL removes the pre-cutover legacy INSERT guard, PostgreSQL/SQLite/MySQL rollback paths restore the current legacy identity contract, and PostgreSQL legacy numeric-index backfill is length-bounded before BIGINT casting.
+- The fulfillment migration registry contains only executable canonical migrations; an unregistered historical `m20260713_000111_enforce_order_line_allocation` prototype was removed rather than silently activating a cross-row trigger implementation that is not part of the accepted current contract.
 - Support post-order follow-up fulfillments through the commerce facade, where manual create paths validate order-line ownership and remaining quantities before calling `FulfillmentService`.
 - Publish a module-owned Leptos admin UI package in `admin/` for shipping-option operations.
 
 ## Translation ownership
 
 - `fulfillment/shipping_option_copy` is the only current Fulfillment Translation target. It owns exact localized shipping-option `name` rows and their independent revision/change evidence.
+- Shipping-option write paths canonicalize locales through `TenantLocale`; the storage-only `und` provenance locale is never admitted as runtime translation input, while legacy persisted `und` rows remain read-only provenance and are excluded from runtime locale resolution.
+- Bulk shipping-option translation reads are ordered by owner ID and locale before runtime fallback resolution, so the existing first-available fallback and `available_locales` projection are deterministic across database executions.
+- Shipping-option currency codes are normalized as uppercase ASCII three-letter codes at the owner-service boundary, matching the provider currency invariant before persistence.
+- All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - The broad `fulfillment/fulfillment_copy` readiness row is an aggregate classification only and must not be registered as a second Translation provider.
 - `carrier` and `tracking_number` are identifiers; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
 - `delivered_note` and `cancellation_reason` belong to fulfillment history and preserve their original operational context. Translation must not retroactively rewrite those facts.

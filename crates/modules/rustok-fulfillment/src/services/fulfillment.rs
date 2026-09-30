@@ -68,6 +68,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -142,6 +143,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .filter(entities::shipping_option::Column::Active.eq(true))
@@ -164,6 +166,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .order_by_asc(entities::shipping_option::Column::CreatedAt)
@@ -186,6 +189,7 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
         input: UpdateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -310,6 +314,7 @@ impl FulfillmentService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         let option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -333,6 +338,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, false)
             .await
     }
@@ -342,6 +348,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         shipping_option_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
         self.set_shipping_option_active(tenant_id, shipping_option_id, true)
             .await
     }
@@ -352,6 +359,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         self.create_fulfillment_with_identity(tenant_id, input, None)
             .await
     }
@@ -366,6 +374,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         self.create_fulfillment_with_identity_and_id(
             tenant_id,
             input,
@@ -383,6 +392,7 @@ impl FulfillmentService {
         checkout_fulfillment_index: u32,
         checkout_plan_hash: &str,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let checkout_plan_hash = validate_checkout_identity(
             checkout_operation_id,
             checkout_fulfillment_index,
@@ -454,7 +464,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(strip_fulfillment_identity_metadata(metadata)),
+            metadata: Set(strip_fulfillment_metadata(metadata)),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -473,7 +483,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(item.metadata),
+                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -492,6 +502,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
         self.build_fulfillment_response(fulfillment).await
     }
@@ -502,6 +513,7 @@ impl FulfillmentService {
         checkout_operation_id: Uuid,
         checkout_fulfillment_index: u32,
     ) -> FulfillmentResult<Option<CheckoutFulfillmentRecord>> {
+        validate_tenant_id(tenant_id)?;
         let row = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
@@ -533,6 +545,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
     ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
@@ -570,6 +583,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
+        validate_tenant_id(tenant_id)?;
         let fulfillment = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
@@ -588,6 +602,7 @@ impl FulfillmentService {
         tenant_id: Uuid,
         order_id: Uuid,
     ) -> FulfillmentResult<Vec<FulfillmentResponse>> {
+        validate_tenant_id(tenant_id)?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
@@ -607,9 +622,10 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: ListFulfillmentsInput,
     ) -> FulfillmentResult<(Vec<FulfillmentResponse>, u64)> {
+        validate_tenant_id(tenant_id)?;
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
-        let offset = (page.saturating_sub(1)) * per_page;
+        let offset = fulfillment_list_offset(page, per_page);
 
         let mut query = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id));
@@ -646,6 +662,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -762,6 +779,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -867,6 +885,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: ReopenFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -987,6 +1006,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -1086,6 +1106,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
@@ -1219,6 +1240,15 @@ impl FulfillmentService {
     }
 }
 
+fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_checkout_identity(
     checkout_operation_id: Uuid,
     checkout_fulfillment_index: u32,
@@ -1245,7 +1275,7 @@ fn validate_checkout_identity(
 
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() != 3 {
+    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic()) {
         return Err(FulfillmentError::Validation(
             "currency_code must be a 3-letter code".to_string(),
         ));
@@ -1253,11 +1283,48 @@ fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     Ok(normalized)
 }
 
+fn fulfillment_list_offset(page: u64, per_page: u64) -> u64 {
+    page.saturating_sub(1).saturating_mul(per_page)
+}
+
 fn merge_fulfillment_metadata(
     current: serde_json::Value,
     patch: serde_json::Value,
 ) -> serde_json::Value {
-    strip_fulfillment_identity_metadata(merge_metadata(current, patch))
+    let current_audit = current
+        .as_object()
+        .and_then(|object| object.get("audit"))
+        .cloned();
+    let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
+
+    if let Some(audit) = current_audit {
+        match &mut merged {
+            Value::Object(object) => {
+                object.insert("audit".to_string(), audit);
+            }
+            _ => {
+                let mut object = Map::new();
+                object.insert("audit".to_string(), audit);
+                merged = Value::Object(object);
+            }
+        }
+    }
+
+    strip_fulfillment_identity_metadata(merged)
+}
+
+fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
+    strip_fulfillment_identity_metadata(strip_fulfillment_audit_metadata(value))
+}
+
+fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        Value::Object(mut object) => {
+            object.remove("audit");
+            Value::Object(object)
+        }
+        other => other,
+    }
 }
 
 fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -1604,6 +1671,8 @@ async fn load_shipping_options_with_translations(
     let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
     let translations = entities::shipping_option_translation::Entity::find()
         .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids.clone()))
+        .order_by_asc(entities::shipping_option_translation::Column::ShippingOptionId)
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
         .all(db)
         .await?;
 
@@ -1721,8 +1790,9 @@ fn normalize_translation_inputs(
     let mut seen = HashSet::new();
     let mut normalized = Vec::with_capacity(translations.len());
     for translation in translations {
-        let locale = normalize_locale_tag(&translation.locale)
-            .ok_or_else(|| FulfillmentError::Validation("Invalid locale".to_string()))?;
+        let locale = TenantLocale::new(&translation.locale)
+            .map(TenantLocale::into_inner)
+            .map_err(|_| FulfillmentError::Validation("Invalid locale".to_string()))?;
         if !seen.insert(locale.clone()) {
             return Err(FulfillmentError::Validation(
                 "Duplicate locale in shipping option translations".to_string(),
@@ -1912,7 +1982,9 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
 
 #[cfg(test)]
 mod tests {
-    use super::{map_shipping_option, validate_persisted_shipping_option_locales};
+    use super::{
+        fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
+    };
     use crate::entities::{shipping_option, shipping_option_translation};
     use chrono::Utc;
     use rust_decimal::Decimal;
@@ -1977,5 +2049,109 @@ mod tests {
             translation(option_id, "EN", "Broken"),
         ]);
         assert!(noncanonical.is_err());
+    }
+
+    #[test]
+    fn fulfillment_list_offset_saturates_extreme_page_values() {
+        assert_eq!(fulfillment_list_offset(0, 0), 0);
+        assert_eq!(fulfillment_list_offset(1, 100), 0);
+        assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn validate_tenant_id_rejects_nil_identity() {
+        assert!(super::validate_tenant_id(Uuid::nil()).is_err());
+        assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_currency_code_rejects_non_letters() {
+        assert!(super::normalize_currency_code("$$$").is_err());
+        assert!(super::normalize_currency_code("123").is_err());
+    }
+
+    #[test]
+    fn normalize_currency_code_canonicalizes_valid_codes() {
+        assert_eq!(
+            super::normalize_currency_code(" usd ").expect("valid currency"),
+            "USD"
+        );
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
+        let result = super::normalize_translation_inputs(vec![
+            crate::dto::ShippingOptionTranslationInput {
+                locale: "und".to_string(),
+                name: "Express".to_string(),
+            },
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_merge_preserves_owner_audit_history() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "audit": {
+                "events": [
+                    {"type": "ship"},
+                    {"type": "deliver"}
+                ]
+            }
+        });
+        let patch = serde_json::json!({
+            "customer_note": "updated",
+            "audit": {
+                "events": [
+                    {"type": "fabricated"},
+                    {"type": "fabricated"}
+                ]
+            }
+        });
+
+        let merged = super::merge_fulfillment_metadata(current, patch);
+
+        assert_eq!(
+            merged.get("customer_note").and_then(Value::as_str),
+            Some("updated")
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .and_then(|events| events.first())
+                .and_then(|event| event.get("type"))
+                .and_then(Value::as_str),
+            Some("ship")
+        );
+    }
+
+    #[test]
+    fn fulfillment_metadata_sanitization_removes_user_audit_data() {
+        let value = serde_json::json!({
+            "audit": {
+                "events": [{"type": "fabricated"}]
+            },
+            "customer_note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_metadata(value);
+
+        assert_eq!(
+            sanitized.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(sanitized.get("audit").is_none());
     }
 }

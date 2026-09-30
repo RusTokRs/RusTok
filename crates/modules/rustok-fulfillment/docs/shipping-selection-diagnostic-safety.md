@@ -18,6 +18,8 @@ It covers:
 The public trait, request/response DTOs, seller/profile filtering, owner service
 calls, and Commerce/storefront composition remain unchanged.
 
+The FBA registry contract distinguishes operation semantics: listing requires deadline semantics only, while selection requires write idempotency plus deadline semantics.
+
 ## Safe context shape
 
 Every retained event keeps the correlation id and static owner operation. Other

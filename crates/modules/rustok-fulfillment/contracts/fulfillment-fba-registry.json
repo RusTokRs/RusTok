@@ -14,7 +14,7 @@
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
-      "idempotency_required": true,
+      "idempotency_required": false,
       "deadline_required": true
     }
   ],

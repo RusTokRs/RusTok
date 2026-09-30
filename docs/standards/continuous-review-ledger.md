@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `467b96f716a4e71e28db3d008ffe03cb74cfadf4`  
+**Current main SHA:** `9a946747f9a1569fb46d0e8c01da9e751884d240`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -3747,3 +3747,168 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh independent second pass:** re-read the final 787-line migration, all three backend paths, current `000117`, typed checkout execution/entity/service, historical item-identity restoration change, tests, static verifier, README, and implementation plan. No additional repository-owned defect attributable to this primary module was confirmed.
 - **Verification:** source/static inspection, final branch diff review, and post-merge source reconciliation only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.60` complete and integrated. Next primary module: `FS-22.06.61 — crates/modules/rustok-fulfillment/src/migrations/mod.rs`.
+
+
+### FS-22.06.62 Assessment — `crates/modules/rustok-fulfillment/src/ports.rs` ShippingSelectionPort contract fidelity
+
+- **Base:** refreshed `main` at `6d5667d694d8e5893c30c0fec52227fb68065b53`; implementation was integrated through PR #4418 as `8b63ad8c2baf0fb7bd4884aac65b72a9feab2052`.
+- **Primary scope:** one production port boundary — checkout shipping-selection request/response contracts, PortContext admission, tenant parsing, owner error mapping, and FBA registry fidelity.
+- **Finding:** the machine-readable FBA registry declared `idempotency_required=true` for the read-only `list_seller_shipping_options` operation. Canonical `PortCallPolicy::read()` requires deadline semantics but not write idempotency, and the existing FBA verifier already treats `list_*` as read-only and forbids write-idempotency semantics.
+- **Remediation:** registry now declares `idempotency_required=false` for listing and keeps `true` for selection. The selection implementation retains `PortCallPolicy::write()`, which is the canonical single admission point for idempotency + deadline, and its redundant second `require_write_semantics()` call was removed.
+- **Verifier hardening:** `verify-ecommerce-fba-registries.mjs` now explicitly rejects future read-only ports that declare `idempotency_required=true`, preventing machine-readable contract drift.
+- **Consumer/ownership audit:** the port is not a phantom internal abstraction; `fulfillment-fba-registry.json` names Commerce as the consumer and `FulfillmentService` as the in-process implementation. Current Cart/Commerce persistence remains responsible for actual cart shipping-selection state; this port returns owner projections and does not invent a second persistence owner.
+- **Tenant/context audit:** both operations enforce canonical policy before tenant parsing, and tenant parsing occurs before owner-service delegation. No raw tenant value is logged on parser failure.
+- **Error audit:** all current `FulfillmentError` variants map to stable public `PortError` kinds/codes/messages; diagnostics retain bounded aggregate facts instead of raw error/database/UUID payloads.
+- **Second pass:** re-read full `ports.rs`, FBA registry, canonical `PortContext` policy helpers, existing shipping-selection verifier, Cart checkout/shipping-selection persistence, provider registry, and Fulfillment docs. No additional repository-owned defect attributable to this primary port was confirmed.
+- **Verification:** source-level second pass and branch diff review completed. Local clone/Cargo/remediation-gate execution was attempted in the audit environment but GitHub DNS/network access was unavailable, so no local test/build result is claimed. CI/maintainer verification remains required.
+- **Status:** `FS-22.06.62` complete and integrated. Next primary module: `FS-22.06.63 — crates/modules/rustok-fulfillment/src/error.rs`.
+
+
+### FS-22.06.61 Assessment — `crates/modules/rustok-fulfillment/src/migrations/mod.rs` Fulfillment migration registry completeness
+
+- **Base:** refreshed `main` for this closeout at `28423a2a268bae7c1e48f71d85501c444729e6a2`; the audited implementation had already been integrated through PR #4417 as `6d5667d694d8e5893c30c0fec52227fb68065b53`.
+- **Primary scope:** migration registry completeness and ownership of an unregistered Fulfillment migration source.
+- **Finding:** `m20260713_000111_enforce_order_line_allocation.rs` existed in the repository but was never part of the executable migration vector, including in the pre-rename registry. The file implemented a complex multi-row allocation business rule in database triggers, which conflicts with the current `AGENTS.md` owner rule for complex business invariants.
+- **Remediation:** removed the stale unregistered allocation prototype instead of silently activating it. Added module tests that compare flat migration sources with `mod.rs` declarations and enforce unique/chronological registered migration names.
+- **Ownership check:** current Commerce manual fulfillment orchestration validates remaining order-line quantity before calling the Fulfillment owner, while the separate concurrent read-before-write allocation concern remains an owner-service audit topic rather than a reason to revive the stale trigger prototype.
+- **Second pass:** re-read `mod.rs`, every current Fulfillment migration source, Fulfillment create service, Commerce manual fulfillment orchestration, `000109` integrity migration, historical path/commit provenance, and applicable governance/docs. No additional registry-specific defect was confirmed.
+- **Verification:** source/static review and post-merge reconciliation confirmed 15 registered migration sources, no orphan allocation migration, and registry tests present. Local Cargo/remediation-gate execution was blocked by the audit environment's inability to resolve GitHub; no unrun check is claimed as passed.
+- **Status:** `FS-22.06.61` complete and integrated.
+
+
+### FS-22.06.63 Assessment — `crates/modules/rustok-fulfillment/src/error.rs` Fulfillment domain error contract
+
+- **Base:** `28423a2a268bae7c1e48f71d85501c444729e6a2` was the first stable main after FS-22.06.62 and is the base used for this clean-assessment closeout.
+- **Primary scope:** Fulfillment domain error variants, internal propagation, display semantics, and external boundary mapping.
+- **Assessment:** `FulfillmentError` matches the accepted neighboring Order, Cart, Payment, and Product error propagation pattern, including internal `Database(#[from] DbErr)`.
+- **Boundary audit:** current Fulfillment operator/read/write/selection boundaries pattern-match all variants and map them to stable `PortError` kinds/codes/messages. Raw database diagnostics, transition text, and resource identifiers are not exposed through those public mappings.
+- **Second pass:** re-read the complete `error.rs` and current mappers in `ports.rs`, `admin_command.rs`, `admin_create_command.rs`, `shipping_option_admin_command.rs`, `fulfillment_read.rs`, and `shipping_option_read.rs`; no repository-owned defect attributable to this error module was confirmed.
+- **Status:** `FS-22.06.63` complete as a clean assessment; no production source change was required. The earlier empty PR #4419 was closed and is not part of the integrated history.
+- **Verification:** source inspection and cross-module contract comparison only; local Cargo/remediation-gate execution remains unavailable in the current environment.
+- **Next primary module:** `FS-22.06.64 — crates/modules/rustok-fulfillment/src/services/mod.rs`.
+
+
+
+### FS-22.06.64 Assessment — `crates/modules/rustok-fulfillment/src/services/mod.rs` Service module facade
+
+- **Base:** `68b9dcfccc394f794ef9ddd1ca4f7d4f782eea54`; refreshed `main` immediately before closeout.
+- **Primary scope:** the Fulfillment `services/mod.rs` facade only — service module registration, visibility boundaries, root re-exports, private translation-progress helper ownership, and public API consistency with the module contract.
+- **Invariant map:** public service capabilities must have one canonical owner; root crate exports must resolve to live service implementations; internal helpers must not become accidental public contract; service modules must remain free of transport ownership or cross-module persistence duplication.
+- **Discovery:** `services/mod.rs` declares `fulfillment`, `provider_operation`, `provider_operation_recovery`, and `shipping_option_translation` as the public service families and keeps `translation_progress` private. The root `lib.rs` deliberately re-exports the supported service types/constants while retaining a single underlying implementation.
+- **Facade consistency:** every root service re-export was cross-checked against the live service implementations; all referenced public types/constants exist. The private `translation_progress` module is used by the owning translation service and is not re-exported from the crate facade.
+- **Boundary audit:** `FulfillmentService` remains the fulfillment lifecycle owner; provider-operation journal/recovery remain the provider-operation owner; shipping-option translation remains the translation-copy owner. No transport framework or foreign module persistence access is introduced by the facade.
+- **Compatibility audit:** the visibility pattern matches the current neighboring Order/Cart service organization and does not introduce a competing owner or a second source of truth. Existing public submodule exposure is therefore retained rather than changed speculatively.
+- **History audit:** the facade's current shape was introduced incrementally with the shipping-option translation owner and its private progress helper; no stale orphan declaration or duplicate service module was found.
+- **Fresh second pass:** independently re-read the final `services/mod.rs`, `lib.rs`, all five service children, Fulfillment local documentation, and the backend module implementation contract. No repository-owned defect attributable to this primary module was confirmed.
+- **Implementation:** no production source change required; this is a clean module-level assessment.
+- **Verification:** source/static inspection and cross-module API comparison only. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.64` complete and integrated as a ledger-only closeout.
+- **Next primary module:** `FS-22.06.65 — crates/modules/rustok-fulfillment/src/services/fulfillment.rs`.
+
+
+
+### FS-22.06.65 Iteration 1 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata audit ownership
+
+- **Base:** `10500293dc8cd10336a49666c839edf77c36e9da`; dedicated branch `audit/fs-22.06.65-fulfillment-service` was created from this refreshed `main`.
+- **Primary scope:** one production service module only — fulfillment/shipping-option creation and mutation metadata handling, lifecycle state mutation, persistence invariants, checkout identity helpers, quantity adjustment rules, translation resolution, and direct owner callers as evidence for the module contract.
+- **Invariant map:** lifecycle audit history is owner-generated evidence and must not be caller-replaceable; checkout/provider reserved metadata must remain owner-controlled; item progress and lifecycle transitions must remain transactionally consistent; tenant identity must remain scoped below the service; translation runtime state must not admit storage-only provenance.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.65-01:** lifecycle metadata patches could replace the existing root `audit` object. Because `append_audit_event` appends to the patched audit structure and the database guard checks only that the resulting event count is `old + 1`, a caller could replace historical events with fabricated events of the same cardinality while still passing the persistence guard. Fulfillment and fulfillment-item create inputs could also seed an initial fabricated `audit` section.
+- **Production remediation:** lifecycle metadata merge now removes `audit` from the incoming patch and restores the previously persisted owner audit section before appending the new event. Fulfillment creation strips `audit` from root metadata, and fulfillment-item creation strips it from item metadata. Existing checkout-identity sanitization remains unchanged.
+- **Regression coverage:** added pure service tests proving a caller audit patch cannot replace existing owner events and that initial fulfillment metadata sanitization removes user-supplied audit data.
+- **Adjacent-boundary audit:** re-read migration `000110` lifecycle/audit guard, provider-receipt migration `000112`, Admin ship/reship/cancel metadata construction, Admin Create local fulfillment creation, checkout fulfillment metadata construction, and the Fulfillment README. Provider-backed receipt behavior remains intact because only `audit` is newly reserved; `provider_operation` remains available to the existing journaled ship/reship/cancel owner paths and stripped from non-provider deliver/reopen paths.
+- **Immediate re-audit:** all lifecycle `active.metadata` writes were checked to ensure they continue through `merge_fulfillment_metadata`; all fulfillment-item lifecycle writes append audit events to persisted item metadata that is now sanitized at creation. The changed helper introduces no transport, transaction, or ownership dependency.
+- **Fresh second pass:** independently re-read the complete current `fulfillment.rs`, entity models, lifecycle integrity migrations, checkout execution caller, Admin command/create callers, translation owner service, and module docs. No regression attributable to the audit-preservation remediation was found.
+- **Additional findings isolated for later iterations of the same primary module:** pagination offset uses non-saturating multiplication on untrusted `page`; `normalize_translation_inputs` uses generic locale normalization and can admit storage-only `und` through direct service construction even though `TenantLocale` forbids it. These are separate root causes and were intentionally not batched into this remediation unit.
+- **Documentation:** Fulfillment README now explicitly states that `metadata.audit` is owner-generated lifecycle evidence and cannot be seeded/replaced by caller metadata.
+- **Verification:** source inspection, caller/callee tracing, migration/invariant tracing, immediate reread, independent fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** Iteration 1 complete, but the `fulfillment.rs` module track remains open because the two isolated findings above require subsequent dedicated iterations.
+- **Next primary module iteration:** `FS-22.06.66 — same primary module, pagination offset arithmetic`.
+
+
+
+### FS-22.06.66 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Pagination offset arithmetic
+
+- **Base:** `4842c410415fea3cdbed70b8ff7644f875858f77`; dedicated branch `audit/fs-22.06.66-fulfillment-pagination` was created from the freshly refreshed `main`.
+- **Primary scope:** one production service module only — `FulfillmentService::list_fulfillments` pagination normalization and offset arithmetic, with the mounted `FulfillmentReadPort` caller checked as the direct untrusted-input boundary.
+- **Invariant map:** pagination input is untrusted; normalization must keep page/per-page within their declared bounds; offset computation must never overflow; read behavior must remain tenant-filtered and preserve existing ordering/total semantics.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.66-01:** `page.saturating_sub(1) * per_page` still used ordinary multiplication. For sufficiently large untrusted page values, the multiplication can overflow in debug builds or wrap in release builds, producing an incorrect database offset rather than a bounded deterministic value.
+- **Production remediation:** extracted `fulfillment_list_offset` and changed the page multiplication to `saturating_mul` after the existing page/per-page normalization. The list query continues to use the same tenant filter, status/order/customer filters, sort, limit, and total count.
+- **Regression coverage:** added a pure unit test covering zero input, the first page, and `u64::MAX` page with a bounded page size; the extreme case now saturates to `u64::MAX` instead of overflowing.
+- **Adjacent-boundary audit:** the owner `FulfillmentReadPort` passes transport `u64` pagination values directly into this service, so the service remains the canonical arithmetic safety boundary. No alternate arithmetic path exists in the inspected read adapter.
+- **Immediate re-audit:** re-read `list_fulfillments`, the new helper, the direct read-port caller, and the focused test; no regression or changed filtering/ordering behavior was introduced.
+- **Fresh second pass:** a module-level pass rechecked remaining pagination arithmetic in `fulfillment.rs`; no other page/per-page multiplication path remained. The previously isolated direct-service `und` locale admission remains a separate next iteration and was not batched here.
+- **Implementation:** production source changed only in the primary service module; no architectural or ADR change was required.
+- **Verification:** source inspection, direct caller tracing, arithmetic boundary analysis, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.66` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.67 — same primary module, direct-service locale admission / storage-only `und``.
+
+
+
+### FS-22.06.67 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option locale admission
+
+- **Base:** `b0b67a08886537291e2712ec29d8f6a1061a83bc`; dedicated branch `audit/fs-22.06.67-fulfillment-locale` was created from refreshed `main`.
+- **Primary scope:** one production service module only — direct service-level normalization of shipping-option translation input, with DTO deserialization and the dedicated exact-locale translation service inspected as adjacent canonical-type evidence.
+- **Invariant map:** runtime translation inputs must use the canonical tenant/runtime locale identity; storage-only `und` is provenance data, not a runtime translation locale; direct service construction must preserve the same admission contract as transport deserialization.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.67-01:** `normalize_translation_inputs` used generic `normalize_locale_tag`, which accepts the valid storage/provenance locale `und`. The public DTO separately uses `TenantLocale` and rejects `und`, so the direct owner-service API had a weaker contract than its transport boundary.
+- **Production remediation:** service-level translation normalization now canonicalizes through `TenantLocale::new`, rejecting storage-only `und` while preserving canonicalization of accepted locale forms and duplicate-locale detection.
+- **Regression coverage:** added a focused pure test proving direct service normalization rejects `und`.
+- **Adjacent-boundary audit:** DTO `ShippingOptionTranslationInput` already canonicalizes through `TenantLocale`; `ShippingOptionTranslationService::canonical_locale` uses the same owner type; persisted `und` is still tolerated only as storage provenance and excluded by runtime mapping. Create/update shipping-option methods both use the corrected service normalizer.
+- **Immediate re-audit:** re-read the final normalizer and its two write callers, DTO validation/deserialization, persisted-locale validation, and exact-locale service canonicalization. No weaker write-side locale admission path remained in `fulfillment.rs`.
+- **Fresh second pass:** independently searched the entire primary module for locale normalization and re-read the runtime resolution path. Generic locale normalization remains intentionally used only for requested/default runtime read values and is preceded by explicit exclusion of storage-only `und` from persisted runtime translations.
+- **Documentation:** Fulfillment README now states that write paths canonicalize through `TenantLocale`, reject `und`, and retain legacy `und` only as non-runtime provenance.
+- **Verification:** source inspection, caller tracing, canonical-type comparison, immediate reread, fresh second pass, and branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.67` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.68 — same primary module, deterministic translation fallback ordering`.
+
+
+### FS-22.06.68 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Deterministic shipping-option translation fallback
+
+- **Base:** `80cb46a62b0d6f9342300b6e4ffddd953d1a3742`; dedicated branch `audit/fs-22.06.68-fulfillment-translation-order` was created from freshly refreshed `main`.
+- **Primary scope:** one production service module only — bulk translation loading for shipping-option read projections and the existing requested/default/first-available fallback path.
+- **Invariant map:** requested locale takes precedence, then tenant default locale; when neither exists the existing first-available fallback must remain deterministic; `available_locales` must be stable; storage-only `und` must remain excluded from runtime translation candidates.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.68-01:** `load_shipping_options_with_translations` fetched all translation rows without an `ORDER BY`. `resolve_translation` intentionally falls back to `translations.first()` after requested/default misses, so the effective fallback locale and response locale ordering depended on unspecified database row order.
+- **Semantics check:** neighboring Inventory, Pricing, and Region translation owners use the same first-available style after bulk-loading translations ordered by `(owner_id, locale)`. The remediation therefore preserves the existing fallback rule instead of introducing a new platform fallback locale.
+- **Production remediation:** bulk shipping-option translations are now ordered by `shipping_option_id` and `locale` before grouping. Single-option translation reads were already ordered by locale and remain unchanged.
+- **Projection consequence:** `available_locales` is now deterministic as well, because the same ordered source feeds the response projection.
+- **Immediate re-audit:** re-read the bulk loader, single-row loader, resolver, and `map_shipping_option`; verified requested/default matching still bypasses fallback ordering and only the existing no-match path consumes the deterministic first row.
+- **Fresh second pass:** compared Fulfillment ordering with Inventory/Pricing/Region owner translation loaders and re-scanned the primary module for unordered translation queries. No second unordered shipping-option translation read path remained.
+- **Regression-test decision:** no new unit test was added because the defect is the database query's unspecified ordering rather than a pure function contract, and a manually pre-sorted test would not prove the query. Static source comparison against the established sibling-owner pattern is recorded instead.
+- **Documentation:** Fulfillment README now states that bulk translation reads are ordered by owner ID and locale, preserving deterministic first-available fallback and `available_locales`.
+- **Verification:** source inspection, cross-owner pattern comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.68` complete and ready for integration.
+- **Next primary module:** `FS-22.06.69 — same primary module, deep fresh pass of the remaining shipping-option service mutation/translation semantics`.
+
+### FS-22.06.69 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-option mutation currency invariant
+
+- **Base:** `87d15eba9c92128aced13c174871511bf3f8c74a`; dedicated branch `audit/fs-22.06.69-fulfillment-shipping-mutation` was created from refreshed `main`.
+- **Primary scope:** one production service module only — shipping-option create/update mutation validation, including currency, provider, translation, metadata compatibility, activation, transaction and change-journal sequencing.
+- **Invariant map:** persisted shipping-option currency is a three-letter alphabetic currency identity; service validation must prevent malformed values before persistence; the same invariant must hold for direct owner-service calls and provider execution boundaries.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.69-01:** `normalize_currency_code` checked only trimmed length `== 3`. The shipping-options table migration does not impose an alphabetic CHECK constraint, so direct service calls could persist values such as `$$$`. The provider-side validator already defines the intended canonical invariant as uppercase ASCII letters of length three, but that validation occurs only when a provider operation is later executed.
+- **Production remediation:** `normalize_currency_code` now requires exactly three ASCII alphabetic characters after trimming and canonicalizes to uppercase, matching the existing provider currency validator.
+- **Regression coverage:** added pure tests for rejection of symbol/numeric codes and canonicalization of a valid lower-case code; final source reread confirmed the symbol case is literally `$$$` in the repository test.
+- **Adjacent-boundary audit:** create and update shipping-option paths both use `normalize_currency_code`; provider quote/operation validation uses the same semantic rule; database schema was checked and confirmed not to enforce alphabetic content itself. No late-only validation path remains the sole guard.
+- **Immediate re-audit:** re-read the validator, both create/update call sites, provider validator, DTO constraints, and final regression cases. No mutation path bypasses the service currency normalizer.
+- **Fresh second pass:** re-read the shipping-option mutation and translation paths, compatibility metadata helpers, activation/change-journal transaction, and persistence uniqueness constraints. No additional confirmed currency-integrity defect remained in this remediation unit.
+- **Regression audit note:** an intermediate test-edit operation incorrectly transformed a literal `$` example because JavaScript replacement strings interpret `$` specially; this was detected during reread and corrected with a function-based replacement before PR preparation. The final branch contains the intended literal.
+- **Documentation:** Fulfillment README now states the owner-level three-letter alphabetic uppercase currency invariant.
+- **Verification:** source inspection, call-site tracing, schema comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.69` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.70 — same primary module, shipping-option tenant identity/data-integrity boundary and remaining mutation semantics`.
+
+### FS-22.06.70 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Tenant identity admission
+
+- **Base:** `9a946747f9a1569fb46d0e8c01da9e751884d240`; dedicated branch `audit/fs-22.06.70-fulfillment-tenant-invariants` was created from refreshed `main`.
+- **Primary scope:** one production service module only — tenant identity admission across all public and crate-public `FulfillmentService` entrypoints that accept `tenant_id`, with direct storage paths checked for the same invariant.
+- **Invariant map:** a real tenant identity must be non-nil; all owner reads/writes must reject invalid tenant identity before querying or mutating persistence; the guard must also cover crate-internal entrypoints that bypass a public wrapper.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.70-01:** `Uuid::nil()` was accepted as a tenant identity by the service. The tenant owner creates tenant IDs through generated UUIDs, while the Fulfillment schema only has `NOT NULL` on `tenant_id` and no non-nil CHECK. A direct owner-service call could therefore create or read data under a tenant identity that cannot correspond to a real tenant.
+- **Production remediation:** added `validate_tenant_id` and applied it to every `pub async` and `pub(crate) async` FulfillmentService entrypoint carrying `tenant_id`, including shipping-option CRUD, fulfillment reads, lifecycle writes, and checkout find/list/create helpers. Private helpers remain behind these validated entrypoints.
+- **Regression coverage:** added a focused pure test proving the nil UUID is rejected and a generated non-nil UUID is accepted.
+- **Coverage audit:** automated source scan found 21 tenant-bearing public/crate-public async entrypoints; all 21 now perform the guard before owner work.
+- **Adjacent-boundary audit:** shipping-option admin/read ports already parse tenant IDs from trusted request context; checkout/read ports pass the parsed tenant through to the service; tenant creation uses generated IDs. The new guard therefore closes the direct owner-service gap without changing trusted context parsing or tenant-scoped SQL predicates.
+- **Immediate re-audit:** re-read shipping-option mutation, checkout creation/find/list, fulfillment read/list, and lifecycle mutation entrypoints after insertion; no caller requires a nil tenant sentinel and no validation is bypassed.
+- **Fresh second pass:** searched the complete primary module for tenant-bearing service entrypoints and verified every one is guarded. Existing internal tenant filters and row locks remain unchanged.
+- **Schema note:** the service guard fixes new direct owner-service admission. A future database migration could add a physical non-nil UUID CHECK for persisted tenant columns, but that is a separate migration-owner track and was not mixed into this service iteration.
+- **Documentation:** Fulfillment README now states the owner-service tenant identity invariant.
+- **Verification:** source inspection, entrypoint coverage scan, tenant-owner comparison, immediate reread, fresh second pass, and exact branch diff review. No Cargo/test/clippy/rustfmt/runtime/database commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.70` complete and ready for integration.
+- **Next primary module:** `FS-22.06.71 — same primary module, provider/metadata compatibility validation and remaining mutation semantics`.
