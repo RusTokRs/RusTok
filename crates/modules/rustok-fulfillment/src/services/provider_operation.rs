@@ -43,6 +43,15 @@ impl FulfillmentProviderOperationJournal {
         input: BeginProviderOperation,
     ) -> FulfillmentResult<provider_operation::Model> {
         let input = normalize_begin_input(input)?;
+        let fulfillment_exists = crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
+            .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
+            .one(&self.db)
+            .await?
+            .is_some();
+        if !fulfillment_exists {
+            return Err(FulfillmentError::FulfillmentNotFound(input.fulfillment_id));
+        }
+
         if let Some(existing) = self
             .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
             .await?
