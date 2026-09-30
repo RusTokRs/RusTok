@@ -47,7 +47,9 @@ for (const [value, label] of [
   ['.queue_bulk_apply_batched(tenant, created_by, input)', 'apply queue routing'],
   ['.queue_bulk_export_bounded_io(tenant, created_by, input)', 'bounded export queue routing'],
   ['.queue_bulk_import_bounded_io(tenant, created_by, input)', 'bounded import queue routing'],
-  ['self.runtime.execute_next_bulk_job_with_bounded_io().await', 'normalized bounded worker routing'],
+  ['self.runtime.execute_next_bulk_job_only_with_bounded_io().await', 'normalized bounded bulk worker routing'],
+  ['self.runtime.execute_next_sitemap_job_background().await', 'independent sitemap worker routing'],
+  ['self.runtime.execute_next_index_repair_replay_job_background().await', 'independent index repair worker routing'],
 ]) {
   requireText(applications, value, label);
 }
@@ -89,6 +91,8 @@ for (const [value, label] of [
   ['while rows.len() < BULK_IO_CHUNK_SIZE', 'bounded import row slice'],
   ['self.execute_export_job_chunk(job).await', 'chunked export execution'],
   ['self.execute_import_job_chunk(&normalized).await', 'chunked normalized import execution'],
+  ['async fn prune_bulk_history(', 'bounded bulk history retention'],
+  ['SEO_HISTORY_PRUNE_BATCH_SIZE', 'bounded bulk retention batch'],
   ['async fn checkpoint_bulk_io_job(', 'persisted IO progress checkpoint'],
   ['reader.position().byte()', 'streaming import byte cursor'],
   ['load_bulk_io_explicit_meta_batches(', 'bounded export metadata loader'],

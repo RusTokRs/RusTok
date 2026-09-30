@@ -135,11 +135,25 @@ pub fn build_redirect_location(
 }
 
 fn prefix_locale_to_canonical_url(canonical_url: &str, locale: &str) -> String {
-    if canonical_url == "/" {
-        return format!("/{locale}");
+    let locale = locale.trim();
+    if locale.is_empty() {
+        return canonical_url.to_string();
     }
 
-    format!("/{locale}{canonical_url}")
+    let locale_prefix = format!("/{locale}");
+    if canonical_url == locale_prefix
+        || canonical_url.starts_with(format!("{locale_prefix}/").as_str())
+        || canonical_url.starts_with(format!("{locale_prefix}?").as_str())
+        || canonical_url.starts_with(format!("{locale_prefix}#").as_str())
+    {
+        return canonical_url.to_string();
+    }
+
+    if canonical_url == "/" {
+        return locale_prefix;
+    }
+
+    format!("{locale_prefix}{canonical_url}")
 }
 
 fn build_module_route(route_segment: &str, query_params: &HashMap<String, String>) -> String {
@@ -205,5 +219,23 @@ mod tests {
 
         let redirect = build_redirect_location(&resolved, Some("ru"), &query_params);
         assert_eq!(redirect, "/ru/modules/blog?slug=release");
+    }
+
+    #[test]
+    fn redirect_location_does_not_double_prefix_localized_or_absolute_targets() {
+        let query_params = HashMap::new();
+        let localized = ResolvedCanonicalRoute {
+            target_kind: "page".to_string(),
+            target_id: "123".to_string(),
+            locale: "en".to_string(),
+            matched_url: "/modules/pages?slug=about".to_string(),
+            canonical_url: "/en/about".to_string(),
+            redirect_required: true,
+        };
+        assert_eq!(
+            build_redirect_location(&localized, Some("en"), &query_params),
+            "/en/about"
+        );
+
     }
 }

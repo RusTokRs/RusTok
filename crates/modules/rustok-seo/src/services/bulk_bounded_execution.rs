@@ -1,4 +1,5 @@
 const BULK_APPLY_CHUNK_SIZE: usize = 50;
+const MAX_BULK_TARGETS: usize = 100_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct QueuedBulkApplyPayload {
@@ -49,6 +50,11 @@ impl SeoService {
             .iter()
             .map(|row| row.target_id)
             .collect::<Vec<_>>();
+        if target_ids.len() > MAX_BULK_TARGETS {
+            return Err(SeoError::validation(format!(
+                "bulk apply selection exceeds the {MAX_BULK_TARGETS} target limit"
+            )));
+        }
         let queued_payload = QueuedBulkApplyPayload {
             input: input.clone(),
             target_ids: target_ids.clone(),

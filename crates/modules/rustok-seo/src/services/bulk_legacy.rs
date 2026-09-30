@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1104,7 +1105,10 @@ impl SeoService {
         if let Some(status) = status {
             query = query.filter(seo_bulk_job::Column::Status.eq(status.as_str()));
         }
-        let jobs = query.all(&self.db).await?;
+        let jobs = query
+            .limit(limit.max(1) as u64)
+            .all(&self.db)
+            .await?;
         let jobs = jobs.into_iter().take(limit.max(1)).collect::<Vec<_>>();
         let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
         let artifacts = self.load_bulk_artifacts_map(&job_ids).await?;

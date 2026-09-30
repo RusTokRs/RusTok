@@ -19,7 +19,7 @@ use crate::entities as seo_meta;
 use crate::entities::{meta_translation, seo_revision};
 use crate::{SeoError, SeoResult};
 
-use super::redirects::validate_target_url;
+use super::redirects::normalize_target_url;
 use super::robots::{first_open_graph_image_url, is_valid_structured_data_payload};
 use super::templates::{generated_translation, render_generated_record, source_label};
 use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
@@ -92,7 +92,8 @@ impl SeoService {
         input: SeoMetaInput,
         transition_ref: Option<String>,
     ) -> SeoResult<SeoMetaRecord> {
-        let response_locale = self.prepare_meta_transition(tenant, &input).await?;
+        let mut input = input;
+        let response_locale = self.prepare_meta_transition(tenant, &mut input).await?;
         let target_kind = input.target_kind.clone();
         let target_id = input.target_id;
         let txn = self.db.begin().await?;
@@ -120,7 +121,7 @@ impl SeoService {
     async fn prepare_meta_transition(
         &self,
         tenant: &TenantContext,
-        input: &SeoMetaInput,
+        input: &mut SeoMetaInput,
     ) -> SeoResult<String> {
         let response_locale = upsert_response_locale(input, tenant.default_locale.as_str())?;
 
@@ -138,12 +139,12 @@ impl SeoService {
         }
 
         let settings = self.load_settings(tenant.id).await?;
-        if let Some(canonical_url) = input.canonical_url.as_deref() {
-            validate_target_url(
-                canonical_url,
+        if let Some(canonical_url) = input.canonical_url.take() {
+            input.canonical_url = Some(normalize_target_url(
+                canonical_url.as_str(),
                 settings.allowed_canonical_hosts.as_slice(),
                 "canonical_url",
-            )?;
+            )?);
         }
         if let Some(structured_data) = input.structured_data.as_ref() {
             validate_structured_data_payload(&structured_data.0)?;
@@ -322,7 +323,8 @@ impl SeoService {
         let transition_ref = format!("revision:{revision}");
         let kind = target_kind.clone();
         let input = snapshot_to_input(snapshot.payload, target_kind, target_id);
-        let response_locale = self.prepare_meta_transition(tenant, &input).await?;
+        let mut input = input;
+        let response_locale = self.prepare_meta_transition(tenant, &mut input).await?;
         let txn = self.db.begin().await?;
 
         self.persist_meta_transition_in_tx(

@@ -1,4 +1,7 @@
-use super::sitemaps::{index_generation, submission_adapters, submission_aggregation};
+use super::sitemaps::{
+    SitemapUrlRecord, index_generation, sitemaps_enabled, submission_adapters,
+    submission_aggregation,
+};
 
 const SITEMAP_JOB_QUEUED: &str = "queued";
 const SITEMAP_JOB_RUNNING: &str = "running";
@@ -23,7 +26,7 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<crate::dto::SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !settings.sitemap_enabled {
+        if !sitemaps_enabled(&settings) {
             return Ok(background_disabled_sitemap_status());
         }
 
@@ -46,7 +49,7 @@ impl SeoService {
         }
 
         let now = chrono::Utc::now().fixed_offset();
-        crate::entities::seo_sitemap_job::ActiveModel {
+        let inserted = crate::entities::seo_sitemap_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             status: Set(SITEMAP_JOB_QUEUED.to_string()),
@@ -58,7 +61,25 @@ impl SeoService {
             updated_at: Set(now),
         }
         .insert(&self.db)
-        .await?;
+        .await;
+        if let Err(error) = inserted {
+            // The PostgreSQL partial unique index closes the check-then-insert race. A concurrent
+            // enqueue should observe the existing active job instead of surfacing a conflict.
+            if crate::entities::seo_sitemap_job::Entity::find()
+                .filter(crate::entities::seo_sitemap_job::Column::TenantId.eq(tenant.id))
+                .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                    SITEMAP_JOB_QUEUED,
+                    SITEMAP_JOB_RUNNING,
+                    SITEMAP_JOB_SUBMITTING,
+                ]))
+                .one(&self.db)
+                .await?
+                .is_some()
+            {
+                return self.sitemap_status(tenant).await;
+            }
+            return Err(error.into());
+        }
 
         self.sitemap_status(tenant).await
     }
@@ -70,20 +91,19 @@ impl SeoService {
         let now = chrono::Utc::now().fixed_offset();
         let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
 
-        let active = crate::entities::seo_sitemap_job::Entity::find()
+        // A fresh running/submitting job for one tenant must not stall queued work for every
+        // other tenant. Only stale leases are resumed; the conditional update is the claim.
+        let stale_active = crate::entities::seo_sitemap_job::Entity::find()
             .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
                 SITEMAP_JOB_RUNNING,
                 SITEMAP_JOB_SUBMITTING,
             ]))
+            .filter(crate::entities::seo_sitemap_job::Column::UpdatedAt.lte(stale_before))
             .order_by_asc(crate::entities::seo_sitemap_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
 
-        let job = if let Some(job) = active {
-            if job.updated_at > stale_before {
-                return Ok(None);
-            }
-
+        let job = if let Some(job) = stale_active {
             let claimed = crate::entities::seo_sitemap_job::Entity::update_many()
                 .col_expr(
                     crate::entities::seo_sitemap_job::Column::UpdatedAt,
@@ -144,7 +164,12 @@ impl SeoService {
                 .ok_or(SeoError::NotFound)?
         };
 
-        let result = if job.status == SITEMAP_JOB_SUBMITTING {
+        let module_enabled = self.runtime_module_enabled(job.tenant_id).await?;
+        let result = if !module_enabled {
+            Err(SeoError::configuration(
+                "SEO module was disabled after the sitemap job was queued",
+            ))
+        } else if job.status == SITEMAP_JOB_SUBMITTING {
             self.execute_sitemap_submission_phase(&job).await
         } else {
             self.execute_sitemap_generation_phase(&job).await
@@ -153,8 +178,34 @@ impl SeoService {
             self.fail_background_sitemap_job(&job, error.to_string())
                 .await?;
         }
+        self.prune_sitemap_history(job.tenant_id).await?;
 
         self.sitemap_job(job.tenant_id, job.id).await
+    }
+
+    async fn prune_sitemap_history(&self, tenant_id: Uuid) -> SeoResult<()> {
+        let cutoff = chrono::Utc::now().fixed_offset()
+            - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
+        let old_jobs = crate::entities::seo_sitemap_job::Entity::find()
+            .filter(crate::entities::seo_sitemap_job::Column::TenantId.eq(tenant_id))
+            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
+                SITEMAP_JOB_COMPLETED,
+                SITEMAP_JOB_FAILED,
+            ]))
+            .filter(crate::entities::seo_sitemap_job::Column::CreatedAt.lt(cutoff))
+            .order_by_asc(crate::entities::seo_sitemap_job::Column::CreatedAt)
+            .limit(super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)
+            .all(&self.db)
+            .await?;
+        if old_jobs.is_empty() {
+            return Ok(());
+        }
+        let ids = old_jobs.into_iter().map(|job| job.id).collect::<Vec<_>>();
+        crate::entities::seo_sitemap_job::Entity::delete_many()
+            .filter(crate::entities::seo_sitemap_job::Column::Id.is_in(ids))
+            .exec(&self.db)
+            .await?;
+        Ok(())
     }
 
     async fn execute_sitemap_generation_phase(
@@ -163,7 +214,7 @@ impl SeoService {
     ) -> SeoResult<()> {
         let tenant = self.load_background_sitemap_tenant(job.tenant_id).await?;
         let settings = self.load_settings(tenant.id).await?;
-        if !settings.sitemap_enabled {
+        if !self.runtime_module_enabled(tenant.id).await? || !sitemaps_enabled(&settings) {
             return Err(SeoError::configuration(
                 "sitemap generation was disabled after the job was queued",
             ));
@@ -176,14 +227,31 @@ impl SeoService {
             .ok_or_else(|| SeoError::configuration("invalid SEO robots public URL"))?
             .to_string();
         let urls = self
-            .collect_background_sitemap_urls(&tenant, public_origin.as_str())
+            .collect_background_sitemap_urls(
+                &tenant,
+                public_origin.as_str(),
+                &settings.sitemap_exclude_patterns,
+            )
             .await?;
+        if urls.len() > super::MAX_SITEMAP_URLS {
+            return Err(SeoError::validation(format!(
+                "sitemap URL set exceeds the {} URL limit",
+                super::MAX_SITEMAP_URLS
+            )));
+        }
         let generated_at = chrono::Utc::now().fixed_offset();
         self.persist_background_sitemap_generation(
             job,
             &tenant,
             public_origin.as_str(),
             urls.as_slice(),
+            settings.sitemap_max_entries_per_file as usize,
+            settings.sitemap_changefreq.as_str(),
+            settings.sitemap_priority.as_str(),
+            settings.sitemap_include_images,
+            settings.hreflang_in_sitemap
+                && settings.hreflang_enabled
+                && settings.submodule_hreflang_enabled,
             !settings.sitemap_submission_endpoints.is_empty(),
             generated_at,
         )
@@ -196,6 +264,13 @@ impl SeoService {
     ) -> SeoResult<()> {
         let tenant = self.load_background_sitemap_tenant(job.tenant_id).await?;
         let settings = self.load_settings(tenant.id).await?;
+        if !sitemaps_enabled(&settings)
+            || !self.public_sitemap_modules_enabled(tenant.id).await?
+        {
+            return Err(SeoError::configuration(
+                "sitemap submission was disabled after the job was queued",
+            ));
+        }
         let preview = self.robots_preview(&tenant).await?;
         let sitemap_index_url = preview
             .public_url
@@ -249,12 +324,19 @@ impl SeoService {
         &self,
         tenant: &TenantContext,
         public_origin: &str,
-    ) -> SeoResult<Vec<String>> {
+        exclude_patterns: &[String],
+    ) -> SeoResult<Vec<SitemapUrlRecord>> {
         let mut urls = Vec::new();
         for provider in self
             .registry
             .providers_with_capability(rustok_seo_targets::SeoTargetCapabilityKind::Sitemaps)
         {
+            if !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+            {
+                continue;
+            }
             let candidates = provider
                 .sitemap_candidates(
                     &self.target_runtime(),
@@ -275,15 +357,66 @@ impl SeoService {
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
                 )?;
-                urls.push(format!(
-                    "{public_origin}{}",
-                    super::routing::locale_prefixed_path(locale.as_str(), candidate.route.as_str(),)
-                ));
+                let route = super::sitemaps::sitemap_locale_path(
+                    locale.as_str(),
+                    candidate.route.as_str(),
+                );
+                if !super::sitemaps::sitemap_route_excluded(
+                    candidate.route.as_str(),
+                    exclude_patterns,
+                ) && !super::sitemaps::sitemap_route_excluded(route.as_str(), exclude_patterns)
+                {
+                    let alternates = candidate
+                        .alternates
+                        .into_iter()
+                        .filter_map(|alternate| {
+                            let alternate_locale =
+                                super::normalize_effective_locale(
+                                    alternate.locale.as_str(),
+                                    tenant.default_locale.as_str(),
+                                )
+                                .ok()?;
+                            let alternate_route = super::sitemaps::sitemap_locale_path(
+                                alternate_locale.as_str(),
+                                alternate.route.as_str(),
+                            );
+                            Some(rustok_seo_targets::SeoTargetAlternateRoute {
+                                locale: alternate_locale,
+                                route: super::sitemaps::sitemap_public_url(
+                                    public_origin,
+                                    alternate_route.as_str(),
+                                ),
+                            })
+                        })
+                        .collect();
+                    let images = candidate
+                        .images
+                        .into_iter()
+                        .filter_map(|mut image| {
+                            let is_absolute = image.url.starts_with("http://")
+                                || image.url.starts_with("https://");
+                            let is_root_relative =
+                                image.url.starts_with('/') && !image.url.starts_with("//");
+                            if is_root_relative {
+                                image.url = super::sitemaps::sitemap_public_url(
+                                    public_origin,
+                                    image.url.as_str(),
+                                );
+                            }
+                            (is_absolute || is_root_relative).then_some(image)
+                        })
+                        .collect();
+                    urls.push(SitemapUrlRecord {
+                        url: super::sitemaps::sitemap_public_url(public_origin, route.as_str()),
+                        images,
+                        alternates,
+                    });
+                }
             }
         }
 
-        urls.sort();
-        urls.dedup();
+        urls.sort_by(|left, right| left.url.cmp(&right.url));
+        urls.dedup_by(|left, right| left.url == right.url);
         Ok(urls)
     }
 
@@ -292,12 +425,17 @@ impl SeoService {
         job: &crate::entities::seo_sitemap_job::Model,
         tenant: &TenantContext,
         public_origin: &str,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
+        chunk_size: usize,
+        changefreq: &str,
+        priority: &str,
+        include_images: bool,
+        include_hreflang: bool,
         requires_submission: bool,
         generated_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<()> {
         let txn = self.db.begin().await?;
-        let file_count = background_sitemap_file_count(urls.len()) as i32;
+        let file_count = background_sitemap_file_count(urls.len(), chunk_size) as i32;
 
         crate::entities::seo_sitemap_file::Entity::delete_many()
             .filter(crate::entities::seo_sitemap_file::Column::TenantId.eq(tenant.id))
@@ -310,6 +448,11 @@ impl SeoService {
             public_origin,
             job.id,
             urls,
+            chunk_size,
+            changefreq,
+            priority,
+            include_images,
+            include_hreflang,
             generated_at,
         )
         .await?;
@@ -359,11 +502,21 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &str,
         job_id: Uuid,
-        urls: &[String],
+        urls: &[SitemapUrlRecord],
+        chunk_size: usize,
+        changefreq: &str,
+        priority: &str,
+        include_images: bool,
+        include_hreflang: bool,
         now: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<()> {
         let mut files = Vec::new();
-        for (index, chunk) in urls.chunks(crate::services::SITEMAP_CHUNK_SIZE).enumerate() {
+        let chunks = if chunk_size == crate::services::SITEMAP_CHUNK_SIZE {
+            urls.chunks(crate::services::SITEMAP_CHUNK_SIZE).collect::<Vec<_>>()
+        } else {
+            urls.chunks(chunk_size.max(1)).collect::<Vec<_>>()
+        };
+        for (index, chunk) in chunks.into_iter().enumerate() {
             files.push(
                 crate::entities::seo_sitemap_file::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -371,7 +524,13 @@ impl SeoService {
                     job_id: Set(job_id),
                     path: Set(format!("sitemap-{}.xml", index + 1)),
                     url_count: Set(chunk.len() as i32),
-                    content: Set(index_generation::render_sitemap_file(chunk)),
+                    content: Set(index_generation::render_sitemap_file(
+                        chunk,
+                        changefreq,
+                        priority,
+                        include_images,
+                        include_hreflang,
+                    )),
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
@@ -592,11 +751,11 @@ fn build_background_sitemap_submission_url(
     Some(parsed.to_string())
 }
 
-fn background_sitemap_file_count(url_count: usize) -> usize {
+fn background_sitemap_file_count(url_count: usize, chunk_size: usize) -> usize {
     if url_count == 0 {
         1
     } else {
-        ((url_count - 1) / crate::services::SITEMAP_CHUNK_SIZE) + 2
+        ((url_count - 1) / chunk_size.max(1)) + 2
     }
 }
 
@@ -636,9 +795,9 @@ mod sitemap_background_tests {
 
     #[test]
     fn background_file_count_keeps_the_index_and_chunks() {
-        assert_eq!(background_sitemap_file_count(0), 1);
-        assert_eq!(background_sitemap_file_count(1), 2);
-        assert_eq!(background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1), 3);
+        assert_eq!(background_sitemap_file_count(0, SITEMAP_CHUNK_SIZE), 1);
+        assert_eq!(background_sitemap_file_count(1, SITEMAP_CHUNK_SIZE), 2);
+        assert_eq!(background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1, SITEMAP_CHUNK_SIZE), 3);
     }
 
     #[test]

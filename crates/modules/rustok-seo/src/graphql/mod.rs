@@ -657,16 +657,17 @@ mod tests {
         }
     }
 
-    async fn insert_enabled_seo_module(
+    async fn insert_enabled_module(
         db: &DatabaseConnection,
         tenant_id: Uuid,
+        module_slug: &str,
         settings: serde_json::Value,
     ) {
         let now = chrono::Utc::now();
         rustok_tenant::entities::tenant_module::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            module_slug: Set("seo".to_string()),
+            module_slug: Set(module_slug.to_string()),
             enabled: Set(true),
             settings: Set(settings),
             created_at: Set(now.into()),
@@ -674,7 +675,15 @@ mod tests {
         }
         .insert(db)
         .await
-        .expect("insert seo tenant module");
+        .expect("insert tenant module");
+    }
+
+    async fn insert_enabled_seo_module(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        settings: serde_json::Value,
+    ) {
+        insert_enabled_module(db, tenant_id, "seo", settings).await;
     }
 
     async fn insert_redirect(
@@ -1155,6 +1164,7 @@ mod tests {
         run_forum_migrations(&db).await;
         let tenant_id = Uuid::new_v4();
         insert_enabled_seo_module(&db, tenant_id, json!({})).await;
+        insert_enabled_module(&db, tenant_id, "forum", json!({})).await;
 
         let tenant = tenant_context(tenant_id);
         let transport = Arc::new(MemoryTransport::new());

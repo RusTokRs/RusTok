@@ -468,12 +468,26 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     ));
 
     #[cfg(feature = "mod-seo")]
+    let seo_worker_finished = ctx.shared_map::<
+        crate::services::app_lifecycle::SeoBulkWorkerHandle,
+        _,
+    >(crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished);
     payload.push_str(&format_runtime_worker_state(
         "seo_bulk",
         settings.runtime.background_workers.seo_bulk_enabled,
-        ctx.shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
-            crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
-        ),
+        seo_worker_finished,
+        stop_requested,
+    ));
+    payload.push_str(&format_runtime_worker_state(
+        "seo_sitemap",
+        settings.runtime.background_workers.seo_sitemap_enabled,
+        seo_worker_finished,
+        stop_requested,
+    ));
+    payload.push_str(&format_runtime_worker_state(
+        "seo_index_repair",
+        settings.runtime.background_workers.seo_index_repair_enabled,
+        seo_worker_finished,
         stop_requested,
     ));
 

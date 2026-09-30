@@ -83,9 +83,30 @@ mod index_repair_background_impl {
                 updated_at: Set(now),
             }
             .insert(&self.db)
-            .await?;
+            .await;
 
-            Ok(map_background_index_repair_job(&job))
+            match job {
+                Ok(job) => Ok(map_background_index_repair_job(&job)),
+                Err(error) => {
+                    // The partial unique index closes the check-then-insert race. A concurrent
+                    // caller should observe the already queued job rather than receive a spurious
+                    // database conflict.
+                    if let Some(active) = job_entity::Entity::find()
+                        .filter(job_entity::Column::TenantId.eq(tenant_id))
+                        .filter(job_entity::Column::Status.is_in([
+                            INDEX_REPAIR_JOB_QUEUED,
+                            INDEX_REPAIR_JOB_RUNNING,
+                        ]))
+                        .order_by_asc(job_entity::Column::CreatedAt)
+                        .one(&self.db)
+                        .await?
+                    {
+                        Ok(map_background_index_repair_job(&active))
+                    } else {
+                        Err(error.into())
+                    }
+                }
+            }
         }
 
         pub(crate) async fn execute_next_index_repair_replay_job_background(
@@ -95,17 +116,17 @@ mod index_repair_background_impl {
             let now = chrono::Utc::now().fixed_offset();
             let stale_before = now - chrono::Duration::seconds(JOB_LEASE_SECS);
 
-            let active = job_entity::Entity::find()
+            // A fresh running job for one tenant must not block queued work for every other
+            // tenant. Only look for stale leases here; an atomic claim below still protects
+            // against two pollers resuming the same job concurrently.
+            let stale_running = job_entity::Entity::find()
                 .filter(job_entity::Column::Status.eq(INDEX_REPAIR_JOB_RUNNING))
+                .filter(job_entity::Column::UpdatedAt.lte(stale_before))
                 .order_by_asc(job_entity::Column::UpdatedAt)
                 .one(&self.db)
                 .await?;
 
-            let job = if let Some(job) = active {
-                if job.updated_at > stale_before {
-                    return Ok(None);
-                }
-
+            let job = if let Some(job) = stale_running {
                 let claimed = job_entity::Entity::update_many()
                     .col_expr(
                         job_entity::Column::UpdatedAt,
@@ -146,7 +167,9 @@ mod index_repair_background_impl {
                     )
                     .col_expr(
                         job_entity::Column::CompletedAt,
-                        sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+                        sea_orm::sea_query::Expr::value(
+                            Option::<chrono::DateTime<chrono::FixedOffset>>::None,
+                        ),
                     )
                     .col_expr(
                         job_entity::Column::LastError,
@@ -171,20 +194,26 @@ mod index_repair_background_impl {
                     .ok_or(SeoError::NotFound)?
             };
 
-            let result = self
-                .run_index_repair_replay(
+            let result = if !self.runtime_module_enabled(job.tenant_id).await? {
+                Err(SeoError::configuration(
+                    "SEO module was disabled after the index repair job was queued",
+                ))
+            } else {
+                self.run_index_repair_replay(
                     job.tenant_id,
                     job.target_type.as_deref(),
                     job.limit.clamp(1, INDEX_REPAIR_JOB_MAX_LIMIT as i32) as usize,
                     job.replay_historical,
                 )
-                .await;
+                .await
+            };
 
             let result = match result {
                 Ok(result) => result,
                 Err(error) => {
                     self.fail_background_index_repair_job(&job, error.to_string())
                         .await?;
+                    self.prune_index_repair_history(job.tenant_id).await?;
                     return Err(error);
                 }
             };
@@ -204,8 +233,34 @@ mod index_repair_background_impl {
             active.completed_at = Set(Some(now));
             active.updated_at = Set(now);
             let completed = active.update(&self.db).await?;
+            self.prune_index_repair_history(job.tenant_id).await?;
 
             Ok(Some(map_background_index_repair_job(&completed)))
+        }
+
+        async fn prune_index_repair_history(&self, tenant_id: Uuid) -> SeoResult<()> {
+            let cutoff = chrono::Utc::now().fixed_offset()
+                - chrono::Duration::days(super::super::SEO_HISTORY_RETENTION_DAYS);
+            let old_jobs = job_entity::Entity::find()
+                .filter(job_entity::Column::TenantId.eq(tenant_id))
+                .filter(job_entity::Column::Status.is_in([
+                    INDEX_REPAIR_JOB_COMPLETED,
+                    INDEX_REPAIR_JOB_FAILED,
+                ]))
+                .filter(job_entity::Column::CreatedAt.lt(cutoff))
+                .order_by_asc(job_entity::Column::CreatedAt)
+                .limit(super::super::SEO_HISTORY_PRUNE_BATCH_SIZE as u64)
+                .all(&self.db)
+                .await?;
+            if old_jobs.is_empty() {
+                return Ok(());
+            }
+            let ids = old_jobs.into_iter().map(|job| job.id).collect::<Vec<_>>();
+            job_entity::Entity::delete_many()
+                .filter(job_entity::Column::Id.is_in(ids))
+                .exec(&self.db)
+                .await?;
+            Ok(())
         }
 
         async fn fail_background_index_repair_job(

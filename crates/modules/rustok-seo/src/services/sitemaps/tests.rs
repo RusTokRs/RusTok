@@ -5,7 +5,8 @@ use super::{
     SitemapSubmissionAdapter, SitemapSubmissionSummary, SitemapSubmitEndpoint,
     normalize_sitemap_submission_endpoints, record_invalid_endpoint, record_submission_failure,
     record_submission_success, render_robots_body, resolve_public_origin_from_values,
-    sitemap_event_key, sitemap_file_count,
+    sitemap_event_key, sitemap_file_count, sitemap_locale_path, sitemap_public_url,
+    sitemap_route_excluded,
 };
 use crate::services::SeoService;
 use rustok_api::TenantContext;
@@ -144,6 +145,37 @@ fn render_robots_body_includes_sitemap_when_enabled() {
 }
 
 #[test]
+fn sitemap_exclusion_patterns_match_full_routes_with_wildcards() {
+    let patterns = vec!["/en/private/*".to_string(), "/de/secret".to_string()];
+    assert!(sitemap_route_excluded("/en/private/account", &patterns));
+    assert!(sitemap_route_excluded("/de/secret", &patterns));
+    assert!(!sitemap_route_excluded("/en/public/account", &patterns));
+}
+
+#[test]
+fn sitemap_locale_paths_are_idempotent_for_owner_prefixed_routes() {
+    assert_eq!(
+        sitemap_locale_path("en", "/modules/product?handle=chair"),
+        "/en/modules/product?handle=chair"
+    );
+    assert_eq!(
+        sitemap_locale_path("en", "/en/modules/pages?slug=about"),
+        "/en/modules/pages?slug=about"
+    );
+    assert_eq!(
+        sitemap_public_url("https://example.com", "/en/modules/pages"),
+        "https://example.com/en/modules/pages"
+    );
+    assert_eq!(
+        sitemap_public_url(
+            "https://example.com",
+            "https://cdn.example.com/asset.xml"
+        ),
+        "https://cdn.example.com/asset.xml"
+    );
+}
+
+#[test]
 fn public_origin_prefers_tenant_domain_and_defaults_to_https() {
     let origin = resolve_public_origin_from_values(
         Some(" Store.Example.com. "),
@@ -217,10 +249,10 @@ fn public_origin_rejects_local_internal_and_private_hosts() {
 
 #[test]
 fn sitemap_file_count_always_includes_the_index() {
-    assert_eq!(sitemap_file_count(0), 1);
-    assert_eq!(sitemap_file_count(1), 2);
-    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE), 2);
-    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE + 1), 3);
+    assert_eq!(sitemap_file_count(0, super::SITEMAP_CHUNK_SIZE), 1);
+    assert_eq!(sitemap_file_count(1, super::SITEMAP_CHUNK_SIZE), 2);
+    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE, super::SITEMAP_CHUNK_SIZE), 2);
+    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE + 1, super::SITEMAP_CHUNK_SIZE), 3);
 }
 
 #[test]

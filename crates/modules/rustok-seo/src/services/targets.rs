@@ -65,6 +65,13 @@ impl SeoService {
         let Some(provider) = self.registry.get(&target_kind) else {
             return Ok(None);
         };
+        if matches!(scope, SeoTargetLoadScope::PublicRoute)
+            && !self
+                .owner_module_enabled(tenant.id, provider.owner_module_slug())
+                .await?
+        {
+            return Ok(None);
+        }
         let record = provider
             .load_target(
                 &self.target_runtime(),

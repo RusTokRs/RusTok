@@ -8,6 +8,9 @@ use super::{LoadedMeta, TargetState, trimmed_option};
 
 const BULK_IO_CHUNK_SIZE: usize = 50;
 const BULK_IO_META_BATCH_SIZE: usize = 256;
+const MAX_BULK_TARGETS: usize = 100_000;
+const MAX_BULK_IMPORT_BYTES: usize = 10 * 1024 * 1024;
+const MAX_BULK_IMPORT_ROWS: usize = 100_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct QueuedBulkExportPayload {
@@ -45,6 +48,11 @@ impl SeoService {
             .into_iter()
             .map(|row| row.target_id)
             .collect::<Vec<_>>();
+        if target_ids.len() > MAX_BULK_TARGETS {
+            return Err(SeoError::validation(format!(
+                "bulk export selection exceeds the {MAX_BULK_TARGETS} target limit"
+            )));
+        }
         let payload = QueuedBulkExportPayload {
             input: input.clone(),
             target_ids: target_ids.clone(),
@@ -92,6 +100,11 @@ impl SeoService {
         created_by: Option<Uuid>,
         input: SeoBulkImportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
+        if input.csv_utf8.len() > MAX_BULK_IMPORT_BYTES {
+            return Err(SeoError::validation(format!(
+                "bulk import CSV exceeds the {MAX_BULK_IMPORT_BYTES} byte limit"
+            )));
+        }
         let locale = super::normalize_effective_locale(
             input.locale.as_str(),
             tenant.default_locale.as_str(),
@@ -101,6 +114,11 @@ impl SeoService {
             locale.as_str(),
             input.csv_utf8.as_str(),
         )?;
+        if total_rows > MAX_BULK_IMPORT_ROWS {
+            return Err(SeoError::validation(format!(
+                "bulk import CSV exceeds the {MAX_BULK_IMPORT_ROWS} row limit"
+            )));
+        }
         let payload = QueuedBulkImportPayload {
             input: input.clone(),
             next_byte_offset,
@@ -181,18 +199,29 @@ impl SeoService {
             active.update(&self.db).await?
         };
 
-        let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
-            Some(SeoBulkJobOperationKind::ExportCsv) => {
-                self.execute_export_job_chunk(&running).await
+        let result = if !self.runtime_module_enabled(running.tenant_id).await?
+            || !self
+                .load_settings(running.tenant_id)
+                .await?
+                .submodule_bulk_editor_enabled
+        {
+            Err(SeoError::configuration(
+                "SEO bulk editor was disabled after the job was queued",
+            ))
+        } else {
+            match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
+                Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+                Some(SeoBulkJobOperationKind::ExportCsv) => {
+                    self.execute_export_job_chunk(&running).await
+                }
+                Some(SeoBulkJobOperationKind::ImportCsv) => {
+                    self.execute_import_job_chunk(&running).await
+                }
+                None => Err(SeoError::validation(format!(
+                    "unknown bulk operation kind `{}`",
+                    running.operation_kind
+                ))),
             }
-            Some(SeoBulkJobOperationKind::ImportCsv) => {
-                self.execute_import_job_chunk(&running).await
-            }
-            None => Err(SeoError::validation(format!(
-                "unknown bulk operation kind `{}`",
-                running.operation_kind
-            ))),
         };
 
         if let Err(error) = result {
