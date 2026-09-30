@@ -256,7 +256,7 @@ pub(crate) fn admin_product_command_context(
 ) -> PortContext {
     let resource_id = product_id
         .map(|value| value.to_string())
-        .unwrap_or_else(|| "collection".to_string());
+        .unwrap_or_else(|| "new".to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::user(auth.user_id.to_string()),
