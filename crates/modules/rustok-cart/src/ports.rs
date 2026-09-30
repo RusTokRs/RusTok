@@ -231,10 +231,10 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutSnapshotRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         self.get_cart(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn update_cart_checkout_context(
@@ -243,10 +243,10 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         self.update_context(tenant_id, request.cart_id, request.input)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn begin_cart_checkout(
@@ -255,10 +255,10 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         self.begin_checkout(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn release_cart_checkout(
@@ -267,10 +267,10 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         self.release_checkout(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn complete_cart_checkout(
@@ -279,10 +279,10 @@ impl CartCheckoutPort for crate::CartService {
         request: CartCheckoutLifecycleRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         self.complete_cart(tenant_id, request.cart_id)
             .await
-            .map_err(cart_error_to_port_error)
+            .map_err(crate::services::cart::cart_error_to_port_error)
     }
 }
 
@@ -494,7 +494,7 @@ impl CartPromotionPort for crate::CartService {
     ) -> Result<crate::CartPromotionPreview, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         validate_cart_promotion_request(&request)?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
                 self.preview_percentage_shipping_promotion(
@@ -535,7 +535,7 @@ impl CartPromotionPort for crate::CartService {
                 .await
             }
         }
-        .map_err(cart_error_to_port_error)
+        .map_err(crate::services::cart::cart_error_to_port_error)
     }
 
     async fn apply_cart_promotion(
@@ -545,7 +545,7 @@ impl CartPromotionPort for crate::CartService {
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         validate_cart_promotion_request(&request)?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = crate::services::cart::parse_port_tenant_id(&context)?;
         match (request.scope, request.kind) {
             (CartPromotionScopeRequest::Shipping, CartPromotionKindRequest::PercentageDiscount) => {
                 self.apply_percentage_shipping_promotion(
@@ -590,7 +590,7 @@ impl CartPromotionPort for crate::CartService {
                 .await
             }
         }
-        .map_err(cart_error_to_port_error)
+        .map_err(crate::services::cart::cart_error_to_port_error)
     }
 }
 
