@@ -121,7 +121,7 @@ five `FulfillmentError` variants retain only a static variant plus aggregate
 text/UUID/opaque-payload shape. Raw tenant, parser, validation, transition,
 resource UUID, and database payloads are not recorded. Read/write admission,
 seller/profile filtering, owner delegation, severity, and public `PortError`
-envelopes are unchanged. Shipping-option projection and fulfillment lifecycle
+envelopes are unchanged. `list_seller_shipping_options` is a read operation and therefore requires canonical deadline semantics but not write idempotency; `select_shipping_option` remains the write operation and requires idempotency plus deadline semantics. Shipping-option projection and fulfillment lifecycle
 read diagnostic payloads remain separate open slices.
 
 ## Accepted conditional capability cutover
