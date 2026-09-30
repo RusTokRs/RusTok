@@ -28,7 +28,8 @@ const between = (s, a, b, l) => {
 };
 
 const controller = read("crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs");
-const service = read("crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs");
+const facade = read("crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs");
+const owner = read("crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs");
 const sweep = read("crates/modules/rustok-commerce/src/services/checkout_compensation_sweep.rs");
 const runtime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
 
@@ -94,7 +95,25 @@ for (const value of [
   "PaymentProviderOperationJournal",
   "CheckoutOrderIdentityPort",
   "in_process_checkout_order_identity_port",
-]) forbid(service, value, "foreign owner service in Commerce compensation");
+]) forbid(facade, value, "foreign owner service in Commerce compensation facade");
+
+for (const value of [
+  "order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,",
+  "payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,",
+  "idempotency_key: impl Into<String>",
+  "payment_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)",
+  "order_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)",
+  ".with_idempotency_key(idempotency_key.to_string())",
+]) need(owner, value, "active checkout compensation owner implementation");
+
+for (const value of [
+  "order_compensation_port: in_process_checkout_order_compensation_port(",
+  "payment_compensation_port: in_process_checkout_payment_compensation_port(",
+]) forbid(
+  between(owner, "impl CheckoutCompensationService {", "pub async fn compensate(", "active compensation constructor"),
+  value,
+  "active compensation constructor foreign-owner creation",
+);
 
 for (const value of [
   "payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>",
