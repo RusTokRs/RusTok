@@ -41,6 +41,10 @@ pub struct CommerceHttpRuntime {
     payment_admin_refund_command_runtime: rustok_payment::PaymentAdminRefundCommandRuntime,
     product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     product_catalog_command_runtime: rustok_product::ProductCatalogCommandRuntime,
+    checkout_payment_compensation_port: std::sync::Arc<dyn rustok_payment::CheckoutPaymentCompensationPort>,
+    checkout_order_compensation_port: std::sync::Arc<dyn rustok_order::CheckoutOrderCompensationPort>,
+    checkout_inventory_reservation_port: std::sync::Arc<dyn rustok_inventory::InventoryReservationIdentityPort>,
+    cart_checkout_port: std::sync::Arc<dyn rustok_cart::CartCheckoutPort>,
     #[cfg(feature = "marketplace-financial")]
     marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
@@ -95,6 +99,21 @@ impl CommerceHttpRuntime {
             rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
         let product_catalog_command_runtime =
             rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone());
+        let checkout_payment_compensation_port = std::sync::Arc::new(
+            rustok_payment::InProcessCheckoutPaymentCompensationPort::with_provider_registry(
+                db.clone(),
+                payment_provider_registry.clone(),
+            ),
+        )
+            as std::sync::Arc<dyn rustok_payment::CheckoutPaymentCompensationPort>;
+        let checkout_order_compensation_port =
+            rustok_order::in_process_checkout_order_compensation_port(
+                db.clone(),
+                event_bus.clone(),
+            );
+        let checkout_inventory_reservation_port =
+            rustok_inventory::in_process_inventory_reservation_identity_port(db.clone());
+        let cart_checkout_port = rustok_cart::owner_cart_checkout_port(db.clone());
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime =
             crate::MarketplaceFinancialRuntime::in_process(db.clone());
@@ -120,6 +139,10 @@ impl CommerceHttpRuntime {
             payment_admin_refund_command_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
+            checkout_payment_compensation_port,
+            checkout_order_compensation_port,
+            checkout_inventory_reservation_port,
+            cart_checkout_port,
             #[cfg(feature = "marketplace-financial")]
             marketplace_financial_runtime,
         }
@@ -252,6 +275,30 @@ impl CommerceHttpRuntime {
         &self,
     ) -> std::sync::Arc<dyn rustok_product::ProductCatalogCommandPort> {
         self.product_catalog_command_runtime.command_port()
+    }
+
+    fn checkout_payment_compensation_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_payment::CheckoutPaymentCompensationPort> {
+        self.checkout_payment_compensation_port.clone()
+    }
+
+    fn checkout_order_compensation_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_order::CheckoutOrderCompensationPort> {
+        self.checkout_order_compensation_port.clone()
+    }
+
+    fn checkout_inventory_reservation_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_inventory::InventoryReservationIdentityPort> {
+        self.checkout_inventory_reservation_port.clone()
+    }
+
+    fn cart_checkout_port(
+        &self,
+    ) -> std::sync::Arc<dyn rustok_cart::CartCheckoutPort> {
+        self.cart_checkout_port.clone()
     }
 
     #[cfg(feature = "marketplace-financial")]
@@ -396,6 +443,33 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require ProductCatalogCommandRuntime in HostRuntimeContext"
                 )
             })?;
+
+        let checkout_payment_compensation_port = runtime
+            .shared_get::<std::sync::Arc<dyn rustok_payment::CheckoutPaymentCompensationPort>>()
+            .unwrap_or_else(|| {
+                std::sync::Arc::new(
+                    rustok_payment::InProcessCheckoutPaymentCompensationPort::with_provider_registry(
+                        runtime.db_clone(),
+                        payment_provider_registry.clone(),
+                    ),
+                ) as std::sync::Arc<dyn rustok_payment::CheckoutPaymentCompensationPort>
+            });
+        let checkout_order_compensation_port = runtime
+            .shared_get::<std::sync::Arc<dyn rustok_order::CheckoutOrderCompensationPort>>()
+            .unwrap_or_else(|| {
+                rustok_order::in_process_checkout_order_compensation_port(
+                    runtime.db_clone(),
+                    event_bus.clone(),
+                )
+            });
+        let checkout_inventory_reservation_port = runtime
+            .shared_get::<std::sync::Arc<dyn rustok_inventory::InventoryReservationIdentityPort>>()
+            .unwrap_or_else(|| {
+                rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone())
+            });
+        let cart_checkout_port = runtime
+            .shared_get::<std::sync::Arc<dyn rustok_cart::CartCheckoutPort>>()
+            .unwrap_or_else(|| rustok_cart::owner_cart_checkout_port(runtime.db_clone()));
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime = runtime
             .shared_get::<crate::MarketplaceFinancialRuntime>()
@@ -425,6 +499,10 @@ impl CommerceHttpRuntime {
             payment_admin_refund_command_runtime,
             product_catalog_read_runtime,
             product_catalog_command_runtime,
+            checkout_payment_compensation_port,
+            checkout_order_compensation_port,
+            checkout_inventory_reservation_port,
+            cart_checkout_port,
             #[cfg(feature = "marketplace-financial")]
             marketplace_financial_runtime,
         })

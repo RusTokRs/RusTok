@@ -1,11 +1,10 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use chrono::{DateTime, FixedOffset};
 use rustok_api::{AuthContext, Permission, TenantContext};
-use rustok_cart::in_process_cart_checkout_port;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
@@ -17,6 +16,40 @@ use crate::{CheckoutCompensationError, CheckoutInventoryReservationError, Checko
 
 const ADMIN_CHECKOUT_OPERATION_OWNER: &str = "rustok_commerce.admin_checkout_operation";
 const ADMIN_CHECKOUT_OPERATION_BOUNDARY: &str = "commerce_admin_checkout_operation_http";
+
+const ADMIN_CHECKOUT_OPERATION_MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+
+fn require_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "checkout_operation_idempotency_key_required",
+                "Idempotency-Key header is required for this write operation",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "checkout_operation_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+
+    if value.is_empty() || value.len() > ADMIN_CHECKOUT_OPERATION_MAX_IDEMPOTENCY_KEY_LENGTH {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "checkout_operation_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 bytes",
+        ));
+    }
+
+    Ok(value)
+}
 
 type AdminCheckoutOperationHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
@@ -194,7 +227,10 @@ pub async fn show_checkout_operation(
     post,
     path = "/admin/checkout-operations/{id}/compensate",
     tag = "admin",
-    params(("id" = Uuid, Path, description = "Checkout operation ID")),
+    params(
+        ("id" = Uuid, Path, description = "Checkout operation ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     responses(
         (status = 200, description = "Checkout operation compensated", body = AdminCheckoutOperationResponse),
         (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden"),
@@ -206,6 +242,7 @@ pub async fn compensate_checkout_operation(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<AdminCheckoutOperationResponse>> {
     ensure_permissions(
@@ -213,23 +250,22 @@ pub async fn compensate_checkout_operation(
         &[Permission::ORDERS_MANAGE],
         "Permission denied: orders:manage required",
     )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let service = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
         runtime.event_bus(),
-        rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone()),
-        in_process_cart_checkout_port(runtime.db_clone()),
-    )
-    .with_payment_provider_registry(runtime.payment_provider_registry());
+        runtime.checkout_inventory_reservation_port(),
+        runtime.cart_checkout_port(),
+        runtime.checkout_payment_compensation_port(),
+        runtime.checkout_order_compensation_port(),
+    );
     let operation = service
         .compensate(
             tenant.id,
             auth.user_id,
             id,
-            format!(
-                "admin-checkout-compensation:{}:{}",
-                auth.user_id,
-                Uuid::new_v4()
-            ),
+            format!("admin-checkout-compensation:{}:{}", auth.user_id, id),
+            idempotency_key,
         )
         .await
         .map_err(|error| {
@@ -250,6 +286,7 @@ pub async fn compensate_checkout_operation(
     post,
     path = "/admin/checkout-operations/compensation-sweep",
     tag = "admin",
+    params(("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")),
     request_body = AdminCheckoutCompensationSweepInput,
     responses(
         (status = 200, description = "Checkout compensation sweep report", body = AdminCheckoutCompensationSweepResponse),
@@ -260,6 +297,7 @@ pub async fn sweep_checkout_compensations(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    headers: HeaderMap,
     Json(input): Json<AdminCheckoutCompensationSweepInput>,
 ) -> HttpResult<Json<AdminCheckoutCompensationSweepResponse>> {
     ensure_permissions(
@@ -267,17 +305,20 @@ pub async fn sweep_checkout_compensations(
         &[Permission::ORDERS_MANAGE],
         "Permission denied: orders:manage required",
     )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
     let report = crate::CheckoutCompensationSweepService::new(
         runtime.db_clone(),
         runtime.event_bus(),
-        rustok_inventory::in_process_inventory_reservation_identity_port(runtime.db_clone()),
-        in_process_cart_checkout_port(runtime.db_clone()),
+        runtime.checkout_inventory_reservation_port(),
+        runtime.cart_checkout_port(),
+        runtime.checkout_payment_compensation_port(),
+        runtime.checkout_order_compensation_port(),
     )
-    .with_payment_provider_registry(runtime.payment_provider_registry())
     .run(
         tenant.id,
         auth.user_id,
         format!("admin:{}", auth.user_id),
+        idempotency_key,
         input.limit,
     )
     .await

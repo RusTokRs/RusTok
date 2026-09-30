@@ -758,6 +758,8 @@ impl CheckoutCompensationService {
         event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn CanonicalInventoryReservationIdentityPort>,
         cart_port: Arc<dyn CanonicalCartCheckoutPort>,
+        payment_compensation_port: Arc<dyn CanonicalCheckoutPaymentCompensationPort>,
+        order_compensation_port: Arc<dyn CanonicalCheckoutOrderCompensationPort>,
     ) -> Self {
         Self {
             inner: legacy::CheckoutCompensationService::new(
@@ -765,6 +767,8 @@ impl CheckoutCompensationService {
                 event_bus,
                 rustok_inventory_shim::wrap_inventory_reservation_identity_port(reservation_port),
                 rustok_cart_shim::wrap_cart_checkout_port(cart_port),
+                rustok_order_shim::wrap_checkout_order_compensation_port(order_compensation_port),
+                rustok_payment_shim::wrap_checkout_payment_compensation_port(payment_compensation_port),
             ),
         }
     }
@@ -818,9 +822,16 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation_id: Uuid,
         lease_owner: impl Into<String>,
+        idempotency_key: impl Into<String>,
     ) -> CheckoutCompensationResult<checkout_operation::Model> {
         self.inner
-            .compensate(tenant_id, actor_id, operation_id, lease_owner)
+            .compensate(
+                tenant_id,
+                actor_id,
+                operation_id,
+                lease_owner,
+                idempotency_key,
+            )
             .await
     }
 }

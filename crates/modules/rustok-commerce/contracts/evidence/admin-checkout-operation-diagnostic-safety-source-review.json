@@ -2,6 +2,9 @@
   "status": "commerce_admin_checkout_operation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
     "crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_compensation.rs",
+    "crates/modules/rustok-commerce/src/services/checkout_compensation_sweep.rs",
+    "crates/modules/rustok-commerce/src/controllers/mod.rs",
     "crates/modules/rustok-commerce/docs/admin-checkout-operation-diagnostic-safety.md",
     "scripts/verify/verify-commerce-admin-checkout-operation-diagnostic-safety.mjs",
     "scripts/verify/verify-commerce-admin-checkout-operation-error-context.mjs",
@@ -12,7 +15,7 @@
     "raw_tenant_uuid_logged": false,
     "raw_actor_uuid_logged": false,
     "raw_optional_domain_uuid_logged": false,
-    "error_redacted_marker_logged": true,
+    "error_redacted_marker_logged": false,
     "required_uuid_shape_logged": true,
     "optional_uuid_shape_logged": true,
     "route_operation_logged": true,
@@ -26,10 +29,13 @@
     "compensation_policy_preserved": true,
     "identity_adoption_preserved": true,
     "permission_checks_preserved": true,
-    "service_calls_preserved": true,
+    "service_calls_preserved": false,
     "http_envelopes_preserved": true,
     "broad_ecommerce_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "typed_owner_compensation_ports": true,
+    "caller_owned_idempotency_required": true,
+    "sweep_idempotency_bounded": true
   },
   "execution": [],
   "validation": {
@@ -42,5 +48,5 @@
     "compile_proven": false,
     "runtime_proven": false
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed for this source iteration. CI remained queued/pending at integration checkpoints; no compile or runtime status is promoted."
 }
