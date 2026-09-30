@@ -78,6 +78,37 @@ for (const [value, label] of [
   ['PermissionExtractor', 'changed granular permission extractor'],
 ]) forbidText(reads, value, label);
 
+for (const value of [
+  'error = ?error',
+  'error.message',
+  'error.to_string()',
+  'internal_code = %error.code',
+  'internal_code,',
+  'code = %error.code',
+  'tenant_id = %port_context.tenant_id',
+  'actor_id = %actor_id',
+  'return_id = ?return_id',
+  'change_id = ?change_id',
+  'order_id = ?order_id',
+  'channel = ?port_context.channel',
+  'locale = %port_context.locale',
+]) forbidText(reads, value, 'raw admin post-order read diagnostics');
+
+for (const [value, label] of [
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code length'],
+  ['retryable = error.retryable', 'owner retryability'],
+  ['error_kind = match error.kind', 'bounded owner error kind'],
+  ['tenant_id_shape = uuid_text_shape(port_context.tenant_id.as_str())', 'bounded tenant shape'],
+  ['actor_id_shape = uuid_shape(actor_id)', 'bounded actor shape'],
+  ['return_id_shape = optional_uuid_shape(return_id)', 'bounded return shape'],
+  ['change_id_shape = optional_uuid_shape(change_id)', 'bounded change shape'],
+  ['order_id_shape = optional_uuid_shape(order_id)', 'bounded order shape'],
+  ['channel_present', 'bounded channel presence'],
+  ['channel_length', 'bounded channel length'],
+  ['locale_length', 'bounded locale length'],
+  ['"commerce admin post-order owner read failed with bounded diagnostics"', 'bounded diagnostics log'],
+]) requireText(reads, value, label);
+
 if (count(reads, '&[Permission::ORDERS_READ]') !== 4) {
   failures.push('all four mounted handlers must preserve ORDERS_READ');
 }
