@@ -171,7 +171,7 @@ async fn install_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbEr
         .execute_unprepared(
             r#"
             CREATE OR REPLACE FUNCTION enforce_fulfillment_provider_operation_ownership()
-            RETURNS trigger AS $
+            RETURNS trigger AS $$
             DECLARE
                 fulfillment_tenant UUID;
             BEGIN
@@ -191,7 +191,7 @@ async fn install_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbEr
 
                 RETURN NEW;
             END;
-            $ LANGUAGE plpgsql;
+            $$ LANGUAGE plpgsql;
 
             CREATE TRIGGER fulfillment_provider_operations_ownership_guard
             BEFORE INSERT ON fulfillment_provider_operations
