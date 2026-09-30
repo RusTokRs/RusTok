@@ -699,15 +699,6 @@ fn validate_fulfillment(
         plan,
     } = expected;
 
-    if record.index != plan.index
-        || record.order_id != order_id
-        || record.plan_hash.as_deref() != Some(plan_hash)
-    {
-        return Err(PortError::conflict(
-            "fulfillment.checkout_identity_conflict",
-            "fulfillment has a mismatched checkout identity",
-        ));
-    }
 
     let persisted_plan_hash = match record.plan_hash.as_deref() {
         Some(value) => Some(normalize_checkout_plan_hash(value).map_err(|_| {
