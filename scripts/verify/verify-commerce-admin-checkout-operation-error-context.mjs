@@ -28,7 +28,7 @@ const between = (s, a, b, l) => {
 };
 
 const controller = read("crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs");
-const service = read("crates/modules/rustok-commerce/src/services/checkout_compensation.rs");
+const service = read("crates/modules/rustok-commerce/src/services/checkout_compensation_error_safe.rs");
 const sweep = read("crates/modules/rustok-commerce/src/services/checkout_compensation_sweep.rs");
 const runtime = read("crates/modules/rustok-commerce/src/controllers/mod.rs");
 
