@@ -147,10 +147,10 @@ owner totals, public HTTP codes/messages, validated user actor, resolved channel
 effective request locale, resource-scoped correlation id, and two-second deadline.
 All POST routes remain mounted to their existing mutation/orchestration services.
 
-The old GET functions in `admin/returns.rs` and `admin/changes.rs` remain compiled
-but are no longer referenced by the mounted router. They are compatibility source,
-not active consumers, and should be removed only after maintainer-executed compile
-and mounted-parity validation.
+The superseded GET functions in `admin/returns.rs` and `admin/changes.rs` have
+already been removed from the source. The mounted router now has only the dedicated
+`post_order_reads` handlers for these four endpoints. Compile, mounted-parity,
+deadline/failure, restart, and remote-adapter evidence remain open.
 
 ## Unchanged behavior
 
@@ -178,8 +178,7 @@ storage or owner-invariant details.
 ## Remaining source work
 
 1. execute compile and mounted transport parity for all six operations;
-2. remove the unmounted admin compatibility GET handlers after that validation;
-3. retain deadline/failure, restart, and remote-adapter evidence before status
+2. retain deadline/failure, restart, and remote-adapter evidence before status
    promotion.
 
 ## Evidence
