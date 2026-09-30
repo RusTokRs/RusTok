@@ -3106,3 +3106,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete and integrated into `main` via PR #4380, squash merge `77737b81af5e6f1bbce105625cfe0add2799f46f`.
 - **Post-merge reconciliation:** refreshed `main` at `77737b81af5e6f1bbce105625cfe0add2799f46f`; the integrated change is limited to the shared Product command helper, active Admin Product create/update handlers, and four synchronized verifier files. GitHub Actions for the PR were `pending/queued` at integration time; no local test/build execution was available.
 - **Status:** `FS-22.06.22` complete; compile/runtime verification remains maintainer-owned.
+
+### FS-22.06.23 Assessment — `crates/modules/rustok-commerce/src/services/shipping_profile.rs` Shipping Profile write atomicity
+
+- **Base:** refreshed `main` at `9d7bc4e08791f8888085766179950269e23bf6f7`; dedicated branch `codex/audit-fs-22.06.23-admin-shipping-profile-boundary` was created from that exact SHA.
+- **Discovery:** re-read the complete Shipping Profile service, Admin Shipping Profile routes, translation persistence helpers, and shipping-profile migrations. The database has a tenant-scoped unique `(tenant_id, slug)` constraint plus a unique `(shipping_profile_id, locale)` translation constraint.
+- **Confirmed finding SHIPPINGPROFILE-22.06.23-01:** create persisted the profile row and translations through separate DB operations. A translation write failure after profile insert could leave an orphaned/partially configured Shipping Profile.
+- **Confirmed finding SHIPPINGPROFILE-22.06.23-02:** update persisted the profile row before deleting/replacing translations. A translation failure could leave the profile metadata/slug changed while translations reflected the prior state or were partially replaced.
+- **Remediation:** create and update now execute all related validation/read/write operations inside one SeaORM transaction. Profile loader, slug availability, translation insertion, and translation replacement helpers accept `ConnectionTrait` so they can operate against both normal connections and `DatabaseTransaction`.
+- **Error semantics:** SeaORM `TransactionError::Connection` is mapped to `CommerceError::Database`; `TransactionError::Transaction` preserves the original `CommerceError`. No error is silently flattened.
+- **Verifier:** added `scripts/verify/verify-commerce-shipping-profile-atomicity.mjs` to guard that profile and translation writes remain inside the same transaction and that transaction error mapping stays explicit.
+- **Fresh independent second pass:** re-read the final service and verifier, confirmed zero direct profile/translation writes from create/update outside the transaction, checked every changed helper callsite, and verified the exact branch diff contains only the service + focused verifier.
+- **External API verification:** checked the current SeaORM 2.x transaction contract; `transaction()` executes the callback atomically, commits on success, and rolls back on callback error, while `DatabaseTransaction` implements `ConnectionTrait`. Cited source: docs.rs SeaORM transaction contract.
+- **Implementation status:** complete and integrated into `main` via PR #4382, squash merge `a8d7b28d195a0f95566dc1f9250ad18bb875008f`.
+- **Post-merge reconciliation:** refreshed `main` at `a8d7b28d195a0f95566dc1f9250ad18bb875008f`; the integrated production diff is limited to Shipping Profile transactionality plus the focused source guard. PR checks were queued/pending at review time; local Cargo/rustfmt/test execution was unavailable.
+- **Status:** `FS-22.06.23` complete; runtime/database evidence and broader Commerce validation remain maintainer-owned.
