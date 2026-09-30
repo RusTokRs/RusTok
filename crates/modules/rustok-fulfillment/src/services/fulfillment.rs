@@ -459,7 +459,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(strip_fulfillment_metadata(metadata)),
+            metadata: Set(strip_fulfillment_metadata(metadata)?),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -478,7 +478,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
+                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1312,7 +1312,7 @@ fn merge_fulfillment_metadata(
         .as_object()
         .and_then(|object| object.get("audit"))
         .cloned();
-    let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
+    let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch)?);
 
     if let Some(audit) = current_audit {
         match &mut merged {
@@ -1330,19 +1330,24 @@ fn merge_fulfillment_metadata(
     Ok(strip_fulfillment_identity_metadata(merged))
 }
 
-fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
-    strip_provider_operation_metadata(strip_fulfillment_identity_metadata(
-        strip_fulfillment_audit_metadata(value),
-    ))
+fn strip_fulfillment_metadata(value: serde_json::Value) -> FulfillmentResult<serde_json::Value> {
+    let value = strip_fulfillment_audit_metadata(value)?;
+    Ok(strip_provider_operation_metadata(strip_fulfillment_identity_metadata(
+        value,
+    )))
 }
 
-fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
+fn strip_fulfillment_audit_metadata(
+    value: serde_json::Value,
+) -> FulfillmentResult<serde_json::Value> {
     match value {
         Value::Object(mut object) => {
             object.remove("audit");
-            Value::Object(object)
+            Ok(Value::Object(object))
         }
-        other => other,
+        _ => Err(FulfillmentError::Validation(
+            "fulfillment metadata must be a JSON object".to_string(),
+        )),
     }
 }
 
@@ -2292,7 +2297,7 @@ mod tests {
             "customer_note": "keep"
         });
 
-        let sanitized = super::strip_fulfillment_metadata(value);
+        let sanitized = super::strip_fulfillment_metadata(value).expect("object metadata is valid");
 
         assert_eq!(
             sanitized.get("customer_note").and_then(Value::as_str),
@@ -2300,5 +2305,11 @@ mod tests {
         );
         assert!(sanitized.get("audit").is_none());
         assert!(sanitized.get("provider_operation").is_none());
+    }
+
+    #[test]
+    fn fulfillment_creation_metadata_rejects_non_object_values() {
+        assert!(super::strip_fulfillment_metadata(serde_json::json!("legacy scalar")).is_err());
+        assert!(super::strip_fulfillment_audit_metadata(serde_json::json!([1, 2, 3])).is_err());
     }
 }
