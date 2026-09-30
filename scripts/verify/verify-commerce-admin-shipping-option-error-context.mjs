@@ -44,9 +44,9 @@ const diagnosticProjection = between(
 );
 const identityBuilder = between(
   shipping,
-  'fn admin_shipping_option_command_idempotency_key',
+  'fn require_idempotency_key(headers: &HeaderMap)',
   'fn admin_shipping_option_read_port_context(',
-  'admin shipping-option command identity builder',
+  'admin shipping-option caller-owned identity admission',
 );
 const readContextBuilder = between(
   shipping,
@@ -109,9 +109,7 @@ for (const [value, label] of [
   ["operation: &'static str,", 'typed operation'],
   ['struct AdminShippingOptionDiagnosticContext {', 'bounded route diagnostic context'],
   ['struct AdminShippingOptionPortDiagnosticContext {', 'bounded port diagnostic context'],
-  ['struct AdminShippingOptionPortDiagnosticError', 'bounded port diagnostic error'],
   ['struct AdminShippingDiagnosticError;', 'bounded owner diagnostic error'],
-  ['formatter.write_str("redacted")', 'redacted Debug output'],
   ["fn uuid_shape(value: Uuid) -> &'static str", 'required UUID shape helper'],
   ["fn optional_uuid_shape(value: Option<Uuid>) -> &'static str", 'optional UUID shape helper'],
   ["fn text_presence_shape(value: &str) -> &'static str", 'text presence helper'],
@@ -138,14 +136,17 @@ for (const [value, label] of [
 ]) requireText(diagnosticProjection, value, label);
 
 for (const [value, label] of [
-  ['serde_json::to_vec(payload)', 'payload-bound command identity'],
-  ['digest.update(tenant_id.as_bytes())', 'tenant-bound identity'],
-  ['digest.update(actor_id.as_bytes())', 'actor-bound identity'],
-  ['digest.update(operation.as_bytes())', 'operation-bound identity'],
-  ['digest.update(shipping_option_id.as_bytes())', 'resource-bound identity'],
-  ['digest.update(payload)', 'payload digest'],
-  ['commerce-admin-shipping-option:{operation}:', 'scoped command identity prefix'],
+  ['headers.get("Idempotency-Key")', 'caller-owned idempotency header'],
+  ['"commerce_admin_idempotency_key_required"', 'missing idempotency public code'],
+  ['"commerce_admin_idempotency_key_invalid"', 'invalid idempotency public code'],
+  ['value.len() > 191', 'idempotency key length bound'],
 ]) requireText(identityBuilder, value, label);
+
+for (const value of [
+  'admin_shipping_option_command_idempotency_key',
+  'Sha256::new',
+  'digest.update(payload)',
+]) forbidText(shipping, value, 'synthetic shipping-option idempotency implementation');
 
 for (const [value, label] of [
   ['PortActor::user(auth.user_id.to_string())', 'authenticated actor'],
@@ -169,30 +170,23 @@ for (const [value, label] of [
   ['PortErrorKind::InvariantViolation', 'port invariant kind'],
   ['let context = AdminShippingOptionDiagnosticContext::from(&context);', 'port route context shadow'],
   ['let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);', 'port metadata shadow'],
-  ['let error = AdminShippingOptionPortDiagnosticError {', 'port error shadow'],
-  ['code: error.code.as_str()', 'stable internal code capture'],
+
   ['retryable: error.retryable', 'retryability capture'],
   ['correlation_id = %port_context.correlation_id', 'bounded correlation event'],
   ['actor = ?port_context.actor', 'bounded actor event'],
   ['channel = ?port_context.channel', 'bounded channel event'],
   ['locale = %port_context.locale', 'bounded locale event'],
   ['deadline_ms = ?port_context.deadline_ms', 'deadline event'],
-  ['internal_code = %error.code', 'stable code event'],
+  ['owner_code_length = error.code.chars().count()', 'bounded owner code length'],
   ['retryable = error.retryable', 'retryability event'],
   ['HttpError::new(status, code, message)', 'port static envelope'],
-  ['"commerce admin shipping option owner call failed"', 'shared owner-call diagnostic'],
+  ['"commerce admin shipping option owner call failed with bounded diagnostics"', 'shared owner-call diagnostic'],
 ]) requireText(portMapper, value, label);
 requireBefore(
   portMapper,
   'PortErrorKind::Validation',
   'let context = AdminShippingOptionDiagnosticContext::from(&context);',
   'port typed policy selection',
-);
-requireBefore(
-  portMapper,
-  'let error = AdminShippingOptionPortDiagnosticError {',
-  'tracing::error!(',
-  'port diagnostic shadow',
 );
 
 for (const [block, operation, request, label] of [
@@ -224,7 +218,9 @@ for (const [block, request, operation, label] of [
   [deactivateRoute, 'DeactivateAdminShippingOptionRequest {', '.deactivate_shipping_option(command_context.clone(), request)', 'deactivate route'],
   [reactivateRoute, 'ReactivateAdminShippingOptionRequest {', '.reactivate_shipping_option(command_context.clone(), request)', 'reactivate route'],
 ]) {
-  requireText(block, 'admin_shipping_option_command_idempotency_key(', `${label} command identity`);
+  requireText(block, 'headers: HeaderMap,', `${label} caller idempotency header`);
+  requireText(block, 'require_idempotency_key(&headers)?;', `${label} caller-owned command identity`);
+  requireText(block, 'Idempotency-Key', `${label} OpenAPI idempotency contract`);
   requireText(block, 'admin_shipping_option_command_port_context(', `${label} command context`);
   requireText(block, '.shipping_option_admin_command_port()', `${label} owner command port`);
   requireText(block, request, `${label} typed request`);
@@ -252,9 +248,18 @@ const commandContextUses = shipping.match(/admin_shipping_option_command_port_co
 if (commandContextUses.length !== 5) {
   failures.push(`expected command context definition plus four uses, found ${commandContextUses.length}`);
 }
-const commandIdentityUses = shipping.match(/admin_shipping_option_command_idempotency_key\(/g) ?? [];
-if (commandIdentityUses.length !== 5) {
-  failures.push(`expected command identity definition plus four uses, found ${commandIdentityUses.length}`);
+const commandIdentityUses = shipping.match(/require_idempotency_key\(&headers\)/g) ?? [];
+if (commandIdentityUses.length !== 4) {
+  failures.push(`expected four caller-owned command identity uses, found ${commandIdentityUses.length}`);
+}
+if (shipping.includes('admin_shipping_option_command_idempotency_key')) {
+  failures.push('synthetic shipping-option idempotency helper must be absent');
+}
+if (shipping.includes('internal_code = %error.code')) {
+  failures.push('raw shipping-option owner code must not be logged');
+}
+if (shipping.includes('AdminShippingOptionPortDiagnosticError')) {
+  failures.push('raw-code diagnostic shadow must be absent');
 }
 
 if (failures.length > 0) {
