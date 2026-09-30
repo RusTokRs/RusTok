@@ -1,12 +1,9 @@
-use chrono::Utc;
 use rustok_cart::CartCheckoutPort;
 use rustok_inventory::InventoryReservationIdentityPort;
+use rustok_order::CheckoutOrderCompensationPort;
 use rustok_outbox::TransactionalEventBus;
-use rustok_payment::providers::PaymentProviderRegistry;
-use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
-use serde::{Deserialize, Serialize};
+use rustok_payment::CheckoutPaymentCompensationPort;
+use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -41,28 +38,25 @@ pub struct CheckoutCompensationSweepService {
 impl CheckoutCompensationSweepService {
     pub fn new(
         db: DatabaseConnection,
-        event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
+        payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
+        order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,
     ) -> Self {
         Self {
             compensation: CheckoutCompensationService::new(
                 db.clone(),
-                event_bus,
                 reservation_port,
                 cart_port,
+                payment_compensation_port,
+                order_compensation_port,
             ),
             db,
         }
     }
 
-    pub fn with_payment_provider_registry(
-        mut self,
-        payment_provider_registry: PaymentProviderRegistry,
-    ) -> Self {
-        self.compensation = self
-            .compensation
-            .with_payment_provider_registry(payment_provider_registry);
+    pub fn with_lease_seconds(mut self, lease_seconds: i64) -> Self {
+        self.compensation = self.compensation.with_lease_seconds(lease_seconds);
         self
     }
 
@@ -71,6 +65,7 @@ impl CheckoutCompensationSweepService {
         tenant_id: Uuid,
         actor_id: Uuid,
         worker_id: impl AsRef<str>,
+        request_idempotency_key: impl AsRef<str>,
         limit: Option<u64>,
     ) -> Result<CheckoutCompensationSweepReport, sea_orm::DbErr> {
         let limit = limit
@@ -103,14 +98,26 @@ impl CheckoutCompensationSweepService {
             ..Default::default()
         };
         for operation in candidates {
+            let request_key = request_idempotency_key.as_ref();
             let lease_owner = format!(
                 "checkout-compensation:{}:{}",
                 worker_id.as_ref(),
                 operation.id
             );
+            let operation_key = format!(
+                "checkout-compensation:{}:{}",
+                request_key,
+                operation.id
+            );
             match self
                 .compensation
-                .compensate(tenant_id, actor_id, operation.id, lease_owner)
+                .compensate(
+                    tenant_id,
+                    actor_id,
+                    operation.id,
+                    lease_owner,
+                    operation_key,
+                )
                 .await
             {
                 Ok(_) => report.compensated += 1,
