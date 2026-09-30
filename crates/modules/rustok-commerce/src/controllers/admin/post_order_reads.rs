@@ -128,11 +128,18 @@ fn map_admin_post_order_port_error(
         .as_deref()
         .map_or(0, |channel| channel.len());
     let locale_length = port_context.locale.len();
-    let internal_code = error.code.as_str();
+    let owner_code_length = error.code.chars().count();
     let retryable = error.retryable;
-    let error = "redacted";
+    let error_kind = match error.kind {
+        PortErrorKind::Validation => "validation",
+        PortErrorKind::NotFound => "not_found",
+        PortErrorKind::Conflict => "conflict",
+        PortErrorKind::Forbidden => "forbidden",
+        PortErrorKind::Unavailable => "unavailable",
+        PortErrorKind::Timeout => "timeout",
+        PortErrorKind::InvariantViolation => "invariant_violation",
+    };
     tracing::error!(
-        error = ?error,
         owner = ADMIN_POST_ORDER_OWNER,
         owner_operation,
         consumer_operation,
@@ -147,13 +154,13 @@ fn map_admin_post_order_port_error(
         channel_length,
         locale_length,
         deadline_ms = ?port_context.deadline_ms,
-        internal_code,
+        owner_code_length,
         retryable,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_POST_ORDER_BOUNDARY,
-        "commerce admin post-order owner read failed"
+        "commerce admin post-order owner read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
