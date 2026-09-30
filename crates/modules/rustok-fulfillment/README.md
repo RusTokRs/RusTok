@@ -20,6 +20,7 @@
 - Support partial `ship` / `deliver` adjustments on typed fulfillment items and append language-agnostic audit events to fulfillment/item metadata while keeping `delivered_note` as a typed field.
 - Support explicit `reopen` / `reship` recovery flows on top of typed fulfillment items, so delivered or cancelled fulfillments can return to actionable post-order states without language-dependent metadata hacks.
 - Treat `metadata.provider_operation` as a reserved provider commit receipt: provider-backed `ship` / `reship` / `cancel` flows may attach it after journaling, while ordinary `deliver` / `reopen` metadata patches cannot introduce or replace it.
+- Provider operations with an unresolved external outcome remain fail-closed during migration rollback: the reconciliation migration refuses to roll back while any `reconciliation_required` operation has no persisted provider result; the operation must be resolved before the older lifecycle contract is restored.
 - Support post-order follow-up fulfillments through the commerce facade, where manual create paths validate order-line ownership and remaining quantities before calling `FulfillmentService`.
 - Publish a module-owned Leptos admin UI package in `admin/` for shipping-option operations.
 
