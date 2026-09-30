@@ -705,17 +705,20 @@ impl FulfillmentService {
         let mut adjusted_entries = Vec::new();
         for item in items {
             let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
-            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
-            if adjustment > 0 {
-                let shipped_quantity = item.shipped_quantity + adjustment;
-                active.shipped_quantity = Set(shipped_quantity);
-                active.metadata = Set(append_audit_event(
-                    item.metadata.clone(),
-                    build_item_audit_event(FulfillmentItemAction::Ship, now, adjustment),
-                ));
-                active.updated_at = Set(now.into());
-                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            if adjustment == 0 {
+                adjusted_items.push(item);
+                continue;
             }
+
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            let shipped_quantity = item.shipped_quantity + adjustment;
+            active.shipped_quantity = Set(shipped_quantity);
+            active.metadata = Set(append_audit_event(
+                item.metadata.clone(),
+                build_item_audit_event(FulfillmentItemAction::Ship, now, adjustment),
+            ));
+            active.updated_at = Set(now.into());
+            adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
             adjusted_items.push(updated);
         }
@@ -807,17 +810,20 @@ impl FulfillmentService {
         let mut adjusted_entries = Vec::new();
         for item in items {
             let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
-            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
-            if adjustment > 0 {
-                let delivered_quantity = item.delivered_quantity + adjustment;
-                active.delivered_quantity = Set(delivered_quantity);
-                active.metadata = Set(append_audit_event(
-                    item.metadata.clone(),
-                    build_item_audit_event(FulfillmentItemAction::Deliver, now, adjustment),
-                ));
-                active.updated_at = Set(now.into());
-                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            if adjustment == 0 {
+                adjusted_items.push(item);
+                continue;
             }
+
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            let delivered_quantity = item.delivered_quantity + adjustment;
+            active.delivered_quantity = Set(delivered_quantity);
+            active.metadata = Set(append_audit_event(
+                item.metadata.clone(),
+                build_item_audit_event(FulfillmentItemAction::Deliver, now, adjustment),
+            ));
+            active.updated_at = Set(now.into());
+            adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
             adjusted_items.push(updated);
         }
@@ -929,16 +935,18 @@ impl FulfillmentService {
                 let mut adjusted_entries = Vec::new();
                 for item in items {
                     let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
-                    let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
-                    if adjustment > 0 {
-                        active.delivered_quantity = Set(item.delivered_quantity - adjustment);
-                        active.metadata = Set(append_audit_event(
-                            item.metadata.clone(),
-                            build_item_audit_event(FulfillmentItemAction::Reopen, now, adjustment),
-                        ));
-                        active.updated_at = Set(now.into());
-                        adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+                    if adjustment == 0 {
+                        continue;
                     }
+
+                    let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+                    active.delivered_quantity = Set(item.delivered_quantity - adjustment);
+                    active.metadata = Set(append_audit_event(
+                        item.metadata.clone(),
+                        build_item_audit_event(FulfillmentItemAction::Reopen, now, adjustment),
+                    ));
+                    active.updated_at = Set(now.into());
+                    adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
                     active.update(&txn).await?;
                 }
 
@@ -1030,16 +1038,18 @@ impl FulfillmentService {
         let mut adjusted_entries = Vec::new();
         for item in items {
             let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
-            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
-            if adjustment > 0 {
-                active.delivered_quantity = Set(item.delivered_quantity - adjustment);
-                active.metadata = Set(append_audit_event(
-                    item.metadata.clone(),
-                    build_item_audit_event(FulfillmentItemAction::Reship, now, adjustment),
-                ));
-                active.updated_at = Set(now.into());
-                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            if adjustment == 0 {
+                continue;
             }
+
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            active.delivered_quantity = Set(item.delivered_quantity - adjustment);
+            active.metadata = Set(append_audit_event(
+                item.metadata.clone(),
+                build_item_audit_event(FulfillmentItemAction::Reship, now, adjustment),
+            ));
+            active.updated_at = Set(now.into());
+            adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             active.update(&txn).await?;
         }
 
