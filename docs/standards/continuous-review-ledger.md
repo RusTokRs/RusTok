@@ -3291,3 +3291,14 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Implementation status:** complete and integrated into `main` via PR #4405, squash merge `bc61a458851b8c8ac6f9fc708e4a4150fc9a3634`.
 - **Post-merge reconciliation:** refreshed `main` at `bc61a458851b8c8ac6f9fc708e4a4150fc9a3634`; comparing the recorded base `32c6ee313cd691d8cc1c242a248c9502f7acfd37` to the merge is exactly one squash commit with the expected `shipping_option_read.rs` and ledger change set. Exact reread confirms the raw stderr diagnostic is gone and all three read entrypoints still enforce `PortCallPolicy::read()`. GitHub PR status checks were empty at merge time; no local test/build result is claimed.
 - **Status:** `FS-22.06.33` complete; maintainer/CI verification remains explicitly required.
+
+
+### FS-22.06.34 Assessment — `crates/modules/rustok-fulfillment/src/checkout_execution_typed.rs` Typed checkout lifecycle boundary
+
+- **Base:** refreshed `main` at `3bebb892bc0456d6c7de811766a39c11f9ddb781`; exact main commit was re-read immediately before this change.
+- **Discovery:** re-read the typed checkout lifecycle wrapper, raw checkout execution adapter, crate-root exports, `FulfillmentStatusKind`, default checkout fulfillment construction, and repository references to the raw implementation.
+- **Confirmed finding CHECKOUTEXECUTIONTYPED-22.06.34-01:** the raw `InProcessCheckoutFulfillmentExecutionPort` and constructor remained publicly constructible and re-exported, while `TypedCheckoutFulfillmentExecutionPort` is the fail-closed boundary that rejects cancelled and unknown fulfillment states.
+- **Remediation:** raw executor type and constructor are now `pub(crate)`; the raw implementation is no longer re-exported from the crate root. The typed wrapper remains the public default construction path and the canonical execution trait remains public for explicit alternate adapters.
+- **Fresh independent second pass:** final reread confirmed raw type/constructor privacy, root export removal, typed wrapper public constructor, and existing cancelled/unknown lifecycle regression tests. No external raw-executor reference was found in default-branch code search.
+- **Verification:** source inspection, public API surface audit, default wiring review, repository reference search, immediate reread, and independent second pass completed. No Cargo/test/clippy/rustfmt/runtime command was executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.34` implementation integrated directly into `main`; maintainer/CI verification remains explicitly required.

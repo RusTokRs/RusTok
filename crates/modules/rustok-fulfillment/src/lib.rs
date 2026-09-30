@@ -34,8 +34,7 @@ pub use admin_create_command::{
 };
 pub use checkout_execution::{
     CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
-    EnsureCheckoutFulfillmentsRequest, InProcessCheckoutFulfillmentExecutionPort,
-    ReadCheckoutFulfillmentsRequest,
+    EnsureCheckoutFulfillmentsRequest, ReadCheckoutFulfillmentsRequest,
 };
 pub use checkout_execution_typed::{
     TypedCheckoutFulfillmentExecutionPort, in_process_checkout_fulfillment_execution_port,
