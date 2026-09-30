@@ -117,6 +117,25 @@ for (const marker of [
 }
 
 for (const marker of [
+  'pub fn new(',
+  'order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>',
+  'payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>',
+  'idempotency_key: impl Into<String>',
+]) requireText(retained, marker, 'active compensation constructor contract');
+
+const ctorStart = retained.indexOf('impl CheckoutCompensationService {');
+const ctorEnd = retained.indexOf('pub async fn compensate(', ctorStart);
+const ctor = ctorStart >= 0 && ctorEnd >= 0 ? retained.slice(ctorStart, ctorEnd) : '';
+for (const marker of [
+  'order_compensation_port: in_process_checkout_order_compensation_port(',
+  'payment_compensation_port: in_process_checkout_payment_compensation_port(',
+]) forbidText(
+  ctor,
+  marker,
+  'active compensation constructor foreign-owner creation',
+);
+
+for (const marker of [
   'kind: error.kind',
   'code: error.code',
   'retryable: error.retryable',
@@ -141,6 +160,9 @@ for (const marker of [
   'self.release_cart(tenant_id, operation)',
   'let message = compensation.to_string();',
   'mark_compensation_retryable(',
+  'payment_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)',
+  'order_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key)',
+  '.with_idempotency_key(idempotency_key.to_string())',
 ]) requireText(retained, marker, 'retained compensation flow');
 
 if (failures.length > 0) {
