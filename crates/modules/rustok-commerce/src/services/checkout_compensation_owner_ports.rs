@@ -94,19 +94,18 @@ impl CheckoutCompensationService {
         event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
         cart_port: Arc<dyn CartCheckoutPort>,
+        order_compensation_port: Arc<dyn CheckoutOrderCompensationPort>,
+        payment_compensation_port: Arc<dyn CheckoutPaymentCompensationPort>,
     ) -> Self {
         Self {
             owner_db: db.clone(),
-            event_bus: event_bus.clone(),
+            event_bus,
             operation_journal: CheckoutOperationJournal::new(db.clone()),
-            reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
+            reservation_journal: CheckoutInventoryReservationJournal::new(db),
             reservation_port,
             cart_port,
-            order_compensation_port: in_process_checkout_order_compensation_port(
-                db.clone(),
-                event_bus,
-            ),
-            payment_compensation_port: in_process_checkout_payment_compensation_port(db),
+            order_compensation_port,
+            payment_compensation_port,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(COMPENSATION_PORT_DEADLINE_SECONDS),
         }
@@ -165,8 +164,10 @@ impl CheckoutCompensationService {
         actor_id: Uuid,
         operation_id: Uuid,
         lease_owner: impl Into<String>,
+        idempotency_key: impl Into<String>,
     ) -> CheckoutCompensationResult<checkout_operation::Model> {
         let lease_owner = lease_owner.into();
+        let idempotency_key = idempotency_key.into();
         let Some(operation) = self
             .operation_journal
             .claim_compensation(
@@ -190,7 +191,7 @@ impl CheckoutCompensationService {
         };
 
         let result = self
-            .compensate_claimed(tenant_id, actor_id, &operation)
+            .compensate_claimed(tenant_id, actor_id, &operation, idempotency_key.as_str())
             .await;
         match result {
             Ok(()) => self
@@ -227,6 +228,7 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         operation: &checkout_operation::Model,
+        idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
         if stage_rank(operation.stage.as_str())?
             >= stage_rank(CheckoutOperationStage::PaymentCaptured.as_str())?
@@ -237,9 +239,9 @@ impl CheckoutCompensationService {
             )));
         }
 
-        self.compensate_payment(tenant_id, actor_id, operation)
+        self.compensate_payment(tenant_id, actor_id, operation, idempotency_key)
             .await?;
-        self.compensate_order(tenant_id, actor_id, operation)
+        self.compensate_order(tenant_id, actor_id, operation, idempotency_key)
             .await?;
 
         // Order cancellation releases adopted reservation rows through the
@@ -256,8 +258,10 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         operation: &checkout_operation::Model,
+        idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
-        let payment_context = payment_context(tenant_id, actor_id, operation, self.port_deadline);
+        let payment_context =
+            payment_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key);
         let snapshot = self
             .payment_compensation_port
             .compensate_checkout_payment(
@@ -307,8 +311,10 @@ impl CheckoutCompensationService {
         tenant_id: Uuid,
         actor_id: Uuid,
         operation: &checkout_operation::Model,
+        idempotency_key: &str,
     ) -> CheckoutCompensationResult<()> {
-        let order_context = order_context(tenant_id, actor_id, operation, self.port_deadline);
+        let order_context =
+            order_context(tenant_id, actor_id, operation, self.port_deadline, idempotency_key);
         let snapshot = self
             .order_compensation_port
             .compensate_checkout_order(
@@ -549,6 +555,7 @@ fn order_context(
     actor_id: Uuid,
     operation: &checkout_operation::Model,
     deadline: Duration,
+    idempotency_key: &str,
 ) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
@@ -557,7 +564,7 @@ fn order_context(
         format!("checkout:{}:compensation:order", operation.id),
     )
     .with_causation_id(operation.id.to_string())
-    .with_idempotency_key(format!("checkout:{}:compensation:order", operation.id))
+    .with_idempotency_key(idempotency_key.to_string())
     .with_deadline(deadline)
 }
 
@@ -566,6 +573,7 @@ fn payment_context(
     actor_id: Uuid,
     operation: &checkout_operation::Model,
     deadline: Duration,
+    idempotency_key: &str,
 ) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
@@ -574,7 +582,7 @@ fn payment_context(
         format!("checkout:{}:compensation:payment", operation.id),
     )
     .with_causation_id(operation.id.to_string())
-    .with_idempotency_key(format!("checkout:{}:compensation:payment", operation.id))
+    .with_idempotency_key(idempotency_key.to_string())
     .with_deadline(deadline)
 }
 
