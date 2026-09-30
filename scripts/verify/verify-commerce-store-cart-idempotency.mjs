@@ -48,16 +48,24 @@ for (const value of [
 
 for (const value of [
   '"create",\n                Some(&idempotency_key)',
-  '"update-context",\n                Some(&idempotency_key)',
   '"add-line-item",\n                Some(&idempotency_key)',
   '"update-line-item",\n                    Some(&idempotency_key)',
   '"remove-line-item",\n                Some(&idempotency_key)',
 ]) need(carts, value, "Cart write context");
 
-for (const value of [
-  '"read",\n                None',
-  '"read",\n                    None',
-]) need(carts, value, "Cart read context remains observational");
+need(
+  shipping,
+  '"update-context",\n                Some(idempotency_key)',
+  "shipping Cart write context",
+);
+
+const readNoneContexts = carts.match(/"read",\s+None,/g) ?? [];
+if (readNoneContexts.length < 5) {
+  failures.push(
+    "Cart read contexts must remain observational with None idempotency; found " +
+      readNoneContexts.length,
+  );
+}
 
 for (const value of [
   "pub(crate) fn storefront_cart_port_context(",
