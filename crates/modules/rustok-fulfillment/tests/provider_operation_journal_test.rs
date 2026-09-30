@@ -26,6 +26,39 @@ async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
     }
 }
 
+
+async fn insert_test_fulfillment(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+) {
+    let now = Utc::now().fixed_offset();
+    fulfillment::ActiveModel {
+        id: Set(fulfillment_id),
+        tenant_id: Set(tenant_id),
+        order_id: Set(Uuid::new_v4()),
+        shipping_option_id: Set(None),
+        customer_id: Set(None),
+        checkout_operation_id: Set(None),
+        checkout_fulfillment_index: Set(None),
+        checkout_plan_hash: Set(None),
+        status: Set("pending".to_string()),
+        carrier: Set(None),
+        tracking_number: Set(None),
+        delivered_note: Set(None),
+        cancellation_reason: Set(None),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now),
+        updated_at: Set(now),
+        shipped_at: Set(None),
+        delivered_at: Set(None),
+        cancelled_at: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("test fulfillment should be inserted");
+}
+
 #[tokio::test]
 async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconciliation() {
     let db = setup_test_db().await;
@@ -33,7 +66,30 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
+    let wrong_tenant = Uuid::new_v4();
+    let foreign_begin = journal
+        .begin(BeginProviderOperation {
+            tenant_id: wrong_tenant,
+            fulfillment_id,
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "foreign-tenant-begin".to_string(),
+            request_payload: serde_json::json!({
+                "tenant_id": wrong_tenant,
+                "fulfillment_id": fulfillment_id,
+                "idempotency_key": "foreign-tenant-begin",
+                "metadata": {}
+            }),
+        })
+        .await;
+    assert!(matches!(
+        foreign_begin,
+        Err(rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(id))
+            if id == fulfillment_id
+    ));
+
     let operation = journal
         .begin(BeginProviderOperation {
             tenant_id,
@@ -51,11 +107,38 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
         .await
         .expect("journal operation");
 
+    assert!(
+        journal
+            .get(wrong_tenant, operation.id)
+            .await
+            .is_err(),
+        "foreign tenant must not read provider operation"
+    );
+    assert!(
+        journal
+            .claim_execution(wrong_tenant, operation.id)
+            .await
+            .expect("foreign claim should be evaluated")
+            .is_none(),
+        "foreign tenant must not claim provider operation"
+    );
+    assert!(
+        journal
+            .mark_provider_error(
+                wrong_tenant,
+                operation.id,
+                "foreign tenant must not mutate this operation"
+            )
+            .await
+            .is_err(),
+        "foreign tenant must not mutate provider operation"
+    );
+
     let first_journal = journal.clone();
     let second_journal = journal.clone();
     let (first, second) = tokio::join!(
-        first_journal.claim_execution(operation.id),
-        second_journal.claim_execution(operation.id)
+        first_journal.claim_execution(tenant_id, operation.id),
+        second_journal.claim_execution(tenant_id, operation.id)
     );
     let first = first.expect("first claim");
     let second = second.expect("second claim");
@@ -66,7 +149,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     );
 
     let ambiguous = journal
-        .mark_provider_error(operation.id, "carrier request timed out")
+        .mark_provider_error(tenant_id, operation.id, "carrier request timed out")
         .await
         .expect("ambiguous outcome should be quarantined");
     assert_eq!(ambiguous.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
@@ -74,13 +157,10 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     assert!(ambiguous.provider_result.is_none());
 
     let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
-    assert!(
-        recovery
-            .resolve_unknown_as_failed(Uuid::new_v4(), operation.id, "wrong tenant")
-            .await
-            .is_err()
-    );
-
+    let recovered_as_wrong_tenant = recovery
+        .resolve_unknown_as_failed(wrong_tenant, operation.id, "wrong tenant")
+        .await;
+    assert!(recovered_as_wrong_tenant.is_err());
     let retryable = recovery
         .resolve_unknown_as_failed(tenant_id, operation.id, "carrier confirmed no shipment")
         .await
@@ -90,13 +170,14 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
 
     assert!(
         journal
-            .claim_execution(operation.id)
+            .claim_execution(tenant_id, operation.id)
             .await
             .expect("retry claim")
             .is_some()
     );
     let succeeded = journal
         .mark_provider_succeeded(
+            tenant_id,
             operation.id,
             Some("shipment-1".to_string()),
             serde_json::json!({
@@ -111,7 +192,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     assert_eq!(succeeded.status, PROVIDER_OPERATION_SUCCEEDED);
 
     let committed = journal
-        .mark_committed(operation.id)
+        .mark_committed(tenant_id, operation.id)
         .await
         .expect("journal commit");
     assert_eq!(committed.status, PROVIDER_OPERATION_COMMITTED);
@@ -124,6 +205,7 @@ async fn manual_success_reconciliation_validates_provider_identity() {
     ensure_provider_journal_guards(&db).await;
     let tenant_id = Uuid::new_v4();
     let fulfillment_id = Uuid::new_v4();
+    insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
     let journal = FulfillmentProviderOperationJournal::new(db.clone());
     let operation = journal
         .begin(BeginProviderOperation {
@@ -142,12 +224,12 @@ async fn manual_success_reconciliation_validates_provider_identity() {
         .await
         .expect("journal operation");
     journal
-        .claim_execution(operation.id)
+        .claim_execution(tenant_id, operation.id)
         .await
         .expect("claim")
         .expect("claimed");
     journal
-        .mark_provider_error(operation.id, "connection closed after request")
+        .mark_provider_error(tenant_id, operation.id, "connection closed after request")
         .await
         .expect("ambiguous result");
 
@@ -240,12 +322,13 @@ async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_wr
         .await
         .expect("journal operation");
     journal
-        .claim_execution(operation.id)
+        .claim_execution(tenant_id, operation.id)
         .await
         .expect("claim")
         .expect("claimed");
     journal
         .mark_provider_succeeded(
+            tenant_id,
             operation.id,
             Some("shipment-trigger".to_string()),
             serde_json::json!({
@@ -272,7 +355,7 @@ async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_wr
     }));
     active.update(&db).await.expect("owner metadata update");
 
-    let committed = journal.get(operation.id).await.expect("committed journal");
+    let committed = journal.get(tenant_id, operation.id).await.expect("committed journal");
     assert_eq!(committed.status, PROVIDER_OPERATION_COMMITTED);
     assert!(committed.committed_at.is_some());
 }

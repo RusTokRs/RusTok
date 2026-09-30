@@ -43,6 +43,15 @@ impl FulfillmentProviderOperationJournal {
         input: BeginProviderOperation,
     ) -> FulfillmentResult<provider_operation::Model> {
         let input = normalize_begin_input(input)?;
+        let fulfillment_exists = crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
+            .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
+            .one(&self.db)
+            .await?
+            .is_some();
+        if !fulfillment_exists {
+            return Err(FulfillmentError::FulfillmentNotFound(input.fulfillment_id));
+        }
+
         if let Some(existing) = self
             .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
             .await?
@@ -89,13 +98,19 @@ impl FulfillmentProviderOperationJournal {
         }
     }
 
-    pub async fn get(&self, id: Uuid) -> FulfillmentResult<provider_operation::Model> {
-        provider_operation::Entity::find_by_id(id)
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
+        provider_operation::Entity::find_by_id(operation_id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| {
                 FulfillmentError::Validation(format!(
-                    "fulfillment provider operation {id} not found"
+                    "fulfillment provider operation {operation_id} not found for tenant {tenant_id}"
                 ))
             })
     }
@@ -117,8 +132,10 @@ impl FulfillmentProviderOperationJournal {
 
     pub async fn claim_execution(
         &self,
-        id: Uuid,
+        tenant_id: Uuid,
+        operation_id: Uuid,
     ) -> FulfillmentResult<Option<provider_operation::Model>> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -128,7 +145,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status
                     .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),
@@ -139,15 +157,17 @@ impl FulfillmentProviderOperationJournal {
         if update.rows_affected == 0 {
             return Ok(None);
         }
-        self.get(id).await.map(Some)
+        self.get(tenant_id, operation_id).await.map(Some)
     }
 
     pub async fn mark_provider_succeeded(
         &self,
-        id: Uuid,
+        tenant_id: Uuid,
+        operation_id: Uuid,
         provider_reference: Option<String>,
         provider_result: Value,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let provider_reference = normalize_optional(provider_reference);
         let now = Utc::now();
         let update = provider_operation::Entity::update_many()
@@ -175,7 +195,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Some(now)),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -187,7 +208,8 @@ impl FulfillmentProviderOperationJournal {
             Err(source) => {
                 let fallback = self
                     .mark_execution_reconciliation_required(
-                        id,
+                        tenant_id,
+                        operation_id,
                         provider_reference,
                         Some(provider_result),
                         format!(
@@ -199,7 +221,7 @@ impl FulfillmentProviderOperationJournal {
                     Ok(model) => Ok(model),
                     Err(fallback_error) => {
                         tracing::error!(
-                            operation_id_non_nil = !id.is_nil(),
+                            operation_id_non_nil = !operation_id.is_nil(),
                             original_error = %source,
                             fallback_error = %fallback_error,
                             "fulfillment provider success checkpoint failed"
@@ -211,7 +233,7 @@ impl FulfillmentProviderOperationJournal {
         };
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED
@@ -226,15 +248,17 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
     pub async fn mark_provider_error(
         &self,
-        id: Uuid,
+        tenant_id: Uuid,
+        operation_id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let error_message = normalize_error(error_message.into());
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -249,7 +273,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -257,7 +282,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_ERROR {
                 return Ok(current);
             }
@@ -267,7 +292,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
@@ -278,11 +303,13 @@ impl FulfillmentProviderOperationJournal {
     /// retryable automatically because the external side effect may have happened.
     pub async fn mark_execution_reconciliation_required(
         &self,
-        id: Uuid,
+        tenant_id: Uuid,
+        operation_id: Uuid,
         provider_reference: Option<String>,
         provider_result: Option<Value>,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -308,7 +335,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::current_timestamp(),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
             )
@@ -316,7 +344,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -326,16 +354,18 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
     pub async fn mark_reconciliation_required(
         &self,
-        id: Uuid,
+        tenant_id: Uuid,
+        operation_id: Uuid,
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
-        let current = self.get(id).await?;
+        validate_operation_identity(tenant_id, operation_id)?;
+        let current = self.get(tenant_id, operation_id).await?;
         if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(current);
         }
@@ -366,7 +396,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 provider_completed_at,
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.is_in([
                     PROVIDER_OPERATION_EXECUTING,
@@ -377,7 +408,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -387,12 +418,17 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
-    pub async fn mark_committed(&self, id: Uuid) -> FulfillmentResult<provider_operation::Model> {
-        let current = self.get(id).await?;
+    pub async fn mark_committed(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
+        let current = self.get(tenant_id, operation_id).await?;
         if current.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(current);
         }
@@ -425,7 +461,8 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::CommittedAt,
                 Expr::value(Some(now)),
             )
-            .filter(provider_operation::Column::Id.eq(id))
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status.is_in([
                     PROVIDER_OPERATION_SUCCEEDED,
@@ -436,7 +473,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_COMMITTED {
                 return Ok(current);
             }
@@ -446,9 +483,18 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, operation_id).await
     }
 
+}
+
+fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
+    if tenant_id.is_nil() || operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "provider operation requires non-nil tenant_id and operation_id".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn normalize_begin_input(

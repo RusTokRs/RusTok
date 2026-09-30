@@ -228,6 +228,14 @@ fn fulfillment_owner_error_facts(error: &crate::FulfillmentError) -> Fulfillment
             if id.is_nil() { 0 } else { 1 },
             false,
         ),
+        crate::FulfillmentError::ShippingOptionTranslationRevisionConflict(id) => (
+            "shipping_option_translation_revision_conflict",
+            0,
+            0,
+            1,
+            if id.is_nil() { 0 } else { 1 },
+            false,
+        ),
         crate::FulfillmentError::InvalidTransition { from, to } => (
             "invalid_transition",
             2,
@@ -317,6 +325,13 @@ fn fulfillment_error_to_port_error(
             PortErrorKind::Conflict,
             "fulfillment.invalid_transition",
             "fulfillment lifecycle transition conflicts with the current state",
+            false,
+            false,
+        ),
+        crate::FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
+            PortErrorKind::Conflict,
+            "fulfillment.shipping_option_translation_revision_conflict",
+            "shipping option translation revision conflicts with the current state",
             false,
             false,
         ),

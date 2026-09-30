@@ -236,13 +236,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, OPERATION, journaled.operation_id, "ship")
+                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "ship")
                     .await?;
                 Ok(updated)
             }
             Err(error) => {
                 self.mark_local_persistence_reconciliation(
                     &context,
+                    tenant_id,
                     OPERATION,
                     journaled.operation_id,
                     "ship",
@@ -384,13 +385,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, OPERATION, journaled.operation_id, "reship")
+                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "reship")
                     .await?;
                 Ok(updated)
             }
             Err(error) => {
                 self.mark_local_persistence_reconciliation(
                     &context,
+                    tenant_id,
                     OPERATION,
                     journaled.operation_id,
                     "reship",
@@ -477,13 +479,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, OPERATION, journaled.operation_id, "cancel")
+                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "cancel")
                     .await?;
                 Ok(updated)
             }
             Err(error) => {
                 self.mark_local_persistence_reconciliation(
                     &context,
+                    tenant_id,
                     OPERATION,
                     journaled.operation_id,
                     "cancel",
@@ -569,14 +572,14 @@ impl InProcessFulfillmentAdminCommandPort {
 
         if self
             .operation_journal
-            .claim_execution(journal_operation.id)
+            .claim_execution(request.tenant_id, journal_operation.id)
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?
             .is_none()
         {
             let current = self
                 .operation_journal
-                .get(journal_operation.id)
+                .get(request.tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
             if matches!(
@@ -625,6 +628,7 @@ impl InProcessFulfillmentAdminCommandPort {
                 if self
                     .operation_journal
                     .mark_provider_error(
+                        request.tenant_id,
                         journal_operation.id,
                         "fulfillment.provider_operation_failed",
                     )
@@ -648,6 +652,7 @@ impl InProcessFulfillmentAdminCommandPort {
         })?;
         self.operation_journal
             .mark_provider_succeeded(
+                request.tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
@@ -683,6 +688,7 @@ impl InProcessFulfillmentAdminCommandPort {
     async fn mark_local_persistence_reconciliation(
         &self,
         context: &PortContext,
+        tenant_id: Uuid,
         owner_operation: &'static str,
         operation_id: Uuid,
         operation: &'static str,
@@ -690,6 +696,7 @@ impl InProcessFulfillmentAdminCommandPort {
         let checkpoint = self
             .operation_journal
             .mark_reconciliation_required(
+                tenant_id,
                 operation_id,
                 format!("fulfillment.local_{operation}_persistence_failed"),
             )
@@ -709,13 +716,14 @@ impl InProcessFulfillmentAdminCommandPort {
     async fn ensure_committed(
         &self,
         context: &PortContext,
+        tenant_id: Uuid,
         owner_operation: &'static str,
         operation_id: Uuid,
         operation: &'static str,
     ) -> Result<(), PortError> {
         let current = self
             .operation_journal
-            .get(operation_id)
+            .get(tenant_id, operation_id)
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
         if current.status == PROVIDER_OPERATION_COMMITTED {
@@ -723,13 +731,14 @@ impl InProcessFulfillmentAdminCommandPort {
         }
         if self
             .operation_journal
-            .mark_committed(operation_id)
+            .mark_committed(tenant_id, operation_id)
             .await
             .is_err()
         {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation_id,
                     format!("fulfillment.local_{operation}_journal_commit_failed"),
                 )
@@ -789,6 +798,10 @@ fn map_fulfillment_error(
             "fulfillment.invalid_transition",
             "fulfillment lifecycle conflicts with the requested operation",
         ),
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => PortError::conflict(
+            "fulfillment.shipping_option_translation_revision_conflict",
+            "shipping option translation revision conflicts with the current state",
+        ),
         FulfillmentError::Database(_) => PortError::unavailable(
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
@@ -838,6 +851,9 @@ fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
         FulfillmentError::Validation(_) => "validation",
         FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
         FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
+        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
+            "shipping_option_translation_revision_conflict"
+        }
         FulfillmentError::InvalidTransition { .. } => "invalid_transition",
         FulfillmentError::Database(_) => "database",
     }
