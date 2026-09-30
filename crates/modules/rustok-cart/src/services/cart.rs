@@ -93,7 +93,7 @@ impl CartService {
         ) -> Pin<Box<dyn Future<Output = CartResult<CartResponse>> + 'a>>,
     {
         context.require_write_semantics()?;
-        let tenant_id = crate::ports::parse_port_tenant_id(context)?;
+        let tenant_id = parse_port_tenant_id(context)?;
         let idempotency_key = context
             .idempotency_key
             .as_deref()
@@ -772,6 +772,15 @@ impl CartService {
     }
 
 
+}
+
+pub(crate) fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        PortError::validation(
+            "cart.tenant_id_invalid",
+            "PortContext.tenant_id must be a UUID for cart ports",
+        )
+    })
 }
 
 pub(crate) fn cart_error_to_port_error(error: CartError) -> PortError {
