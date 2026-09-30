@@ -1806,7 +1806,7 @@ fn resolve_translation<'a>(
     }
     translations
         .first()
-        .map(|item| (Some(**item), Some(item.locale.clone())))
+        .map(|item| (Some(*item), Some(item.locale.clone())))
         .unwrap_or((None, None))
 }
 
@@ -1857,46 +1857,69 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_translation, validate_persisted_shipping_option_locales};
-    use crate::entities::shipping_option_translation;
+    use super::{map_shipping_option, validate_persisted_shipping_option_locales};
+    use crate::entities::{shipping_option, shipping_option_translation};
+    use chrono::Utc;
+    use rust_decimal::Decimal;
     use uuid::Uuid;
 
-    fn translation(locale: &str, name: &str) -> shipping_option_translation::Model {
+    fn translation(
+        shipping_option_id: Uuid,
+        locale: &str,
+        name: &str,
+    ) -> shipping_option_translation::Model {
         shipping_option_translation::Model {
             id: Uuid::new_v4(),
-            shipping_option_id: Uuid::new_v4(),
+            shipping_option_id,
             locale: locale.to_string(),
             name: name.to_string(),
         }
     }
 
+    fn option(id: Uuid) -> shipping_option::Model {
+        let now = Utc::now().fixed();
+        shipping_option::Model {
+            id,
+            tenant_id: Uuid::new_v4(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(1000, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            metadata: serde_json::json!({}),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     #[test]
-    fn persisted_locale_validation_allows_storage_only_und_but_never_treats_it_as_runtime() {
-        let und = translation("und", "Legacy name");
-        let en = translation("en", "Express");
-        validate_persisted_shipping_option_locales(&[und.clone(), en.clone()])
-            .expect("und is storage-only and valid persisted data");
+    fn storage_only_und_is_not_used_as_runtime_shipping_option_locale() {
+        let option_id = Uuid::new_v4();
+        let result = map_shipping_option(
+            option(option_id),
+            vec![translation(option_id, "und", "Legacy name")],
+            Some("de"),
+            Some("en"),
+        )
+        .expect("storage-only locale should be allowed in persisted data");
 
-        let runtime = vec![&und, &en];
-        let (resolved, effective) = resolve_translation(&runtime[1..], Some("de"), None);
-        assert_eq!(resolved.map(|value| value.name.as_str()), Some("Express"));
-        assert_eq!(effective.as_deref(), Some("en"));
-
-        let only_und = vec![&und];
-        let (resolved, effective) = resolve_translation(&only_und, Some("de"), None);
-        assert!(resolved.is_some(), "helper receives only runtime rows by contract");
-        assert_eq!(effective.as_deref(), Some("und"));
+        assert_eq!(result.name, "");
+        assert_eq!(result.effective_locale, None);
+        assert!(result.available_locales.is_empty());
+        assert_eq!(result.translations.len(), 1);
+        assert_eq!(result.translations[0].locale, "und");
     }
 
     #[test]
     fn persisted_locale_validation_rejects_invalid_and_noncanonical_rows() {
+        let option_id = Uuid::new_v4();
+
         let invalid = validate_persisted_shipping_option_locales(&[
-            translation("not@a-locale", "Broken"),
+            translation(option_id, "not@a-locale", "Broken"),
         ]);
         assert!(invalid.is_err());
 
         let noncanonical = validate_persisted_shipping_option_locales(&[
-            translation("EN", "Broken"),
+            translation(option_id, "EN", "Broken"),
         ]);
         assert!(noncanonical.is_err());
     }
