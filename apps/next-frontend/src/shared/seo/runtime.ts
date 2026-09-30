@@ -358,9 +358,25 @@ async function fetchSeoTextDocument(
 ): Promise<string> {
   const apiBaseUrl = resolveApiBaseUrl();
   const requestUrl = new URL(pathOrUrl, apiBaseUrl);
-  const allowedOrigin = new URL(apiBaseUrl).origin;
-  if (requestUrl.origin !== allowedOrigin) {
-    throw new Error("SEO runtime rejected a cross-origin document URL");
+  const allowedOrigins = new Set(
+    [
+      new URL(apiBaseUrl).origin,
+      new URL(getSiteUrl()).origin,
+      process.env.NEXT_PUBLIC_SEO_PUBLIC_ORIGIN,
+      process.env.RUSTOK_PUBLIC_URL,
+    ].flatMap((value) => {
+      if (!value?.trim()) {
+        return [];
+      }
+      try {
+        return [new URL(value).origin];
+      } catch {
+        return [];
+      }
+    }),
+  );
+  if (!allowedOrigins.has(requestUrl.origin)) {
+    throw new Error("SEO runtime rejected an untrusted document URL");
   }
 
   const headers: Record<string, string> = {

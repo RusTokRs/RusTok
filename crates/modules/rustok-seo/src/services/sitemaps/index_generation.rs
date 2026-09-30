@@ -1,7 +1,18 @@
-pub(in super::super) fn render_sitemap_file(urls: &[String]) -> String {
+pub(in super::super) fn render_sitemap_file(
+    urls: &[String],
+    changefreq: &str,
+    priority: &str,
+) -> String {
     let body = urls
         .iter()
-        .map(|url| format!("<url><loc>{}</loc></url>", xml_escape(url)))
+        .map(|url| {
+            format!(
+                "<url><loc>{}</loc><changefreq>{}</changefreq><priority>{}</priority></url>",
+                xml_escape(url),
+                xml_escape(changefreq),
+                xml_escape(priority),
+            )
+        })
         .collect::<Vec<_>>()
         .join("");
     format!(

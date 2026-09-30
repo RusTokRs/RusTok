@@ -13,7 +13,7 @@ mod targets;
 mod templates;
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::Instant;
 
 use moka::future::Cache;
 use once_cell::sync::Lazy;
@@ -43,23 +43,62 @@ pub use applications::{
 };
 
 const MODULE_SLUG: &str = "seo";
-const REDIRECT_CACHE_TTL_SECS: u64 = 30;
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
+const MAX_SITEMAP_URLS: usize = 1_000_000;
 const SEO_SETTINGS_KEYS: &[&str] = &[
+    "submodule_redirects_enabled",
+    "submodule_sitemaps_enabled",
+    "submodule_canonical_enabled",
+    "submodule_hreflang_enabled",
+    "submodule_rich_snippets_enabled",
+    "submodule_bulk_editor_enabled",
     "default_robots",
-    "sitemap_enabled",
+    "robots_txt_custom_content",
+    "crawl_delay",
+    "disallow_paths",
+    "canonical_force_https",
+    "canonical_trailing_slash_mode",
     "allowed_redirect_hosts",
     "allowed_canonical_hosts",
+    "auto_redirect_on_slug_change",
+    "redirect_cache_ttl_seconds",
+    "sitemap_enabled",
+    "sitemap_include_images",
+    "sitemap_changefreq",
+    "sitemap_priority",
+    "sitemap_max_entries_per_file",
+    "sitemap_submission_endpoints",
+    "sitemap_exclude_patterns",
+    "hreflang_enabled",
+    "hreflang_in_sitemap",
     "x_default_locale",
+    "rich_snippets_enabled",
+    "organization_name",
+    "organization_logo_url",
+    "breadcrumbs_enabled",
+    "searchbox_enabled",
+    "og_site_name",
+    "default_og_image_url",
+    "twitter_card_type",
+    "twitter_site_handle",
+    "title_separator",
+    "title_suffix",
+    "meta_title_max_length",
+    "meta_description_max_length",
     "template_defaults",
     "template_overrides",
-    "sitemap_submission_endpoints",
 ];
 
-static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::new(|| {
+pub(super) struct RedirectCacheEntry {
+    pub(super) redirects: Arc<Vec<seo_redirect::Model>>,
+    pub(super) loaded_at: Instant,
+}
+
+static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<RedirectCacheEntry>>> = Lazy::new(|| {
     Cache::builder()
-        .time_to_live(Duration::from_secs(REDIRECT_CACHE_TTL_SECS))
+        // Expiry is tenant-configurable and checked when reading the entry. Moka still provides
+        // the process-wide memory bound; a fixed TTL here would override persisted settings.
         .weigher(redirect_cache_entry_weight)
         .max_capacity(REDIRECT_CACHE_MAX_WEIGHT_BYTES)
         .build()
@@ -67,8 +106,9 @@ static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::
 
 fn redirect_cache_entry_weight(
     _tenant_id: &Uuid,
-    redirects: &Arc<Vec<seo_redirect::Model>>,
+    entry: &Arc<RedirectCacheEntry>,
 ) -> u32 {
+    let redirects = &entry.redirects;
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>())
         .saturating_add(std::mem::size_of::<Vec<seo_redirect::Model>>());
@@ -274,11 +314,15 @@ impl SeoService {
             .disallow_paths
             .into_iter()
             .filter_map(|p| {
-                let trimmed = p.trim().to_string();
-                if trimmed.is_empty() {
+                let sanitized = p
+                    .trim()
+                    .chars()
+                    .filter(|character| *character != '\r' && *character != '\n')
+                    .collect::<String>();
+                if sanitized.is_empty() || !sanitized.starts_with('/') {
                     None
                 } else {
-                    Some(trimmed)
+                    Some(sanitized)
                 }
             })
             .collect();
@@ -314,6 +358,15 @@ impl SeoService {
             match freq.as_str() {
                 "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never" => freq,
                 _ => "weekly".to_string(),
+            }
+        };
+        settings.sitemap_priority = {
+            let priority = settings.sitemap_priority.trim();
+            match priority.parse::<f32>() {
+                Ok(value) if value.is_finite() && (0.0..=1.0).contains(&value) => {
+                    priority.to_string()
+                }
+                _ => "0.8".to_string(),
             }
         };
         settings.twitter_card_type = {

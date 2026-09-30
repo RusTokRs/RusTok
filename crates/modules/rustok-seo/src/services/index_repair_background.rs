@@ -83,9 +83,30 @@ mod index_repair_background_impl {
                 updated_at: Set(now),
             }
             .insert(&self.db)
-            .await?;
+            .await;
 
-            Ok(map_background_index_repair_job(&job))
+            match job {
+                Ok(job) => Ok(map_background_index_repair_job(&job)),
+                Err(error) => {
+                    // The partial unique index closes the check-then-insert race. A concurrent
+                    // caller should observe the already queued job rather than receive a spurious
+                    // database conflict.
+                    if let Some(active) = job_entity::Entity::find()
+                        .filter(job_entity::Column::TenantId.eq(tenant_id))
+                        .filter(job_entity::Column::Status.is_in([
+                            INDEX_REPAIR_JOB_QUEUED,
+                            INDEX_REPAIR_JOB_RUNNING,
+                        ]))
+                        .order_by_asc(job_entity::Column::CreatedAt)
+                        .one(&self.db)
+                        .await?
+                    {
+                        Ok(map_background_index_repair_job(&active))
+                    } else {
+                        Err(error.into())
+                    }
+                }
+            }
         }
 
         pub(crate) async fn execute_next_index_repair_replay_job_background(

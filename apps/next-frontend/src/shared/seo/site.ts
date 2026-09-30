@@ -16,10 +16,24 @@ export function localizedPath(locale: string, path = "/"): string {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  if (normalizedPath === "/") {
+  // Backend SEO contexts may already return a locale-prefixed canonical path. Strip one
+  // existing supported locale before applying the requested locale so fallback hreflang and
+  // canonical generation never produce `/en/en/...` and can switch `/en/...` to `/de/...`.
+  const pathWithoutLocale = locales.reduce((candidate, supportedLocale) => {
+    const prefix = `/${supportedLocale}`;
+    if (candidate === prefix) {
+      return "/";
+    }
+    if (candidate.startsWith(`${prefix}/`)) {
+      return candidate.slice(prefix.length) || "/";
+    }
+    return candidate;
+  }, normalizedPath);
+
+  if (pathWithoutLocale === "/") {
     return `/${locale}`;
   }
-  return `/${locale}${normalizedPath}`;
+  return `/${locale}${pathWithoutLocale}`;
 }
 
 export { defaultLocale, locales };

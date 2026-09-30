@@ -6,7 +6,7 @@ use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, Order, QueryFilter,
-    QueryOrder, TransactionTrait,
+    QueryOrder, QuerySelect, TransactionTrait,
 };
 use url::Url;
 use uuid::Uuid;
@@ -14,13 +14,16 @@ use uuid::Uuid;
 use rustok_api::TenantContext;
 
 use crate::dto::{
-    SeoRobotsPreviewRecord, SeoSitemapFileRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
+    SeoModuleSettings, SeoRobotsPreviewRecord, SeoSitemapFileRecord, SeoSitemapJobRecord,
+    SeoSitemapStatusRecord,
 };
 use crate::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
 use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
-use super::{SITEMAP_CHUNK_SIZE, SeoService, normalize_effective_locale};
+use super::{MAX_SITEMAP_URLS, SeoService, normalize_effective_locale};
+#[cfg(test)]
+use super::SITEMAP_CHUNK_SIZE;
 pub(super) mod index_generation;
 pub(super) mod submission_adapters;
 pub(super) mod submission_aggregation;
@@ -181,18 +184,26 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !settings.sitemap_enabled {
+        if !sitemaps_enabled(&settings) {
             return Ok(disabled_sitemap_status());
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
         let started_at = chrono::Utc::now().fixed_offset();
-        let urls = self.collect_sitemap_urls(tenant, &public_origin).await?;
+        let urls = self
+            .collect_sitemap_urls(tenant, &public_origin, &settings.sitemap_exclude_patterns)
+            .await?;
+        if urls.len() > MAX_SITEMAP_URLS {
+            return Err(SeoError::validation(format!(
+                "sitemap URL set exceeds the {MAX_SITEMAP_URLS} URL limit"
+            )));
+        }
         let completed_at = chrono::Utc::now().fixed_offset();
         let completed_job = self
             .persist_generated_sitemap_in_tx(
                 tenant,
                 &public_origin,
                 &urls,
+                &settings,
                 started_at,
                 completed_at,
             )
@@ -226,11 +237,12 @@ impl SeoService {
         tenant: &TenantContext,
         public_origin: &PublicOrigin,
         urls: &[String],
+        settings: &SeoModuleSettings,
         started_at: chrono::DateTime<chrono::FixedOffset>,
         completed_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<seo_sitemap_job::Model> {
         let txn = self.db.begin().await?;
-        let file_count = sitemap_file_count(urls.len()) as i32;
+        let file_count = sitemap_file_count(urls.len(), settings.sitemap_max_entries_per_file as usize) as i32;
         let job = seo_sitemap_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -245,7 +257,15 @@ impl SeoService {
         .insert(&txn)
         .await?;
 
-        self.persist_sitemap_files_in_tx(&txn, tenant, public_origin, job.id, urls, completed_at)
+        self.persist_sitemap_files_in_tx(
+            &txn,
+            tenant,
+            public_origin,
+            job.id,
+            urls,
+            settings,
+            completed_at,
+        )
             .await?;
 
         let event_type = "seo.sitemap.generated";
@@ -383,7 +403,7 @@ impl SeoService {
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
         let settings = self.load_settings(tenant.id).await?;
-        if !settings.sitemap_enabled {
+        if !sitemaps_enabled(&settings) {
             return Ok(disabled_sitemap_status());
         }
 
@@ -436,6 +456,7 @@ impl SeoService {
         let jobs = seo_sitemap_job::Entity::find()
             .filter(seo_sitemap_job::Column::TenantId.eq(tenant_id))
             .order_by_desc(seo_sitemap_job::Column::CreatedAt)
+            .limit(limit.max(1) as u64)
             .all(&self.db)
             .await?;
         let jobs = jobs.into_iter().take(limit.max(1)).collect::<Vec<_>>();
@@ -472,11 +493,11 @@ impl SeoService {
 
     pub async fn render_robots(&self, tenant: &TenantContext) -> SeoResult<String> {
         let settings = self.load_settings(tenant.id).await?;
-        if !settings.sitemap_enabled {
-            return Ok(render_robots_body("", false));
+        if !sitemaps_enabled(&settings) {
+            return Ok(render_robots_body_with_settings("", &settings));
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
-        Ok(render_robots_body(public_origin.as_str(), true))
+        Ok(render_robots_body_with_settings(public_origin.as_str(), &settings))
     }
 
     pub async fn robots_preview(
@@ -488,10 +509,9 @@ impl SeoService {
         let base_url = public_origin.as_str();
 
         Ok(SeoRobotsPreviewRecord {
-            body: render_robots_body(base_url, settings.sitemap_enabled),
+            body: render_robots_body_with_settings(base_url, &settings),
             public_url: format!("{base_url}/robots.txt"),
-            sitemap_index_url: settings
-                .sitemap_enabled
+            sitemap_index_url: sitemaps_enabled(&settings)
                 .then(|| format!("{base_url}/sitemap.xml")),
         })
     }
@@ -522,6 +542,10 @@ impl SeoService {
         tenant_id: Uuid,
         path: &str,
     ) -> SeoResult<Option<seo_sitemap_file::Model>> {
+        let settings = self.load_settings(tenant_id).await?;
+        if !sitemaps_enabled(&settings) {
+            return Ok(None);
+        }
         seo_sitemap_file::Entity::find()
             .filter(seo_sitemap_file::Column::TenantId.eq(tenant_id))
             .filter(seo_sitemap_file::Column::Path.eq(path))
@@ -568,9 +592,11 @@ impl SeoService {
         public_origin: &PublicOrigin,
         job_id: Uuid,
         urls: &[String],
+        settings: &SeoModuleSettings,
         now: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<Vec<seo_sitemap_file::Model>> {
-        let chunks = urls.chunks(SITEMAP_CHUNK_SIZE).collect::<Vec<_>>();
+        let chunk_size = settings.sitemap_max_entries_per_file.max(1) as usize;
+        let chunks = urls.chunks(chunk_size).collect::<Vec<_>>();
         let mut files = Vec::new();
         for (index, chunk) in chunks.iter().enumerate() {
             files.push(
@@ -580,7 +606,11 @@ impl SeoService {
                     job_id: Set(job_id),
                     path: Set(format!("sitemap-{}.xml", index + 1)),
                     url_count: Set(chunk.len() as i32),
-                    content: Set(render_sitemap_file(chunk)),
+                    content: Set(render_sitemap_file(
+                        chunk,
+                        settings.sitemap_changefreq.as_str(),
+                        settings.sitemap_priority.as_str(),
+                    )),
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
@@ -616,6 +646,7 @@ impl SeoService {
         &self,
         tenant: &TenantContext,
         public_origin: &PublicOrigin,
+        exclude_patterns: &[String],
     ) -> SeoResult<Vec<String>> {
         let base_url = public_origin.as_str();
         let mut urls = Vec::new();
@@ -643,10 +674,12 @@ impl SeoService {
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
                 )?;
-                urls.push(format!(
-                    "{base_url}{}",
-                    locale_prefixed_path(locale.as_str(), candidate.route.as_str())
-                ));
+                let route = locale_prefixed_path(locale.as_str(), candidate.route.as_str());
+                if !sitemap_route_excluded(candidate.route.as_str(), exclude_patterns)
+                    && !sitemap_route_excluded(route.as_str(), exclude_patterns)
+                {
+                    urls.push(format!("{base_url}{route}"));
+                }
             }
         }
 
@@ -729,11 +762,11 @@ impl SeoService {
 }
 
 #[allow(dead_code)]
-fn sitemap_file_count(url_count: usize) -> usize {
+fn sitemap_file_count(url_count: usize, chunk_size: usize) -> usize {
     if url_count == 0 {
         1
     } else {
-        ((url_count - 1) / SITEMAP_CHUNK_SIZE) + 2
+        ((url_count - 1) / chunk_size.max(1)) + 2
     }
 }
 
@@ -780,12 +813,70 @@ fn disabled_sitemap_status() -> SeoSitemapStatusRecord {
     }
 }
 
-fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
-    if sitemap_enabled {
-        format!("User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n")
-    } else {
-        "User-agent: *\nAllow: /\n".to_string()
+pub(super) fn sitemaps_enabled(settings: &SeoModuleSettings) -> bool {
+    settings.sitemap_enabled && settings.submodule_sitemaps_enabled
+}
+
+pub(super) fn sitemap_route_excluded(route: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|pattern| {
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            return false;
+        }
+        if !pattern.contains('*') {
+            return route == pattern;
+        }
+
+        let starts_with_wildcard = pattern.starts_with('*');
+        let ends_with_wildcard = pattern.ends_with('*');
+        let mut remaining = route;
+        let mut first_segment = true;
+        let mut found_segment = false;
+        for segment in pattern.split('*').filter(|segment| !segment.is_empty()) {
+            let position = if first_segment && !starts_with_wildcard {
+                if !remaining.starts_with(segment) {
+                    return false;
+                }
+                0
+            } else if let Some(position) = remaining.find(segment) {
+                position
+            } else {
+                return false;
+            };
+            remaining = &remaining[position + segment.len()..];
+            first_segment = false;
+            found_segment = true;
+        }
+        ends_with_wildcard || (found_segment && remaining.is_empty())
+    })
+}
+
+fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings) -> String {
+    if let Some(custom) = settings.robots_txt_custom_content.as_deref() {
+        return format!("{}\n", custom.trim_end());
     }
+
+    let mut lines = vec!["User-agent: *".to_string(), "Allow: /".to_string()];
+    lines.extend(
+        settings
+            .disallow_paths
+            .iter()
+            .map(|path| format!("Disallow: {path}")),
+    );
+    if let Some(delay) = settings.crawl_delay {
+        lines.push(format!("Crawl-delay: {delay}"));
+    }
+    if sitemaps_enabled(settings) {
+        lines.push(format!("Sitemap: {base_url}/sitemap.xml"));
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+#[cfg(test)]
+fn render_robots_body(base_url: &str, sitemap_enabled: bool) -> String {
+    let mut settings = SeoModuleSettings::default();
+    settings.sitemap_enabled = sitemap_enabled;
+    render_robots_body_with_settings(base_url, &settings)
 }
 
 #[allow(dead_code)]
