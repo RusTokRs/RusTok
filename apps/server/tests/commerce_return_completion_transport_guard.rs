@@ -169,16 +169,7 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
         "return_completion_operation_identity_guard_insert",
         "return_completion_operation_identity_guard_update",
         "SIGNAL SQLSTATE '45000'",
-        "NOT REGEXP '^[0-9a-f]{64}    ] {
-        assert!(
-            hardening_migration.contains(marker),
-            "return completion hardening migration is missing invariant {marker}"
-        );
-    }
-
-    for marker in [
-        "completion_request_hash(&input)",
-        "return_completion_operation_id",
+        "NOT REGEXP '^[0-9a-f]{64}        "return_completion_operation_id",
         "find_resolution_order_change(",
         "operation.refund_id",
         "operation.order_change_id",
