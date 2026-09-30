@@ -253,6 +253,7 @@ pub async fn compensate_checkout_operation(
     let idempotency_key = require_idempotency_key(&headers)?;
     let service = crate::CheckoutCompensationService::new(
         runtime.db_clone(),
+        runtime.event_bus(),
         runtime.checkout_inventory_reservation_port(),
         runtime.cart_checkout_port(),
         runtime.checkout_payment_compensation_port(),
@@ -307,6 +308,7 @@ pub async fn sweep_checkout_compensations(
     let idempotency_key = require_idempotency_key(&headers)?;
     let report = crate::CheckoutCompensationSweepService::new(
         runtime.db_clone(),
+        runtime.event_bus(),
         runtime.checkout_inventory_reservation_port(),
         runtime.cart_checkout_port(),
         runtime.checkout_payment_compensation_port(),
