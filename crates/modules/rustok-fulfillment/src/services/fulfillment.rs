@@ -1702,11 +1702,21 @@ fn append_audit_event(
     };
     let mut audit = match metadata_object.remove("audit") {
         Some(Value::Object(object)) => object,
-        _ => Map::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+        None => Map::new(),
     };
     let mut events = match audit.remove("events") {
         Some(Value::Array(items)) => items,
-        _ => Vec::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit events must be a JSON array".to_string(),
+            ));
+        }
+        None => Vec::new(),
     };
     events.push(event);
     audit.insert("events".to_string(), Value::Array(events));
@@ -2201,6 +2211,28 @@ mod tests {
             super::merge_fulfillment_metadata(
                 serde_json::json!("legacy scalar"),
                 serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_namespace() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": "legacy scalar"}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_events() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": {"events": "legacy scalar"}}),
+                serde_json::json!({"type": "ship"}),
             )
             .is_err()
         );
