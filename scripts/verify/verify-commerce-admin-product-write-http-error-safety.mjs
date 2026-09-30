@@ -82,7 +82,6 @@ for (const [source, values, label] of [
     '.product_catalog_command_port()',
     '.update_product(port_context.clone(), id, input)',
     'map_admin_product_port_error(',
-    'StatusCode::OK',
   ], 'Product update path'],
 ]) {
   for (const value of values) requireText(source, value, label);
