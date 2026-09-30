@@ -4110,5 +4110,5 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Quantity/state reconciliation:** item quantity bounds and lifecycle serialization remain separately guarded by `000109`/`000110`; no quantity fix was needed in this metadata iteration.
 - **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/runtime evidence is claimed locally.
 - **Documentation:** Fulfillment README now records strict structured audit evidence for both fulfillment and fulfillment-item lifecycle history.
-- **Status:** `FS-22.06.82` implementation complete on dedicated branch; integration pending final merge gate.
+- **Status:** `FS-22.06.82` complete and integrated on `main` as `e41db9c303e239d172edfeae2b4d2c2b17c75238`.
 - **Next primary module iteration:** `FS-22.06.83 — same primary module, fulfillment-item checkout metadata residuals and reserved-key ownership`.
