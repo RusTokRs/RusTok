@@ -2,7 +2,8 @@ use chrono::Utc;
 use rustok_fulfillment::entities::fulfillment;
 use rustok_fulfillment::{
     BeginProviderOperation, DeliverFulfillmentInput, FulfillmentProviderOperationJournal,
-    FulfillmentProviderOperationRecovery, FulfillmentService, PROVIDER_OPERATION_COMMITTED,
+    FulfillmentProviderOperationRecovery, FulfillmentService, ReopenFulfillmentInput,
+    PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
     PROVIDER_OPERATION_SUCCEEDED,
 };
@@ -399,6 +400,34 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         "delivery metadata must not commit a provider operation"
     );
 
+    service
+        .reopen_fulfillment(
+            tenant_id,
+            fulfillment_id,
+            ReopenFulfillmentInput {
+                items: None,
+                metadata: serde_json::json!({
+                    "provider_operation": {
+                        "id": operation.id,
+                        "operation": "ship"
+                    },
+                    "reopen_note": "ordinary reopen metadata"
+                }),
+            },
+        )
+        .await
+        .expect("reopen should succeed without consuming reserved provider metadata");
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("provider operation remains readable after reopen");
+    assert_eq!(
+        current.status,
+        PROVIDER_OPERATION_SUCCEEDED,
+        "reopen metadata must not commit a provider operation"
+    );
+
     let fulfillment = fulfillment::Entity::find_by_id(fulfillment_id)
         .one(&db)
         .await
@@ -414,6 +443,13 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
             .get("operator_note")
             .and_then(serde_json::Value::as_str),
         Some("ordinary delivery metadata")
+    );
+    assert_eq!(
+        fulfillment
+            .metadata
+            .get("reopen_note")
+            .and_then(serde_json::Value::as_str),
+        Some("ordinary reopen metadata")
     );
 }
 
