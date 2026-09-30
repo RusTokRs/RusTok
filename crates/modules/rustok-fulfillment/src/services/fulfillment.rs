@@ -702,7 +702,7 @@ impl FulfillmentService {
                     Some(tracking_number),
                     STATUS_SHIPPED,
                 ),
-            ));
+            )?);
             active.shipped_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
@@ -731,7 +731,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Ship, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
@@ -760,7 +760,7 @@ impl FulfillmentService {
                 Some(input.tracking_number),
                 active.status.clone().take().unwrap_or_default().as_str(),
             ),
-        ));
+        )?);
         if active.shipped_at.clone().take().is_none() {
             active.shipped_at = Set(Some(now.into()));
         }
@@ -806,7 +806,7 @@ impl FulfillmentService {
                     None,
                     STATUS_DELIVERED,
                 ),
-            ));
+            )?);
             active.delivered_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
@@ -838,7 +838,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Deliver, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
@@ -866,7 +866,7 @@ impl FulfillmentService {
                 None,
                 active.status.clone().take().unwrap_or_default().as_str(),
             ),
-        ));
+        )?);
         if all_items_delivered {
             active.delivered_at = Set(Some(now.into()));
         }
@@ -910,7 +910,7 @@ impl FulfillmentService {
                         None,
                         status_after,
                     ),
-                ));
+                )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
                 txn.commit().await?;
@@ -935,7 +935,7 @@ impl FulfillmentService {
                             None,
                             STATUS_SHIPPED,
                         ),
-                    ));
+                    )?);
                     active.updated_at = Set(now.into());
                     active.update(&txn).await?;
                     txn.commit().await?;
@@ -963,7 +963,7 @@ impl FulfillmentService {
                     active.metadata = Set(append_audit_event(
                         item.metadata.clone(),
                         build_item_audit_event(FulfillmentItemAction::Reopen, now, adjustment),
-                    ));
+                    )?);
                     active.updated_at = Set(now.into());
                     adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
                     active.update(&txn).await?;
@@ -984,7 +984,7 @@ impl FulfillmentService {
                         None,
                         STATUS_SHIPPED,
                     ),
-                ));
+                )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
                 txn.commit().await?;
@@ -1040,7 +1040,7 @@ impl FulfillmentService {
                     Some(input.tracking_number),
                     STATUS_SHIPPED,
                 ),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
             txn.commit().await?;
@@ -1067,7 +1067,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Reship, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             active.update(&txn).await?;
@@ -1090,7 +1090,7 @@ impl FulfillmentService {
                 Some(input.tracking_number),
                 STATUS_SHIPPED,
             ),
-        ));
+        )?);
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
         txn.commit().await?;
@@ -1131,7 +1131,7 @@ impl FulfillmentService {
                 None,
                 STATUS_CANCELLED,
             ),
-        ));
+        )?);
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
@@ -1632,10 +1632,17 @@ fn build_fulfillment_audit_event(
     })
 }
 
-fn append_audit_event(metadata: Value, event: Value) -> Value {
+fn append_audit_event(
+    metadata: Value,
+    event: Value,
+) -> FulfillmentResult<Value> {
     let mut metadata_object = match metadata {
         Value::Object(object) => object,
-        _ => Map::new(),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
     };
     let mut audit = match metadata_object.remove("audit") {
         Some(Value::Object(object)) => object,
@@ -1648,7 +1655,7 @@ fn append_audit_event(metadata: Value, event: Value) -> Value {
     events.push(event);
     audit.insert("events".to_string(), Value::Array(events));
     metadata_object.insert("audit".to_string(), Value::Object(audit));
-    Value::Object(metadata_object)
+    Ok(Value::Object(metadata_object))
 }
 
 impl FulfillmentItemAction {
@@ -2080,6 +2087,15 @@ mod tests {
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn append_audit_event_rejects_non_object_metadata() {
+        assert!(super::append_audit_event(
+            serde_json::json!("legacy scalar"),
+            serde_json::json!({"type": "ship"}),
+        )
+        .is_err());
     }
 
     #[test]
