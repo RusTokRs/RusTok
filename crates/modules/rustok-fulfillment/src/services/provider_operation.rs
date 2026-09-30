@@ -137,7 +137,6 @@ impl FulfillmentProviderOperationJournal {
                 Expr::current_timestamp(),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
-            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
                 provider_operation::Column::Status
@@ -225,7 +224,7 @@ impl FulfillmentProviderOperationJournal {
         };
 
         if update.rows_affected == 0 {
-            let current = self.get(operation_id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED
@@ -240,7 +239,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
@@ -274,7 +273,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(operation_id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_ERROR {
                 return Ok(current);
             }
@@ -284,7 +283,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
@@ -336,7 +335,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(operation_id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -346,7 +345,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
@@ -357,7 +356,7 @@ impl FulfillmentProviderOperationJournal {
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
-        let current = self.get(operation_id).await?;
+        let current = self.get(tenant_id, operation_id).await?;
         if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(current);
         }
@@ -400,7 +399,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(operation_id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -410,7 +409,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
 
@@ -420,7 +419,7 @@ impl FulfillmentProviderOperationJournal {
         operation_id: Uuid,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
-        let current = self.get(operation_id).await?;
+        let current = self.get(tenant_id, operation_id).await?;
         if current.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(current);
         }
@@ -465,7 +464,7 @@ impl FulfillmentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(operation_id).await?;
+            let current = self.get(tenant_id, operation_id).await?;
             if current.status == PROVIDER_OPERATION_COMMITTED {
                 return Ok(current);
             }
@@ -475,7 +474,7 @@ impl FulfillmentProviderOperationJournal {
             });
         }
 
-        self.get(operation_id).await
+        self.get(tenant_id, operation_id).await
     }
 
 }
