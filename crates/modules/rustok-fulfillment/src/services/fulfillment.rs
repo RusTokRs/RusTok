@@ -484,7 +484,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
+                    metadata: Set(strip_fulfillment_item_checkout_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1503,6 +1503,65 @@ fn apply_allowed_shipping_profiles_to_metadata(
     Ok(Value::Object(metadata_object))
 }
 
+fn strip_fulfillment_item_checkout_metadata(
+    value: Value,
+) -> FulfillmentResult<Value> {
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    let Some(checkout) = root.remove("checkout") else {
+        return Ok(Value::Object(root));
+    };
+
+    let mut checkout = match checkout {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item checkout metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    for key in [
+        "operation_id",
+        "order_id",
+        "order_plan_hash",
+        "fulfillment_index",
+        "fulfillment_key",
+    ] {
+        checkout.remove(key);
+    }
+
+    if let Some(cart_line_item_id) = checkout.get("cart_line_item_id").cloned() {
+        let canonical = cart_line_item_id
+            .as_str()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .filter(|value| !value.is_nil())
+            .map(|value| Value::String(value.to_string()))
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "fulfillment item checkout cart_line_item_id must be a non-nil UUID string"
+                        .to_string(),
+                )
+            })?;
+        checkout.insert("cart_line_item_id".to_string(), canonical);
+    }
+
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
+    }
+
+    Ok(Value::Object(root))
+}
+
 fn validate_object_metadata(
     metadata: &Value,
     resource: &str,
@@ -2181,6 +2240,57 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn item_checkout_metadata_removes_legacy_identity_keys() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "order_id": Uuid::new_v4().to_string(),
+                "order_plan_hash": "a".repeat(64),
+                "fulfillment_index": 4,
+                "fulfillment_key": "legacy",
+                "cart_line_item_id": cart_line_item_id.to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized =
+            super::strip_fulfillment_item_checkout_metadata(metadata)
+                .expect("valid item checkout metadata should sanitize");
+        assert_eq!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str),
+            Some(cart_line_item_id.to_string().as_str())
+        );
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+        assert_eq!(
+            sanitized.get("note").and_then(Value::as_str),
+            Some("keep")
+        );
+    }
+
+    #[test]
+    fn item_checkout_metadata_rejects_invalid_cart_line_identity() {
+        let metadata = serde_json::json!({
+            "checkout": {
+                "cart_line_item_id": "not-a-uuid"
+            }
+        });
+
+        assert!(
+            super::strip_fulfillment_item_checkout_metadata(metadata)
+                .is_err()
+        );
     }
 
     #[test]
