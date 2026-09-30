@@ -1,5 +1,5 @@
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::DatabaseBackend;
+use sea_orm_migration::sea_orm::{DatabaseBackend, Statement};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,6 +16,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_rollback_safe(manager).await?;
+
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => restore_postgres(manager).await?,
             DatabaseBackend::Sqlite => restore_sqlite(manager).await?,
@@ -23,6 +25,33 @@ impl MigrationTrait for Migration {
         }
         Ok(())
     }
+}
+
+async fn ensure_rollback_safe(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let unresolved_exists = manager
+        .get_connection()
+        .query_one(Statement::from_string(
+            manager.get_database_backend(),
+            r#"
+            SELECT 1
+            FROM fulfillment_provider_operations
+            WHERE status = 'reconciliation_required'
+              AND provider_result IS NULL
+            LIMIT 1
+            "#
+            .to_owned(),
+        ))
+        .await?
+        .is_some();
+
+    if unresolved_exists {
+        return Err(DbErr::Custom(
+            "cannot roll back provider execution reconciliation while unresolved external outcomes remain; resolve them first"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
@@ -138,14 +167,6 @@ async fn restore_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
-            UPDATE fulfillment_provider_operations
-            SET status = 'provider_error',
-                provider_completed_at = NULL,
-                error_message = COALESCE(error_message, 'unresolved execution during migration rollback'),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE status = 'reconciliation_required'
-              AND provider_result IS NULL;
-
             CREATE OR REPLACE FUNCTION enforce_fulfillment_provider_operation_lifecycle()
             RETURNS trigger AS $$
             BEGIN
