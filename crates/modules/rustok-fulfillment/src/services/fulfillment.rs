@@ -145,6 +145,7 @@ impl FulfillmentService {
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .filter(entities::shipping_option::Column::Active.eq(true))
             .order_by_asc(entities::shipping_option::Column::CreatedAt)
+            .order_by_asc(entities::shipping_option::Column::Id)
             .all(&self.db)
             .await?;
 
@@ -167,6 +168,7 @@ impl FulfillmentService {
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .order_by_asc(entities::shipping_option::Column::CreatedAt)
+            .order_by_asc(entities::shipping_option::Column::Id)
             .all(&self.db)
             .await?;
 
@@ -581,6 +583,7 @@ impl FulfillmentService {
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
             .order_by_desc(entities::fulfillment::Column::CreatedAt)
+            .order_by_desc(entities::fulfillment::Column::Id)
             .one(&self.db)
             .await?;
 
@@ -600,6 +603,7 @@ impl FulfillmentService {
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
             .order_by_asc(entities::fulfillment::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment::Column::Id)
             .all(&self.db)
             .await?;
 
@@ -636,6 +640,7 @@ impl FulfillmentService {
         let total = query.clone().count(&self.db).await?;
         let rows = query
             .order_by_desc(entities::fulfillment::Column::CreatedAt)
+            .order_by_desc(entities::fulfillment::Column::Id)
             .offset(offset)
             .limit(per_page)
             .all(&self.db)
