@@ -756,7 +756,7 @@ fn strip_checkout_identity_metadata(
     }
     Ok(root)
 }
- 
+
 struct FulfillmentExpectation<'a> {
     tenant_id: Uuid,
     order_id: Uuid,
@@ -776,7 +776,6 @@ fn validate_fulfillment(
         plan_hash,
         plan,
     } = expected;
-
 
     let persisted_plan_hash = match record.plan_hash.as_deref() {
         Some(value) => Some(normalize_checkout_plan_hash(value).map_err(|_| {
