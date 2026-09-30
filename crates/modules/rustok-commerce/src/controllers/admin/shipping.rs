@@ -84,17 +84,6 @@ impl From<&PortContext> for AdminShippingOptionPortDiagnosticContext {
     }
 }
 
-struct AdminShippingOptionPortDiagnosticError<'a> {
-    code: &'a str,
-    retryable: bool,
-}
-
-impl std::fmt::Debug for AdminShippingOptionPortDiagnosticError<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("redacted")
-    }
-}
-
 struct AdminShippingDiagnosticError;
 
 impl std::fmt::Debug for AdminShippingDiagnosticError {
@@ -304,12 +293,8 @@ fn map_admin_shipping_option_port_error(
     };
     let context = AdminShippingOptionDiagnosticContext::from(&context);
     let port_context = AdminShippingOptionPortDiagnosticContext::from(port_context);
-    let error = AdminShippingOptionPortDiagnosticError {
-        code: error.code.as_str(),
-        retryable: error.retryable,
-    };
+    let owner_code_length = error.code.chars().count();
     tracing::error!(
-        error = ?error,
         owner = ADMIN_SHIPPING_OPTION_OWNER,
         owner_operation,
         correlation_id = %port_context.correlation_id,
@@ -320,13 +305,13 @@ fn map_admin_shipping_option_port_error(
         channel = ?port_context.channel,
         locale = %port_context.locale,
         deadline_ms = ?port_context.deadline_ms,
-        internal_code = %error.code,
+        owner_code_length,
         retryable = error.retryable,
         error_kind,
         public_code = code,
         status = %status,
         boundary = ADMIN_SHIPPING_BOUNDARY,
-        "commerce admin shipping option owner call failed"
+        "commerce admin shipping option owner call failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
