@@ -4178,5 +4178,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Regression coverage:** added pure coverage for invalid stored states including `shipped_quantity > quantity` and negative `delivered_quantity`.
 - **Documentation:** Fulfillment README now records the fail-closed persisted-counter invariant.
 - **Verification:** repository source inspection, migration/constraint tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Status:** `FS-22.06.86` implementation complete on the dedicated branch; PR/merge integration is the remaining step for this iteration.
+- **Status:** `FS-22.06.86` complete and integrated via PR #4456, squash merge `a1eebdd7379accebe1085043f2e54d8aca733c00`.
+- **Post-merge reconciliation:** refreshed `main` at `a1eebdd7379accebe1085043f2e54d8aca733c00` and re-read the guarded arithmetic, all five lifecycle item write sites, migration contracts, README invariant, and ledger entry; the expected changes are present with no concurrent drift.
 - **Next primary module iteration:** `FS-22.06.87` — same primary module, next fulfillment-item owner boundary after refreshing integrated `main`.
