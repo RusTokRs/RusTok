@@ -1,16 +1,14 @@
 //! Governance service definition, marketplace projections, and lifecycle snapshots.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
 use super::market_projections::*;
+use super::*;
+use crate::ControlPlaneInfrastructure;
 use crate::marketplace::{ModuleMarketplaceEntry, ModuleMarketplaceVersion};
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
-use crate::ControlPlaneInfrastructure;
 
 #[derive(Clone)]
 pub struct SeaOrmModuleGovernanceService {
@@ -551,5 +549,4 @@ impl SeaOrmModuleGovernanceService {
             next_action,
         }))
     }
-
 }

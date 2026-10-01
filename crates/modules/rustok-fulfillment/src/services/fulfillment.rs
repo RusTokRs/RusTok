@@ -93,7 +93,7 @@ impl FulfillmentService {
         let allowed_shipping_profile_slugs =
             normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
         let metadata =
-            apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs);
+            apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs)?;
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
@@ -239,8 +239,10 @@ impl FulfillmentService {
         if let Some(expected_revision) = expected_translation_revision.as_deref() {
             let current_translations =
                 load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
-            let current_revision =
-                shipping_option_translation_resource_revision(&shipping_option, &current_translations);
+            let current_revision = shipping_option_translation_resource_revision(
+                &shipping_option,
+                &current_translations,
+            );
             if expected_revision != current_revision {
                 return Err(FulfillmentError::ShippingOptionTranslationRevisionConflict(
                     shipping_option_id,
@@ -268,7 +270,7 @@ impl FulfillmentService {
             active.metadata = Set(apply_allowed_shipping_profiles_to_metadata(
                 metadata,
                 normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs),
-            ));
+            )?);
         }
 
         active.updated_at = Set(Utc::now().into());
@@ -370,13 +372,8 @@ impl FulfillmentService {
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
-        self.create_fulfillment_with_identity_and_id(
-            tenant_id,
-            input,
-            None,
-            fulfillment_id,
-        )
-        .await
+        self.create_fulfillment_with_identity_and_id(tenant_id, input, None, fulfillment_id)
+            .await
     }
 
     pub(crate) async fn create_checkout_fulfillment(
@@ -429,6 +426,12 @@ impl FulfillmentService {
                 .await?;
         }
         validate_fulfillment_items(input.items.as_deref())?;
+        validate_object_metadata(&input.metadata, "fulfillment")?;
+        if let Some(items) = input.items.as_ref() {
+            for item in items {
+                validate_object_metadata(&item.metadata, "fulfillment item")?;
+            }
+        }
 
         let CreateFulfillmentInput {
             order_id,
@@ -459,7 +462,7 @@ impl FulfillmentService {
             tracking_number: Set(tracking_number),
             delivered_note: Set(None),
             cancellation_reason: Set(None),
-            metadata: Set(strip_fulfillment_metadata(metadata)),
+            metadata: Set(strip_fulfillment_metadata(metadata)?),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             shipped_at: Set(None),
@@ -478,7 +481,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_audit_metadata(item.metadata)),
+                    metadata: Set(strip_fulfillment_item_checkout_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -693,7 +696,7 @@ impl FulfillmentService {
             active.carrier = Set(Some(carrier.clone()));
             active.tracking_number = Set(Some(tracking_number.clone()));
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Ship,
                     now,
@@ -702,7 +705,7 @@ impl FulfillmentService {
                     Some(tracking_number),
                     STATUS_SHIPPED,
                 ),
-            ));
+            )?);
             active.shipped_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
@@ -731,7 +734,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Ship, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
@@ -751,7 +754,7 @@ impl FulfillmentService {
         active.carrier = Set(Some(input.carrier.clone()));
         active.tracking_number = Set(Some(input.tracking_number.clone()));
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Ship,
                 now,
@@ -760,7 +763,7 @@ impl FulfillmentService {
                 Some(input.tracking_number),
                 active.status.clone().take().unwrap_or_default().as_str(),
             ),
-        ));
+        )?);
         if active.shipped_at.clone().take().is_none() {
             active.shipped_at = Set(Some(now.into()));
         }
@@ -797,7 +800,7 @@ impl FulfillmentService {
             active.status = Set(STATUS_DELIVERED.to_string());
             active.delivered_note = Set(input.delivered_note.clone());
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Deliver,
                     now,
@@ -806,7 +809,7 @@ impl FulfillmentService {
                     None,
                     STATUS_DELIVERED,
                 ),
-            ));
+            )?);
             active.delivered_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
@@ -838,7 +841,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Deliver, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
@@ -857,7 +860,7 @@ impl FulfillmentService {
         });
         active.delivered_note = Set(input.delivered_note.clone());
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Deliver,
                 now,
@@ -866,7 +869,7 @@ impl FulfillmentService {
                 None,
                 active.status.clone().take().unwrap_or_default().as_str(),
             ),
-        ));
+        )?);
         if all_items_delivered {
             active.delivered_at = Set(Some(now.into()));
         }
@@ -901,7 +904,7 @@ impl FulfillmentService {
                 active.cancellation_reason = Set(None);
                 active.cancelled_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_fulfillment_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata)?,
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -910,7 +913,7 @@ impl FulfillmentService {
                         None,
                         status_after,
                     ),
-                ));
+                )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
                 txn.commit().await?;
@@ -926,7 +929,7 @@ impl FulfillmentService {
                     active.delivered_note = Set(None);
                     active.delivered_at = Set(None);
                     active.metadata = Set(append_audit_event(
-                        merge_fulfillment_metadata(metadata, input.metadata),
+                        merge_fulfillment_metadata(metadata, input.metadata)?,
                         build_fulfillment_audit_event(
                             FulfillmentItemAction::Reopen,
                             now,
@@ -935,7 +938,7 @@ impl FulfillmentService {
                             None,
                             STATUS_SHIPPED,
                         ),
-                    ));
+                    )?);
                     active.updated_at = Set(now.into());
                     active.update(&txn).await?;
                     txn.commit().await?;
@@ -963,7 +966,7 @@ impl FulfillmentService {
                     active.metadata = Set(append_audit_event(
                         item.metadata.clone(),
                         build_item_audit_event(FulfillmentItemAction::Reopen, now, adjustment),
-                    ));
+                    )?);
                     active.updated_at = Set(now.into());
                     adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
                     active.update(&txn).await?;
@@ -975,7 +978,7 @@ impl FulfillmentService {
                 active.delivered_note = Set(None);
                 active.delivered_at = Set(None);
                 active.metadata = Set(append_audit_event(
-                    merge_fulfillment_metadata(metadata, input.metadata),
+                    merge_fulfillment_metadata(metadata, input.metadata)?,
                     build_fulfillment_audit_event(
                         FulfillmentItemAction::Reopen,
                         now,
@@ -984,7 +987,7 @@ impl FulfillmentService {
                         None,
                         STATUS_SHIPPED,
                     ),
-                ));
+                )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
                 txn.commit().await?;
@@ -1031,7 +1034,7 @@ impl FulfillmentService {
             active.delivered_note = Set(None);
             active.delivered_at = Set(None);
             active.metadata = Set(append_audit_event(
-                merge_fulfillment_metadata(metadata, input.metadata),
+                merge_fulfillment_metadata(metadata, input.metadata)?,
                 build_fulfillment_audit_event(
                     FulfillmentItemAction::Reship,
                     now,
@@ -1040,7 +1043,7 @@ impl FulfillmentService {
                     Some(input.tracking_number),
                     STATUS_SHIPPED,
                 ),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
             txn.commit().await?;
@@ -1067,7 +1070,7 @@ impl FulfillmentService {
             active.metadata = Set(append_audit_event(
                 item.metadata.clone(),
                 build_item_audit_event(FulfillmentItemAction::Reship, now, adjustment),
-            ));
+            )?);
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             active.update(&txn).await?;
@@ -1081,7 +1084,7 @@ impl FulfillmentService {
         active.delivered_note = Set(None);
         active.delivered_at = Set(None);
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Reship,
                 now,
@@ -1090,7 +1093,7 @@ impl FulfillmentService {
                 Some(input.tracking_number),
                 STATUS_SHIPPED,
             ),
-        ));
+        )?);
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
         txn.commit().await?;
@@ -1122,7 +1125,7 @@ impl FulfillmentService {
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
         active.metadata = Set(append_audit_event(
-            merge_fulfillment_metadata(metadata, input.metadata),
+            merge_fulfillment_metadata(metadata, input.metadata)?,
             build_fulfillment_audit_event(
                 FulfillmentItemAction::Cancel,
                 now,
@@ -1131,7 +1134,7 @@ impl FulfillmentService {
                 None,
                 STATUS_CANCELLED,
             ),
-        ));
+        )?);
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
@@ -1249,6 +1252,20 @@ fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
     Ok(())
 }
 
+pub(crate) fn normalize_checkout_plan_hash(checkout_plan_hash: &str) -> FulfillmentResult<String> {
+    let checkout_plan_hash = checkout_plan_hash.trim().to_ascii_lowercase();
+    if checkout_plan_hash.len() != 64
+        || !checkout_plan_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(FulfillmentError::Validation(
+            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
+        ));
+    }
+    Ok(checkout_plan_hash)
+}
+
 fn validate_checkout_identity(
     checkout_operation_id: Uuid,
     checkout_fulfillment_index: u32,
@@ -1259,18 +1276,9 @@ fn validate_checkout_identity(
             "checkout operation identity must be non-nil".to_string(),
         ));
     }
-    let checkout_plan_hash = checkout_plan_hash.trim();
-    if checkout_plan_hash.len() != 64
-        || !checkout_plan_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Err(FulfillmentError::Validation(
-            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
-        ));
-    }
+    let checkout_plan_hash = normalize_checkout_plan_hash(checkout_plan_hash)?;
     let _ = checkout_fulfillment_index;
-    Ok(checkout_plan_hash.to_string())
+    Ok(checkout_plan_hash)
 }
 
 fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
@@ -1284,7 +1292,11 @@ fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
 
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic()) {
+    if normalized.len() != 3
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
         return Err(FulfillmentError::Validation(
             "currency_code must be a 3-letter code".to_string(),
         ));
@@ -1299,7 +1311,15 @@ fn fulfillment_list_offset(page: u64, per_page: u64) -> u64 {
 fn merge_fulfillment_metadata(
     current: serde_json::Value,
     patch: serde_json::Value,
-) -> serde_json::Value {
+) -> FulfillmentResult<serde_json::Value> {
+    let current = match current {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
     let current_audit = current
         .as_object()
         .and_then(|object| object.get("audit"))
@@ -1322,10 +1342,18 @@ fn merge_fulfillment_metadata(
     strip_fulfillment_identity_metadata(merged)
 }
 
-fn strip_fulfillment_metadata(value: serde_json::Value) -> serde_json::Value {
-    strip_provider_operation_metadata(strip_fulfillment_identity_metadata(
-        strip_fulfillment_audit_metadata(value),
-    ))
+fn strip_fulfillment_metadata(value: serde_json::Value) -> FulfillmentResult<serde_json::Value> {
+    let value = match value {
+        Value::Object(_) => value,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    let value = strip_fulfillment_audit_metadata(value);
+    let value = strip_provider_operation_metadata(value);
+    strip_fulfillment_identity_metadata(value)
 }
 
 fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
@@ -1348,12 +1376,22 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
     }
 }
 
-fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::Value {
+pub(crate) fn strip_fulfillment_identity_metadata(
+    value: serde_json::Value,
+) -> FulfillmentResult<serde_json::Value> {
     let mut root = match value {
         serde_json::Value::Object(object) => object,
-        _ => return value,
+        _ => return Ok(value),
     };
-    if let Some(serde_json::Value::Object(mut checkout)) = root.remove("checkout") {
+    if let Some(checkout) = root.remove("checkout") {
+        let mut checkout = match checkout {
+            serde_json::Value::Object(object) => object,
+            _ => {
+                return Err(FulfillmentError::Validation(
+                    "fulfillment checkout metadata namespace must be a JSON object".to_string(),
+                ));
+            }
+        };
         for key in [
             "operation_id",
             "order_id",
@@ -1369,7 +1407,7 @@ fn strip_fulfillment_identity_metadata(value: serde_json::Value) -> serde_json::
             root.insert("checkout".to_string(), serde_json::Value::Object(checkout));
         }
     }
-    serde_json::Value::Object(root)
+    Ok(serde_json::Value::Object(root))
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
@@ -1430,14 +1468,19 @@ fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String
 fn apply_allowed_shipping_profiles_to_metadata(
     metadata: Value,
     allowed_shipping_profile_slugs: Option<Vec<String>>,
-) -> Value {
+) -> FulfillmentResult<Value> {
     let Some(allowed_shipping_profile_slugs) = allowed_shipping_profile_slugs else {
-        return metadata;
+        return Ok(metadata);
     };
 
     let mut metadata_object = match metadata {
         Value::Object(object) => object,
-        _ => Map::new(),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "shipping option metadata must be a JSON object when allowed shipping profiles are specified"
+                    .to_string(),
+            ));
+        }
     };
     let mut shipping_profiles = match metadata_object.remove("shipping_profiles") {
         Some(Value::Object(object)) => object,
@@ -1456,7 +1499,73 @@ fn apply_allowed_shipping_profiles_to_metadata(
         "shipping_profiles".to_string(),
         Value::Object(shipping_profiles),
     );
-    Value::Object(metadata_object)
+    Ok(Value::Object(metadata_object))
+}
+
+pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    let Some(checkout) = root.remove("checkout") else {
+        return Ok(Value::Object(root));
+    };
+
+    let mut checkout = match checkout {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item checkout metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    for key in [
+        "operation_id",
+        "order_id",
+        "order_plan_hash",
+        "fulfillment_index",
+        "fulfillment_key",
+    ] {
+        checkout.remove(key);
+    }
+
+    if let Some(cart_line_item_id) = checkout.get("cart_line_item_id").cloned() {
+        let canonical = cart_line_item_id
+            .as_str()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .filter(|value| !value.is_nil())
+            .map(|value| Value::String(value.to_string()))
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "fulfillment item checkout cart_line_item_id must be a non-nil UUID string"
+                        .to_string(),
+                )
+            })?;
+        checkout.insert("cart_line_item_id".to_string(), canonical);
+    }
+
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
+    }
+
+    Ok(Value::Object(root))
+}
+
+fn validate_object_metadata(metadata: &Value, resource: &str) -> FulfillmentResult<()> {
+    if !metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "{resource} metadata must be a JSON object",
+        )));
+    }
+    Ok(())
 }
 
 fn validate_fulfillment_items(
@@ -1632,23 +1741,37 @@ fn build_fulfillment_audit_event(
     })
 }
 
-fn append_audit_event(metadata: Value, event: Value) -> Value {
+fn append_audit_event(metadata: Value, event: Value) -> FulfillmentResult<Value> {
     let mut metadata_object = match metadata {
         Value::Object(object) => object,
-        _ => Map::new(),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
     };
     let mut audit = match metadata_object.remove("audit") {
         Some(Value::Object(object)) => object,
-        _ => Map::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+        None => Map::new(),
     };
     let mut events = match audit.remove("events") {
         Some(Value::Array(items)) => items,
-        _ => Vec::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit events must be a JSON array".to_string(),
+            ));
+        }
+        None => Vec::new(),
     };
     events.push(event);
     audit.insert("events".to_string(), Value::Array(events));
     metadata_object.insert("audit".to_string(), Value::Object(audit));
-    Value::Object(metadata_object)
+    Ok(Value::Object(metadata_object))
 }
 
 impl FulfillmentItemAction {
@@ -1705,8 +1828,7 @@ async fn load_shipping_options_with_translations(
             .push(translation);
     }
 
-    rows
-        .into_iter()
+    rows.into_iter()
         .map(|row| {
             let translations = translations_by_option.remove(&row.id).unwrap_or_default();
             map_shipping_option(row, translations, requested_locale, tenant_default_locale)
@@ -1820,6 +1942,11 @@ fn normalize_translation_inputs(
         if name.is_empty() {
             return Err(FulfillmentError::Validation(
                 "Shipping option name cannot be empty".to_string(),
+            ));
+        }
+        if name.chars().count() > 120 {
+            return Err(FulfillmentError::Validation(
+                "Shipping option name must be at most 120 characters".to_string(),
             ));
         }
         normalized.push(ShippingOptionTranslationInput {
@@ -2006,6 +2133,7 @@ mod tests {
     use crate::entities::{shipping_option, shipping_option_translation};
     use chrono::Utc;
     use rust_decimal::Decimal;
+    use serde_json::Value;
     use uuid::Uuid;
 
     fn translation(
@@ -2058,14 +2186,15 @@ mod tests {
     fn persisted_locale_validation_rejects_invalid_and_noncanonical_rows() {
         let option_id = Uuid::new_v4();
 
-        let invalid = validate_persisted_shipping_option_locales(&[
-            translation(option_id, "not@a-locale", "Broken"),
-        ]);
+        let invalid = validate_persisted_shipping_option_locales(&[translation(
+            option_id,
+            "not@a-locale",
+            "Broken",
+        )]);
         assert!(invalid.is_err());
 
-        let noncanonical = validate_persisted_shipping_option_locales(&[
-            translation(option_id, "EN", "Broken"),
-        ]);
+        let noncanonical =
+            validate_persisted_shipping_option_locales(&[translation(option_id, "EN", "Broken")]);
         assert!(noncanonical.is_err());
     }
 
@@ -2077,9 +2206,163 @@ mod tests {
     }
 
     #[test]
+    fn checkout_plan_hash_normalization_is_canonical() {
+        let hash = "A".repeat(64);
+        assert_eq!(
+            super::normalize_checkout_plan_hash(&hash).expect("valid hash"),
+            "a".repeat(64)
+        );
+    }
+
+    #[test]
     fn validate_tenant_id_rejects_nil_identity() {
         assert!(super::validate_tenant_id(Uuid::nil()).is_err());
         assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_oversized_shipping_option_name() {
+        let name = "x".repeat(121);
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
+                locale: "en".to_string(),
+                name,
+            }]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn item_checkout_metadata_removes_legacy_identity_keys() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "order_id": Uuid::new_v4().to_string(),
+                "order_plan_hash": "a".repeat(64),
+                "fulfillment_index": 4,
+                "fulfillment_key": "legacy",
+                "cart_line_item_id": cart_line_item_id.to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_item_checkout_metadata(metadata)
+            .expect("valid item checkout metadata should sanitize");
+        let canonical_cart_line_item_id = cart_line_item_id.to_string();
+        assert_eq!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str),
+            Some(canonical_cart_line_item_id.as_str())
+        );
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
+    }
+
+    #[test]
+    fn item_checkout_metadata_rejects_invalid_cart_line_identity() {
+        let metadata = serde_json::json!({
+            "checkout": {
+                "cart_line_item_id": "not-a-uuid"
+            }
+        });
+
+        assert!(super::strip_fulfillment_item_checkout_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_rejects_malformed_checkout_namespace() {
+        let metadata = serde_json::json!({
+            "checkout": "not-an-object",
+            "customer_note": "keep"
+        });
+
+        assert!(super::strip_fulfillment_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn create_fulfillment_metadata_requires_object_shape() {
+        assert!(
+            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment").is_err()
+        );
+        assert!(
+            super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err()
+        );
+        assert!(super::validate_object_metadata(&serde_json::json!({}), "fulfillment").is_ok());
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_persisted_metadata() {
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_namespace() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": "legacy scalar"}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_events() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": {"events": "legacy scalar"}}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_non_object_metadata() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_rejects_non_object_metadata() {
+        assert!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!("legacy scalar"),
+                Some(vec!["bulky".to_string()]),
+            )
+            .is_err()
+        );
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!({"customer_note": "keep"}),
+                Some(vec!["bulky".to_string()]),
+            )
+            .expect("object metadata is valid")
+            .get("shipping_profiles")
+            .and_then(|value| value.get("allowed_slugs"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+            Some(1)
+        );
     }
 
     #[test]
@@ -2142,12 +2425,11 @@ mod tests {
 
     #[test]
     fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
-        let result = super::normalize_translation_inputs(vec![
-            crate::dto::ShippingOptionTranslationInput {
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
                 locale: "und".to_string(),
                 name: "Express".to_string(),
-            },
-        ]);
+            }]);
 
         assert!(result.is_err());
     }
@@ -2173,7 +2455,8 @@ mod tests {
             }
         });
 
-        let merged = super::merge_fulfillment_metadata(current, patch);
+        let merged =
+            super::merge_fulfillment_metadata(current, patch).expect("valid metadata should merge");
 
         assert_eq!(
             merged.get("customer_note").and_then(Value::as_str),
@@ -2211,7 +2494,8 @@ mod tests {
             "customer_note": "keep"
         });
 
-        let sanitized = super::strip_fulfillment_metadata(value);
+        let sanitized =
+            super::strip_fulfillment_metadata(value).expect("valid metadata should sanitize");
 
         assert_eq!(
             sanitized.get("customer_note").and_then(Value::as_str),

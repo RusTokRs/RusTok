@@ -66,7 +66,7 @@ fn map_platform_settings_update_error(error: SettingsError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input("Invalid settings category")
         }
         SettingsError::ValidationFailed(errors) => {
-            <FieldError as GraphQLError>::bad_user_input(format!(
+            <FieldError as GraphQLError>::bad_user_input(&format!(
                 "Settings validation failed: {}",
                 errors.join("; ")
             ))

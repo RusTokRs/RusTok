@@ -1,7 +1,6 @@
 //! Governance integration and contract tests.
 #![allow(unused_imports)]
 
-use super::*;
 use super::actions_ownership::*;
 use super::actions_review::*;
 use super::admissions::*;
@@ -30,6 +29,7 @@ use super::validation_jobs::*;
 use super::validation_results::*;
 use super::validation_stages::*;
 use super::validation_work_items::*;
+use super::*;
 
 mod fixtures;
 

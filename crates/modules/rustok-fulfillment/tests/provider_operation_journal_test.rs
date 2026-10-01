@@ -2,10 +2,9 @@ use chrono::Utc;
 use rustok_fulfillment::entities::fulfillment;
 use rustok_fulfillment::{
     BeginProviderOperation, DeliverFulfillmentInput, FulfillmentProviderOperationJournal,
-    FulfillmentProviderOperationRecovery, FulfillmentService, ReopenFulfillmentInput,
-    PROVIDER_OPERATION_COMMITTED,
+    FulfillmentProviderOperationRecovery, FulfillmentService, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED,
+    PROVIDER_OPERATION_SUCCEEDED, ReopenFulfillmentInput,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, Set, Statement};
@@ -27,7 +26,6 @@ async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
             .expect("provider journal migration should run");
     }
 }
-
 
 async fn insert_test_fulfillment(
     db: &sea_orm::DatabaseConnection,
@@ -145,10 +143,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
         .expect("journal operation");
 
     assert!(
-        journal
-            .get(wrong_tenant, operation.id)
-            .await
-            .is_err(),
+        journal.get(wrong_tenant, operation.id).await.is_err(),
         "foreign tenant must not read provider operation"
     );
     assert!(
@@ -278,7 +273,10 @@ async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() 
         .await
         .expect("reconciliation state");
 
-    assert_eq!(unresolved.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
+    assert_eq!(
+        unresolved.status,
+        PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+    );
     assert!(unresolved.provider_result.is_none());
 
     let migration = rustok_fulfillment::migrations::migrations()
@@ -297,8 +295,7 @@ async fn provider_reconciliation_rollback_blocks_unresolved_external_outcomes() 
         .await
         .expect("provider operation remains readable after blocked rollback");
     assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        current.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
         "blocked rollback must not make an unresolved operation retryable"
     );
     assert!(current.provider_result.is_none());
@@ -389,7 +386,10 @@ async fn checkout_label_payment_rollback_blocks_retryable_unpaid_operation() {
         .get(tenant_id, operation.id)
         .await
         .expect("provider operation remains readable after blocked rollback");
-    assert_eq!(current.status, rustok_fulfillment::PROVIDER_OPERATION_PENDING);
+    assert_eq!(
+        current.status,
+        rustok_fulfillment::PROVIDER_OPERATION_PENDING
+    );
 
     assert!(
         journal
@@ -489,8 +489,7 @@ async fn cancelled_order_quarantines_existing_executing_checkout_label_on_migrat
         .await
         .expect("provider operation remains readable after migration upgrade");
     assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        current.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
         "an already executing label operation on a cancelled order must be quarantined during upgrade"
     );
     assert!(current.provider_completed_at.is_some());
@@ -589,10 +588,7 @@ async fn cancelled_order_quarantines_executing_checkout_label() {
     .expect("order cancellation should persist");
 
     assert!(
-        journal
-            .get(tenant_id, pending_operation.id)
-            .await
-            .is_err(),
+        journal.get(tenant_id, pending_operation.id).await.is_err(),
         "pending checkout label operations must be deleted when the order is cancelled"
     );
 
@@ -601,8 +597,7 @@ async fn cancelled_order_quarantines_executing_checkout_label() {
         .await
         .expect("provider operation remains readable after cancellation");
     assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+        current.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
         "in-flight label execution must be quarantined when the order is cancelled"
     );
     assert!(current.provider_completed_at.is_some());
@@ -647,7 +642,7 @@ async fn premature_checkout_label_insert_requires_paid_order() {
 
     let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
-    for index in 6..=10 {
+    for index in 6..=11 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -745,7 +740,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
     .await
     .expect("legacy executing operation should be insertable before the new guard");
 
-    for index in 7..=9 {
+    for index in 7..=10 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -754,7 +749,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
             .expect("required provider migration should install");
     }
     migrations
-        .get(10)
+        .get(11)
         .expect("premature insert guard migration should exist")
         .up(&manager)
         .await
@@ -765,10 +760,7 @@ async fn premature_checkout_label_migration_quarantines_existing_unpaid_executio
         .get(tenant_id, operation.id)
         .await
         .expect("quarantined operation should remain readable");
-    assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-    );
+    assert_eq!(current.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED);
     assert!(current.provider_completed_at.is_some());
     assert_eq!(
         current.error_message.as_deref(),
@@ -803,7 +795,7 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
 
     let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
-    for index in 6..=10 {
+    for index in 6..=11 {
         migrations
             .get(index)
             .expect("required provider migration should exist")
@@ -837,7 +829,7 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
         .expect("operation should be executing");
 
     let rollback = migrations
-        .get(10)
+        .get(11)
         .expect("premature insert guard migration should exist")
         .down(&manager)
         .await;
@@ -850,7 +842,10 @@ async fn premature_checkout_label_rollback_requires_execution_quiescence() {
         .get(tenant_id, operation.id)
         .await
         .expect("operation remains readable after blocked rollback");
-    assert_eq!(current.status, rustok_fulfillment::PROVIDER_OPERATION_EXECUTING);
+    assert_eq!(
+        current.status,
+        rustok_fulfillment::PROVIDER_OPERATION_EXECUTING
+    );
 }
 
 #[tokio::test]
@@ -924,7 +919,6 @@ async fn manual_success_reconciliation_validates_provider_identity() {
     assert_eq!(reconciled.status, PROVIDER_OPERATION_SUCCEEDED);
     assert_eq!(reconciled.provider_reference.as_deref(), Some("label-1"));
 }
-
 
 #[tokio::test]
 async fn provider_operation_insert_cannot_cross_fulfillment_tenant_boundary() {
@@ -1048,8 +1042,7 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         .await
         .expect("provider operation remains readable");
     assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_SUCCEEDED,
+        current.status, PROVIDER_OPERATION_SUCCEEDED,
         "delivery metadata must not commit a provider operation"
     );
 
@@ -1076,8 +1069,7 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
         .await
         .expect("provider operation remains readable after reopen");
     assert_eq!(
-        current.status,
-        PROVIDER_OPERATION_SUCCEEDED,
+        current.status, PROVIDER_OPERATION_SUCCEEDED,
         "reopen metadata must not commit a provider operation"
     );
 
@@ -1191,7 +1183,10 @@ async fn fulfillment_metadata_commits_provider_operation_in_the_same_database_wr
     }));
     active.update(&db).await.expect("owner metadata update");
 
-    let committed = journal.get(tenant_id, operation.id).await.expect("committed journal");
+    let committed = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("committed journal");
     assert_eq!(committed.status, PROVIDER_OPERATION_COMMITTED);
     assert!(committed.committed_at.is_some());
 }

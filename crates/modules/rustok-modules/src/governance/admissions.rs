@@ -3,10 +3,10 @@
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
 use semver::Version;
 
-use super::*;
 use super::evidence::*;
 use super::helpers::*;
 use super::staging_alloy::*;
+use super::*;
 
 pub(crate) async fn canonical_marketplace_artifact_contract(
     transaction: &DatabaseTransaction,
@@ -603,4 +603,3 @@ pub(crate) async fn persist_platform_admission_contract(
     }
     Ok(())
 }
-

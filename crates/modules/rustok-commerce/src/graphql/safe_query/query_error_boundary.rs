@@ -283,7 +283,8 @@ impl From<FulfillmentError> for BoundaryError {
                 false,
                 "not_found",
             ),
-            FulfillmentError::InvalidTransition { .. } => (
+            FulfillmentError::InvalidTransition { .. }
+            | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
                 "Fulfillment state conflicts with this query",
                 "FULFILLMENT_STATE_CONFLICT",
                 false,

@@ -1,14 +1,15 @@
 //! Alloy authored artifact staging and sandbox security stage reconciliation.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
+};
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
 use super::validation_evidence::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Stages one reviewed immutable Alloy source revision for an already
     /// submitted registry artifact. This path is deliberately neither a
     /// platform build nor an external prebuilt: it records the exact Alloy
@@ -425,7 +426,6 @@ impl SeaOrmModuleGovernanceService {
             request_revision: request_revision + 1,
         })
     }
-
 }
 
 pub(crate) async fn alloy_authored_supply_chain_evidence(

@@ -39,7 +39,7 @@ impl FulfillmentReconciliationService {
         operation_id: Uuid,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
-        let operation = journal.get(operation_id).await?;
+        let operation = journal.get(tenant_id, operation_id).await?;
         if operation.tenant_id != tenant_id {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment provider operation {operation_id} does not belong to tenant {tenant_id}"
@@ -65,7 +65,7 @@ impl FulfillmentReconciliationService {
             return Ok(current);
         }
         if metadata_operation_id(&current.metadata) == Some(operation_id) {
-            journal.mark_committed(operation_id).await?;
+            journal.mark_committed(tenant_id, operation_id).await?;
             return Ok(current);
         }
 
@@ -150,7 +150,7 @@ impl FulfillmentReconciliationService {
                         .await?
                 }
                 "create_label" => {
-                    journal.mark_committed(operation_id).await?;
+                    journal.mark_committed(tenant_id, operation_id).await?;
                     return Ok(current);
                 }
                 other => {
@@ -160,9 +160,9 @@ impl FulfillmentReconciliationService {
                 }
             };
 
-        let reconciled = journal.get(operation_id).await?;
+        let reconciled = journal.get(tenant_id, operation_id).await?;
         if reconciled.status != PROVIDER_OPERATION_COMMITTED {
-            journal.mark_committed(operation_id).await?;
+            journal.mark_committed(tenant_id, operation_id).await?;
         }
         Ok(updated)
     }

@@ -249,7 +249,8 @@ fn log_cart_delivery_group_enrichment_error(
         FulfillmentError::FulfillmentNotFound(_) => {
             ("fulfillment.fulfillment_not_found", "not_found", false)
         }
-        FulfillmentError::InvalidTransition { .. } => {
+        FulfillmentError::InvalidTransition { .. }
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
         FulfillmentError::Database(_) => {

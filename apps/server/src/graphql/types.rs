@@ -429,6 +429,7 @@ fn sanitized_recovery_error_message(
 
 impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
     fn from(plan: rustok_api::ModuleOperationRecoveryPlanView) -> Self {
+        let error_message = sanitized_recovery_error_message(&plan.issue, plan.error_message);
         Self {
             operation_id: plan
                 .operation_id
@@ -447,7 +448,7 @@ impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecove
             recommended_action: plan.recommended_action,
             correlation_id: plan.correlation_id,
             requested_by: plan.requested_by,
-            error_message: sanitized_recovery_error_message(&plan.issue, plan.error_message),
+            error_message,
         }
     }
 }

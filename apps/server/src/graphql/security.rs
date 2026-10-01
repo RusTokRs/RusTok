@@ -89,12 +89,12 @@ fn collect_sensitive_fields_from_selection_set(
                 }
             }
             Selection::FragmentSpread(fragment) => {
-                let fragment_name = fragment.node.fragment_name.node.clone();
-                if !visited_fragments.insert(fragment_name.clone()) {
+                let fragment_name = &fragment.node.fragment_name.node;
+                if !visited_fragments.insert(fragment_name.to_string()) {
                     continue;
                 }
 
-                if let Some(definition) = document.fragments.get(&fragment_name) {
+                if let Some(definition) = document.fragments.get(fragment_name) {
                     collect_sensitive_fields_from_selection_set(
                         operation_type,
                         &definition.node.selection_set.node,

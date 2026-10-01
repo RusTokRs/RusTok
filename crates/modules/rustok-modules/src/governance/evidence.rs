@@ -1,8 +1,9 @@
 //! Author signature evidence, build attestations, and platform admission recording.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
+};
 
-use super::*;
 use super::admissions::*;
 use super::helpers::*;
 use super::mapping::*;
@@ -10,9 +11,9 @@ use super::receipts::*;
 use super::staging_alloy::*;
 use super::staging_external::*;
 use super::validation_work_items::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Records one operator-supplied author signature for the exact artifact
     /// currently attached to a publish request. The signed subject is loaded
     /// under the owner request lock rather than trusted from the transport.
@@ -420,7 +421,6 @@ impl SeaOrmModuleGovernanceService {
         tx.commit().await.map_err(store_error)?;
         Ok(result)
     }
-
 }
 
 pub(crate) async fn load_publication_evidence_contract(
@@ -463,4 +463,3 @@ pub(crate) async fn load_publication_evidence_contract(
     }
     Ok((reference, format!("sha256:{digest}")))
 }
-

@@ -164,8 +164,8 @@ async fn admit_release(
 
     let backend = db.get_database_backend();
     let placeholders = match backend {
-        sea_orm::DbBackend::Postgres => (1..=16).map(|i| format!("${i}")).collect::<Vec<_>>(),
-        _ => (1..=16).map(|i| format!("?{i}")).collect::<Vec<_>>(),
+        sea_orm::DbBackend::Postgres => (1..=17).map(|i| format!("${i}")).collect::<Vec<_>>(),
+        _ => (1..=17).map(|i| format!("?{i}")).collect::<Vec<_>>(),
     };
 
     db.execute_raw(sea_orm::Statement::from_sql_and_values(
@@ -174,7 +174,7 @@ async fn admit_release(
             "INSERT INTO module_admitted_oci_releases (\
                 release_digest, scope_kind, scope_tenant_key, registry, repository, slug, version, \
                 payload_digest, payload_media_type, payload_size_bytes, descriptor_json, \
-                artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, admitted_at \
+                artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, request_digest, admitted_at \
              ) VALUES ({}, datetime('now'))",
             placeholders.join(", ")
         ),
@@ -195,6 +195,7 @@ async fn admit_release(
             Uuid::new_v4().to_string().into(),
             "trace-wave-admit".into(),
             Uuid::new_v4().to_string().into(),
+            sha256_digest(b"request").into(),
         ],
     ))
     .await

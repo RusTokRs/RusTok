@@ -1,13 +1,14 @@
 //! External prebuilt artifact staging and security stage reconciliation.
 
-use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait, Value,
+};
 
-use super::*;
 use super::helpers::*;
 use super::validation_evidence::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Stages an externally built payload only after the owner has recorded
     /// its provenance-policy decision, source-evidence classification, and a
     /// separate quarantine review. This is intentionally distinct from the
@@ -329,7 +330,6 @@ impl SeaOrmModuleGovernanceService {
             request_revision: request_revision + 1,
         })
     }
-
 }
 
 pub(crate) async fn external_prebuilt_supply_chain_evidence(
@@ -421,4 +421,3 @@ pub(crate) async fn reconcile_external_prebuilt_security_stage(
     )
     .await
 }
-

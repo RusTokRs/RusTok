@@ -8,12 +8,12 @@ use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,
     TranslationDataClassification, TranslationFieldDescriptor, TranslationFieldSnapshot,
-    TranslationPatchIssue, TranslationPatchIssueSeverity,
-    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
-    TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
-    TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetChange, TranslationTargetChangePage, TranslationTargetChangesRequest,
-    TranslationTargetProgressFacts, TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
+    TranslationPatchValidation, TranslationResourceIdentity, TranslationResourceLifecycle,
+    TranslationResourcePage, TranslationResourceSnapshot, TranslationResourceSummary,
+    TranslationStrategy, TranslationTargetCapability, TranslationTargetChange,
+    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
     TranslationTargetProviderDescriptor, TranslationTargetRegistryError, TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values, read_request_from_patch,
@@ -744,7 +744,6 @@ fn fulfillment_translation_error_to_port_error(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -823,10 +822,7 @@ mod tests {
         let request = test_request(&"x".repeat(121));
         let validation = owner_patch_value_validation(&request, &snapshot);
         assert!(!validation.accepted);
-        assert_eq!(
-            validation.issues[0].code,
-            "target_value_too_long"
-        );
+        assert_eq!(validation.issues[0].code, "target_value_too_long");
     }
 
     #[test]
@@ -835,10 +831,7 @@ mod tests {
         let request = test_request("   ");
         let validation = owner_patch_value_validation(&request, &snapshot);
         assert!(!validation.accepted);
-        assert_eq!(
-            validation.issues[0].code,
-            "required_target_value_missing"
-        );
+        assert_eq!(validation.issues[0].code, "required_target_value_missing");
     }
 
     #[test]
@@ -853,4 +846,3 @@ mod tests {
         assert_eq!(error.code, "fulfillment.translation_resource_id_invalid");
     }
 }
-

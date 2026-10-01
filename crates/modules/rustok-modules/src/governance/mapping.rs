@@ -2,8 +2,8 @@
 
 use sea_orm::QueryResult;
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 pub(crate) struct GovernanceRequestRow {
     pub(crate) snapshot: ModuleGovernanceRequestSnapshot,
@@ -719,7 +719,9 @@ pub(crate) fn governance_action(
     }
 }
 
-pub(crate) fn governance_event_payload(details: &serde_json::Value) -> ModuleGovernanceEventPayload {
+pub(crate) fn governance_event_payload(
+    details: &serde_json::Value,
+) -> ModuleGovernanceEventPayload {
     let string = |key| {
         details
             .get(key)
@@ -849,4 +851,3 @@ pub(crate) fn governance_stage_blocked_reason_code(key: &str) -> Option<&'static
         _ => None,
     }
 }
-

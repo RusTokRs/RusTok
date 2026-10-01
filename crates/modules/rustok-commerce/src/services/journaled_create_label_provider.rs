@@ -95,15 +95,15 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
         ) {
             let result = deserialize_result(&operation)?;
             if operation.status != PROVIDER_OPERATION_COMMITTED {
-                commit_create_label(&journal, operation.id).await?;
+                commit_create_label(&journal, operation.tenant_id, operation.id).await?;
             }
             return Ok(result);
         }
         if operation.status == PROVIDER_OPERATION_EXECUTING {
             return Err(operation_in_progress(operation.id));
         }
-        if journal.claim_execution(operation.id).await?.is_none() {
-            let current = journal.get(operation.id).await?;
+        if journal.claim_execution(operation.tenant_id, operation.id).await?.is_none() {
+            let current = journal.get(operation.tenant_id, operation.id).await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_COMMITTED
@@ -112,7 +112,7 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
             ) {
                 let result = deserialize_result(&current)?;
                 if current.status != PROVIDER_OPERATION_COMMITTED {
-                    commit_create_label(&journal, current.id).await?;
+                    commit_create_label(&journal, current.tenant_id, current.id).await?;
                 }
                 return Ok(result);
             }
@@ -127,7 +127,7 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
             Ok(result) => result,
             Err(source) => {
                 if let Err(journal_error) = journal
-                    .mark_provider_error(operation.id, source.to_string())
+                    .mark_provider_error(operation.tenant_id, operation.id, source.to_string())
                     .await
                 {
                     return Err(FulfillmentError::Validation(format!(
@@ -145,6 +145,7 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
         })?;
         journal
             .mark_provider_succeeded(
+                operation.tenant_id,
                 operation.id,
                 result.external_reference.clone(),
                 result_payload,
@@ -156,7 +157,7 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
                     operation.id
                 ))
             })?;
-        commit_create_label(&journal, operation.id).await?;
+        commit_create_label(&journal, operation.tenant_id, operation.id).await?;
         Ok(result)
     }
 
@@ -190,11 +191,13 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
 
 async fn commit_create_label(
     journal: &FulfillmentProviderOperationJournal,
+    tenant_id: uuid::Uuid,
     operation_id: uuid::Uuid,
 ) -> FulfillmentResult<()> {
-    if let Err(source) = journal.mark_committed(operation_id).await {
+    if let Err(source) = journal.mark_committed(tenant_id, operation_id).await {
         let _ = journal
             .mark_reconciliation_required(
+                tenant_id,
                 operation_id,
                 format!("create_label provider succeeded, but journal commit failed: {source}"),
             )

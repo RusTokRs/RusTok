@@ -3,9 +3,9 @@
 use sea_orm::{ConnectionTrait, Statement};
 use semver::Version;
 
-use super::*;
 use super::helpers::*;
 use super::projections::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
     pub async fn published_artifact_contracts(
@@ -220,8 +220,6 @@ impl SeaOrmModuleGovernanceService {
             })
     }
 }
-
-
 
 pub(crate) fn marketplace_translation_for_locales(
     translations: &[RegistryMarketplaceTranslationProjection],

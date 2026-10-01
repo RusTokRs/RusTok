@@ -530,19 +530,21 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::PreHookFailed(err) => {
             tracing::error!(%err, "module pre-hook failed in GraphQL mutation");
             FieldError::new(toggle_err_hook_failed(&err))
-            .extend_with(|_, ext| {
-                ext.set("code", "MODULE_HOOK_FAILED");
-                ext.set("retryable_issue", false);
-                ext.set("operation_issue", "pre_hook_failed");
-            }),
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_HOOK_FAILED");
+                    ext.set("retryable_issue", false);
+                    ext.set("operation_issue", "pre_hook_failed");
+                })
+        }
         ToggleModuleError::PostHookFailed(err) => {
             tracing::error!(%err, "module post-hook failed in GraphQL mutation");
             FieldError::new(toggle_err_hook_failed(&err))
-            .extend_with(|_, ext| {
-                ext.set("code", "MODULE_HOOK_FAILED");
-                ext.set("retryable_issue", true);
-                ext.set("operation_issue", "post_hook_failed");
-            }),
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_HOOK_FAILED");
+                    ext.set("retryable_issue", true);
+                    ext.set("operation_issue", "post_hook_failed");
+                })
+        }
         ToggleModuleError::Policy(_) => {
             <FieldError as GraphQLError>::internal_error("Internal server error")
         }

@@ -2,11 +2,10 @@
 
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Renews a remote validation lease through a conditional update. The
     /// claim id, runner id, running state, remote ownership, and unexpired
     /// lease are one compare-and-swap predicate.
@@ -604,5 +603,4 @@ impl SeaOrmModuleGovernanceService {
         }
         Ok(requeued)
     }
-
 }

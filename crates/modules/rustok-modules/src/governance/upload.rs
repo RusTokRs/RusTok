@@ -2,16 +2,15 @@
 
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::commands::valid_command_context_actor;
 use super::helpers::*;
 use super::mapping::*;
 use super::receipts::*;
 use super::validation_evidence::*;
+use super::*;
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Authorizes and derives the immutable content-addressed destination for
     /// one publish-artifact upload. The host may hash and deliver bytes, but
     /// cannot select a request state, grant itself upload authority, or
@@ -388,5 +387,4 @@ impl SeaOrmModuleGovernanceService {
         tx.commit().await.map_err(store_error)?;
         Ok(result)
     }
-
 }

@@ -73,7 +73,10 @@ pub(crate) fn json_string_list(
         .collect())
 }
 
-pub(crate) fn required_column<T>(row: &QueryResult, column: &str) -> Result<T, ModuleGovernanceError>
+pub(crate) fn required_column<T>(
+    row: &QueryResult,
+    column: &str,
+) -> Result<T, ModuleGovernanceError>
 where
     T: sea_orm::TryGetable,
 {
@@ -112,14 +115,20 @@ pub(crate) async fn publish_request_revision_conflict(
     })
 }
 
-pub(crate) fn optional_column<T>(row: &QueryResult, column: &str) -> Result<Option<T>, ModuleGovernanceError>
+pub(crate) fn optional_column<T>(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<T>, ModuleGovernanceError>
 where
     T: sea_orm::TryGetable,
 {
     row.try_get("", column).map_err(store_error)
 }
 
-pub(crate) fn required_timestamp(row: &QueryResult, column: &str) -> Result<String, ModuleGovernanceError> {
+pub(crate) fn required_timestamp(
+    row: &QueryResult,
+    column: &str,
+) -> Result<String, ModuleGovernanceError> {
     row.try_get::<chrono::DateTime<chrono::Utc>>("", column)
         .map(|value| value.to_rfc3339())
         .map_err(store_error)
@@ -255,7 +264,6 @@ pub(crate) fn registry_publish_artifact_storage_key(
     .map_err(|error| ModuleGovernanceError::Store(error.to_string()))
 }
 
-
 pub(crate) fn valid_publication_translations(
     default_locale: &str,
     translations: &[(String, String, String)],
@@ -290,7 +298,6 @@ pub(crate) fn receipt_subject_digest_sha256(
     receipt_digest_sha256(&receipt.artifact.digest)
 }
 
-
 pub(crate) fn platform_build_artifact_identities_valid(
     component_digest: &str,
     receipt: &ModuleBuildPublicationReceipt,
@@ -310,7 +317,9 @@ pub(crate) fn prefixed_sha256_digest(digest: &str) -> bool {
     digest.strip_prefix("sha256:").is_some_and(is_sha256_hex)
 }
 
-pub(crate) fn platform_admission_policy_revision(evidence: &ArtifactVerificationEvidence) -> String {
+pub(crate) fn platform_admission_policy_revision(
+    evidence: &ArtifactVerificationEvidence,
+) -> String {
     format!(
         "trust:{};capability:{}",
         evidence.trust_policy_revision, evidence.capability_policy_revision
@@ -381,7 +390,9 @@ pub(crate) fn validate_publication_evidence_fields(
     Ok(())
 }
 
-pub(crate) fn publication_evidence_digest_sha256(command: &ModulePublicationEvidenceCommand) -> String {
+pub(crate) fn publication_evidence_digest_sha256(
+    command: &ModulePublicationEvidenceCommand,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok.module.publication-evidence\0");
     for value in [
@@ -404,4 +415,3 @@ pub(crate) fn publication_evidence_digest_sha256(command: &ModulePublicationEvid
     }
     hex::encode(hasher.finalize())
 }
-

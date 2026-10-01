@@ -2,9 +2,8 @@
 
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, Statement, Value};
 
-use super::*;
 use super::helpers::*;
-
+use super::*;
 
 pub(crate) fn validation_stage_actor_label(
     principal: &serde_json::Value,
@@ -191,7 +190,6 @@ pub(crate) async fn pass_owner_evidence_validation_stage(
     }
     Ok(())
 }
-
 
 pub(crate) fn follow_up_validation_stage_detail(stage_key: &str) -> &'static str {
     match stage_key {

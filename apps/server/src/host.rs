@@ -271,7 +271,7 @@ fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> Se
         return router.merge(controllers::marketplace_registry::read_only_router());
     }
 
-    router
+    let router = router
         .merge(controllers::marketplace_registry::router())
         .merge(controllers::artifact_http::router())
         .merge(controllers::artifact_permissions::router())

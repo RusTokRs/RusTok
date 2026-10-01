@@ -46,9 +46,7 @@ pub async fn import_forum_categories(
         .await?;
 
     let mut existing_map: HashMap<String, Uuid> = HashMap::new();
-    if let Some(tree) = existing_tree {
-        collect_tree_categories(&tree.roots, &mut existing_map);
-    }
+    collect_tree_categories(&existing_tree.roots, &mut existing_map);
 
     for cat in categories {
         if let Some(&existing_id) = existing_map.get(&cat.slug) {
