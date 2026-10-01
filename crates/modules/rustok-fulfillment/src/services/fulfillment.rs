@@ -2403,7 +2403,9 @@ mod tests {
             }
         });
 
-        assert!(super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err());
+        assert!(
+            super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err()
+        );
         assert!(
             super::merge_fulfillment_metadata(
                 serde_json::json!({
