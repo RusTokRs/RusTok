@@ -177,6 +177,26 @@ expectNotContains(
   "fn parse_accept_language(",
   "a duplicate Page Builder Accept-Language parser",
 );
+expectContains(
+  "crates/ui/fly/src/runtime_locale.rs",
+  "rustok_ui_i18n::normalize_locale_tag(locale)",
+  "fly runtime locale canonicalization to delegate to rustok-ui-i18n",
+);
+expectNotContains(
+  "crates/ui/fly/src/runtime_locale.rs",
+  "to_ascii_lowercase()",
+  "the lowercasing locale normalizer that produced non-canonical tags like 'ru-ru'",
+);
+expectContains(
+  "crates/ui/fly/src/runtime_locale.rs",
+  "rustok_ui_i18n::locale_fallback_chain(locale)",
+  "fly localized-value selection to share the platform fallback chain",
+);
+expectContains(
+  "crates/libs/rustok-api/src/locale.rs",
+  "rustok_ui_i18n::locale_fallback_chain(normalized.as_str())",
+  "rustok-api fallback candidates to share the platform fallback chain",
+);
 
 const forbiddenLocaleDefaultPatterns = [
   "default('en')",

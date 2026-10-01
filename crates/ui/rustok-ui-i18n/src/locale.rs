@@ -163,6 +163,20 @@ pub fn locale_candidates(locale: Option<&str>, default_locale: &str) -> Vec<Stri
     candidates
 }
 
+/// Returns the structural fallback chain of a single locale, most specific
+/// first, without appending a default locale or the platform `"en"`.
+///
+/// This is the primitive behind [`locale_candidates`]. It exists so hosts that
+/// already own their own precedence list (tenant policy, runtime locale
+/// context, stored translation lookup) can share one chain instead of
+/// reimplementing "strip everything after the first hyphen", which skips the
+/// script layer and resolves `zh-Hant-TW` straight to `zh`.
+pub fn locale_fallback_chain(locale: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_locale_candidate_internal(&mut candidates, Some(locale));
+    candidates
+}
+
 fn push_locale_candidate_internal(candidates: &mut Vec<String>, locale: Option<&str>) {
     let Some(mut langid) = locale.and_then(parse_locale_tag) else {
         return;

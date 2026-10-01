@@ -240,33 +240,27 @@ fn locale_list(value: &Value) -> Vec<String> {
 }
 
 fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
-    let Some(locale) = normalize_locale_tag(locale) else {
-        return;
-    };
-    if !candidates.contains(&locale) {
-        candidates.push(locale.clone());
-    }
-    if let Some((language, _)) = locale.split_once('-') {
-        let language = language.to_string();
-        if !candidates.contains(&language) {
-            candidates.push(language);
+    // Share the platform fallback chain instead of peeling at the first
+    // hyphen, which skipped the script layer entirely (`zh-Hant-TW` resolved
+    // straight to `zh`, never consulting a `zh-Hant` translation).
+    for candidate in rustok_ui_i18n::locale_fallback_chain(locale) {
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
         }
     }
 }
 
+/// Canonicalizes a locale tag for runtime localized-value selection.
+///
+/// Delegates to `rustok-ui-i18n`, the platform owner of Unicode/CLDR locale
+/// identity. The previous implementation lowercased the whole tag, so this
+/// module produced `ru-ru` and `zh-hant` while `rustok_api::RuntimeLocale`,
+/// `tenant_locales.locale` and the `Content-Language` header all carry the
+/// canonical `ru-RU` and `zh-Hant`. Page Builder mixed both spellings inside a
+/// single context because its `Accept-Language` branch already used the
+/// canonical parser.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
-    let locale = locale.trim().replace('_', "-").to_ascii_lowercase();
-    if locale.is_empty()
-        || locale.starts_with('-')
-        || locale.ends_with('-')
-        || locale.split('-').any(str::is_empty)
-        || !locale
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '-')
-    {
-        return None;
-    }
-    Some(locale)
+    rustok_ui_i18n::normalize_locale_tag(locale)
 }
 
 fn locale_diagnostic(
@@ -380,7 +374,7 @@ mod tests {
 
     #[test]
     fn locale_tags_are_case_separator_and_subtag_sensitive() {
-        assert_eq!(normalize_locale_tag(" RU_ru ").as_deref(), Some("ru-ru"));
+        assert_eq!(normalize_locale_tag(" RU_ru ").as_deref(), Some("ru-RU"));
         assert_eq!(normalize_locale_tag("invalid locale"), None);
         assert_eq!(normalize_locale_tag("ru--RU"), None);
     }

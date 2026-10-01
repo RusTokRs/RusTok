@@ -114,8 +114,8 @@ mod tests {
             &[],
         );
 
-        assert_eq!(context.locale.as_deref(), Some("ru-ru"));
-        assert_eq!(context.fallback_locales, vec!["en-us", "de"]);
+        assert_eq!(context.locale.as_deref(), Some("ru-RU"));
+        assert_eq!(context.fallback_locales, vec!["en-US", "de"]);
     }
 
     #[test]
@@ -127,8 +127,8 @@ mod tests {
             Some("fr, de;q=0.8"),
             &configured,
         );
-        assert_eq!(route.locale.as_deref(), Some("ru-ru"));
-        assert_eq!(route.fallback_locales, vec!["fr", "de", "en", "de-de"]);
+        assert_eq!(route.locale.as_deref(), Some("ru-RU"));
+        assert_eq!(route.fallback_locales, vec!["fr", "de", "en", "de-DE"]);
 
         let header = PageBuilderLocaleContext::from_request(
             None,
@@ -137,7 +137,7 @@ mod tests {
             &configured,
         );
         assert_eq!(header.locale.as_deref(), Some("fr"));
-        assert_eq!(header.fallback_locales, vec!["de", "en", "de-de"]);
+        assert_eq!(header.fallback_locales, vec!["de", "en", "de-DE"]);
     }
 
     #[test]
@@ -147,7 +147,7 @@ mod tests {
             "customer": { "name": "Ada" },
             "$locale": "de"
         }));
-        assert_eq!(context["$locale"], "ru-ru");
+        assert_eq!(context["$locale"], "ru-RU");
         assert_eq!(context["$fallback_locales"], json!(["ru", "en"]));
         assert_eq!(context["customer"]["name"], "Ada");
     }

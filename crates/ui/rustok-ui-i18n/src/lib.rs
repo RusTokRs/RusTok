@@ -55,7 +55,8 @@ pub use locale::push_locale_candidate;
 )]
 pub use locale::push_unique;
 pub use locale::{
-    MAX_LOCALE_TAG_LEN, TextDirection, locale_candidates, locale_text_direction,
+    MAX_LOCALE_TAG_LEN, TextDirection, locale_candidates, locale_fallback_chain,
+    locale_text_direction,
     normalize_admin_locale, normalize_locale_tag, normalize_unicode_locale,
 };
 pub use messages::{

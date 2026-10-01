@@ -263,6 +263,10 @@ macro_rules! declare_module_i18n {
         /// message/term references, a present and canonical default locale,
         /// and cross-locale value/attribute variable parity.
         #[cfg(test)]
+        // The macro is normally invoked at the top of a module that defines
+        // further helpers below it, so the generated test module is not the
+        // last item in the file.
+        #[allow(clippy::items_after_test_module)]
         mod generated_module_i18n_contract {
             #[test]
             fn declared_catalog_is_valid() {
