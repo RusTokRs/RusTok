@@ -57,6 +57,14 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 
 ## Статус починки (обновляется по мере работ)
 
+> **Workflow `UI I18n Verify` зелёный целиком** на ветке `arena/01a0f3f0-rustok`
+> (run `36817196798`): Format, Repository i18n contracts, UI catalog parity,
+> UI key inventory, Test, Consumer integration, Clippy, WASM check.
+>
+> До этой работы шаг Format падал ещё на `main`, поэтому **ни один** из
+> последующих шагов воркфлоу не выполнялся — именно так дрейф контракта A-01
+> и оставался незамеченным.
+
 Исправлено в ветке `arena/01a0f3f0-rustok` (коммиты `9a1fab7`, `a71f52f`,
 `bb75810`, `33cd202`):
 
@@ -82,6 +90,7 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 | A-30 | ✅ | `deep-research-report (2).md` удалён (корневой (5) — вне i18n-скоупа, на него ссылается PRODUCTION_REMEDIATION_PLAN) |
 | A-31 | ✅ | `skip_while` заменён на `filter` |
 | A-10 | ✅ | 19 сообщений получили CLDR-селекторы (en/ru/ar), 13 — обоснованный `# plural-exempt` |
+| A-05/A-06/A-07 | ✅ | единый нормализатор и единая fallback-цепочка: `fly` и `rustok-api` делегируют в `rustok-ui-i18n`, добавлен примитив `locale_fallback_chain`, контракт-гейт запрещает возврат |
 | A-04 | ⚠️ | масштаб уточнён (8 пакетов вместо 3); класс закрыт детектором + shrink-only baseline, сам рефакторинг ждёт компилятора |
 | A-33 | ⚠️ | **новая находка**: 105 сайтов обходили Fluent через `String::replace`; 59 переведены на `fluent_args!`, 46 под shrink-only baseline |
 | — | ✅ | **новая находка**: 90 ключей использовались кодом, но отсутствовали в каталогах (русский UI показывал английский) |
@@ -90,16 +99,14 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 семь сгенерированных `fluent_args!` передавали `&x.to_string()` — ссылку на
 временное значение. Все семь — числовые поля, теперь передаются как числа.
 
-Не начато: A-05/A-06/A-07/A-32 (owner-level унификация локалей),
+Не начато: A-32 (owner-level унификация локалей),
 A-09 (CLDR `parentLocales`), A-25/A-28 (гигиена API).
 
-**A-05/A-06 требуют компилятора.** Нижний регистр локалей (`ru-ru`) зашит не
-только в `fly::normalize_locale_tag`, но и в тесты `fly/src/locale_policy.rs`,
-`fly/src/translation.rs`, `fly/src/runtime_locale.rs`,
-`rustok-page-builder/src/locale.rs` и
-`rustok-page-builder/admin/src/editor/ssr_locale_policy.rs`. Смена конвенции
-на канонический BCP-47 затрагивает ~8 файлов тестов и поведение артефактов
-Page Builder — делать это вслепую нельзя.
+Попутно устранены два пред-существующих дефекта, блокировавших весь воркфлоу:
+неотформатированные `apps/admin/src/main.rs` и `crates/libs/rustok-api/src/locale.rs`,
+и нарушение `clippy::question_mark` в `crates/ui/fly/src/context_schema.rs`.
+Шаги Format и Clippy теперь публикуют diff и диагностику в job summary и в
+аннотации, поэтому падение читается без скачивания сырого лога.
 
 ---
 
