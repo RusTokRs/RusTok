@@ -3,4 +3,5 @@
 # in docs/security/advisory-exceptions.md; do not extend an ignore without fresh reachability evidence.
 ignore = [
   "RUSTSEC-2026-0253", # lru 0.16.4 panic safety in LruCache::pop(); constrained by async-graphql and tantivy
+  "RUSTSEC-2026-0257", # webbrowser 0.8.15 browser argument injection on Unix; constrained by dioxus-devtools 0.6.2
 ]
