@@ -4181,3 +4181,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.86` complete and integrated via PR #4456, squash merge `a1eebdd7379accebe1085043f2e54d8aca733c00`.
 - **Post-merge reconciliation:** refreshed `main` at `a1eebdd7379accebe1085043f2e54d8aca733c00` and re-read the guarded arithmetic, all five lifecycle item write sites, migration contracts, README invariant, and ledger entry; the expected changes are present with no concurrent drift.
 - **Next primary module iteration:** `FS-22.06.87` — same primary module, next fulfillment-item owner boundary after refreshing integrated `main`.
+
+### FS-22.06.87 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata patch shape
+
+- **Base:** refreshed `main` at `985dd0d513e07b15913309a26d5050bd55cf8214`; dedicated branch `audit/fs-22.06.87-fulfillment-metadata-patch`.
+- **Primary scope:** one production owner module only — `merge_fulfillment_metadata` and every fulfillment lifecycle call path that uses it immediately before owner audit append and persistence.
+- **Invariant map:** lifecycle metadata patches must remain object-shaped; accepted patches must merge without replacing unrelated persisted metadata; caller audit history must remain excluded; malformed input must fail closed before the lifecycle record is committed.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.87-01:** `merge_fulfillment_metadata` validated only the persisted `current` metadata as an object. Its generic `merge_metadata` helper replaces the current value with any non-object patch. When current metadata already contained owner audit history, the subsequent audit-preservation step reconstructed an object containing only `audit`, so a scalar/array lifecycle metadata patch could silently discard every unrelated persisted metadata field while the lifecycle mutation still succeeded.
+- **Production remediation:** `merge_fulfillment_metadata` now requires the incoming patch to be a JSON object before stripping caller audit data or invoking the generic merge. Valid object patches retain the existing shallow-merge behavior and owner audit preservation; scalar/array/null patches now return validation failure before audit append or persistence.
+- **Regression coverage:** added focused pure coverage proving scalar and array lifecycle metadata patches are rejected.
+- **Immediate re-audit:** re-read `merge_fulfillment_metadata`, `validate_object_metadata`, `merge_metadata`, and all ship/deliver/reopen/reship/cancel callers. Every lifecycle mutation reaches the strengthened helper before `append_audit_event`; no direct lifecycle path can still accept a non-object patch.
+- **Fresh second pass:** independently re-read the complete lifecycle update blocks, provider-operation stripping, audit preservation, checkout metadata boundaries, and the new regression. No alternate fulfillment lifecycle metadata merge path was found in the primary module, and valid object-patch semantics remain unchanged.
+- **Documentation:** Fulfillment README now explicitly states that lifecycle metadata merge rejects both non-object persisted metadata and non-object patches before merging.
+- **Verification:** repository source inspection, lifecycle call-site tracing, immediate reread, fresh second pass, and exact branch-diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.87` complete and ready for integration.
+- **Next primary module iteration:** `FS-22.06.88` — same primary module, next fulfillment metadata/lifecycle owner boundary after refreshing integrated `main`.
