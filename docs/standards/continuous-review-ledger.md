@@ -4163,3 +4163,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** repository source inspection, caller/data-flow tracing, immediate reread, independent fresh second pass, and branch review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
 - **Status:** `FS-22.06.85` complete as a clean assessment; integration pending.
 - **Next primary module iteration:** `FS-22.06.86` — same primary module, next concrete fulfillment-item owner boundary after refreshing integrated `main`.
+
+### FS-22.06.86 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Persisted fulfillment-item progress arithmetic boundary
+
+- **Base:** refreshed `main` at `1e2bb25e43318c673680660f3865ba3869d738e0`; dedicated branch `audit/fs-22.06.86-fulfillment-item-progress`.
+- **Primary scope:** one production owner module only — persisted fulfillment-item quantity/shipped/delivered counter validation immediately before lifecycle arithmetic.
+- **Invariant map:** `quantity > 0`, all progress counters are non-negative, `delivered_quantity <= shipped_quantity <= quantity`, and lifecycle arithmetic must never operate on a persisted snapshot that violates those invariants.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.86-01:** migration `000109` installs the PostgreSQL progress check as `NOT VALID`, which protects future writes but does not retroactively validate legacy rows. `resolve_item_adjustments` previously performed unchecked subtraction such as `quantity - shipped_quantity` and `shipped_quantity - delivered_quantity` before any service-level validation. A malformed legacy row could therefore trigger integer underflow/panic or produce invalid remaining-quantity semantics before the database update guard could reject the later write.
+- **Production remediation:** added `validate_item_progress_snapshot` and made `resolve_item_adjustments` validate every loaded item before any progress arithmetic. Valid snapshots retain the exact existing quantity semantics; inconsistent persisted counters now return a stable validation error and no lifecycle mutation is attempted.
+- **Arithmetic consequence:** after the snapshot invariant is established, existing `+ adjustment` and `- adjustment` operations are bounded by `0 <= adjustment <= remaining_quantity`, so results remain inside the validated `i32` quantity range without introducing a new conversion layer.
+- **Adjacent-boundary audit:** migration `000109` remains the persistence safety net; migration `000110` continues to serialize progress updates; all five item lifecycle write sites reach `resolve_item_adjustments` before modifying progress. No direct item-progress mutation path inside `FulfillmentService` bypasses the helper.
+- **Immediate re-audit:** re-read the validator, complete `resolve_item_adjustments`, and each ship/deliver/reopen/reship arithmetic site. The validator runs before both automatic and requested adjustment planning, and no requested-input path can bypass it.
+- **Fresh second pass:** independently re-read the item progress migration contracts, all `fulfillment_item::ActiveModel` writes, response mapping, and the new regression test. No remaining unchecked item progress arithmetic was found in the primary module.
+- **Regression coverage:** added pure coverage for invalid stored states including `shipped_quantity > quantity` and negative `delivered_quantity`.
+- **Documentation:** Fulfillment README now records the fail-closed persisted-counter invariant.
+- **Verification:** repository source inspection, migration/constraint tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.86` implementation complete on the dedicated branch; PR/merge integration is the remaining step for this iteration.
+- **Next primary module iteration:** `FS-22.06.87` — same primary module, next fulfillment-item owner boundary after refreshing integrated `main`.
