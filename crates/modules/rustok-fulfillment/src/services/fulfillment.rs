@@ -2394,6 +2394,32 @@ mod tests {
     }
 
     #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_patch() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profile": "express",
+            "audit": {
+                "events": [{"type": "ship"}]
+            }
+        });
+
+        assert!(super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err());
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!({
+                    "customer_note": "keep",
+                    "shipping_profile": "express",
+                    "audit": {
+                        "events": [{"type": "ship"}]
+                    }
+                }),
+                serde_json::json!(["legacy", "array"]),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn append_audit_event_rejects_malformed_audit_namespace() {
         assert!(
             super::append_audit_event(
