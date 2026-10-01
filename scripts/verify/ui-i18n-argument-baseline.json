@@ -45,7 +45,6 @@
   ],
   "_unwiredComment": "Rust packages that ship a locale catalog but never load it, and/or still branch on a hardcoded `let russian = ..` two-language flag. The gate fails on any new package and on any stale entry, so this list can only shrink.",
   "unwiredCatalogs": [
-    "rustok-brand/admin",
     "rustok-marketplace-listing/admin",
     "rustok-marketplace-seller/admin",
     "rustok-navigation/storefront",

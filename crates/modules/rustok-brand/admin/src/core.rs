@@ -32,23 +32,21 @@ pub fn build_brand_admin_shell(
     locale: Option<&str>,
     profile: BrandAdminTransportProfile,
 ) -> BrandAdminShell {
-    let russian = locale
-        .map(|value| value.eq_ignore_ascii_case("ru") || value.starts_with("ru-"))
-        .unwrap_or(false);
-    if russian {
-        BrandAdminShell {
-            title: "Бренды".to_string(),
-            subtitle: "Управление каталогом брендов, производителями и логотипами".to_string(),
-            empty_state: "Транспорт брендов ещё не подключён к этому хосту".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
-    } else {
-        BrandAdminShell {
-            title: "Brands".to_string(),
-            subtitle: "Manage brand catalog, manufacturers, and media presentation".to_string(),
-            empty_state: "Brand transport is not mounted in this host yet".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
+    use crate::i18n::t;
+
+    BrandAdminShell {
+        title: t(locale, "brand.title", "Brands"),
+        subtitle: t(
+            locale,
+            "brand.shell.subtitle",
+            "Manage brand catalog, manufacturers, and media presentation",
+        ),
+        empty_state: t(
+            locale,
+            "brand.shell.emptyState",
+            "Brand transport is not mounted in this host yet",
+        ),
+        transport_profile: profile.as_str().to_string(),
     }
 }
 
