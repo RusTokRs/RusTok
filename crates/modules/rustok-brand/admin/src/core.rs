@@ -58,7 +58,10 @@ pub fn validate_brand_slug(slug: &str) -> Result<(), &'static str> {
     if trimmed.len() > 100 {
         return Err("Slug cannot exceed 100 characters");
     }
-    if !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("Slug can only contain alphanumeric characters, hyphens, and underscores");
     }
     Ok(())

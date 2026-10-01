@@ -56,7 +56,14 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 
     let directory_transport = transport.clone();
     let directory = local_resource(
-        move || (refresh_nonce.get(), search.get(), status_filter.get(), type_filter.get()),
+        move || {
+            (
+                refresh_nonce.get(),
+                search.get(),
+                status_filter.get(),
+                type_filter.get(),
+            )
+        },
         move |(_, search_term, status, btype)| {
             let context = directory_transport.clone();
             async move {
@@ -142,7 +149,11 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         reset_form();
-                        notice.set(Some(t(Some(locale), "bundle.notice-created", "Bundle created successfully.")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "bundle.notice-created",
+                            "Bundle created successfully.",
+                        )));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -202,7 +213,11 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         reset_form();
-                        notice.set(Some(t(Some(locale), "bundle.notice-updated", "Bundle updated successfully.")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "bundle.notice-updated",
+                            "Bundle updated successfully.",
+                        )));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -235,7 +250,11 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         delete_confirm_id.set(None);
-                        notice.set(Some(t(Some(locale), "bundle.notice-deleted", "Bundle deleted successfully.")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "bundle.notice-deleted",
+                            "Bundle deleted successfully.",
+                        )));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -831,8 +850,6 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 fn transport_context(profile: BundleAdminTransportProfile) -> BundleAdminTransportContext {
     match profile {
         BundleAdminTransportProfile::Native => BundleAdminTransportContext::native(),
-        BundleAdminTransportProfile::Graphql => {
-            BundleAdminTransportContext::graphql(None, None)
-        }
+        BundleAdminTransportProfile::Graphql => BundleAdminTransportContext::graphql(None, None),
     }
 }

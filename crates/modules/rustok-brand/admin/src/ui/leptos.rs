@@ -8,12 +8,9 @@ use crate::core::{
 };
 use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
-    BrandAdminCommand, BrandAdminCreateDraft, BrandAdminFilters,
-    BrandAdminUpdateDraft,
+    BrandAdminCommand, BrandAdminCreateDraft, BrandAdminFilters, BrandAdminUpdateDraft,
 };
-use crate::transport::{
-    BrandAdminTransportContext, execute_brand_command, load_brand_directory,
-};
+use crate::transport::{BrandAdminTransportContext, execute_brand_command, load_brand_directory};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -129,7 +126,11 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(t(Some(locale), "brand.notice-created", "Brand created successfully")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "brand.notice-created",
+                            "Brand created successfully",
+                        )));
                         reset_form();
                         refresh_nonce.update(|n| *n += 1);
                     }
@@ -181,7 +182,11 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(t(Some(locale), "brand.notice-updated", "Brand updated successfully")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "brand.notice-updated",
+                            "Brand updated successfully",
+                        )));
                         reset_form();
                         refresh_nonce.update(|n| *n += 1);
                     }
@@ -211,7 +216,11 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(t(Some(locale), "brand.notice-deleted", "Brand deleted successfully")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "brand.notice-deleted",
+                            "Brand deleted successfully",
+                        )));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Err(e) => {

@@ -59,11 +59,9 @@ function apolloClientFor(baseUrl = defaultGraphqlBaseUrl()): ApolloClient {
     defaultOptions: {
       query: {
         fetchPolicy: "no-cache",
-        errorPolicy: "all",
       },
       mutate: {
         fetchPolicy: "no-cache",
-        errorPolicy: "all",
       },
     },
   });
@@ -96,11 +94,13 @@ export async function storefrontGraphql<T, V = Record<string, unknown>>(
         mutation: document,
         variables: apolloVariables,
         context,
+        errorPolicy: "all",
       })
     : await client.query<T>({
         query: document,
         variables: apolloVariables,
         context,
+        errorPolicy: "all",
       })) as ApolloExecutionResult<T>;
 
   return {

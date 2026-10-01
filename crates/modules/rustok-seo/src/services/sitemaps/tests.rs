@@ -167,10 +167,7 @@ fn sitemap_locale_paths_are_idempotent_for_owner_prefixed_routes() {
         "https://example.com/en/modules/pages"
     );
     assert_eq!(
-        sitemap_public_url(
-            "https://example.com",
-            "https://cdn.example.com/asset.xml"
-        ),
+        sitemap_public_url("https://example.com", "https://cdn.example.com/asset.xml"),
         "https://cdn.example.com/asset.xml"
     );
 }
@@ -251,8 +248,14 @@ fn public_origin_rejects_local_internal_and_private_hosts() {
 fn sitemap_file_count_always_includes_the_index() {
     assert_eq!(sitemap_file_count(0, super::SITEMAP_CHUNK_SIZE), 1);
     assert_eq!(sitemap_file_count(1, super::SITEMAP_CHUNK_SIZE), 2);
-    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE, super::SITEMAP_CHUNK_SIZE), 2);
-    assert_eq!(sitemap_file_count(super::SITEMAP_CHUNK_SIZE + 1, super::SITEMAP_CHUNK_SIZE), 3);
+    assert_eq!(
+        sitemap_file_count(super::SITEMAP_CHUNK_SIZE, super::SITEMAP_CHUNK_SIZE),
+        2
+    );
+    assert_eq!(
+        sitemap_file_count(super::SITEMAP_CHUNK_SIZE + 1, super::SITEMAP_CHUNK_SIZE),
+        3
+    );
 }
 
 #[test]

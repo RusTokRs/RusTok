@@ -1,8 +1,8 @@
 use rustok_api::locale_tags_match;
-use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use rustok_grid::{
     ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
 };
+use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use std::collections::HashMap;
 
 use crate::i18n::t;
@@ -1478,7 +1478,9 @@ pub(crate) fn build_product_admin_profile_panel_ready_view_model(
         message: crate::i18n::format(
             locale,
             "product.profile.known",
-            Some(&rustok_ui_i18n::fluent_args!("profiles" => format_known_shipping_profiles(locale, profiles).to_string())),
+            Some(
+                &rustok_ui_i18n::fluent_args!("profiles" => format_known_shipping_profiles(locale, profiles).to_string()),
+            ),
             "Known profiles: {profiles}",
         ),
     }
@@ -1868,9 +1870,7 @@ pub(crate) struct VariantRowViewModel {
     pub can_delete: bool,
 }
 
-pub(crate) fn build_variant_row_view_models(
-    product: &ProductDetail,
-) -> Vec<VariantRowViewModel> {
+pub(crate) fn build_variant_row_view_models(product: &ProductDetail) -> Vec<VariantRowViewModel> {
     let multiple = product.variants.len() > 1;
     product
         .variants
@@ -1883,7 +1883,9 @@ pub(crate) fn build_variant_row_view_models(
                 .filter(|opt| !opt.trim().is_empty())
                 .collect();
             let options_summary = if options.is_empty() {
-                v.combination_identity.clone().unwrap_or_else(|| "—".to_string())
+                v.combination_identity
+                    .clone()
+                    .unwrap_or_else(|| "—".to_string())
             } else {
                 options.join(" / ")
             };
@@ -1895,7 +1897,11 @@ pub(crate) fn build_variant_row_view_models(
             VariantRowViewModel {
                 id: v.id.clone(),
                 sku: v.sku.clone().unwrap_or_else(|| "—".to_string()),
-                title: if v.title.trim().is_empty() { "—".to_string() } else { v.title.clone() },
+                title: if v.title.trim().is_empty() {
+                    "—".to_string()
+                } else {
+                    v.title.clone()
+                },
                 options_summary,
                 price,
                 stock: v.inventory_quantity.to_string(),
@@ -1966,28 +1972,84 @@ impl ProductKind {
 
     pub fn label(&self, locale: Option<&str>) -> &'static str {
         match self {
-            Self::Simple => if locale == Some("ru") { "Простой" } else { "Simple" },
-            Self::Variable => if locale == Some("ru") { "Вариативный" } else { "Variable" },
-            Self::Bundle => if locale == Some("ru") { "Комплект" } else { "Bundle" },
-            Self::Digital => if locale == Some("ru") { "Цифровой" } else { "Digital" },
+            Self::Simple => {
+                if locale == Some("ru") {
+                    "Простой"
+                } else {
+                    "Simple"
+                }
+            }
+            Self::Variable => {
+                if locale == Some("ru") {
+                    "Вариативный"
+                } else {
+                    "Variable"
+                }
+            }
+            Self::Bundle => {
+                if locale == Some("ru") {
+                    "Комплект"
+                } else {
+                    "Bundle"
+                }
+            }
+            Self::Digital => {
+                if locale == Some("ru") {
+                    "Цифровой"
+                } else {
+                    "Digital"
+                }
+            }
         }
     }
 
     pub fn badge_class(&self) -> &'static str {
         match self {
-            Self::Simple => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20",
-            Self::Variable => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20",
-            Self::Bundle => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
-            Self::Digital => "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+            Self::Simple => {
+                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+            }
+            Self::Variable => {
+                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+            }
+            Self::Bundle => {
+                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+            }
+            Self::Digital => {
+                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+            }
         }
     }
 
     pub fn description(&self, locale: Option<&str>) -> &'static str {
         match self {
-            Self::Simple => if locale == Some("ru") { "Обычный физический товар с одним артикулом и учетом остатков" } else { "Physical product with single SKU and tracked inventory" },
-            Self::Variable => if locale == Some("ru") { "Товар с вариантами по осям (размер, цвет и т.д.)" } else { "Product with variant axes like size, color, or material" },
-            Self::Bundle => if locale == Some("ru") { "Набор или комплект из нескольких существующих товаров" } else { "Bundle or kit packaged together from existing catalog items" },
-            Self::Digital => if locale == Some("ru") { "Цифровой контент, файлы для скачивания или виртуальные услуги" } else { "Downloadable digital files, keys, or virtual services" },
+            Self::Simple => {
+                if locale == Some("ru") {
+                    "Обычный физический товар с одним артикулом и учетом остатков"
+                } else {
+                    "Physical product with single SKU and tracked inventory"
+                }
+            }
+            Self::Variable => {
+                if locale == Some("ru") {
+                    "Товар с вариантами по осям (размер, цвет и т.д.)"
+                } else {
+                    "Product with variant axes like size, color, or material"
+                }
+            }
+            Self::Bundle => {
+                if locale == Some("ru") {
+                    "Набор или комплект из нескольких существующих товаров"
+                } else {
+                    "Bundle or kit packaged together from existing catalog items"
+                }
+            }
+            Self::Digital => {
+                if locale == Some("ru") {
+                    "Цифровой контент, файлы для скачивания или виртуальные услуги"
+                } else {
+                    "Downloadable digital files, keys, or virtual services"
+                }
+            }
         }
     }
 }
@@ -2028,45 +2090,139 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .min_width(220)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Поиск по названию / slug...".to_string() } else { "Search title or slug...".to_string() }),
+                placeholder: Some(if is_ru {
+                    "Поиск по названию / slug...".to_string()
+                } else {
+                    "Search title or slug...".to_string()
+                }),
             }),
         GridColumnDef::new("product_type", if is_ru { "Тип" } else { "Type" })
             .width(130)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Select {
                 options: vec![
-                    FilterOption { value: "".to_string(), label: if is_ru { "Все типы".to_string() } else { "All types".to_string() } },
-                    FilterOption { value: "simple".to_string(), label: if is_ru { "Простой".to_string() } else { "Simple".to_string() } },
-                    FilterOption { value: "variable".to_string(), label: if is_ru { "Вариативный".to_string() } else { "Variable".to_string() } },
-                    FilterOption { value: "bundle".to_string(), label: if is_ru { "Комплект".to_string() } else { "Bundle".to_string() } },
-                    FilterOption { value: "digital".to_string(), label: if is_ru { "Цифровой".to_string() } else { "Digital".to_string() } },
+                    FilterOption {
+                        value: "".to_string(),
+                        label: if is_ru {
+                            "Все типы".to_string()
+                        } else {
+                            "All types".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "simple".to_string(),
+                        label: if is_ru {
+                            "Простой".to_string()
+                        } else {
+                            "Simple".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "variable".to_string(),
+                        label: if is_ru {
+                            "Вариативный".to_string()
+                        } else {
+                            "Variable".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "bundle".to_string(),
+                        label: if is_ru {
+                            "Комплект".to_string()
+                        } else {
+                            "Bundle".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "digital".to_string(),
+                        label: if is_ru {
+                            "Цифровой".to_string()
+                        } else {
+                            "Digital".to_string()
+                        },
+                    },
                 ],
-                placeholder: Some(if is_ru { "Все типы".to_string() } else { "All types".to_string() }),
+                placeholder: Some(if is_ru {
+                    "Все типы".to_string()
+                } else {
+                    "All types".to_string()
+                }),
             }),
-        GridColumnDef::new("sku", if is_ru { "Артикул / Вендор" } else { "SKU / Vendor" })
-            .width(150)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр SKU / вендор...".to_string() } else { "Filter SKU / vendor...".to_string() }),
+        GridColumnDef::new(
+            "sku",
+            if is_ru {
+                "Артикул / Вендор"
+            } else {
+                "SKU / Vendor"
+            },
+        )
+        .width(150)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Фильтр SKU / вендор...".to_string()
+            } else {
+                "Filter SKU / vendor...".to_string()
             }),
+        }),
         GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
             .width(120)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Select {
                 options: vec![
-                    FilterOption { value: "".to_string(), label: if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() } },
-                    FilterOption { value: "ACTIVE".to_string(), label: if is_ru { "Активен".to_string() } else { "Active".to_string() } },
-                    FilterOption { value: "DRAFT".to_string(), label: if is_ru { "Черновик".to_string() } else { "Draft".to_string() } },
-                    FilterOption { value: "ARCHIVED".to_string(), label: if is_ru { "В архиве".to_string() } else { "Archived".to_string() } },
+                    FilterOption {
+                        value: "".to_string(),
+                        label: if is_ru {
+                            "Все статусы".to_string()
+                        } else {
+                            "All statuses".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "ACTIVE".to_string(),
+                        label: if is_ru {
+                            "Активен".to_string()
+                        } else {
+                            "Active".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "DRAFT".to_string(),
+                        label: if is_ru {
+                            "Черновик".to_string()
+                        } else {
+                            "Draft".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "ARCHIVED".to_string(),
+                        label: if is_ru {
+                            "В архиве".to_string()
+                        } else {
+                            "Archived".to_string()
+                        },
+                    },
                 ],
-                placeholder: Some(if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() }),
+                placeholder: Some(if is_ru {
+                    "Все статусы".to_string()
+                } else {
+                    "All statuses".to_string()
+                }),
             }),
         GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
             .width(140)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
-                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+                from_placeholder: Some(if is_ru {
+                    "С".to_string()
+                } else {
+                    "From".to_string()
+                }),
+                to_placeholder: Some(if is_ru {
+                    "По".to_string()
+                } else {
+                    "To".to_string()
+                }),
             }),
         GridColumnDef::actions("actions", if is_ru { "Действия" } else { "Actions" })
             .width(180)
@@ -2074,25 +2230,43 @@ pub fn product_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     ]
 }
 
-pub fn matches_product_filter(item: &ProductListItem, column_id: &str, filter: &FilterValue) -> bool {
+pub fn matches_product_filter(
+    item: &ProductListItem,
+    column_id: &str,
+    filter: &FilterValue,
+) -> bool {
     match (column_id, filter) {
         ("title", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
-            q.is_empty() || item.title.to_lowercase().contains(&q) || item.handle.to_lowercase().contains(&q)
+            q.is_empty()
+                || item.title.to_lowercase().contains(&q)
+                || item.handle.to_lowercase().contains(&q)
         }
         ("product_type", FilterValue::Select(val)) => {
             if val.is_empty() {
                 true
             } else {
-                let kind = item.product_type.as_deref().unwrap_or("simple").to_lowercase();
+                let kind = item
+                    .product_type
+                    .as_deref()
+                    .unwrap_or("simple")
+                    .to_lowercase();
                 kind == val.to_lowercase()
             }
         }
         ("sku", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
             q.is_empty()
-                || item.seller_id.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
-                || item.vendor.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
+                || item
+                    .seller_id
+                    .as_deref()
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false)
+                || item
+                    .vendor
+                    .as_deref()
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false)
         }
         ("status", FilterValue::Select(val)) => {
             if val.is_empty() {
@@ -2103,10 +2277,19 @@ pub fn matches_product_filter(item: &ProductListItem, column_id: &str, filter: &
         }
         ("category", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
-            q.is_empty() || item.primary_category_id.as_deref().map(|s| s.to_lowercase().contains(&q)).unwrap_or(false)
+            q.is_empty()
+                || item
+                    .primary_category_id
+                    .as_deref()
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false)
         }
         ("created_at", FilterValue::DateRange { from, to }) => {
-            let item_date = item.created_at.split('T').next().unwrap_or(&item.created_at);
+            let item_date = item
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&item.created_at);
             if let Some(f) = from {
                 if !f.trim().is_empty() && item_date < f.as_str() {
                     return false;
@@ -2180,8 +2363,6 @@ pub fn flatten_category_tree(tree: &[CategoryTreeItem]) -> Vec<(CatalogCategoryS
     }
     flat
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -3127,7 +3308,10 @@ mod tests {
     fn variant_and_media_copies_localize() {
         let en_var = build_product_variants_panel_copy(Some("en"));
         assert_eq!(en_var.title, "Variants");
-        assert_eq!(en_var.cannot_delete_only, "Cannot delete the only variant of a product.");
+        assert_eq!(
+            en_var.cannot_delete_only,
+            "Cannot delete the only variant of a product."
+        );
 
         let ru_var = build_product_variants_panel_copy(Some("ru"));
         assert_eq!(ru_var.title, "Варианты");

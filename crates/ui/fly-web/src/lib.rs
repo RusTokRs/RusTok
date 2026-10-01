@@ -1,11 +1,13 @@
-#[path = "lib.rs"]
-mod foundation;
+//! Framework-neutral browser runtime, geometry, hit-testing, and iframe bridge for Fly visual editors.
+//!
+//! This crate owns browser geometry, pointer interactions, drop target resolution, iframe protocol
+//! envelopes, event listeners, and authenticated real-DOM inline editing.
+//! It is completely independent of any specific UI framework (zero Leptos or Dioxus dependencies).
 
+mod foundation;
 pub use foundation::*;
 
-#[allow(unused_imports)]
 mod real_dom_inline;
-#[allow(unused_imports)]
 pub use real_dom_inline::*;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]

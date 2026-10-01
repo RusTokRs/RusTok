@@ -5,7 +5,9 @@ unsound = "workspace"
 git-fetch-with-cli = true
 # Advisory exceptions must be time-bounded and registered in
 # docs/security/advisory-exceptions.md.
-ignore = []
+ignore = [
+    "RUSTSEC-2026-0253",
+]
 
 [licenses]
 allow = [

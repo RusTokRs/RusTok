@@ -58,7 +58,10 @@ pub fn validate_bundle_slug(slug: &str) -> Result<(), &'static str> {
     if trimmed.len() > 100 {
         return Err("Slug cannot exceed 100 characters");
     }
-    if !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("Slug can only contain alphanumeric characters, hyphens, and underscores");
     }
     Ok(())
@@ -83,7 +86,10 @@ pub fn validate_bundle_discount(
         return Ok(());
     }
 
-    let val = discount_value.trim().parse::<f64>().map_err(|_| "Discount value must be a number")?;
+    let val = discount_value
+        .trim()
+        .parse::<f64>()
+        .map_err(|_| "Discount value must be a number")?;
     if val < 0.0 {
         return Err("Discount value cannot be negative");
     }

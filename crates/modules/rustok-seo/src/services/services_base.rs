@@ -752,8 +752,14 @@ mod cache_weight_tests {
     #[test]
     fn redirect_cache_weight_accounts_for_dynamic_routes() {
         let tenant_id = Uuid::new_v4();
-        let short = Arc::new(vec![redirect("/a".to_string())]);
-        let long = Arc::new(vec![redirect(format!("/{}", "x".repeat(2_048)))]);
+        let short = Arc::new(RedirectCacheEntry {
+            redirects: Arc::new(vec![redirect("/a".to_string())]),
+            loaded_at: Instant::now(),
+        });
+        let long = Arc::new(RedirectCacheEntry {
+            redirects: Arc::new(vec![redirect(format!("/{}", "x".repeat(2_048)))]),
+            loaded_at: Instant::now(),
+        });
 
         assert!(
             redirect_cache_entry_weight(&tenant_id, &long)

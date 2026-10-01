@@ -111,7 +111,6 @@ impl SeoService {
             }));
         }
 
-
         let canonical_service = CanonicalUrlService::new(self.db.clone());
         if self
             .load_settings(tenant.id)
@@ -145,7 +144,6 @@ impl SeoService {
             }
             return Ok(Some(context));
         }
-
 
         let state = if let Some(route_match) = self
             .resolve_registered_route_match(tenant, locale, route, channel_slug)
@@ -335,7 +333,9 @@ impl SeoService {
                 .clone()
                 .filter(|value| !value.trim().is_empty())
                 .map(|value| canonical_url_for_locale(effective_locale.as_str(), value.as_str()))
-                .filter(|value| canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice()))
+                .filter(|value| {
+                    canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice())
+                })
                 .unwrap_or_else(|| {
                     locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str())
                 });
@@ -370,7 +370,8 @@ impl SeoService {
                     effective_locale: effective_locale.clone(),
                     canonical_url: canonical_url.clone(),
                     redirect: None,
-                    alternates: if settings.hreflang_enabled && settings.submodule_hreflang_enabled {
+                    alternates: if settings.hreflang_enabled && settings.submodule_hreflang_enabled
+                    {
                         with_x_default(
                             state.alternates,
                             settings.x_default_locale.as_deref(),
@@ -384,54 +385,56 @@ impl SeoService {
                     build_document(
                         title,
                         description,
-                    apply_robots(
-                        explicit.meta.no_index,
-                        explicit.meta.no_follow,
-                        settings.default_robots.as_slice(),
-                    ),
-                    Some(open_graph),
-                    explicit
-                        .meta
-                        .structured_data
-                        .clone()
-                        .unwrap_or(state.structured_data),
-                    effective_translation
-                        .as_ref()
-                        .and_then(|item| super::trimmed_option(item.keywords.clone())),
-                    canonical_url.as_str(),
-                    effective_locale.as_str(),
-                    SeoDocumentEffectiveState {
-                        title: field_state(SeoFieldSource::Explicit, true),
-                        description: field_state(
-                            SeoFieldSource::Explicit,
-                            effective_translation
-                                .as_ref()
-                                .and_then(|item| super::trimmed_option(item.description.clone()))
-                                .is_some(),
+                        apply_robots(
+                            explicit.meta.no_index,
+                            explicit.meta.no_follow,
+                            settings.default_robots.as_slice(),
                         ),
-                        canonical_url: field_state(
-                            SeoFieldSource::Explicit,
-                            explicit
-                                .meta
-                                .canonical_url
-                                .as_deref()
-                                .is_some_and(|value| !value.trim().is_empty()),
-                        ),
-                        keywords: field_state(
-                            SeoFieldSource::Explicit,
-                            effective_translation
-                                .as_ref()
-                                .and_then(|item| super::trimmed_option(item.keywords.clone()))
-                                .is_some(),
-                        ),
-                        robots: field_state(SeoFieldSource::Explicit, true),
-                        open_graph: field_state(SeoFieldSource::Explicit, true),
-                        twitter: field_state(SeoFieldSource::Explicit, true),
-                        structured_data: field_state(
-                            SeoFieldSource::Explicit,
-                            explicit.meta.structured_data.is_some(),
-                        ),
-                    },
+                        Some(open_graph),
+                        explicit
+                            .meta
+                            .structured_data
+                            .clone()
+                            .unwrap_or(state.structured_data),
+                        effective_translation
+                            .as_ref()
+                            .and_then(|item| super::trimmed_option(item.keywords.clone())),
+                        canonical_url.as_str(),
+                        effective_locale.as_str(),
+                        SeoDocumentEffectiveState {
+                            title: field_state(SeoFieldSource::Explicit, true),
+                            description: field_state(
+                                SeoFieldSource::Explicit,
+                                effective_translation
+                                    .as_ref()
+                                    .and_then(|item| {
+                                        super::trimmed_option(item.description.clone())
+                                    })
+                                    .is_some(),
+                            ),
+                            canonical_url: field_state(
+                                SeoFieldSource::Explicit,
+                                explicit
+                                    .meta
+                                    .canonical_url
+                                    .as_deref()
+                                    .is_some_and(|value| !value.trim().is_empty()),
+                            ),
+                            keywords: field_state(
+                                SeoFieldSource::Explicit,
+                                effective_translation
+                                    .as_ref()
+                                    .and_then(|item| super::trimmed_option(item.keywords.clone()))
+                                    .is_some(),
+                            ),
+                            robots: field_state(SeoFieldSource::Explicit, true),
+                            open_graph: field_state(SeoFieldSource::Explicit, true),
+                            twitter: field_state(SeoFieldSource::Explicit, true),
+                            structured_data: field_state(
+                                SeoFieldSource::Explicit,
+                                explicit.meta.structured_data.is_some(),
+                            ),
+                        },
                         None,
                         None,
                     ),
@@ -473,7 +476,9 @@ impl SeoService {
             .canonical_url
             .as_deref()
             .map(|value| canonical_url_for_locale(state.effective_locale.as_str(), value))
-            .filter(|value| canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice()))
+            .filter(|value| {
+                canonical_host_allowed(value, settings.allowed_canonical_hosts.as_slice())
+            })
             .unwrap_or_else(|| {
                 locale_prefixed_path(
                     state.effective_locale.as_str(),
@@ -518,37 +523,39 @@ impl SeoService {
                 build_document(
                     effective_title,
                     effective_description.clone(),
-                generated
-                    .robots
-                    .as_deref()
-                    .map(robots_from_directives)
-                    .unwrap_or_else(|| robots_from_directives(settings.default_robots.as_slice())),
-                Some(open_graph),
-                state.structured_data,
-                generated.keywords.clone(),
-                canonical_url.as_str(),
-                state.effective_locale.as_str(),
-                SeoDocumentEffectiveState {
-                    title: field_state(source, true),
-                    description: field_state(source, effective_description.is_some()),
-                    canonical_url: field_state(source, true),
-                    keywords: field_state(source, generated.keywords.is_some()),
-                    robots: field_state(
-                        if generated.robots.is_some() {
-                            SeoFieldSource::Generated
-                        } else {
-                            SeoFieldSource::Fallback
-                        },
-                        true,
-                    ),
-                    open_graph: field_state(source, true),
-                    twitter: field_state(
-                        source,
-                        generated.twitter_title.is_some()
-                            || generated.twitter_description.is_some(),
-                    ),
-                    structured_data: field_state(SeoFieldSource::Fallback, true),
-                },
+                    generated
+                        .robots
+                        .as_deref()
+                        .map(robots_from_directives)
+                        .unwrap_or_else(|| {
+                            robots_from_directives(settings.default_robots.as_slice())
+                        }),
+                    Some(open_graph),
+                    state.structured_data,
+                    generated.keywords.clone(),
+                    canonical_url.as_str(),
+                    state.effective_locale.as_str(),
+                    SeoDocumentEffectiveState {
+                        title: field_state(source, true),
+                        description: field_state(source, effective_description.is_some()),
+                        canonical_url: field_state(source, true),
+                        keywords: field_state(source, generated.keywords.is_some()),
+                        robots: field_state(
+                            if generated.robots.is_some() {
+                                SeoFieldSource::Generated
+                            } else {
+                                SeoFieldSource::Fallback
+                            },
+                            true,
+                        ),
+                        open_graph: field_state(source, true),
+                        twitter: field_state(
+                            source,
+                            generated.twitter_title.is_some()
+                                || generated.twitter_description.is_some(),
+                        ),
+                        structured_data: field_state(SeoFieldSource::Fallback, true),
+                    },
                     generated.twitter_title,
                     generated.twitter_description,
                 ),
@@ -562,10 +569,7 @@ fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
     SeoFieldState { source, present }
 }
 
-fn apply_rich_snippets_setting(
-    mut document: SeoDocument,
-    enabled: bool,
-) -> SeoDocument {
+fn apply_rich_snippets_setting(mut document: SeoDocument, enabled: bool) -> SeoDocument {
     if !enabled {
         document.structured_data_blocks.clear();
         document.effective_state.structured_data.present = false;
@@ -660,15 +664,9 @@ fn apply_canonical_trailing_slash(value: String, mode: &str) -> String {
         return url.to_string();
     }
 
-    let split_at = value
-        .find(|character| character == '?' || character == '#')
-        .unwrap_or(value.len());
+    let split_at = value.find(['?', '#']).unwrap_or(value.len());
     let (path, suffix) = value.split_at(split_at);
-    format!(
-        "{}{}",
-        normalize_canonical_path(path, mode),
-        suffix
-    )
+    format!("{}{}", normalize_canonical_path(path, mode), suffix)
 }
 
 fn normalize_canonical_path(path: &str, mode: &str) -> String {
@@ -749,7 +747,7 @@ pub(super) fn with_x_default(
 #[cfg(test)]
 mod tests {
     use crate::migrations as seo_migrations;
-    use crate::services::SeoService;
+    use crate::services::{normalize_route, SeoService};
     use rustok_api::TenantContext;
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_forum::{
@@ -770,10 +768,10 @@ mod tests {
 
     #[test]
     fn route_normalization_keeps_public_lookup_bounded() {
-        assert!(super::normalize_route("/".to_string().as_str()).is_ok());
-        assert!(super::normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_ok());
-        assert!(super::normalize_route(format!("/{}", "x".repeat(513)).as_str()).is_err());
-        assert!(super::normalize_route("//external.example/path").is_err());
+        assert!(normalize_route("/".to_string().as_str()).is_ok());
+        assert!(normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_ok());
+        assert!(normalize_route(format!("/{}", "x".repeat(513)).as_str()).is_err());
+        assert!(normalize_route("//external.example/path").is_err());
     }
 
     #[test]
@@ -825,7 +823,10 @@ mod tests {
             "https://user:secret@allowed.example/docs",
             &[]
         ));
-        assert!(!super::canonical_host_allowed("https://allowed.example/docs", &[]));
+        assert!(!super::canonical_host_allowed(
+            "https://allowed.example/docs",
+            &[]
+        ));
         assert!(!super::canonical_host_allowed(
             "https://other.example/docs",
             &["allowed.example".to_string()]
@@ -1109,11 +1110,7 @@ mod tests {
         );
 
         let legacy_alias_context = service
-            .resolve_page_context(
-                &tenant,
-                "en",
-                "/modules/forum?topic=legacy",
-            )
+            .resolve_page_context(&tenant, "en", "/modules/forum?topic=legacy")
             .await
             .expect("legacy content alias SEO route should resolve")
             .expect("legacy content alias SEO context should exist");
@@ -1126,7 +1123,10 @@ mod tests {
             Some(legacy_alias_context.route.canonical_url.as_str())
         );
         assert!(
-            legacy_alias_context.route.canonical_url.starts_with("/en/forum/t/"),
+            legacy_alias_context
+                .route
+                .canonical_url
+                .starts_with("/en/forum/t/"),
             "content aliases must redirect to the Forum route owner's public path"
         );
         let category_meta = service

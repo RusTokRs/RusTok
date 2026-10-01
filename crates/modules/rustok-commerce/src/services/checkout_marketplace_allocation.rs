@@ -142,7 +142,7 @@ fn build_request(
             fulfillment_profile_slug: snapshot
                 .fulfillment_profile_slug
                 .clone()
-                .or_else(|| Some(order_line.shipping_profile_slug.clone())),
+                .or_else(|| order_line.shipping_profile_slug.clone()),
             metadata: serde_json::json!({
                 "source": "checkout",
                 "checkout_operation_id": operation_id,

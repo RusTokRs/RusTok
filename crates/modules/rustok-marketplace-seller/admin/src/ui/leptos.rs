@@ -131,7 +131,11 @@ pub fn MarketplaceSellerAdmin() -> impl IntoView {
                             selected_id.set(Some(seller.id));
                         }
                         pending_command.set(None);
-                        notice.set(Some(t(Some(locale), "seller.marketplaceSellerCommandCompleted", "Marketplace seller command completed.")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "seller.marketplaceSellerCommandCompleted",
+                            "Marketplace seller command completed.",
+                        )));
                         refresh_nonce.update(|value| *value = value.saturating_add(1));
                     }
                     Err(transport_error) => error.set(Some(transport_error.to_string())),
@@ -605,5 +609,3 @@ fn optional_text(value: String) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
 }
-
-

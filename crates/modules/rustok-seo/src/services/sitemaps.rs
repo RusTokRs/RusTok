@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use rustok_core::security::{SsrfProtection, ValidationResult};
 use rustok_core::{DomainEvent, simple_hash};
 use rustok_seo_targets::{
-    SeoTargetAlternateRoute, SeoTargetCapabilityKind, SeoTargetImageRecord,
-    SeoTargetSitemapRequest,
+    SeoTargetAlternateRoute, SeoTargetCapabilityKind, SeoTargetImageRecord, SeoTargetSitemapRequest,
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
@@ -23,10 +22,10 @@ use crate::dto::{
 use crate::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
 use crate::{SeoError, SeoResult};
 
-use super::routing::locale_prefixed_path;
-use super::{MAX_SITEMAP_URLS, SeoService, normalize_effective_locale};
 #[cfg(test)]
 use super::SITEMAP_CHUNK_SIZE;
+use super::routing::locale_prefixed_path;
+use super::{MAX_SITEMAP_URLS, SeoService, normalize_effective_locale};
 pub(super) mod index_generation;
 pub(super) mod submission_adapters;
 pub(super) mod submission_aggregation;
@@ -253,7 +252,8 @@ impl SeoService {
         completed_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<seo_sitemap_job::Model> {
         let txn = self.db.begin().await?;
-        let file_count = sitemap_file_count(urls.len(), settings.sitemap_max_entries_per_file as usize) as i32;
+        let file_count =
+            sitemap_file_count(urls.len(), settings.sitemap_max_entries_per_file as usize) as i32;
         let job = seo_sitemap_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -277,7 +277,7 @@ impl SeoService {
             settings,
             completed_at,
         )
-            .await?;
+        .await?;
 
         let event_type = "seo.sitemap.generated";
         let idempotency_key = sitemap_event_key(
@@ -497,7 +497,10 @@ impl SeoService {
             return Ok(render_robots_body_with_settings("", &settings));
         }
         let public_origin = PublicOrigin::resolve(tenant)?;
-        Ok(render_robots_body_with_settings(public_origin.as_str(), &settings))
+        Ok(render_robots_body_with_settings(
+            public_origin.as_str(),
+            &settings,
+        ))
     }
 
     pub async fn robots_preview(
@@ -512,7 +515,7 @@ impl SeoService {
             sitemaps_enabled(&settings) && self.public_sitemap_modules_enabled(tenant.id).await?;
         Ok(SeoRobotsPreviewRecord {
             body: render_robots_body_with_settings(
-                sitemap_available.then_some(base_url).unwrap_or_default(),
+                if sitemap_available { base_url } else { "" },
                 &settings,
             ),
             public_url: format!("{base_url}/robots.txt"),

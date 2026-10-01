@@ -1,0 +1,19 @@
+[package]
+name = "fly-dioxus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SSR and Web/Desktop Dioxus 0.6 adapter foundation for Fly visual editors"
+
+[features]
+default = []
+web = ["dioxus/web", "fly-web/wasm-client"]
+desktop = ["dioxus/desktop"]
+
+[dependencies]
+fly = { path = "../fly" }
+fly-ui = { path = "../fly-ui" }
+fly-web = { path = "../fly-web" }
+dioxus = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true

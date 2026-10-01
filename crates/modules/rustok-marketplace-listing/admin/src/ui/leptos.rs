@@ -127,7 +127,11 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                     Ok(result) => {
                         selected_id.set(Some(result.listing.id));
                         pending_command.set(None);
-                        notice.set(Some(t(Some(locale), "marketplaceListing.marketplaceListingCommandCompleted", "Marketplace listing command completed.")));
+                        notice.set(Some(t(
+                            Some(locale),
+                            "marketplaceListing.marketplaceListingCommandCompleted",
+                            "Marketplace listing command completed.",
+                        )));
                         refresh_nonce.update(|value| *value = value.saturating_add(1));
                     }
                     Err(transport_error) => error.set(Some(transport_error.to_string())),
@@ -484,4 +488,3 @@ fn optional_text(value: String) -> Option<String> {
     let value = value.trim().to_string();
     (!value.is_empty()).then_some(value)
 }
-

@@ -1,4 +1,5 @@
 impl SeoService {
+    #[allow(dead_code)]
     pub(super) async fn execute_next_bulk_job_with_bounded_io(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
@@ -121,7 +122,9 @@ impl SeoService {
             ))
         } else {
             match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-                Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+                Some(SeoBulkJobOperationKind::Apply) => {
+                    self.execute_apply_job_chunk(&running).await
+                }
                 Some(SeoBulkJobOperationKind::ExportCsv) => {
                     self.execute_export_job_chunk_compat(&running).await
                 }
@@ -147,8 +150,8 @@ impl SeoService {
     }
 
     async fn prune_bulk_history(&self, tenant_id: Uuid) -> SeoResult<()> {
-        let cutoff = Utc::now().fixed_offset()
-            - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
+        let cutoff =
+            Utc::now().fixed_offset() - chrono::Duration::days(super::SEO_HISTORY_RETENTION_DAYS);
         let old_jobs = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::TenantId.eq(tenant_id))
             .filter(seo_bulk_job::Column::Status.is_in([

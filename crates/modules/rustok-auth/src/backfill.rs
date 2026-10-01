@@ -20,7 +20,6 @@ where
     AuthLifecycleMutationError::Internal("Auth user backfill read failed".to_string())
 }
 
-
 /// Database-backed adapter for the auth-owned, bounded profile-provisioning
 /// identity projection. It is usable by the standalone CLI and does not expose
 /// user persistence models to consumer modules.
@@ -34,9 +33,7 @@ impl AuthUserBackfillDbReader {
     }
 }
 
-fn validate_backfill_user_read_limit(
-    limit: u64,
-) -> Result<u64, AuthLifecycleMutationError> {
+fn validate_backfill_user_read_limit(limit: u64) -> Result<u64, AuthLifecycleMutationError> {
     if !(MIN_BACKFILL_USER_READ_LIMIT..=MAX_BACKFILL_USER_READ_LIMIT).contains(&limit) {
         return Err(AuthLifecycleMutationError::Validation(format!(
             "profile backfill user read limit must be between {MIN_BACKFILL_USER_READ_LIMIT} and {MAX_BACKFILL_USER_READ_LIMIT}"
@@ -68,9 +65,11 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
             vec![
                 request.tenant_id.into(),
                 i64::try_from(limit)
-                    .map_err(|_| AuthLifecycleMutationError::Validation(
-                        "profile backfill user read limit is out of range".to_string(),
-                    ))?
+                    .map_err(|_| {
+                        AuthLifecycleMutationError::Validation(
+                            "profile backfill user read limit is out of range".to_string(),
+                        )
+                    })?
                     .into(),
             ],
         );
@@ -82,21 +81,14 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
             .into_iter()
             .map(|row| {
                 Ok(AuthUserBackfillRecord {
-                    id: row
-                        .try_get("", "id")
-                        .map_err(internal_backfill_error)?,
-                    email: row
-                        .try_get("", "email")
-                        .map_err(internal_backfill_error)?,
-                    name: row
-                        .try_get("", "name")
-                        .map_err(internal_backfill_error)?,
+                    id: row.try_get("", "id").map_err(internal_backfill_error)?,
+                    email: row.try_get("", "email").map_err(internal_backfill_error)?,
+                    name: row.try_get("", "name").map_err(internal_backfill_error)?,
                 })
             })
             .collect()
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -29,25 +29,39 @@ waiver must also fail the gate.
 
 ## Active Exceptions
 
+### RUSTSEC-2026-0253 — `lru` lack of panic safety in `LruCache::pop()`
+
+| Field | Value |
+|---|---|
+| Severity | Unsound |
+| Risk | Potential use-after-free or double-free in `LruCache::pop()` if a key's `Drop` panics during eviction under `catch_unwind` |
+| Patched version | `lru >= 0.18.2`; the transitive dependency is constrained to `lru 0.16.4` by upstream `async-graphql 7.2.1` and `tantivy 0.22` |
+| Repository policy location | `deny.toml`, `.cargo/audit.toml` |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Transitive dependency via `async-graphql 7.2.1` and `tantivy 0.22` |
+| Reachability | Neither `async-graphql` nor `tantivy` use panicking `Drop` types as cache keys; panics in RusToK domain keys are not caught with unwinding suppression |
+| Compensating controls | RusToK uses standard structured error handling without panicking drop types; cache keys in GraphQL and search engines are primitive strings and integers |
+| Remediation | Upgrade `async-graphql` and `tantivy` when upstreams adopt `lru >= 0.18.2` or release non-breaking patch releases |
+| Approved | 2026-10-01, transitive dependency exception |
+| Expires | 2026-11-01 |
+| Evidence required | `cargo audit` and `cargo deny check` output, inverse dependency tree via `cargo tree -i lru` |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0253.html> |
+
+## Closed Exceptions
+
 ### RUSTSEC-2026-0235 — `rkyv` insufficient archive validation
 
 | Field | Value |
 |---|---|
-| Severity | Unspecified by advisory |
-| Risk | Malformed archives with `Rc` or `Arc` could cause out-of-bounds reads if the affected archival runtime became reachable |
-| Patched version | `rkyv >= 0.8.17`; the retained optional dependency is constrained to `rkyv 0.7` by `rust_decimal 1.42.1` |
-| Repository policy location | `.cargo/audit.toml` |
-| Accountable owner | Platform security / dependency maintainers |
-| Dependency path | Lockfile-only optional path: `rust_decimal 1.42.1` → `rkyv 0.7.46`; the workspace uses `rust_decimal` without its `rkyv` feature |
-| Reachability | `cargo tree --locked --workspace --all-features --target all -i rkyv` has empty stdout; no workspace package or supported target selects this path |
-| Compensating controls | All feature combinations are checked through the workspace graph; the finance/domain code serializes through canonical Serde boundaries rather than Rkyv archives |
-| Remediation | Remove the waiver when `rust_decimal` updates its optional archival dependency to a patched major line or Cargo stops retaining unused optional paths; never delete lockfile blocks manually |
-| Approved | 2026-08-13, lockfile-only reachability exception |
-| Expires | 2026-09-13 |
-| Evidence required | Empty locked all-feature/all-target inverse tree, workspace feature verification, and `cargo audit` output |
+| Original risk | Malformed archives with `Rc` or `Arc` could cause out-of-bounds reads if the affected archival runtime became reachable |
+| Patched version | `rkyv >= 0.8.17` |
+| Resolved version | `rkyv 0.8.18` in the current `Cargo.lock` |
+| Opened | 2026-08-13 |
+| Closed | 2026-10-01 |
+| Closure reason | The resolved package `0.8.18` is above the patched threshold |
+| Policy cleanup | Removed from `.cargo/audit.toml` |
+| Verification | Run `node scripts/verify/verify-advisory-exceptions.mjs` and `cargo audit` |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0235.html> |
-
-## Closed Exceptions
 
 ### RUSTSEC-2023-0071 — `rsa` timing side channel
 

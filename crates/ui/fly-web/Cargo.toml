@@ -1,19 +1,13 @@
 [package]
-name = "fly-leptos"
+name = "fly-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "SSR-first Leptos adapter foundation for Fly visual editors"
-
-[lib]
-path = "src/root.rs"
+description = "Framework-neutral browser runtime, geometry, hit-testing, and iframe bridge for Fly visual editors"
 
 [features]
-default = ["ssr"]
-ssr = ["leptos/ssr"]
+default = []
 wasm-client = [
-  "leptos/hydrate",
-  "fly-web/wasm-client",
   "dep:js-sys",
   "dep:wasm-bindgen",
   "dep:web-sys",
@@ -22,8 +16,6 @@ wasm-client = [
 [dependencies]
 fly = { path = "../fly" }
 fly-ui = { path = "../fly-ui" }
-fly-web = { path = "../fly-web" }
-leptos.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

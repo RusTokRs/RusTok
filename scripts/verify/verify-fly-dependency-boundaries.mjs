@@ -11,6 +11,7 @@ const rules = [
     crate: 'fly',
     manifest: 'crates/ui/fly/Cargo.toml',
     required: [],
+    stripAllowed: ['rustok-ui-i18n'],
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
@@ -20,14 +21,35 @@ const rules = [
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
+    crate: 'fly-web',
+    manifest: 'crates/ui/fly-web/Cargo.toml',
+    required: [
+      'fly = { path = "../fly" }',
+      'fly-ui = { path = "../fly-ui" }'
+    ],
+    forbidden: ['leptos', 'dioxus', 'rustok-']
+  },
+  {
     crate: 'fly-leptos',
     manifest: 'crates/ui/fly-leptos/Cargo.toml',
     required: [
       'fly = { path = "../fly" }',
       'fly-ui = { path = "../fly-ui" }',
+      'fly-web = { path = "../fly-web" }',
       'leptos.workspace = true'
     ],
     forbidden: ['dioxus', 'rustok-']
+  },
+  {
+    crate: 'fly-dioxus',
+    manifest: 'crates/ui/fly-dioxus/Cargo.toml',
+    required: [
+      'fly = { path = "../fly" }',
+      'fly-ui = { path = "../fly-ui" }',
+      'fly-web = { path = "../fly-web" }',
+      'dioxus = { workspace = true }'
+    ],
+    forbidden: ['leptos', 'rustok-']
   }
 ];
 
@@ -43,7 +65,10 @@ for (const rule of rules) {
     continue;
   }
 
-  const normalized = manifest.toLowerCase();
+  let normalized = manifest.toLowerCase();
+  for (const allowed of rule.stripAllowed ?? []) {
+    normalized = normalized.replaceAll(allowed.toLowerCase(), '');
+  }
   for (const dependency of rule.required) {
     if (!manifest.includes(dependency)) {
       errors.push(`${rule.crate}: missing required dependency declaration: ${dependency}`);

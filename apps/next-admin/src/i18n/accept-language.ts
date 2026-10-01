@@ -32,29 +32,29 @@ export interface AcceptLanguagePreference {
 }
 
 function parseQuality(value: string): number | null {
-  if (value === "0") return 0;
-  if (value === "1") return 1000;
+  if (value === '0') return 0;
+  if (value === '1') return 1000;
 
-  const dot = value.indexOf(".");
+  const dot = value.indexOf('.');
   if (dot < 0) return null;
 
   const whole = value.slice(0, dot);
   const fraction = value.slice(dot + 1);
   if (fraction.length > 3 || !/^\d*$/.test(fraction)) return null;
 
-  if (whole === "0") {
+  if (whole === '0') {
     if (fraction.length === 0) return 0;
-    return Number.parseInt(fraction.padEnd(3, "0"), 10);
+    return Number.parseInt(fraction.padEnd(3, '0'), 10);
   }
-  if (whole === "1" && /^0*$/.test(fraction)) return 1000;
+  if (whole === '1' && /^0*$/.test(fraction)) return 1000;
   return null;
 }
 
 function parseRange(raw: string): AcceptLanguagePreference | null {
-  const segments = raw.trim().split(";");
+  const segments = raw.trim().split(';');
   const range = segments[0]?.trim();
   if (!range) return null;
-  if (range !== "*" && !/^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$/.test(range)) {
+  if (range !== '*' && !/^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$/.test(range)) {
     return null;
   }
 
@@ -63,13 +63,13 @@ function parseRange(raw: string): AcceptLanguagePreference | null {
 
   for (const parameter of segments.slice(1)) {
     const trimmed = parameter.trim();
-    const eq = trimmed.indexOf("=");
+    const eq = trimmed.indexOf('=');
     if (eq < 0) {
       // A bare `q` parameter is malformed; drop the whole range.
-      if (trimmed.toLowerCase() === "q") return null;
+      if (trimmed.toLowerCase() === 'q') return null;
       continue;
     }
-    if (trimmed.slice(0, eq).trim().toLowerCase() !== "q") continue;
+    if (trimmed.slice(0, eq).trim().toLowerCase() !== 'q') continue;
     if (qualitySeen) return null;
     qualitySeen = true;
 
@@ -78,16 +78,16 @@ function parseRange(raw: string): AcceptLanguagePreference | null {
     qualityThousandths = parsed;
   }
 
-  return { range: range === "*" ? null : range, qualityThousandths };
+  return { range: range === '*' ? null : range, qualityThousandths };
 }
 
 /** Parses a bounded field value into quality-ordered preferences. */
 export function parseAcceptLanguage(
-  header: string | null | undefined,
+  header: string | null | undefined
 ): AcceptLanguagePreference[] {
   if (!header || header.length > MAX_ACCEPT_LANGUAGE_LEN) return [];
 
-  const rawRanges = header.split(",");
+  const rawRanges = header.split(',');
   if (rawRanges.length > MAX_ACCEPT_LANGUAGE_RANGES) return [];
 
   return rawRanges
@@ -95,24 +95,31 @@ export function parseAcceptLanguage(
       const preference = parseRange(raw);
       return preference === null ? null : { preference, sourceIndex };
     })
-    .filter((entry): entry is { preference: AcceptLanguagePreference; sourceIndex: number } =>
-      entry !== null,
+    .filter(
+      (
+        entry
+      ): entry is {
+        preference: AcceptLanguagePreference;
+        sourceIndex: number;
+      } => entry !== null
     )
     .sort(
       (left, right) =>
-        right.preference.qualityThousandths - left.preference.qualityThousandths ||
-        left.sourceIndex - right.sourceIndex,
+        right.preference.qualityThousandths -
+          left.preference.qualityThousandths ||
+        left.sourceIndex - right.sourceIndex
     )
     .map((entry) => entry.preference);
 }
 
 /** Returns accepted, non-rejected language ranges in quality order. */
 export function acceptedLanguageRanges(
-  header: string | null | undefined,
+  header: string | null | undefined
 ): string[] {
   const ranges: string[] = [];
   for (const preference of parseAcceptLanguage(header)) {
-    if (preference.qualityThousandths === 0 || preference.range === null) continue;
+    if (preference.qualityThousandths === 0 || preference.range === null)
+      continue;
     if (!ranges.includes(preference.range)) ranges.push(preference.range);
   }
   return ranges;

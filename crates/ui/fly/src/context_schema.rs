@@ -705,7 +705,10 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                 match chars.peek().copied() {
                     Some('.') => {
                         chars.next();
-                        if matches!(chars.peek().copied(), None | Some('.') | Some('[') | Some(']')) {
+                        if matches!(
+                            chars.peek().copied(),
+                            None | Some('.') | Some('[') | Some(']')
+                        ) {
                             return None;
                         }
                     }

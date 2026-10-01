@@ -150,14 +150,12 @@ pub fn ChannelAdmin() -> impl IntoView {
 
                 match result {
                     Ok(channel) => {
-                        set_feedback.set(Some(
-                            crate::i18n::format(
-                                ui_locale.as_deref(),
-                                "channel.feedback.created",
-                                Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
-                                "Channel `{slug}` created.",
-                            ),
-                        ));
+                        set_feedback.set(Some(crate::i18n::format(
+                            ui_locale.as_deref(),
+                            "channel.feedback.created",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
+                            "Channel `{slug}` created.",
+                        )));
                         create_slug.set(String::new());
                         create_name.set(String::new());
                         create_channel_query_writer

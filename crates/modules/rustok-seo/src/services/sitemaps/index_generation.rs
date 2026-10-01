@@ -34,7 +34,9 @@ pub(in super::super) fn render_sitemap_file(
                         let caption = image
                             .alt
                             .as_deref()
-                            .map(|alt| format!("<image:caption>{}</image:caption>", xml_escape(alt)))
+                            .map(|alt| {
+                                format!("<image:caption>{}</image:caption>", xml_escape(alt))
+                            })
                             .unwrap_or_default();
                         format!(
                             "<image:image><image:loc>{}</image:loc>{}</image:image>",
@@ -58,12 +60,16 @@ pub(in super::super) fn render_sitemap_file(
         })
         .collect::<Vec<_>>()
         .join("");
-    let image_namespace = include_images
-        .then_some(" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\"")
-        .unwrap_or_default();
-    let hreflang_namespace = include_hreflang
-        .then_some(" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"")
-        .unwrap_or_default();
+    let image_namespace = if include_images {
+        " xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\""
+    } else {
+        ""
+    };
+    let hreflang_namespace = if include_hreflang {
+        " xmlns:xhtml=\"http://www.w3.org/1999/xhtml\""
+    } else {
+        ""
+    };
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"{image_namespace}{hreflang_namespace}>{body}</urlset>"
     )

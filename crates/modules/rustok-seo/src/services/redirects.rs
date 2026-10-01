@@ -93,7 +93,9 @@ impl RedirectLookup {
         wildcard_prefix_lengths.sort_unstable_by(|left, right| right.cmp(left));
         wildcard_prefix_lengths.dedup();
         for bucket in wildcards.values_mut() {
-            bucket.suffix_lengths.sort_unstable_by(|left, right| right.cmp(left));
+            bucket
+                .suffix_lengths
+                .sort_unstable_by(|left, right| right.cmp(left));
             bucket.suffix_lengths.dedup();
         }
 
@@ -222,7 +224,11 @@ pub(super) async fn invalidate_all_redirect_lookup_cache() {
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
-        if !self.load_settings(tenant_id).await?.submodule_redirects_enabled {
+        if !self
+            .load_settings(tenant_id)
+            .await?
+            .submodule_redirects_enabled
+        {
             return Err(SeoError::configuration(
                 "SEO redirects submodule is disabled",
             ));
@@ -424,12 +430,11 @@ impl SeoService {
     ) -> SeoResult<Arc<Vec<seo_redirect::Model>>> {
         let settings = self.load_settings(tenant_id).await?;
         let ttl_seconds = settings.redirect_cache_ttl_seconds.max(0) as u64;
-        if ttl_seconds > 0 {
-            if let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await {
-                if entry.loaded_at.elapsed().as_secs() < ttl_seconds {
-                    return Ok(Arc::clone(&entry.redirects));
-                }
-            }
+        if ttl_seconds > 0
+            && let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await
+            && entry.loaded_at.elapsed().as_secs() < ttl_seconds
+        {
+            return Ok(Arc::clone(&entry.redirects));
         }
         REDIRECT_CACHE.invalidate(&tenant_id).await;
 
@@ -626,7 +631,7 @@ pub(super) fn normalize_target_url(
         )));
     }
     if trimmed.starts_with('/') {
-        return normalize_route(trimmed).map(|route| route);
+        return normalize_route(trimmed);
     }
 
     let parsed = Url::parse(trimmed)
@@ -799,14 +804,19 @@ mod tests {
             )
             .is_err()
         );
-        assert!(normalize_target_url("//attacker.example/path", &allowed_hosts, "target_url").is_err());
+        assert!(
+            normalize_target_url("//attacker.example/path", &allowed_hosts, "target_url").is_err()
+        );
         assert_eq!(
             normalize_target_url("  /target  ", &allowed_hosts, "target_url")
                 .expect("relative route should normalize"),
             "/target"
         );
         assert!(normalize_source_pattern("/docs/* bad", SeoRedirectMatchType::Wildcard).is_err());
-        assert!(normalize_source_pattern("//attacker.example/*", SeoRedirectMatchType::Wildcard).is_err());
+        assert!(
+            normalize_source_pattern("//attacker.example/*", SeoRedirectMatchType::Wildcard)
+                .is_err()
+        );
     }
 
     #[test]

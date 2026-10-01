@@ -1081,11 +1081,11 @@ SELECT
                 'position', o.position,
                 'translations', COALESCE((
                     SELECT jsonb_agg(
-                        jsonb_build_object('locale', ot.locale, 'label', ot.label)
-                        ORDER BY ot.locale
+                        jsonb_build_object('locale', opt_trans.locale, 'label', opt_trans.label)
+                        ORDER BY opt_trans.locale
                     )
-                    FROM product_attribute_option_translations ot
-                    WHERE ot.option_id = o.id
+                    FROM product_attribute_option_translations opt_trans
+                    WHERE opt_trans.option_id = o.id
                 ), '[]'::jsonb)
             ) ORDER BY o.position, o.id
         )

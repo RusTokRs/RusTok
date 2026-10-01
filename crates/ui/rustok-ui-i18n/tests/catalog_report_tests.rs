@@ -62,7 +62,7 @@ fn malformed_first_entry_still_reserves_normalized_locale_identity() {
 }
 
 #[test]
-fn unparseable_locale_does_not_reserve_a_different_valid_identity() {
+fn unparsable_locale_does_not_reserve_a_different_valid_identity() {
     let report = build_fluent_catalog_report(&[
         ("!", "title = Invalid locale\n"),
         ("en", "title = Title\n"),

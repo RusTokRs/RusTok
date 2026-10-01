@@ -332,14 +332,12 @@ pub(super) fn ChannelCard(
                 let result = transport::make_default_channel(token, tenant, &channel_id).await;
                 match result {
                     Ok(channel) => {
-                        set_feedback.set(Some(
-                            crate::i18n::format(
-                                ui_locale.as_deref(),
-                                "channel.feedback.default",
-                                Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
-                                "Channel `{slug}` is now the tenant default channel.",
-                            ),
-                        ));
+                        set_feedback.set(Some(crate::i18n::format(
+                            ui_locale.as_deref(),
+                            "channel.feedback.default",
+                            Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
+                            "Channel `{slug}` is now the tenant default channel.",
+                        )));
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err.to_string())),
