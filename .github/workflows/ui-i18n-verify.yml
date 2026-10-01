@@ -164,6 +164,7 @@ jobs:
             -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin \
             -p rustok-fulfillment-admin -p rustok-pricing-storefront \
             -p rustok-product-admin -p rustok-product-storefront \
+            -p rustok-product-relations-admin \
             >>"$check_log" 2>&1; then
             exit 0
           fi

@@ -28,45 +28,36 @@ pub fn selected_transport_profile(value: Option<&str>) -> ProductRelationsTransp
     }
 }
 
-pub fn build_product_relations_panel_copy(
-    locale: Option<&str>,
-) -> ProductRelationsPanelCopy {
-    let russian = crate::i18n::normalize_admin_locale(locale) == "ru";
+pub fn build_product_relations_panel_copy(locale: Option<&str>) -> ProductRelationsPanelCopy {
+    use crate::i18n::t;
 
-    if russian {
-        ProductRelationsPanelCopy {
-            title: "Связанные товары".to_string(),
-            subtitle: "Сопутствующие товары, апселлы, аксессуары и рекомендации.".to_string(),
-            tab_cross_sell: "Сопутствующие".to_string(),
-            tab_up_sell: "Апселлы".to_string(),
-            tab_related: "Похожие".to_string(),
-            tab_accessory: "Аксессуары".to_string(),
-            tab_alternative: "Аналоги".to_string(),
-            add: "Добавить связь".to_string(),
-            target_product_id: "ID связанного товара (UUID)".to_string(),
-            position: "Позиция".to_string(),
-            empty: "Нет настроенных связей этого типа.".to_string(),
-            remove: "Удалить".to_string(),
-            move_up: "Вверх".to_string(),
-            move_down: "Вниз".to_string(),
-        }
-    } else {
-        ProductRelationsPanelCopy {
-            title: "Product Relations".to_string(),
-            subtitle: "Cross-sells, up-sells, accessories, and merchandising associations.".to_string(),
-            tab_cross_sell: "Cross-sell".to_string(),
-            tab_up_sell: "Up-sell".to_string(),
-            tab_related: "Related".to_string(),
-            tab_accessory: "Accessories".to_string(),
-            tab_alternative: "Alternatives".to_string(),
-            add: "Add relation".to_string(),
-            target_product_id: "Target Product ID (UUID)".to_string(),
-            position: "Position".to_string(),
-            empty: "No relations configured for this type.".to_string(),
-            remove: "Remove".to_string(),
-            move_up: "Move up".to_string(),
-            move_down: "Move down".to_string(),
-        }
+    ProductRelationsPanelCopy {
+        title: t(locale, "relations.title", "Product Relations"),
+        subtitle: t(
+            locale,
+            "relations.subtitle",
+            "Cross-sells, up-sells, accessories, and merchandising associations.",
+        ),
+        tab_cross_sell: t(locale, "relations.tabCrossSell", "Cross-sell"),
+        tab_up_sell: t(locale, "relations.tabUpSell", "Up-sell"),
+        tab_related: t(locale, "relations.tabRelated", "Related"),
+        tab_accessory: t(locale, "relations.tabAccessory", "Accessories"),
+        tab_alternative: t(locale, "relations.tabAlternative", "Alternatives"),
+        add: t(locale, "relations.add", "Add relation"),
+        target_product_id: t(
+            locale,
+            "relations.targetProductId",
+            "Target Product ID (UUID)",
+        ),
+        position: t(locale, "relations.position", "Position"),
+        empty: t(
+            locale,
+            "relations.empty",
+            "No relations configured for this type.",
+        ),
+        remove: t(locale, "relations.remove", "Remove"),
+        move_up: t(locale, "relations.moveUp", "Move up"),
+        move_down: t(locale, "relations.moveDown", "Move down"),
     }
 }
 
