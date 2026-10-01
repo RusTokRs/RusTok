@@ -10,6 +10,8 @@ on:
       - "crates/libs/rustok-core/src/i18n.rs"
       - "crates/libs/rustok-core/src/field_schema.rs"
       - "crates/modules/**/locales/**"
+      - "crates/modules/*/admin/src/**"
+      - "crates/modules/*/storefront/src/**"
       - "crates/modules/rustok-ai/src/metrics.rs"
       - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
@@ -45,6 +47,8 @@ on:
       - "crates/libs/rustok-core/src/i18n.rs"
       - "crates/libs/rustok-core/src/field_schema.rs"
       - "crates/modules/**/locales/**"
+      - "crates/modules/*/admin/src/**"
+      - "crates/modules/*/storefront/src/**"
       - "crates/modules/rustok-ai/src/metrics.rs"
       - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
@@ -150,6 +154,12 @@ jobs:
           cargo test -p rustok-notifications-storefront
           cargo test -p rustok-api locale::tests --lib
           cargo test -p rustok-page-builder locale::tests --lib
+      - name: Converted consumer packages
+        run: |
+          # The workspace-wide Cargo Check job in ci.yml is red on main, so the
+          # module packages whose Fluent interpolation call sites changed would
+          # otherwise have no green compile gate at all.
+          cargo check -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin -p rustok-fulfillment-admin -p rustok-pricing-storefront -p rustok-product-admin -p rustok-product-storefront--lib --all-features
       - name: Clippy
         run: |
           # Same rationale as the Format step: publish the diagnostics instead
