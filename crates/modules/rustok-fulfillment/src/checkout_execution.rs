@@ -1246,7 +1246,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn checkout_item_metadata_drops_caller_supplied_audit_history() {
         let metadata = serde_json::json!({
             "audit": {
@@ -1261,6 +1260,7 @@ mod tests {
         assert_eq!(projected.get("note").and_then(Value::as_str), Some("keep"));
     }
 
+    #[test]
     fn checkout_item_metadata_preserves_cart_line_identity_projection() {
         let cart_line_item_id = Uuid::new_v4();
         let metadata = serde_json::json!({
