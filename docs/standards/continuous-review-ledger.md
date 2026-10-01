@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `755cb57929760ad8cd42ef0bbc42ae275464b8ea`  
+**Current main SHA:** `2c8fe11533e33bd554bea5502edd74b371e51dea`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4128,5 +4128,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Structural refactor:** duplicate checkout reserved-key logic was removed from `checkout_execution.rs`; crate-private service helpers are the canonical source, preventing future key-list drift.
 - **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/runtime evidence is claimed locally.
 - **Documentation:** Fulfillment README now records item-level checkout identity ownership and canonical `cart_line_item_id` validation.
-- **Status:** `FS-22.06.83` implementation complete on dedicated branch; integration pending final merge gate.
+- **Status:** `FS-22.06.83` reconciled as already present on refreshed `main` in commit `8c88d7d9ee5286ee11e1fd4381c4566aa6d29b84`; module iteration `.83` is closed.
 - **Next primary module iteration:** `FS-22.06.84 — same primary module, fulfillment-item audit/metadata projection after reserved checkout-key cleanup`.
+
+### FS-22.06.84 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Fulfillment-item audit/metadata projection ownership
+
+- **Base:** refreshed `main` at `2c8fe11533e33bd554bea5502edd74b371e51dea`; dedicated branch `audit/fs-22.06.84-fulfillment-item-audit`.
+- **Primary scope:** one production owner module — fulfillment-item metadata ownership at direct create and checkout projection boundaries after the typed checkout-key cleanup.
+- **Invariant map:** `metadata.audit` on fulfillment and fulfillment-item records is owner-generated lifecycle evidence; create inputs and checkout projections must not seed audit history; checkout identity sanitization must remain strict; unrelated item metadata and canonical `checkout.cart_line_item_id` must survive intact.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.84-01:** `strip_fulfillment_item_checkout_metadata` removed legacy checkout identity keys but did not remove the reserved `audit` namespace. Direct FulfillmentService item creation could therefore persist caller-supplied audit events, after which lifecycle `append_audit_event` would append owner events to untrusted history.
+- **Adjacent projection finding:** checkout execution reused the same incomplete item sanitizer, so checkout-created fulfillment items could receive the same caller-supplied audit history.
+- **Production remediation:** added owner-owned `strip_fulfillment_item_metadata`, which strips caller `audit` data before applying the strict checkout identity sanitizer. Direct item creation and checkout item projection now use this canonical helper; lifecycle append remains the only path that creates item audit evidence.
+- **Immediate re-audit:** re-read item create persistence, both sanitizer helpers, checkout metadata projection, lifecycle `append_audit_event`, cart-line identity extraction, and adjacent checkout typed execution. Legacy checkout keys remain stripped, malformed namespaces still fail closed, canonical `cart_line_item_id` remains preserved, and valid non-reserved metadata is retained.
+- **Adjacent-boundary review:** inspected every `fulfillment_item::ActiveModel` occurrence in the primary service. The first is the create path and now uses the owner sanitizer; the remaining occurrences are lifecycle updates that append owner-generated audit events and do not accept metadata replacement. `admin_create_command.rs` contains no alternate direct fulfillment-item insertion.
+- **Regression audit:** the first test insertion accidentally duplicated one `#[test]` attribute and also displaced the neighboring test attribute; immediate reread caught both before completion, and the branch was corrected. No runtime behavior was left with that regression.
+- **Fresh second pass:** independently re-read the changed service/checkout functions, all fulfillment-item model write sites, the owner README contract, and the branch diff. No remaining repository-owned item create/projection path can seed `metadata.audit` in the inspected surface.
+- **Documentation:** Fulfillment README now explicitly records that item create inputs and checkout projections strip caller-supplied `metadata.audit` before persistence.
+- **Verification:** repository source inspection, adjacent-boundary tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.84` implementation complete on the dedicated branch; PR/merge integration is the remaining step for this iteration.
+- **Next primary module iteration:** `FS-22.06.85` — same primary module, select the next fulfillment-item trust/metadata boundary only after refreshing integrated `main`.
