@@ -32,23 +32,21 @@ pub fn build_marketplace_seller_admin_shell(
     locale: Option<&str>,
     profile: MarketplaceSellerAdminTransportProfile,
 ) -> MarketplaceSellerAdminShell {
-    let russian = locale
-        .map(|value| value.eq_ignore_ascii_case("ru") || value.starts_with("ru-"))
-        .unwrap_or(false);
-    if russian {
-        MarketplaceSellerAdminShell {
-            title: "Продавцы маркетплейса".to_string(),
-            subtitle: "Управление профилями, онбордингом и участниками продавцов".to_string(),
-            empty_state: "Транспорт продавцов ещё не подключён к этому хосту".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
-    } else {
-        MarketplaceSellerAdminShell {
-            title: "Marketplace sellers".to_string(),
-            subtitle: "Manage seller profiles, onboarding, and seller-scoped members".to_string(),
-            empty_state: "Seller transport is not mounted in this host yet".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
+    use crate::i18n::t;
+
+    MarketplaceSellerAdminShell {
+        title: t(locale, "marketplaceSeller.title", "Marketplace sellers"),
+        subtitle: t(
+            locale,
+            "marketplaceSeller.shell.subtitle",
+            "Manage seller profiles, onboarding, and seller-scoped members",
+        ),
+        empty_state: t(
+            locale,
+            "marketplaceSeller.shell.emptyState",
+            "Seller transport is not mounted in this host yet",
+        ),
+        transport_profile: profile.as_str().to_string(),
     }
 }
 
