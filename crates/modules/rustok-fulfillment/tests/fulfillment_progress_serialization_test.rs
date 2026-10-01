@@ -59,8 +59,18 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         )
         .await
         .expect("fulfillment should be created");
-    let item_id = created.items[0].id;
-    let untouched_item_id = created.items[1].id;
+    let (item_id, untouched_item_id) = if created.items[0].quantity == 3 {
+        (created.items[0].id, created.items[1].id)
+    } else {
+        (created.items[1].id, created.items[0].id)
+    };
+    let find_item = |resp: &rustok_fulfillment::FulfillmentResponse, id: Uuid| {
+        resp.items
+            .iter()
+            .find(|i| i.id == id)
+            .cloned()
+            .expect("fulfillment item should be present")
+    };
 
     let shipped = service
         .ship_fulfillment(
@@ -79,8 +89,8 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("fulfillment should ship");
     assert_eq!(shipped.status, "shipped");
-    assert_eq!(shipped.items[0].shipped_quantity, 3);
-    assert_eq!(shipped.items[1].shipped_quantity, 0);
+    assert_eq!(find_item(&shipped, item_id).shipped_quantity, 3);
+    assert_eq!(find_item(&shipped, untouched_item_id).shipped_quantity, 0);
 
     let partially_delivered = service
         .deliver_fulfillment(
@@ -98,7 +108,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("partial delivery should preserve shipped status");
     assert_eq!(partially_delivered.status, "shipped");
-    assert_eq!(partially_delivered.items[0].delivered_quantity, 1);
+    assert_eq!(find_item(&partially_delivered, item_id).delivered_quantity, 1);
     assert_eq!(
         partially_delivered.metadata["audit"]["events"]
             .as_array()
@@ -137,8 +147,8 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("remaining quantity should be deliverable");
     assert_eq!(delivered_first.status, "shipped");
-    assert_eq!(delivered_first.items[0].delivered_quantity, 3);
-    assert_eq!(delivered_first.items[1].delivered_quantity, 0);
+    assert_eq!(find_item(&delivered_first, item_id).delivered_quantity, 3);
+    assert_eq!(find_item(&delivered_first, untouched_item_id).delivered_quantity, 0);
 
     let shipped_second = service
         .ship_fulfillment(
@@ -156,7 +166,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         )
         .await
         .expect("the untouched item should be independently shippable");
-    assert_eq!(shipped_second.items[1].shipped_quantity, 1);
+    assert_eq!(find_item(&shipped_second, untouched_item_id).shipped_quantity, 1);
 
     let delivered = service
         .deliver_fulfillment(
@@ -174,8 +184,8 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("the remaining item should be deliverable");
     assert_eq!(delivered.status, "delivered");
-    assert_eq!(delivered.items[0].delivered_quantity, 3);
-    assert_eq!(delivered.items[1].delivered_quantity, 1);
+    assert_eq!(find_item(&delivered, item_id).delivered_quantity, 3);
+    assert_eq!(find_item(&delivered, untouched_item_id).delivered_quantity, 1);
 
     let reopened = service
         .reopen_fulfillment(
@@ -192,6 +202,6 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("delivered progress should be reopenable through the owner service");
     assert_eq!(reopened.status, "shipped");
-    assert_eq!(reopened.items[0].shipped_quantity, 3);
-    assert_eq!(reopened.items[0].delivered_quantity, 2);
+    assert_eq!(find_item(&reopened, item_id).shipped_quantity, 3);
+    assert_eq!(find_item(&reopened, item_id).delivered_quantity, 2);
 }

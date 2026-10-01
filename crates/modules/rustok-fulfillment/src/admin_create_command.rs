@@ -48,6 +48,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
     async fn begin_create_label_operation(
         &self,
         tenant_id: Uuid,
+        fulfillment_id: Uuid,
         provider_id: &str,
         idempotency_key: &str,
         request_payload: Value,
@@ -63,12 +64,11 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             return Ok(existing);
         }
 
-        let candidate_fulfillment_id = rustok_core::generate_id();
         match self
             .operation_journal
             .begin(BeginProviderOperation {
                 tenant_id,
-                fulfillment_id: candidate_fulfillment_id,
+                fulfillment_id,
                 operation: "create_label".to_string(),
                 provider_id: provider_id.to_string(),
                 idempotency_key: idempotency_key.to_string(),
@@ -251,14 +251,48 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
                 "fulfillment create request could not be normalized",
             )
         })?;
-        let operation = self
-            .begin_create_label_operation(
-                tenant_id,
-                provider_id.as_str(),
-                idempotency_key,
-                request_payload,
-            )
-            .await?;
+        let existing_operation = self
+            .operation_journal
+            .find_by_key(tenant_id, provider_id.as_str(), idempotency_key)
+            .await
+            .map_err(map_fulfillment_error_without_context)?;
+
+        let (operation, fulfillment) = if let Some(existing) = existing_operation {
+            ensure_create_label_request_unchanged(&existing, &request_payload)?;
+            let fulfillment = self
+                .service
+                .get_fulfillment(tenant_id, existing.fulfillment_id)
+                .await
+                .map_err(|error| match error {
+                    FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
+                        "fulfillment.reconciliation_required",
+                        "fulfillment provider operation exists but its local fulfillment is missing",
+                    ),
+                    other => map_fulfillment_error(&context, OPERATION, other),
+                })?;
+            (existing, fulfillment)
+        } else {
+            let candidate_fulfillment_id = rustok_core::generate_id();
+            let fulfillment = self
+                .ensure_local_fulfillment(
+                    tenant_id,
+                    candidate_fulfillment_id,
+                    request.input.clone(),
+                )
+                .await
+                .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
+
+            let operation = self
+                .begin_create_label_operation(
+                    tenant_id,
+                    fulfillment.id,
+                    provider_id.as_str(),
+                    idempotency_key,
+                    request_payload,
+                )
+                .await?;
+            (operation, fulfillment)
+        };
 
         if operation.status == PROVIDER_OPERATION_EXECUTING {
             return Err(PortError::conflict(
@@ -267,31 +301,14 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
             ));
         }
 
-        let fulfillment = if matches!(
+        if matches!(
             operation.status.as_str(),
             PROVIDER_OPERATION_COMMITTED
                 | PROVIDER_OPERATION_SUCCEEDED
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
         ) {
-            self.service
-                .get_fulfillment(tenant_id, operation.fulfillment_id)
-                .await
-                .map_err(|error| match error {
-                    FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
-                        "fulfillment.reconciliation_required",
-                        "fulfillment provider operation exists but its local fulfillment is missing",
-                    ),
-                    other => map_fulfillment_error(&context, OPERATION, other),
-                })?
-        } else {
-            self.ensure_local_fulfillment(
-                tenant_id,
-                operation.fulfillment_id,
-                request.input.clone(),
-            )
-            .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?
-        };
+            return Ok(fulfillment);
+        }
 
         let provider_request = FulfillmentProviderOperationRequest {
             tenant_id,

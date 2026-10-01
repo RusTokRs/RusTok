@@ -595,7 +595,7 @@ async fn admin_orders_transport_requires_orders_list_permission() {
         .await
         .expect("request should complete");
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -885,5 +885,5 @@ async fn admin_order_transport_requires_orders_read_permission() {
         .await
         .expect("request should complete");
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

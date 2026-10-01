@@ -329,5 +329,5 @@ async fn admin_return_decision_transport_requires_payments_update_for_refund_act
         .await
         .expect("request should complete");
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

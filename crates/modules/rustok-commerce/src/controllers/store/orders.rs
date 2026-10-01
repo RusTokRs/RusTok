@@ -601,7 +601,7 @@ pub async fn get_order(
     .await?;
 
     if order.customer_id != Some(customer_id) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "commerce_store_order_access_denied",
             "Order does not belong to the current customer",
         ));
