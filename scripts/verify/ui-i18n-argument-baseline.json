@@ -3,7 +3,6 @@
   "sites": [
     "rustok-ai/admin ai.feedback.orderAnalyticsCompleted",
     "rustok-ai/admin ai.feedback.orderOpsAssistantCompleted",
-    "rustok-ai/admin ai.feedback.productAttributesCompleted",
     "rustok-blog/admin blog.form.editingBanner",
     "rustok-blog/admin blog.table.total",
     "rustok-channel/admin channel.feedback.moduleSaved",
