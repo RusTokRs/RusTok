@@ -101,6 +101,7 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
 #[cfg(test)]
 mod tests {
     use super::validate_backfill_user_read_limit;
+    use crate::AuthLifecycleMutationError;
 
     #[test]
     fn internal_backfill_errors_are_redacted() {
