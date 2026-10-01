@@ -1324,6 +1324,7 @@ fn merge_fulfillment_metadata(
         .as_object()
         .and_then(|object| object.get("audit"))
         .cloned();
+    validate_object_metadata(&patch, "fulfillment metadata patch")?;
     let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
 
     if let Some(audit) = current_audit {
