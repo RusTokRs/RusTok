@@ -168,7 +168,11 @@ search-preview-noTargetUrl = No target URL is available for this result yet.
 search-preview-openResult = Open result
 search-preview-preset = preset = { $preset }
 search-preview-score = score { $score }
-search-preview-summary = { $total } results in { $took_ms } ms via { $engine } ({ $ranking_profile })
+search-preview-summary =
+    { $total ->
+        [one] { $total } result in { $took_ms } ms via { $engine } ({ $ranking_profile })
+       *[other] { $total } results in { $took_ms } ms via { $engine } ({ $ranking_profile })
+    }
 search-preview-title = Preview Results
 search-profile-balanced = balanced
 search-profile-catalog = catalog

@@ -32,23 +32,21 @@ pub fn build_bundle_admin_shell(
     locale: Option<&str>,
     profile: BundleAdminTransportProfile,
 ) -> BundleAdminShell {
-    let russian = locale
-        .map(|value| value.eq_ignore_ascii_case("ru") || value.starts_with("ru-"))
-        .unwrap_or(false);
-    if russian {
-        BundleAdminShell {
-            title: "Комплекты товаров".to_string(),
-            subtitle: "Управление комплектами, наборами и скидками на комплекты".to_string(),
-            empty_state: "Транспорт комплектов ещё не подключён к этому хосту".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
-    } else {
-        BundleAdminShell {
-            title: "Product Bundles".to_string(),
-            subtitle: "Manage product bundles, kits, and package discounts".to_string(),
-            empty_state: "Bundle transport is not mounted in this host yet".to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
+    use crate::i18n::t;
+
+    BundleAdminShell {
+        title: t(locale, "bundle.title", "Product Bundles"),
+        subtitle: t(
+            locale,
+            "bundle.shell.subtitle",
+            "Manage product bundles, kits, and package discounts",
+        ),
+        empty_state: t(
+            locale,
+            "bundle.shell.emptyState",
+            "Bundle transport is not mounted in this host yet",
+        ),
+        transport_profile: profile.as_str().to_string(),
     }
 }
 

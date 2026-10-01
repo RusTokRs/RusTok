@@ -11,10 +11,16 @@ pricing-health-missing = missing
 pricing-health-sale = sale
 pricing-list-empty = No published products with visible pricing are available yet.
 pricing-list-open = Open
+# plural-exempt: adjectival 'N on sale' is invariant in English
 pricing-list-sales = { $count } on sale
 pricing-list-title = Pricing feed
+# plural-exempt: adjectival 'N total' is invariant in English
 pricing-list-total = { $count } total
-pricing-list-variants = { $count } variants
+pricing-list-variants =
+    { $count ->
+        [one] { $count } variant
+       *[other] { $count } variants
+    }
 pricing-list-vendorFallback = Independent label
 pricing-selected-basePriceListFallback = base prices
 pricing-selected-catalog = catalog

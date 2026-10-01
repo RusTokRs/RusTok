@@ -57,7 +57,7 @@ pub fn ChannelAdmin() -> impl IntoView {
         "channel.subtitle",
         "Channels define platform-level external delivery context, targets, enabled module surfaces, and bound OAuth apps.",
     );
-    let route_label = t(ui_locale.as_deref(), "channel.route", "Route: {route}");
+    let route_label_locale = ui_locale.clone();
     let create_title = t(
         ui_locale.as_deref(),
         "channel.create.title",
@@ -151,12 +151,12 @@ pub fn ChannelAdmin() -> impl IntoView {
                 match result {
                     Ok(channel) => {
                         set_feedback.set(Some(
-                            t(
+                            crate::i18n::format(
                                 ui_locale.as_deref(),
                                 "channel.feedback.created",
+                                Some(&rustok_ui_i18n::fluent_args!("slug" => channel.slug.to_string())),
                                 "Channel `{slug}` created.",
-                            )
-                            .replace("{slug}", channel.slug.as_str()),
+                            ),
                         ));
                         create_slug.set(String::new());
                         create_name.set(String::new());
@@ -191,7 +191,12 @@ pub fn ChannelAdmin() -> impl IntoView {
                         </p>
                     </div>
                     <div class="rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-                        {route_label.replace("{route}", format!("/modules/{route_segment}").as_str())}
+                        {crate::i18n::format(
+                            route_label_locale.as_deref(),
+                            "channel.route",
+                            Some(&rustok_ui_i18n::fluent_args!("route" => format!("/modules/{route_segment}").to_string())),
+                            "Route: {route}",
+                        )}
                     </div>
                 </div>
             </header>

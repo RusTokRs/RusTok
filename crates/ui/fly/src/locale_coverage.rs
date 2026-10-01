@@ -336,7 +336,7 @@ mod tests {
             ],
             "pages": [{ "component": { "id": "root", "type": "wrapper" } }]
         }));
-        assert_eq!(report.tracked_locales, vec!["de-de", "en"]);
+        assert_eq!(report.tracked_locales, vec!["de-DE", "en"]);
         assert!(report.required_complete());
         assert!(!report.complete());
         assert!(report.gaps.iter().all(|gap| !gap.required));

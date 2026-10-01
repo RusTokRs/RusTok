@@ -212,13 +212,12 @@ pub(super) fn PolicySetCard(
                         match result {
                             Ok(rule) => {
                                 set_feedback.set(Some(
-                                    t(
+                                    crate::i18n::format(
                                         ui_locale.as_deref(),
                                         "channel.policies.feedback.ruleUpdated",
+                                        Some(&rustok_ui_i18n::fluent_args!("rule" => short_id(rule.id.as_str()).to_string(), "slug" => policy_set_slug.to_string())),
                                         "Rule `{rule}` updated in policy set `{slug}`.",
-                                    )
-                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
-                                    .replace("{slug}", policy_set_slug.as_str()),
+                                    ),
                                 ));
                                 query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                                 editing_rule_id.set(None);
@@ -251,13 +250,12 @@ pub(super) fn PolicySetCard(
                         match result {
                             Ok(rule) => {
                                 set_feedback.set(Some(
-                                    t(
+                                    crate::i18n::format(
                                         ui_locale.as_deref(),
                                         "channel.policies.feedback.ruleCreated",
+                                        Some(&rustok_ui_i18n::fluent_args!("rule" => short_id(rule.id.as_str()).to_string(), "slug" => policy_set_slug.to_string())),
                                         "Rule `{rule}` added to policy set `{slug}`.",
-                                    )
-                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
-                                    .replace("{slug}", policy_set_slug.as_str()),
+                                    ),
                                 ));
                                 host_equals.set(String::new());
                                 host_suffix.set(String::new());
@@ -323,12 +321,12 @@ pub(super) fn PolicySetCard(
                                 match result {
                                     Ok(_) => {
                                         set_feedback.set(Some(
-                                            t(
+                                            crate::i18n::format(
                                                 ui_locale.as_deref(),
                                                 "channel.policies.feedback.activated",
+                                                Some(&rustok_ui_i18n::fluent_args!("slug" => policy_set_slug.to_string())),
                                                 "Policy set `{slug}` is now active.",
-                                            )
-                                            .replace("{slug}", policy_set_slug.as_str()),
+                                            ),
                                         ));
                                         set_refresh_nonce.update(|value| *value += 1);
                                     }
@@ -463,12 +461,12 @@ pub(super) fn PolicySetCard(
                                                             match result {
                                                                 Ok(_) => {
                                                                     set_feedback.set(Some(
-                                                                        t(
+                                                                        crate::i18n::format(
                                                                             ui_locale.as_deref(),
                                                                             "channel.policies.feedback.ruleReordered",
+                                                                            Some(&rustok_ui_i18n::fluent_args!("slug" => policy_set_slug.to_string())),
                                                                             "Rule order updated for policy set `{slug}`.",
-                                                                        )
-                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                        ),
                                                                     ));
                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                 }
@@ -511,12 +509,12 @@ pub(super) fn PolicySetCard(
                                                             match result {
                                                                 Ok(_) => {
                                                                     set_feedback.set(Some(
-                                                                        t(
+                                                                        crate::i18n::format(
                                                                             ui_locale.as_deref(),
                                                                             "channel.policies.feedback.ruleReordered",
+                                                                            Some(&rustok_ui_i18n::fluent_args!("slug" => policy_set_slug.to_string())),
                                                                             "Rule order updated for policy set `{slug}`.",
-                                                                        )
-                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                        ),
                                                                     ));
                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                 }
@@ -624,12 +622,12 @@ pub(super) fn PolicySetCard(
                                                                         query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
                                                                     }
                                                                     set_feedback.set(Some(
-                                                                        t(
+                                                                        crate::i18n::format(
                                                                             ui_locale.as_deref(),
                                                                             "channel.policies.feedback.ruleDeleted",
+                                                                            Some(&rustok_ui_i18n::fluent_args!("rule" => short_id(rule_id.as_str()).to_string())),
                                                                             "Rule `{rule}` removed.",
-                                                                        )
-                                                                        .replace("{rule}", short_id(rule_id.as_str()).as_str()),
+                                                                        ),
                                                                     ));
                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                 }

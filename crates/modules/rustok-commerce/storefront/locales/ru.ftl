@@ -45,6 +45,7 @@ commerce-delivery-empty = Для этой группы доставки сейч
 commerce-delivery-group = Группа доставки
 commerce-delivery-inactive = неактивно
 commerce-delivery-lineItems = Позиции
+commerce-delivery-moduleOwnership = Способы доставки и детали фулфилмента остаются в UI модуля fulfillment; commerce лишь запускает межмодульную оркестрацию оформления заказа.
 commerce-delivery-noSelection = Способ доставки не выбран
 commerce-delivery-provider = Провайдер
 commerce-delivery-required = нужен выбор

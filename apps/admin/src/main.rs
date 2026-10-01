@@ -23,8 +23,9 @@ async fn main() {
     use leptos_auth::provide_server_auth_snapshot;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, admin_security_headers, auth_ssr::{auth_snapshot_from_headers, verify_auth_snapshot}, request_auth_snapshot,
-        request_csp_nonce, shell, validate_admin_security_profile,
+        App, admin_security_headers,
+        auth_ssr::{auth_snapshot_from_headers, verify_auth_snapshot},
+        request_auth_snapshot, request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, PagesBrowserIntentAccessError, PagesBrowserIntentProblem,

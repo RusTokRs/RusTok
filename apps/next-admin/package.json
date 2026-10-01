@@ -78,7 +78,7 @@
     "@rustok/events-admin": "file:../../crates/modules/rustok-events-module/next-admin",
     "@rustok/iggy-connector-admin": "file:../../crates/modules/rustok-iggy-connector/next-admin",
     "@rustok/mcp-admin": "file:./packages/rustok-mcp",
-    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
     "@rustok/product-admin": "file:./packages/rustok-product",
     "@rustok/rbac-admin": "file:./packages/rbac",
     "@rustok/richtext": "file:../../packages/richtext",

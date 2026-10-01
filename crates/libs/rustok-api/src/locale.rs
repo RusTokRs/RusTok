@@ -161,16 +161,21 @@ pub fn push_locale_candidate(
         return;
     };
 
-    if !candidates.iter().any(|candidate| candidate == &normalized) {
-        candidates.push(normalized.clone());
+    if !include_language_fallback {
+        if !candidates.iter().any(|candidate| candidate == &normalized) {
+            candidates.push(normalized);
+        }
+        return;
     }
 
-    if include_language_fallback
-        && let Some(language) = locale_primary_language(normalized.as_str())
-        && language != normalized
-        && !candidates.iter().any(|candidate| candidate == &language)
-    {
-        candidates.push(language);
+    // Share the platform fallback chain with UI catalog lookup. Peeling only
+    // the primary language made stored-translation lookup skip the script
+    // layer, so UI copy and content could resolve to different languages for
+    // the same request.
+    for candidate in rustok_ui_i18n::locale_fallback_chain(normalized.as_str()) {
+        if !candidates.iter().any(|existing| existing == &candidate) {
+            candidates.push(candidate);
+        }
     }
 }
 
@@ -254,9 +259,7 @@ mod tests {
         assert_eq!(RuntimeLocale::new("pt_br").unwrap().as_str(), "pt-BR");
         assert_eq!(TenantLocale::new("zh-hant").unwrap().as_str(), "zh-Hant");
         assert_eq!(
-            RuntimeLocale::new("iw-IL-u-ca-hebrew")
-                .unwrap()
-                .as_str(),
+            RuntimeLocale::new("iw-IL-u-ca-hebrew").unwrap().as_str(),
             "he-IL"
         );
         assert!(RuntimeLocale::new(UNKNOWN_PROVENANCE_LOCALE).is_err());

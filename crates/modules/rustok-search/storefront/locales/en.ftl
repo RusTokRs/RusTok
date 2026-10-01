@@ -30,7 +30,11 @@ search-results-none = none
 search-results-openResult = Open result
 search-results-preset = preset = { $preset }
 search-results-queryLabel = Query
-search-results-summary = { $count } results in { $took_ms } ms via { $engine } ({ $ranking_profile })
+search-results-summary =
+    { $count ->
+        [one] { $count } result in { $took_ms } ms via { $engine } ({ $ranking_profile })
+       *[other] { $count } results in { $took_ms } ms via { $engine } ({ $ranking_profile })
+    }
 search-subtitle = This storefront surface is backed by PostgreSQL full-text search over published content and products.
 search-suggestions-badge = autocomplete
 search-suggestions-empty = Type at least 2 characters to see autocomplete suggestions.

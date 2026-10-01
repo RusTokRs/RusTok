@@ -25,6 +25,10 @@ New module-owned UI code should prefer `rustok_ui_i18n::prelude::*` when a glob 
 - `module_t!`
 - `validate_message_key`
 - `validate_message_attribute`
+- `MAX_LOCALE_TAG_LEN` / `MAX_ACCEPT_LANGUAGE_LEN` / `MAX_ACCEPT_LANGUAGE_RANGES`
+- `try_parse_accept_language` / `parse_accept_language` and the locale projections
+- `FluentValue`
+- `AcceptLanguagePreference` / `AcceptLanguageError`
 
 `FluentArgs` is retained in this tier because argument-bearing public formatting methods accept it directly and the public macros construct it. `LazyUiMessages` is a high-level opt-in rather than a replacement for `UiMessages`: it keeps embedded bytes static but defers each locale's Fluent parse and bundle allocation until lookup reaches that locale. `declared_locales()` reports canonical declarations without claiming their unparsed FTL is usable; `loaded_locales()` reports successful loads. Its `validate()` and `prepare()` methods still inspect the complete catalog.
 
@@ -74,7 +78,12 @@ These APIs are deliberately omitted from the prelude so normal module code does 
 The crate root and public modules also expose implementation-oriented or dependency-backed symbols that should not be copied into new code without a concrete need:
 
 - public module paths: `bundle`, `error`, `locale`, `macros`, `messages`;
-- dependency re-exports: `FluentValue`, `LanguageIdentifier`;
+- dependency re-exports: `LanguageIdentifier`;
+
+`FluentError` and `LanguageIdentifierError` are re-exported from the crate root because
+`BundleBuildError` and `I18nError` name them in public variants. A consumer that matches those
+variants must be able to spell the type without adding its own `fluent-bundle` / `unic-langid`
+dependency and keeping the versions aligned by hand.
 - low-level locale mutation helpers: `push_locale_candidate`, `push_unique`;
 - the concrete `FluentCatalog` representation, which exposes `fluent-bundle` storage details.
 

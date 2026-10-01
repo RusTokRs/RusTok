@@ -227,11 +227,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         "fulfillment.error.loadRegistrySlugs",
         "Failed to load registry slugs",
     );
-    let selected_profiles_template = t(
-        ui_locale.as_deref(),
-        "fulfillment.shippingOption.selectedProfiles",
-        "Selected profiles: {profiles}",
-    );
+    let selected_profiles_locale = ui_locale.clone();
     let save_button_label = t(
         ui_locale.as_deref(),
         "fulfillment.action.saveShippingOption",
@@ -485,8 +481,12 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                                 } else {
                                     t(item_locale.as_deref(), "fulfillment.action.reactivate", "Reactivate")
                                 };
-                                let profiles_label = t(item_locale.as_deref(), "fulfillment.shippingOption.profilesMeta", "profiles: {profiles}")
-                                    .replace("{profiles}", format_allowed_profiles(item_locale.as_deref(), option.allowed_shipping_profile_slugs.as_ref()).as_str());
+                                let profiles_label = crate::i18n::format(
+                                    item_locale.as_deref(),
+                                    "fulfillment.shippingOption.profilesMeta",
+                                    Some(&rustok_ui_i18n::fluent_args!("profiles" => format_allowed_profiles(item_locale.as_deref(), option.allowed_shipping_profile_slugs.as_ref()).to_string())),
+                                    "profiles: {profiles}",
+                                );
                                 view! {
                                     <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -568,7 +568,12 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                                     None => view! { <p class="text-sm text-muted-foreground">{registry_loading_label.clone()}</p> }.into_any(),
                                 }}
                             </div>
-                            <p class="text-xs text-muted-foreground">{move || selected_profiles_template.replace("{profiles}", format_selected_profiles(ui_locale_for_selected_profiles.as_deref(), &allowed_profiles.get()).as_str())}</p>
+                            <p class="text-xs text-muted-foreground">{move || crate::i18n::format(
+                                selected_profiles_locale.as_deref(),
+                                "fulfillment.shippingOption.selectedProfiles",
+                                Some(&rustok_ui_i18n::fluent_args!("profiles" => format_selected_profiles(ui_locale_for_selected_profiles.as_deref(), &allowed_profiles.get()).to_string())),
+                                "Selected profiles: {profiles}",
+                            )}</p>
                         </div>
                         <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=metadata_placeholder_label.clone() prop:value=move || metadata_json.get() on:input=move |ev| set_metadata_json.set(event_target_value(&ev)) />
                         <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>{move || if editing_id.get().is_some() { save_button_label.clone() } else { create_button_label.clone() }}</button>

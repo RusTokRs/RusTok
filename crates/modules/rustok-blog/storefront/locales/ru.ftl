@@ -1,5 +1,11 @@
 blog-badge = blog
-blog-body-rawFormat = Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символов.
+blog-body-rawFormat =
+    { $count ->
+        [one] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символ.
+        [few] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символа.
+        [many] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символов.
+       *[other] Материал хранится в формате `{ $format }`. Длина исходного тела: { $count } символа.
+    }
 blog-comments-composer-editorLabel = Comment
 blog-comments-composer-emptyError = Write a comment before submitting.
 blog-comments-composer-hint = Formatting is preserved with the shared richtext editor.
@@ -37,3 +43,10 @@ blog-selected-slugLabel = slug
 blog-selected-unscheduled = Без расписания
 blog-subtitle = Эта storefront-поверхность читает blog-данные через GraphQL без blog-specific wiring в host.
 blog-title = Истории из модульного пакета
+blog-comments-timeout = Комментарии загружаются слишком долго. Статья по-прежнему доступна.
+blog-comments-timeoutCached = Комментарии загружаются слишком долго. Показан недавний кэшированный снимок.
+blog-comments-unavailable = Комментарии временно недоступны. Статья по-прежнему доступна.
+blog-comments-unavailableCached = Комментарии временно недоступны. Показан недавний кэшированный снимок.
+blog-list-publishedLabel = опубликовано
+blog-list-unknownStatus = неизвестно
+blog-selected-unknownStatus = неизвестно

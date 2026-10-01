@@ -683,9 +683,7 @@ fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
                     return None;
                 }
                 segments.push(ContextPathSegment::Key(std::mem::take(&mut token)));
-                if chars.peek().is_none() {
-                    return None;
-                }
+                chars.peek()?;
             }
             '[' => {
                 if !token.is_empty() {

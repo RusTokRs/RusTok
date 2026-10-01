@@ -7,12 +7,33 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/libs/rustok-api/**"
+      - "crates/libs/rustok-core/src/i18n.rs"
+      - "crates/libs/rustok-core/src/field_schema.rs"
+      - "crates/modules/**/locales/**"
+      - "crates/modules/*/admin/src/**"
+      - "crates/modules/*/storefront/src/**"
+      - "crates/modules/rustok-ai/src/metrics.rs"
+      - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "crates/ui/fly/src/runtime_locale.rs"
+      - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
+      - "apps/storefront/locales/**"
+      - "apps/next-admin/messages/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/src/i18n/**"
+      - "apps/next-frontend/messages/**"
+      - "apps/next-frontend/package.json"
+      - "apps/next-frontend/src/i18n.ts"
+      - "apps/next-frontend/src/i18n-config.ts"
+      - "scripts/verify/lib/**"
+      - "scripts/verify/ui-i18n-argument-baseline.json"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-ui-i18n-parity.mjs"
+      - "scripts/verify/verify-ui-i18n-keys.mjs"
       - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
@@ -23,12 +44,33 @@ on:
     paths:
       - "crates/ui/rustok-ui-i18n/**"
       - "crates/libs/rustok-api/**"
+      - "crates/libs/rustok-core/src/i18n.rs"
+      - "crates/libs/rustok-core/src/field_schema.rs"
+      - "crates/modules/**/locales/**"
+      - "crates/modules/*/admin/src/**"
+      - "crates/modules/*/storefront/src/**"
+      - "crates/modules/rustok-ai/src/metrics.rs"
+      - "crates/modules/rustok-modules/src/static_package.rs"
       - "crates/modules/rustok-page-builder/Cargo.toml"
       - "crates/modules/rustok-page-builder/src/locale.rs"
       - "crates/modules/rustok-notifications/storefront/**"
+      - "crates/ui/fly/src/runtime_locale.rs"
+      - "apps/admin/locales/**"
       - "apps/admin/src/i18n.rs"
       - "apps/admin/src/main.rs"
+      - "apps/storefront/locales/**"
+      - "apps/next-admin/messages/**"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/src/i18n/**"
+      - "apps/next-frontend/messages/**"
+      - "apps/next-frontend/package.json"
+      - "apps/next-frontend/src/i18n.ts"
+      - "apps/next-frontend/src/i18n-config.ts"
+      - "scripts/verify/lib/**"
+      - "scripts/verify/ui-i18n-argument-baseline.json"
       - "scripts/verify/verify-i18n-contract.mjs"
+      - "scripts/verify/verify-ui-i18n-parity.mjs"
+      - "scripts/verify/verify-ui-i18n-keys.mjs"
       - "scripts/verify/verify-fly-multilingual.mjs"
       - "scripts/verify/verify-db-multilingual-contract.mjs"
       - "Cargo.toml"
@@ -50,6 +92,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUSTUP_TOOLCHAIN: "1.96.0"
+      # Without this cargo emits ANSI colour codes, which makes every
+      # `grep '^error'` in this workflow silently match nothing.
+      CARGO_TERM_COLOR: never
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -65,16 +110,43 @@ jobs:
           workspaces: ". -> target"
       - name: Format
         run: |
-          cargo fmt -p rustok-ui-i18n -- --check
+          # A bare `--check` only fails, forcing every reviewer to download the
+          # raw log to learn what is unformatted. Publish the diff in the job
+          # summary and as annotations instead.
+          fmt_log="$(mktemp)"
+          status=0
+          cargo fmt -p rustok-ui-i18n -- --check >>"$fmt_log" 2>&1 || status=1
           rustfmt --edition 2024 --check \
             apps/admin/src/i18n.rs \
             apps/admin/src/main.rs \
             crates/libs/rustok-api/src/locale.rs \
-            crates/modules/rustok-page-builder/src/locale.rs
+            crates/modules/rustok-page-builder/src/locale.rs >>"$fmt_log" 2>&1 || status=1
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          {
+            echo '### rustfmt differences'
+            echo '```diff'
+            head -c 60000 "$fmt_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          grep -oE '^Diff in [^ ]+' "$fmt_log" | sort -u \
+            | sed 's|^Diff in |::error file=|; s|$|::rustfmt: file is not formatted|'
+          escaped="$(sed 's/%/%25/g' "$fmt_log" | sed -z 's/\n/%0A/g' | head -c 6000)"
+          echo "::error title=rustfmt diff::${escaped}"
+          cat "$fmt_log"
+          exit 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - name: Repository i18n contracts
         run: |
           node scripts/verify/verify-i18n-contract.mjs
           node scripts/verify/verify-fly-multilingual.mjs
+      - name: UI catalog parity
+        run: node scripts/verify/verify-ui-i18n-parity.mjs
+      - name: UI key inventory
+        run: node scripts/verify/verify-ui-i18n-keys.mjs --strict
       - name: Test
         run: cargo test -p rustok-ui-i18n --all-features
       - name: Consumer integration
@@ -82,9 +154,64 @@ jobs:
           cargo test -p rustok-notifications-storefront
           cargo test -p rustok-api locale::tests --lib
           cargo test -p rustok-page-builder locale::tests --lib
+      - name: Converted consumer packages
+        run: |
+          # The workspace-wide Cargo Check job in ci.yml is red on main, so the
+          # module packages whose Fluent interpolation call sites changed would
+          # otherwise have no green compile gate at all.
+          check_log="$(mktemp)"
+          if cargo check --lib --all-features \
+            -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin \
+            -p rustok-fulfillment-admin -p rustok-pricing-storefront \
+            -p rustok-product-admin -p rustok-product-storefront \
+            -p rustok-product-relations-admin -p rustok-brand-admin -p rustok-product-bundles-admin -p rustok-marketplace-seller-admin -p rustok-marketplace-listing-admin \
+            >>"$check_log" 2>&1; then
+            exit 0
+          fi
+          {
+            echo '### cargo check diagnostics'
+            echo '```'
+            head -c 60000 "$check_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          diagnostics="$(grep -E '^(error|warning)(\[|:)' -A 8 "$check_log" || true)"
+          if [ -z "$diagnostics" ]; then
+            diagnostics="$(tail -c 2500 "$check_log")"
+          fi
+          escaped="$(printf '%s' "$diagnostics" | tail -c 2500 \
+            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+          echo "::error title=cargo-check::${escaped}"
+          cat "$check_log"
+          exit 1
       - name: Clippy
         run: |
-          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings
-          cargo clippy -p rustok-api -p rustok-page-builder --lib -- -D warnings
+          # Same rationale as the Format step: publish the diagnostics instead
+          # of only failing, so a reviewer does not need the raw log.
+          clippy_log="$(mktemp)"
+          status=0
+          cargo clippy -p rustok-ui-i18n --all-targets --all-features -- -D warnings \
+            >>"$clippy_log" 2>&1 || status=1
+          cargo clippy -p rustok-api -p rustok-page-builder --lib -- -D warnings \
+            >>"$clippy_log" 2>&1 || status=1
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          {
+            echo '### clippy diagnostics'
+            echo '```'
+            head -c 60000 "$clippy_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          # GitHub truncates a long annotation, so send the diagnostics rather
+          # than the build chatter and keep it well under the limit.
+          diagnostics="$(grep -E '^(error|warning)(\[|:)' -A 8 "$clippy_log" || true)"
+          if [ -z "$diagnostics" ]; then
+            diagnostics="$(tail -c 2500 "$clippy_log")"
+          fi
+          escaped="$(printf '%s' "$diagnostics" | tail -c 2500 \
+            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+          echo "::error title=clippy::${escaped}"
+          cat "$clippy_log"
+          exit 1
       - name: WASM check
         run: cargo check -p rustok-ui-i18n --all-features --target wasm32-unknown-unknown

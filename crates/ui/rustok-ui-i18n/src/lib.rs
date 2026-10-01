@@ -18,12 +18,17 @@ pub mod macros;
 pub mod messages;
 pub mod prelude;
 
-pub use fluent_bundle::{FluentArgs, FluentValue};
+// `BundleBuildError` and `I18nError` name `FluentError` and
+// `LanguageIdentifierError` in public variants, so consumers must be able to
+// spell those types without taking their own `fluent-bundle`/`unic-langid`
+// dependency and keeping the versions aligned by hand.
+pub use fluent_bundle::{FluentArgs, FluentError, FluentValue};
 #[deprecated(
     since = "0.1.0",
     note = "Pass standard BCP-47 locale strings or use `unic_langid` directly if low-level parsing is needed."
 )]
 pub use unic_langid::LanguageIdentifier;
+pub use unic_langid::LanguageIdentifierError;
 
 pub use accept_language::{
     AcceptLanguageError, AcceptLanguagePreference, MAX_ACCEPT_LANGUAGE_LEN,
@@ -32,7 +37,8 @@ pub use accept_language::{
     preferred_locale_from_accept_language, try_parse_accept_language,
 };
 pub use bundle::{
-    FluentCatalog, build_fluent_bundle, build_fluent_catalog, try_build_fluent_catalog,
+    FluentCatalog, FluentCatalogBuildReport, build_fluent_bundle, build_fluent_catalog,
+    build_fluent_catalog_report, try_build_fluent_catalog,
 };
 pub use error::{BundleBuildError, I18nError, MessageKeyError};
 pub use lazy::{LazyUiLocaleTranslator, LazyUiMessages};
@@ -49,8 +55,8 @@ pub use locale::push_locale_candidate;
 )]
 pub use locale::push_unique;
 pub use locale::{
-    TextDirection, locale_candidates, locale_text_direction, normalize_admin_locale,
-    normalize_locale_tag, normalize_unicode_locale,
+    MAX_LOCALE_TAG_LEN, TextDirection, locale_candidates, locale_fallback_chain,
+    locale_text_direction, normalize_admin_locale, normalize_locale_tag, normalize_unicode_locale,
 };
 pub use messages::{
     MAX_MESSAGE_KEY_LEN, MessageEntrySchema, MessageSchema, PreparedUiMessages, ResolvedMessage,
@@ -258,22 +264,36 @@ items-count = { $count ->
     #[test]
     fn workspace_module_ftl_files_parse_cleanly() {
         use std::fs;
-        use std::path::Path;
+        use std::path::{Path, PathBuf};
 
-        fn visit_dirs(dir: &Path, ftl_files: &mut Vec<std::path::PathBuf>) {
-            if let Ok(entries) = fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        visit_dirs(&path, ftl_files);
-                    } else if path.extension().and_then(|s| s.to_str()) == Some("ftl") {
-                        ftl_files.push(path);
-                    }
+        // Reading the workspace is acceptable in a test but not in the crate's
+        // runtime contract. A missing directory means the crate was vendored
+        // or published outside the monorepo, which is not a failure; an
+        // unreadable directory is.
+        fn visit_dirs(dir: &Path, ftl_files: &mut Vec<PathBuf>) {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(error) => panic!("failed to read {dir:?}: {error}"),
+            };
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => panic!("failed to read an entry of {dir:?}: {error}"),
+                };
+                let path = entry.path();
+                if path.is_dir() {
+                    visit_dirs(&path, ftl_files);
+                } else if path.extension().and_then(|value| value.to_str()) == Some("ftl") {
+                    ftl_files.push(path);
                 }
             }
         }
 
         let modules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules");
+        if !modules_dir.is_dir() {
+            return;
+        }
+
         let mut ftl_files = Vec::new();
         visit_dirs(&modules_dir, &mut ftl_files);
 
@@ -282,11 +302,12 @@ items-count = { $count ->
         for file_path in ftl_files {
             let content = fs::read_to_string(&file_path)
                 .unwrap_or_else(|e| panic!("Failed to read {file_path:?}: {e}"));
-            let filename = file_path.file_name().unwrap().to_str().unwrap();
-            let locale = if filename.starts_with("ru") {
-                "ru"
-            } else {
-                "en"
+            // The catalog's locale is its file stem. Deriving it from a `ru`
+            // prefix silently built every other catalog — `ar.ftl` included —
+            // as English, so locale-specific plural categories were never
+            // exercised.
+            let Some(locale) = file_path.file_stem().and_then(|v| v.to_str()) else {
+                panic!("catalog file name is not valid UTF-8: {file_path:?}");
             };
             build_fluent_bundle(locale, &content).unwrap_or_else(|e| {
                 panic!("Failed to parse Fluent resource in {file_path:?}: {e}")

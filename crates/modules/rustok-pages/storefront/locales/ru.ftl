@@ -17,9 +17,19 @@ pages-block-testimonials = отзывы
 pages-block-text = текст
 pages-block-video = видео
 pages-body-empty = Пока нет ни тела страницы, ни legacy-блоков.
-pages-body-legacyMany = Legacy-страница на основе { $count } блоков. Первый блок: { $block_type }.
+pages-body-legacyMany =
+    { $count ->
+        [one] Legacy-страница на основе { $count } блока. Первый блок: { $block_type }.
+       *[other] Legacy-страница на основе { $count } блоков. Первый блок: { $block_type }.
+    }
 pages-body-legacySingle = Legacy-страница на основе 1 блока типа { $block_type }.
-pages-body-rawFormat = Хранится в формате `{ $format }`. Длина исходного содержимого: { $count } символов.
+pages-body-rawFormat =
+    { $count ->
+        [one] Хранится в формате `{ $format }`. Длина исходного содержимого: { $count } символ.
+        [few] Хранится в формате `{ $format }`. Длина исходного содержимого: { $count } символа.
+        [many] Хранится в формате `{ $format }`. Длина исходного содержимого: { $count } символов.
+       *[other] Хранится в формате `{ $format }`. Длина исходного содержимого: { $count } символа.
+    }
 pages-error-load = Не удалось загрузить storefront-данные страниц
 pages-list-empty = Для storefront-рендеринга пока нет опубликованных страниц.
 pages-list-missingSlug = missing-slug
