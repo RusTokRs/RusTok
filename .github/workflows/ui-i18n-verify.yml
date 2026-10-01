@@ -88,6 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUSTUP_TOOLCHAIN: "1.96.0"
+      # Without this cargo emits ANSI colour codes, which makes every
+      # `grep '^error'` in this workflow silently match nothing.
+      CARGO_TERM_COLOR: never
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -166,7 +169,14 @@ jobs:
             head -c 60000 "$clippy_log"
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
-          escaped="$(tail -c 5500 "$clippy_log" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+          # GitHub truncates a long annotation, so send the diagnostics rather
+          # than the build chatter and keep it well under the limit.
+          diagnostics="$(grep -E '^(error|warning)(\[|:)' -A 8 "$clippy_log" || true)"
+          if [ -z "$diagnostics" ]; then
+            diagnostics="$(tail -c 2500 "$clippy_log")"
+          fi
+          escaped="$(printf '%s' "$diagnostics" | tail -c 2500 \
+            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
           echo "::error title=clippy::${escaped}"
           cat "$clippy_log"
           exit 1
