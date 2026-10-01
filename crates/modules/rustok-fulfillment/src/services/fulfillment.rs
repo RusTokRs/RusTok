@@ -1324,6 +1324,7 @@ fn merge_fulfillment_metadata(
         .as_object()
         .and_then(|object| object.get("audit"))
         .cloned();
+    validate_object_metadata(&patch, "fulfillment metadata patch")?;
     let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
 
     if let Some(audit) = current_audit {
@@ -2387,6 +2388,34 @@ mod tests {
             super::merge_fulfillment_metadata(
                 serde_json::json!("legacy scalar"),
                 serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_patch() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profile": "express",
+            "audit": {
+                "events": [{"type": "ship"}]
+            }
+        });
+
+        assert!(
+            super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err()
+        );
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!({
+                    "customer_note": "keep",
+                    "shipping_profile": "express",
+                    "audit": {
+                        "events": [{"type": "ship"}]
+                    }
+                }),
+                serde_json::json!(["legacy", "array"]),
             )
             .is_err()
         );
