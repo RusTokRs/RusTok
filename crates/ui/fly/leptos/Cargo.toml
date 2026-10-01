@@ -20,9 +20,9 @@ wasm-client = [
 ]
 
 [dependencies]
-fly = { path = "../fly" }
-fly-ui = { path = "../fly-ui" }
-fly-web = { path = "../fly-web" }
+fly = { path = ".." }
+fly-ui = { path = "../ui" }
+fly-web = { path = "../web" }
 leptos.workspace = true
 serde.workspace = true
 serde_json.workspace = true

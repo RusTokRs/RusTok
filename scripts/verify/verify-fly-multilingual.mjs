@@ -11,7 +11,7 @@ const paths = {
   pageMetadataLocale: 'crates/ui/fly/src/page_metadata_locale.rs',
   runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
   runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
-  browserContract: 'crates/ui/fly-browser/src/lib.rs',
+  browserContract: 'crates/ui/fly/browser/src/lib.rs',
   pageBuilderLocale: 'crates/modules/rustok-page-builder/src/locale.rs',
   uiI18nAcceptLanguage: 'crates/ui/rustok-ui-i18n/src/accept_language.rs',
   pageBuilderRender: 'crates/modules/rustok-page-builder/src/render.rs',

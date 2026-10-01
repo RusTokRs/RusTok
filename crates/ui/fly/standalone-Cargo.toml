@@ -1,0 +1,13 @@
+# Standalone Cargo workspace template for Fly
+# When extracting `crates/ui/fly` into an independent repository (e.g. `github.com/rustok/fly`),
+# rename this file to `Cargo.toml` or include it in the repository root.
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "ui",
+    "web",
+    "browser",
+    "leptos",
+    "dioxus",
+]

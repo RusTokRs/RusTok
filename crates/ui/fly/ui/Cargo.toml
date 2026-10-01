@@ -6,7 +6,7 @@ license.workspace = true
 description = "Framework-neutral visual editor state, intents, policies, and contribution contracts"
 
 [dependencies]
-fly = { path = "../fly" }
+fly = { path = ".." }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

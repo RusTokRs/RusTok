@@ -19,7 +19,7 @@ inline-edit = ["dep:fly-leptos"]
 
 [dependencies]
 fly = { path = "../../ui/fly" }
-fly-leptos = { path = "../../ui/fly-leptos", optional = true, default-features = false }
+fly-leptos = { path = "../../ui/fly/leptos", optional = true, default-features = false }
 rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
 leptos.workspace = true
 serde.workspace = true

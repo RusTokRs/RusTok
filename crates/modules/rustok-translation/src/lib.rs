@@ -24,7 +24,7 @@ mod workflow;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use collaboration::{
@@ -130,10 +130,6 @@ impl RusToKModule for TranslationModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
     }
 
     fn permissions(&self) -> Vec<Permission> {

@@ -4,7 +4,7 @@ name = "Translation"
 version = "0.1.0"
 description = "Owner-safe translation workflow, inventory, memory, glossary, and machine-translation control plane"
 ownership = "first_party"
-trust_level = "core"
+trust_level = "verified"
 ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin", "next-admin"]
 

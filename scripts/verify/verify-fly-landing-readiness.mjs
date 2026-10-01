@@ -89,7 +89,7 @@ requireText(
 );
 requireText(
   "crates/ui/fly/src/landing_readiness/evaluate.rs",
-  "materialize_structural_document",
+  "materialize_landing_structural_document",
 );
 requireText(
   "crates/ui/fly/src/landing_readiness/evaluate.rs",
@@ -203,11 +203,11 @@ requireText(
   '"remove_internal_page_link"',
 );
 requireText(
-  "crates/ui/fly-browser/src/lib.rs",
+  "crates/ui/fly/browser/src/lib.rs",
   '"set_internal_page_link"',
 );
 requireText(
-  "crates/ui/fly-browser/src/lib.rs",
+  "crates/ui/fly/browser/src/lib.rs",
   '"remove_internal_page_link"',
 );
 requireText(
@@ -235,7 +235,7 @@ rejectText(
   "metadata.og_image",
 );
 const workflow = source(".github/workflows/fly-page-builder.yml");
-if (!workflow.includes("dtolnay/rust-toolchain@1.93.1") && !workflow.includes("dtolnay/rust-toolchain@stable")) {
+if (!workflow.includes("dtolnay/rust-toolchain@1.93.1") && !workflow.includes("dtolnay/rust-toolchain@stable") && !workflow.includes("dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87")) {
   throw new Error(".github/workflows/fly-page-builder.yml must specify a valid rust-toolchain");
 }
 requireText(

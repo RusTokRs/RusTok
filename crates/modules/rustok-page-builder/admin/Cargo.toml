@@ -19,11 +19,11 @@ dioxus-ui = ["dep:dioxus", "dep:fly-dioxus"]
 
 [dependencies]
 fly = { path = "../../../ui/fly" }
-fly-ui = { path = "../../../ui/fly-ui" }
-fly-web = { path = "../../../ui/fly-web" }
-fly-browser = { path = "../../../ui/fly-browser" }
-fly-leptos = { path = "../../../ui/fly-leptos", default-features = false }
-fly-dioxus = { path = "../../../ui/fly-dioxus", optional = true }
+fly-ui = { path = "../../../ui/fly/ui" }
+fly-web = { path = "../../../ui/fly/web" }
+fly-browser = { path = "../../../ui/fly/browser" }
+fly-leptos = { path = "../../../ui/fly/leptos", default-features = false }
+fly-dioxus = { path = "../../../ui/fly/dioxus", optional = true }
 dioxus = { workspace = true, optional = true }
 rustok-page-builder = { path = "..", default-features = false }
 rustok-ui-core.workspace = true

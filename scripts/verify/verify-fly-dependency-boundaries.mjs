@@ -16,37 +16,37 @@ const rules = [
   },
   {
     crate: 'fly-ui',
-    manifest: 'crates/ui/fly-ui/Cargo.toml',
-    required: ['fly = { path = "../fly" }'],
+    manifest: 'crates/ui/fly/ui/Cargo.toml',
+    required: ['fly = { path = ".." }'],
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
     crate: 'fly-web',
-    manifest: 'crates/ui/fly-web/Cargo.toml',
+    manifest: 'crates/ui/fly/web/Cargo.toml',
     required: [
-      'fly = { path = "../fly" }',
-      'fly-ui = { path = "../fly-ui" }'
+      'fly = { path = ".." }',
+      'fly-ui = { path = "../ui" }'
     ],
     forbidden: ['leptos', 'dioxus', 'rustok-']
   },
   {
     crate: 'fly-leptos',
-    manifest: 'crates/ui/fly-leptos/Cargo.toml',
+    manifest: 'crates/ui/fly/leptos/Cargo.toml',
     required: [
-      'fly = { path = "../fly" }',
-      'fly-ui = { path = "../fly-ui" }',
-      'fly-web = { path = "../fly-web" }',
+      'fly = { path = ".." }',
+      'fly-ui = { path = "../ui" }',
+      'fly-web = { path = "../web" }',
       'leptos.workspace = true'
     ],
     forbidden: ['dioxus', 'rustok-']
   },
   {
     crate: 'fly-dioxus',
-    manifest: 'crates/ui/fly-dioxus/Cargo.toml',
+    manifest: 'crates/ui/fly/dioxus/Cargo.toml',
     required: [
-      'fly = { path = "../fly" }',
-      'fly-ui = { path = "../fly-ui" }',
-      'fly-web = { path = "../fly-web" }',
+      'fly = { path = ".." }',
+      'fly-ui = { path = "../ui" }',
+      'fly-web = { path = "../web" }',
       'dioxus = { workspace = true }'
     ],
     forbidden: ['leptos', 'rustok-']

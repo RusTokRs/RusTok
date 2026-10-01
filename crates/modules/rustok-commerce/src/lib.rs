@@ -156,6 +156,7 @@ impl RusToKModule for CommerceModule {
             "inventory",
             "order",
             "payment",
+            "fulfillment",
         ]
     }
 

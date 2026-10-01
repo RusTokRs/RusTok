@@ -1,17 +1,17 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  flyUiCargo: 'crates/ui/fly-ui/Cargo.toml',
-  flyUiLib: 'crates/ui/fly-ui/src/lib.rs',
-  error: 'crates/ui/fly-ui/src/error.rs',
-  contribution: 'crates/ui/fly-ui/src/contribution.rs',
-  adapter: 'crates/ui/fly-ui/src/contribution_adapter.rs',
-  factory: 'crates/ui/fly-ui/src/contribution_factory.rs',
-  manifestFacade: 'crates/ui/fly-ui/src/contribution_manifest.rs',
-  manifestModel: 'crates/ui/fly-ui/src/contribution_manifest/model.rs',
-  manifestAssembly: 'crates/ui/fly-ui/src/contribution_manifest/assemble.rs',
-  manifestTests: 'crates/ui/fly-ui/src/contribution_manifest/tests.rs',
-  paletteAccess: 'crates/ui/fly-ui/src/palette_access.rs',
+  flyUiCargo: 'crates/ui/fly/ui/Cargo.toml',
+  flyUiLib: 'crates/ui/fly/ui/src/lib.rs',
+  error: 'crates/ui/fly/ui/src/error.rs',
+  contribution: 'crates/ui/fly/ui/src/contribution.rs',
+  adapter: 'crates/ui/fly/ui/src/contribution_adapter.rs',
+  factory: 'crates/ui/fly/ui/src/contribution_factory.rs',
+  manifestFacade: 'crates/ui/fly/ui/src/contribution_manifest.rs',
+  manifestModel: 'crates/ui/fly/ui/src/contribution_manifest/model.rs',
+  manifestAssembly: 'crates/ui/fly/ui/src/contribution_manifest/assemble.rs',
+  manifestTests: 'crates/ui/fly/ui/src/contribution_manifest/tests.rs',
+  paletteAccess: 'crates/ui/fly/ui/src/palette_access.rs',
   pageBuilderLib: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
   pageBuilderHost: 'crates/modules/rustok-page-builder/admin/src/ui/leptos.rs',
   pageBuilderCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
@@ -28,7 +28,7 @@ const paths = {
   pagesContributions: 'crates/modules/rustok-pages/admin/src/contributions.rs',
   pagesContributionBrowser: 'crates/modules/rustok-pages/admin/src/contribution_browser_intent.rs',
   pagesComposition: 'crates/modules/rustok-pages/admin/src/composition.rs',
-  tests: 'crates/ui/fly-ui/src/tests.rs',
+  tests: 'crates/ui/fly/ui/src/tests.rs',
 };
 
 const source = Object.fromEntries(await Promise.all(

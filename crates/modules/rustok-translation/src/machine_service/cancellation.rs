@@ -1,7 +1,5 @@
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_api::{
-    Action, PortCallPolicy, PortContext, Resource, manifest_hash::hash_manifest,
-};
+use rustok_api::{Action, PortCallPolicy, PortContext, Resource, manifest_hash::hash_manifest};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
@@ -345,7 +343,9 @@ pub(crate) async fn propagate_machine_cancellation(
     }
 }
 
-pub(crate) fn provider_cancellation_status(status: MachineTranslationExecutionStatus) -> &'static str {
+pub(crate) fn provider_cancellation_status(
+    status: MachineTranslationExecutionStatus,
+) -> &'static str {
     match status {
         MachineTranslationExecutionStatus::NotRegistered
         | MachineTranslationExecutionStatus::Queued

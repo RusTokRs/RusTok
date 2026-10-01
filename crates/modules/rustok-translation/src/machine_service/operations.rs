@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_api::{
-    Action, PortCallPolicy, PortContext, Resource, manifest_hash::hash_manifest,
-};
+use rustok_api::{Action, PortCallPolicy, PortContext, Resource, manifest_hash::hash_manifest};
 use rustok_core::{PermissionScope, SecurityContext, generate_id};
 use rustok_translation_targets::{
     FieldKey, TranslationResourceSnapshot, protected_token_ledger_matches,
@@ -22,20 +20,16 @@ use crate::{
     MachineTranslationGlossaryTerm, MachineTranslationMemorySuggestion,
     MachineTranslationProviderDescriptor, MachineTranslationUnit, MemoryLookupInput,
     TranslationError, TranslationMemoryService, TranslationResult,
-    entities::{
-        job, job_item, machine_memory_binding, machine_operation, memory_entry,
-    },
+    entities::{job, job_item, machine_memory_binding, machine_operation, memory_entry},
     glossary::read_bound_glossary,
     qa::{glossary_concept_matches, glossary_scope_matches},
 };
 
 use super::cancellation::machine_execution_status;
-use super::helpers::{
-    actor_kind, find_operation, find_operation_by_idempotency, is_digest,
-};
+use super::helpers::{actor_kind, find_operation, find_operation_by_idempotency, is_digest};
 use super::types::{
-    GenerateMachineProposalInput, MachineDiagnosticEvidence, MachineOperationStatusRecord,
-    MachineProposalOutcome, MachineProposalRecord, MEMORY_SUGGESTIONS_PER_UNIT,
+    GenerateMachineProposalInput, MEMORY_SUGGESTIONS_PER_UNIT, MachineDiagnosticEvidence,
+    MachineOperationStatusRecord, MachineProposalOutcome, MachineProposalRecord,
 };
 
 pub(crate) fn validate_generation_input(

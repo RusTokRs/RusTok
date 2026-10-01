@@ -13,7 +13,7 @@ const [cargo, adapters, service, serviceContract, browserHost, browserRuntime] =
       "crates/modules/rustok-page-builder/contracts/page-builder-service-boundary.json",
     ),
     read("crates/modules/rustok-page-builder/src/browser_host.rs"),
-    read("crates/ui/fly-browser/assets/fly-browser.js"),
+    read("crates/ui/fly/browser/assets/fly-browser.js"),
   ]);
 
 const contract = JSON.parse(serviceContract);

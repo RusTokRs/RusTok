@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  vocabulary: 'crates/ui/fly-browser/src/lib.rs',
+  vocabulary: 'crates/ui/fly/browser/src/lib.rs',
   access: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
   exports: 'crates/modules/rustok-page-builder/admin/src/lib.rs',
   pages: 'crates/modules/rustok-pages/admin/src/contribution_browser_intent.rs',

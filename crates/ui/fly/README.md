@@ -1,58 +1,96 @@
-# Fly
+# Fly — Framework-Neutral Visual Editor Monorepo
 
-`fly` is the framework-neutral editor engine defined by the Page Builder implementation plan.
-It owns the canonical editor state, a lossless `grapesjs` codec, component-tree commands,
-undo/redo history, registries, validation, clipboard fragments, revision tracking, and
-missing-provider preservation.
+`fly` is an extensible, framework-neutral visual page builder and component-editor engine for Rust.
+It provides a complete visual authoring pipeline with zero UI-framework coupling in its core and first-class thin adapters for **Leptos** and **Dioxus**.
 
-The crate deliberately has no dependency on Leptos, Dioxus, browser APIs, RusTok modules,
-transport selection, persistence, or rich-text implementations.
-
-## Compatibility contract
-
-`GrapesJsCodec` decodes the project object produced by GrapesJS `getProjectData()` and emits a
-semantically equivalent object suitable for `loadProjectData()`. Known fields have typed accessors;
-unknown top-level, page, component, provider, plugin, and future fields are retained through
-`serde(flatten)` or opaque values.
-
-The fixture manifest distinguishes two independent contracts:
-
-- browser fixtures are loaded through real GrapesJS in Chromium and must survive a bidirectional
-  `loadProjectData()` / `getProjectData()` cycle;
-- Fly-codec fixtures must survive exact Rust decode/encode even when GrapesJS itself does not retain
-  the represented unknown extension fields.
-
-`browser-current.json` is generated from `baseline.json` by the installed GrapesJS, preset and
-Playwright Chromium versions. `unknown-provider.json` remains a Fly-codec fixture because GrapesJS
-0.23.2 drops unknown top-level and extension fields; treating that loss as an allowed browser
-normalization would hide a real boundary difference.
-
-## Core flow
+This directory is structured as a **self-contained monorepo** ready to be extracted into an independent repository (`github.com/rustok/fly`):
 
 ```text
-project JSON
-  -> GrapesJsCodec
-  -> ProjectDocument
-  -> FlyEditor commands/history/validation
-  -> GrapesJsCodec
-  -> project JSON
+crates/ui/fly/
+├── Cargo.toml                  <-- Root crate `fly` (AST, Document model, Codec)
+├── standalone-Cargo.toml       <-- Workspace template when used as independent repo
+├── README.md                   <-- Monorepo documentation
+│
+├── src/                        <-- Core AST, GrapesJS codec, revision tracking, validation
+├── fixtures/                   <-- Bidirectional GrapesJS round-trip test fixtures
+├── locales/                    <-- Localized authoring labels
+│
+├── ui/                         <-- `fly-ui`: State machine, UiIntent, keymaps, capabilities
+│   ├── Cargo.toml
+│   └── src/
+│
+├── web/                        <-- `fly-web`: DOM geometry, hit-testing, iframe bridge, real DOM inline
+│   ├── Cargo.toml
+│   └── src/
+│
+├── browser/                    <-- `fly-browser`: Standalone JS bridge asset for SSR
+│   ├── Cargo.toml
+│   ├── assets/
+│   └── src/
+│
+├── leptos/                     <-- `fly-leptos`: Thin UI adapter for Leptos 0.8
+│   ├── Cargo.toml
+│   └── src/
+│
+└── dioxus/                     <-- `fly-dioxus`: Thin UI adapter for Dioxus 0.6
+    ├── Cargo.toml
+    └── src/
 ```
 
-Consumer modules own persistence. Framework adapters and Page Builder surfaces consume this crate
-rather than duplicating the project model.
+---
 
-## Compatibility evidence
+## Architecture: Fluid Frontend Architecture (FFA)
 
-After installing `apps/next-admin` dependencies and Playwright Chromium, run:
-
-```bash
-node scripts/capture/capture-fly-grapesjs-fixture.mjs
-node scripts/verify/verify-fly-grapesjs-roundtrip.mjs
-cargo test -p fly grapesjs_browser_capture_round_trip_is_exact
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     UI Adapters Layer                       │
+│     fly-leptos (Leptos 0.8)       fly-dioxus (Dioxus 0.6)   │
+│     - FlyFullEditor               - FlyFullEditor           │
+│     - FlyInlineEditor             - FlyInlineEditor         │
+│     - FlyPreview                  - FlyPreview              │
+│     - FlyReadOnly                 - FlyReadOnly             │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│             fly-web (Browser & DOM Runtime)                 │
+│  - Geometry: BrowserPoint, BrowserRect, CoordinateTransform │
+│  - Hit-Testing: hit_test_drop_targets, DropPosition         │
+│  - Iframe Bridge: IframeBridgeMessage, IframeSubscription   │
+│  - Real DOM Inline: AuthenticatedInlineEditGrant            │
+│  - Event Lifecycle: EventListenerHandle, CleanupRegistry    │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│              fly-ui (State Machine & Intents)               │
+│  - FlyUiStateMachine, UiIntent, CommandCapability           │
+│  - Shortcut maps, Presentation mode, RBAC capability table  │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│                fly (Core Domain & Codecs)                   │
+│  - AST: ComponentNode, PageDocument, ProjectFragment        │
+│  - Codecs: Lossless GrapesJS bidirectional encode/decode    │
+│  - History: Reversible command transactions, project hashes │
+│  - Validation: TraitSchemaRegistry, schema validators       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-The capture command records exact GrapesJS, preset, Chromium, plugin, source-commit and timestamp
-metadata. The verifier requires at least one real browser capture, rejects stale current-runtime
-versions, runs every browser-compatible fixture through the actual editor, and allows structural
-normalizations only when explicitly declared by fixture metadata. Real browser captures cannot
-declare normalization exceptions.
+---
+
+## Packages in this Monorepo
+
+| Package | Path | Responsibility | Dependencies |
+|---|---|---|---|
+| `fly` | `.` | Core AST, GrapesJS codec, document model, revision tree | Pure Rust |
+| `fly-ui` | `ui/` | Presentation-neutral state machine, intents, shortcuts, capabilities | `fly` |
+| `fly-web` | `web/` | Browser geometry, hit-testing, iframe bridge, real DOM inline | `fly`, `fly-ui`, `web-sys` (WASM) |
+| `fly-browser` | `browser/` | Standalone JS bridge asset for classic SSR | Pure Rust |
+| `fly-leptos` | `leptos/` | Thin Leptos 0.8 components (`FlyFullEditor`, etc.) | `fly-web`, `leptos` |
+| `fly-dioxus` | `dioxus/` | Thin Dioxus 0.6 components (`FlyFullEditor`, etc.) | `fly-web`, `dioxus` |
+
+---
+
+## Standalone Usage
+
+When extracted into a separate repository, rename `standalone-Cargo.toml` to `Cargo.toml`.
+All sub-crates reference each other using purely relative paths (`path = ".."`, `path = "../ui"`, `path = "../web"`), ensuring zero coupling to the host project.

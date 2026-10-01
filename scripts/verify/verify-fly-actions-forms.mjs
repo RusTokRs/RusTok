@@ -11,7 +11,7 @@ const paths = {
   actionMaterialize: 'crates/ui/fly/src/action/materialize.rs',
   actionTests: 'crates/ui/fly/src/action/tests.rs',
   runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
-  browserContract: 'crates/ui/fly-browser/src/lib.rs',
+  browserContract: 'crates/ui/fly/browser/src/lib.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   browserAdapter: 'crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs',
   browserHost: 'crates/modules/rustok-page-builder/src/browser_host.rs',
@@ -138,8 +138,8 @@ requireMarkers('actionValidation', [
   'component_form_interaction_contract_conflict',
   'non-default form encoding requires post method',
   'visit_project_components(&document.project',
-  'validation.routes.page_index(page_id)',
-  'validation.routes.has_route(page_index)',
+  'routes.page_index(page_id)',
+  'routes.has_route(page_index)',
 ], 'action and form validation');
 requireMarkers('actionMaterialize', [
   'pub fn materialize_component_actions',

@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
 const paths = {
-  vocabulary: 'crates/ui/fly-browser/src/lib.rs',
-  flyUiLib: 'crates/ui/fly-ui/src/lib.rs',
-  policy: 'crates/ui/fly-ui/src/capability_policy.rs',
-  commandCapability: 'crates/ui/fly-ui/src/command_capability.rs',
-  machine: 'crates/ui/fly-ui/src/machine.rs',
-  flyUiTests: 'crates/ui/fly-ui/src/tests.rs',
+  vocabulary: 'crates/ui/fly/browser/src/lib.rs',
+  flyUiLib: 'crates/ui/fly/ui/src/lib.rs',
+  policy: 'crates/ui/fly/ui/src/capability_policy.rs',
+  commandCapability: 'crates/ui/fly/ui/src/command_capability.rs',
+  machine: 'crates/ui/fly/ui/src/machine.rs',
+  flyUiTests: 'crates/ui/fly/ui/src/tests.rs',
   host: 'crates/modules/rustok-page-builder/admin/src/ui/leptos.rs',
   runtime: 'crates/modules/rustok-page-builder/admin/src/editor/runtime.rs',
   canvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',

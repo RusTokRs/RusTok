@@ -22,6 +22,7 @@ pricing = { version_req = ">=0.1.0" }
 inventory = { version_req = ">=0.1.0" }
 order = { version_req = ">=0.1.0" }
 payment = { version_req = ">=0.1.0" }
+fulfillment = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "CommerceModule"

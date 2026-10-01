@@ -10,7 +10,7 @@ const paths = {
   runtimePipeline: 'crates/ui/fly/src/runtime_pipeline.rs',
   runtimeRender: 'crates/ui/fly/src/runtime_render.rs',
   runtimeValidation: 'crates/ui/fly/src/runtime_validation.rs',
-  browserContract: 'crates/ui/fly-browser/src/lib.rs',
+  browserContract: 'crates/ui/fly/browser/src/lib.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   ssrInternalLink: 'crates/modules/rustok-page-builder/admin/src/editor/ssr_internal_link.rs',
   adminMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
