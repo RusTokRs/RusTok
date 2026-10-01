@@ -226,9 +226,7 @@ if (arg === "forum") {
     "utf8",
   );
   const moderationSource = [
-    "moderation.rs",
     "moderation_owner.rs",
-    "moderation_public_owner.rs",
   ]
     .map((file) =>
       fs.readFileSync(

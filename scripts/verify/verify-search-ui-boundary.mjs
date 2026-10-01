@@ -615,7 +615,7 @@ function assertSearchUiCatalogTransportContract() {
     "pub use model::{",
     "ProductCatalogSearchOption",
     "ProductCatalogSearchOptions",
-    "pub use legacy_transport::*",
+    "pub use transport::fetch_catalog_search_options;",
   ]) {
     assertContains(productAdminLib, marker, `${productAdminLibPath}: product Leptos metadata export marker missing ${marker}`);
   }

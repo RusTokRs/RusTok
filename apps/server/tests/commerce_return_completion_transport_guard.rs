@@ -24,7 +24,7 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
         "legacy GraphQL provider return helper module must stay removed"
     );
     assert!(
-        rest.contains("ReturnCompletionOrchestrationService::new("),
+        rest.contains(".return_completion_orchestration()"),
         "REST return completion must use the commerce orchestration boundary"
     );
     assert!(
@@ -82,14 +82,14 @@ fn return_completion_uses_one_commerce_orchestration_boundary() {
         .find(".begin(BeginReturnCompletionOperation")
         .expect("core return completion must reuse the execution journal");
     let first_effect = orchestration
-        .find(".create_refund_idempotent(")
+        .find(".resolve_refund(")
         .expect("return completion refund path must exist");
     assert!(journal_admission < first_effect);
     for marker in [
         "refund, exchange, and claim helpers are mutually exclusive",
         "resolution helpers cannot be combined with explicit refund_id or order_change_id",
         "format!(\"order_return:{return_id}:refund\")",
-        ".complete_return(tenant_id, return_id, owner_input)",
+        ".complete_owner_return(tenant_id, actor_id, return_id, owner_input)",
     ] {
         assert!(
             orchestration.contains(marker),
@@ -177,10 +177,10 @@ fn return_completion_journal_preserves_replay_and_recovery_invariants() {
     }
 
     let refund_effect = orchestration
-        .find(".create_refund_idempotent(")
+        .find(".resolve_refund(")
         .expect("refund side effect must exist");
     let owner_completion = orchestration
-        .find(".complete_return(tenant_id, return_id, owner_input)")
+        .find(".complete_owner_return(tenant_id, actor_id, return_id, owner_input)")
         .expect("owner completion must exist");
     let journal_admission = orchestration
         .find(".begin(BeginReturnCompletionOperation")

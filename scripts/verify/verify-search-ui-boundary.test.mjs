@@ -399,7 +399,7 @@ async fn product_admin_catalog_search_options_native(locale: String) {
 `);
   writeFixtureFile(root, "crates/modules/rustok-product/admin/src/lib.rs", `
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
-pub use legacy_transport::*;
+pub use transport::fetch_catalog_search_options;
 `);
   writeFixtureFile(root, "apps/admin/build.rs", `
 fn render(entry: Entry) {

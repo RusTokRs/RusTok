@@ -45,9 +45,9 @@ const featureBody = (manifest, feature, label) => {
 const evidence = JSON.parse(read(
   "crates/modules/rustok-page-builder/contracts/evidence/page-builder-authenticated-inline-edit-adapter-source.json",
 ));
-const flyCargo = read("crates/ui/fly-leptos/Cargo.toml");
-const flyRoot = read("crates/ui/fly-leptos/src/root.rs");
-const realDom = read("crates/ui/fly-leptos/src/real_dom_inline.rs");
+const flyCargo = read("crates/ui/fly/leptos/Cargo.toml");
+const flyRoot = read("crates/ui/fly/leptos/src/root.rs");
+const realDom = read("crates/ui/fly/web/src/real_dom_inline.rs");
 const storefrontCargo = read("crates/modules/rustok-page-builder-storefront/Cargo.toml");
 const storefrontLib = read("crates/modules/rustok-page-builder-storefront/src/lib.rs");
 const inline = read("crates/modules/rustok-page-builder-storefront/src/inline_edit.rs");
@@ -147,7 +147,7 @@ forbid(realDom, "data-inline-proof", "authorization proof DOM boundary");
 
 for (const marker of [
   'inline-edit = ["dep:fly-leptos"]',
-  'fly-leptos = { path = "../fly-leptos", optional = true, default-features = false }',
+  'fly-leptos = { path = "../../ui/fly/leptos", optional = true, default-features = false }',
   '"fly-leptos?/wasm-client"',
   '"fly-leptos?/ssr"',
 ]) need(storefrontCargo, marker, "optional Page Builder inline feature");

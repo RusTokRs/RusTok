@@ -17,7 +17,7 @@ const files = {
   pageBuilderInline: "crates/modules/rustok-page-builder-storefront/src/inline_edit.rs",
   pagesInline: "crates/modules/rustok-pages/storefront/src/inline_edit.rs",
   adminLaunch: "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
-  realDom: "crates/ui/fly-leptos/src/real_dom_inline.rs",
+  realDom: "crates/ui/fly/web/src/real_dom_inline.rs",
   artifactContract:
     "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
   packet:

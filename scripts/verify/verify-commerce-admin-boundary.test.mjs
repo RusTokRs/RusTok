@@ -72,7 +72,7 @@ function fixture(options = {}) {
   `);
   put(root, "apps/server/tests/commerce_order_change_transport_guard.rs", "order_change_application_uses_commerce_orchestration");
   put(root, "crates/modules/rustok-commerce/src/controllers/admin/returns.rs", `
-    ReturnCompletionOrchestrationService::new();
+    runtime.return_completion_orchestration();
     service.complete_return(tenant.id, auth.user_id, id, command);
   `);
   put(root, "crates/modules/rustok-commerce/src/services/return_completion_orchestration.rs", `
@@ -81,7 +81,7 @@ function fixture(options = {}) {
     refund, exchange, and claim helpers are mutually exclusive
     resolution helpers cannot be combined with explicit refund_id or order_change_id
     format!("order_return:{return_id}:refund");
-    service.complete_return(tenant_id, return_id, owner_input);
+    service.complete_owner_return(tenant_id, actor_id, return_id, owner_input);
   `);
   put(root, "apps/server/tests/commerce_return_completion_transport_guard.rs", "return_completion_uses_one_commerce_orchestration_boundary");
   if (options.legacyApi) put(root, "crates/modules/rustok-commerce/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");

@@ -293,7 +293,7 @@ assertContains(
 
 assertContains(
   adminReturns,
-  "ReturnCompletionOrchestrationService::new(",
+  ".return_completion_orchestration()",
   `${files.adminReturns}: REST return completion must use commerce orchestration`,
 );
 assertContains(
@@ -349,7 +349,7 @@ for (const marker of [
   "refund, exchange, and claim helpers are mutually exclusive",
   "resolution helpers cannot be combined with explicit refund_id or order_change_id",
   'format!("order_return:{return_id}:refund")',
-  ".complete_return(tenant_id, return_id, owner_input)",
+  ".complete_owner_return(tenant_id, actor_id, return_id, owner_input)",
 ]) {
   assertContains(
     returnCompletionOrchestration,

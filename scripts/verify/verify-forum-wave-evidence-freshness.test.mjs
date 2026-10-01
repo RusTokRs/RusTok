@@ -347,7 +347,7 @@ read_surfaces_guarantee = "forum_owned_list_read_topic_paths_stay_available_when
   );
   writeFixture(
     root,
-    "crates/modules/rustok-forum/src/services/moderation.rs",
+    "crates/modules/rustok-forum/src/services/moderation_owner.rs",
     "forum-moderation-service-marker\n",
   );
   writeFixture(

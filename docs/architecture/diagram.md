@@ -78,9 +78,9 @@ graph TD
         OPT_PAGE_BUILDER["page_builder"]
         OPT_TAXONOMY["taxonomy"]
         OPT_MEDIA["media"]
-        OPT_TRANSLATION["translation"]
         OPT_SEO["seo"]
         OPT_WORKFLOW["workflow"]
+        OPT_TRANSLATION["translation"]
         OPT_ALLOY["alloy"]
         OPT_FLEX["flex"]
     end

@@ -28,11 +28,11 @@ In RusToK, demo and starter content is **declarative, typed, and domain-governed
 
 | Component | Repository Path | Responsibility |
 |---|---|---|
-| **Engine & Schema** | [`crates/utils/rustok-starter`](file:///d:/RusTok/crates/utils/rustok-starter) | Defines `StarterBlueprint`, embedded default JSON, and the topological `StarterEngine`. |
-| **CLI Commands** | [`crates/utils/rustok-installer-cli`](file:///d:/RusTok/crates/utils/rustok-installer-cli) | Exposes `rustok-cli starter import` and `--starter` flag on `seed apply`. |
-| **Server GraphQL API** | [`apps/server/src/graphql/starter.rs`](file:///d:/RusTok/apps/server/src/graphql/starter.rs) | Provides the `importStarter` mutation for web installer and admin console. |
-| **Default Content** | [`crates/utils/rustok-starter/src/embedded/default_starter.json`](file:///d:/RusTok/crates/utils/rustok-starter/src/embedded/default_starter.json) | The official demo blueprint containing landing page, blog, forum, and navigation. |
-| **Integration Test** | [`crates/utils/rustok-starter/tests/starter_import_integration.rs`](file:///d:/RusTok/crates/utils/rustok-starter/tests/starter_import_integration.rs) | Complete end-to-end import verification against real database migrations. |
+| **Engine & Schema** | [`crates/utils/rustok-starter`](../../crates/utils/rustok-starter) | Defines `StarterBlueprint`, embedded default JSON, and the topological `StarterEngine`. |
+| **CLI Commands** | [`crates/utils/rustok-installer-cli`](../../crates/utils/rustok-installer-cli) | Exposes `rustok-cli starter import` and `--starter` flag on `seed apply`. |
+| **Server GraphQL API** | [`apps/server/src/graphql/starter.rs`](../../apps/server/src/graphql/starter.rs) | Provides the `importStarter` mutation for web installer and admin console. |
+| **Default Content** | [`crates/utils/rustok-starter/src/embedded/default_starter.json`](../../crates/utils/rustok-starter/src/embedded/default_starter.json) | The official demo blueprint containing landing page, blog, forum, and navigation. |
+| **Integration Test** | [`crates/utils/rustok-starter/tests/starter_import_integration.rs`](../../crates/utils/rustok-starter/tests/starter_import_integration.rs) | Complete end-to-end import verification against real database migrations. |
 
 ---
 
@@ -258,8 +258,8 @@ When implementing features, fixing bugs, or writing tests that touch demo data o
 
 ### 7.1 When Modifying or Adding Demo Content
 1. **Edit the embedded blueprint**:
-   - Location: [`crates/utils/rustok-starter/src/embedded/default_starter.json`](file:///d:/RusTok/crates/utils/rustok-starter/src/embedded/default_starter.json).
-   - Ensure the JSON is valid and matches the `StarterBlueprint` struct in [`crates/utils/rustok-starter/src/schema.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/schema.rs).
+   - Location: [`crates/utils/rustok-starter/src/embedded/default_starter.json`](../../crates/utils/rustok-starter/src/embedded/default_starter.json).
+   - Ensure the JSON is valid and matches the `StarterBlueprint` struct in [`crates/utils/rustok-starter/src/model.rs`](../../crates/utils/rustok-starter/src/model.rs).
 2. **Never bypass domain modules**:
    - If a new content type (e.g. products, reviews, FAQ) is added to the blueprint, create a dedicated driver under `crates/utils/rustok-starter/src/drivers/<entity>.rs`.
    - Call the module's public application service, never execute raw SQL against private tables.

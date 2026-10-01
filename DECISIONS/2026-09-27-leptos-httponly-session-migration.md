@@ -1,10 +1,14 @@
 # HttpOnly session migration for Leptos browser authentication
 
 - Date: 2026-09-27
-- Status: Accepted
-- Owner: authentication/UI transport architecture
+- Decision status: Accepted
+- Implementation status: In progress
+- Owners: authentication/UI transport architecture
+- Extends: None
+- Supersedes: None
+- Superseded by: None
 
-## Problem
+## Context
 
 The standalone Leptos admin compatibility bridge mirrors serialized authentication state from LocalStorage into JavaScript-readable cookies so SSR can construct a request-scoped auth snapshot.
 
@@ -21,28 +25,61 @@ The target browser authentication contract is a server-issued session cookie wit
 - server-side rotation and invalidation
 - explicit CSRF protection for cookie-authenticated state-changing requests
 
-The migration must cover the shared Leptos/browser transport and all affected admin/storefront consumers. A partial migration that leaves bearer credentials in LocalStorage or mixes independently trusted cookie and LocalStorage identities is not complete.
+The migration covers the shared Leptos/browser transport and all affected admin/storefront consumers. A partial migration that leaves bearer credentials in LocalStorage or mixes independently trusted cookie and LocalStorage identities is not complete.
 
-## Security invariant
+## Sources of truth and ownership
+
+- Canonical session state and credentials owner: `rustok-auth`.
+- Frontend session storage and transport adapters: `leptos-auth` and `apps/admin`.
+
+## Invariants
 
 No SSR identity, role, tenant or authorization decision may be derived from unsigned browser storage. Browser-provided session material is only a transport envelope until canonical auth verification succeeds.
 
-## Scope
+### Allowed states
 
-The full migration is tracked for FS-13 shared frontend/browser packages. FS-11 fixes the immediate SSR identity-spoofing boundary but does not claim the broader HttpOnly migration complete.
+- Authenticated session with valid HttpOnly cookie verified server-side.
+- Anonymous/unauthenticated visitor without session credentials.
 
-## Completion evidence
+### Forbidden states
 
-- no access/refresh credential persisted in LocalStorage;
-- server-issued HttpOnly session cookie used by SSR and browser requests;
-- explicit CSRF policy for cookie-authenticated mutations;
-- refresh/logout/session revocation parity across transports;
-- all auth consumers migrated away from the legacy LocalStorage bearer transport;
-- maintainer-run browser/integration verification recorded in the ledger.
+- Deriving authentication or tenant role from untrusted LocalStorage.
+- Client-visible access or refresh tokens in DOM/LocalStorage.
 
+## Non-goals
 
-## Next.js Admin browser boundary
+- Altering the backend OAuth2/JWT token signing infrastructure.
+- Re-architecting non-browser headless API token authentication.
 
-The Next.js admin currently copies the RusTok access bearer into the NextAuth session object (session.user.rustokToken) so client components can read it via useSession. This makes the backend bearer reachable to browser JavaScript and is the same class of credential exposure the server-issued HttpOnly target is intended to eliminate.
+## Data, transaction, and concurrency boundary
 
-The shared browser-auth migration in FS-13 MUST remove the backend bearer from the client-visible session shape and route client API calls through a server-owned transport/proxy or another server-issued session mechanism. The client-visible session may contain display-safe identity and UI state, but never a reusable backend access or refresh credential.
+Session cookies and server-side session revocations are managed within `rustok-auth`. State mutations are protected by CSRF tokens.
+
+## Context dimensions
+
+Tenant, principal, roles, and session expiry participate in cookie-based authentication verification.
+
+## Events and projections
+
+Session revocation and logout events clear server-side session state and invalidate client cookies.
+
+## Failure semantics
+
+Invalid, expired, or missing session cookies fail closed to unauthenticated visitor context.
+
+## Migration and cutover
+
+Phased rollout from client-side LocalStorage cookie mirroring to server-issued HttpOnly session cookies across Leptos and Next.js admin surfaces.
+
+## Alternatives considered
+
+- Retaining LocalStorage token storage: rejected due to credential exposure to client scripts.
+- Pure memory-only tokens: rejected because page reloads would lose authentication state.
+
+## Verification
+
+End-to-end browser tests verify that tokens are not exposed to JavaScript and session cookies carry HttpOnly/SameSite attributes.
+
+## Consequences
+
+Eliminates XSS-based credential theft via JavaScript storage inspection. Requires server-side session management and CSRF protection for cookie-based browser mutations.

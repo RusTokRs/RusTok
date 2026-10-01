@@ -13,9 +13,9 @@ This document is the canonical reference for developers and AI agents on **multi
 
 ## 1. Core Platform Architecture: Non-Disableable Translation Module
 
-In RusToK, multilingual capability is a foundational pillar of the platform kernel:
-- **`rustok-translation` is a Core module (`ModuleKind::Core`)**: It is declared with `required = true` in [`modules.toml`](file:///d:/RusTok/modules.toml) and [`modules.local.toml`](file:///d:/RusTok/modules.local.toml).
-- **Non-Disableable Guarantee**: The kernel policy engine ([`crates/modules/rustok-modules/src/policy.rs`](file:///d:/RusTok/crates/modules/rustok-modules/src/policy.rs)) and server lifecycle service ([`apps/server/src/services/module_lifecycle.rs`](file:///d:/RusTok/apps/server/src/services/module_lifecycle.rs)) enforce that `ModuleKind::Core` modules cannot be disabled. Any API, CLI, or GraphQL request attempting to disable `translation` is rejected with `CoreModuleCannotBeDisabled("translation")`.
+In RusToK, multilingual capability is supported through `rustok-translation`:
+- **`rustok-translation` Module**: Declared in [`modules.toml`](../../modules.toml) and [`modules.local.toml`](../../modules.local.toml).
+- **Policy and Lifecycle**: The kernel policy engine ([`crates/modules/rustok-modules/src/policy.rs`](../../crates/modules/rustok-modules/src/policy.rs)) and server lifecycle service ([`apps/server/src/services/module_lifecycle.rs`](../../apps/server/src/services/module_lifecycle.rs)) enforce module invariants and lifecycle state.
 - **System Boundaries**:
   - `rustok-translation` owns Translation Memory (TM), terminology glossaries, machine translation orchestration (`MachineTranslationPort`), translation review workflows (jobs, proposals, apply CAS), and exchange packages (XLIFF / JSON interchange).
   - `rustok-translation-targets` provides the dependency-neutral target provider contracts implemented by domain modules (`rustok-pages`, `rustok-taxonomy`, `rustok-product`).
@@ -30,7 +30,7 @@ Read-side localized content resolution across Storefront and Admin strictly adhe
 
 $$\text{Requested Locale} \longrightarrow \text{Tenant Default Locale} \longrightarrow \text{First Available Translation}$$
 
-- **Normalization**: All locale tags are normalized via ICU4X in [`rustok-ui-i18n`](file:///d:/RusTok/crates/ui/rustok-ui-i18n/README.md) (e.g. `ru-RU` $\rightarrow$ `ru`, `en-US` $\rightarrow$ `en`).
+- **Normalization**: All locale tags are normalized via ICU4X in [`rustok-ui-i18n`](../../crates/ui/rustok-ui-i18n/README.md) (e.g. `ru-RU` $\rightarrow$ `ru`, `en-US` $\rightarrow$ `en`).
 - **No silent empty strings**: If a requested language translation is missing, the resolver falls back to the tenant's primary default language rather than rendering a blank field.
 
 ### 2.2 Content Entity Translations (`*_translations`)
@@ -62,14 +62,14 @@ Every `StarterBlueprint` specifies its target `locale`:
 }
 ```
 
-The import engine ([`crates/utils/rustok-starter/src/importer.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/importer.rs)) passes `blueprint.locale` to all domain drivers:
-1. **Pages Driver** ([`pages.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/drivers/pages.rs)):
+The import engine ([`crates/utils/rustok-starter/src/importer.rs`](../../crates/utils/rustok-starter/src/importer.rs)) passes `blueprint.locale` to all domain drivers:
+1. **Pages Driver** ([`pages.rs`](../../crates/utils/rustok-starter/src/drivers/pages.rs)):
    Creates `PageTranslationInput` and `PageBodyInput` matching `blueprint.locale`. The page is published via `PageBuilderReviewedPublishRuntime`, rendering the landing page for that language on `/`.
-2. **Blog Driver** ([`blog.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/drivers/blog.rs)):
+2. **Blog Driver** ([`blog.rs`](../../crates/utils/rustok-starter/src/drivers/blog.rs)):
    Creates categories and blog posts with the specified locale tag, ensuring blog articles appear in the selected language catalog.
-3. **Forum Driver** ([`forum.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/drivers/forum.rs)):
+3. **Forum Driver** ([`forum.rs`](../../crates/utils/rustok-starter/src/drivers/forum.rs)):
    Creates categories and starter discussion topics localized to `blueprint.locale`.
-4. **Navigation Driver** ([`navigation.rs`](file:///d:/RusTok/crates/utils/rustok-starter/src/drivers/navigation.rs)):
+4. **Navigation Driver** ([`navigation.rs`](../../crates/utils/rustok-starter/src/drivers/navigation.rs)):
    Creates `MenuItemTranslationInput` and `MenuTranslationInput` with `blueprint.locale` and binds the menu to the channel slot.
 
 ### 3.2 Dual-Locale & Multi-Blueprint Tenant Seeding

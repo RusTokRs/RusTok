@@ -412,7 +412,7 @@ impl ReturnCompletionOrchestrationService {
                     tenant_id,
                     actor_id,
                     collection_id,
-                    format!("order_return:{}:refund", return_id),
+                    format!("order_return:{return_id}:refund"),
                     CreateRefundInput {
                         amount: input.amount,
                         reason: input.reason,
