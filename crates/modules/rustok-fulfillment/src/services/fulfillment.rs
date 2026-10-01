@@ -481,7 +481,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_item_checkout_metadata(item.metadata)?),
+                    metadata: Set(strip_fulfillment_item_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1559,6 +1559,13 @@ pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> Fulfillm
     Ok(Value::Object(root))
 }
 
+pub(crate) fn strip_fulfillment_item_metadata(value: Value) -> FulfillmentResult<Value> {
+    // Item audit history is owner-generated lifecycle evidence and cannot be seeded by
+    // create callers. Checkout identity sanitization remains separate and strict.
+    let value = strip_fulfillment_audit_metadata(value);
+    strip_fulfillment_item_checkout_metadata(value)
+}
+
 fn validate_object_metadata(metadata: &Value, resource: &str) -> FulfillmentResult<()> {
     if !metadata.is_object() {
         return Err(FulfillmentError::Validation(format!(
@@ -2233,6 +2240,37 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn item_metadata_drops_caller_supplied_audit_history() {
+        let metadata = serde_json::json!({
+            "audit": {
+                "events": [
+                    {
+                        "type": "ship",
+                        "at": "2000-01-01T00:00:00Z",
+                        "quantity": 999
+                    }
+                ]
+            },
+            "checkout": {
+                "cart_line_item_id": Uuid::new_v4().to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_item_metadata(metadata)
+            .expect("item metadata should sanitize");
+        assert!(sanitized.get("audit").is_none());
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str)
+                .is_some()
+        );
+    }
+
     fn item_checkout_metadata_removes_legacy_identity_keys() {
         let cart_line_item_id = Uuid::new_v4();
         let metadata = serde_json::json!({
