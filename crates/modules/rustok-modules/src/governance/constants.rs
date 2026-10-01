@@ -107,12 +107,14 @@ pub(crate) const EXTERNAL_PREBUILT_FOLLOW_UP_STAGES: &[PublicationFollowUpStage]
         key: "security_policy_review",
         runner_kind: "owner_evidence",
     }];
-pub(crate) const ALLOY_AUTHORED_FOLLOW_UP_STAGES: &[PublicationFollowUpStage] = &[PublicationFollowUpStage {
-    key: "security_policy_review",
-    runner_kind: "owner_evidence",
-}];
+pub(crate) const ALLOY_AUTHORED_FOLLOW_UP_STAGES: &[PublicationFollowUpStage] =
+    &[PublicationFollowUpStage {
+        key: "security_policy_review",
+        runner_kind: "owner_evidence",
+    }];
 pub const ALLOY_PUBLICATION_SMOKE_TEST_PATH: &str = "tests/publication_smoke.rhai";
-pub(crate) const ALLOY_PUBLICATION_SMOKE_SCENARIO_DOMAIN: &[u8] = b"rustok.alloy.publication-smoke.scenario\0";
+pub(crate) const ALLOY_PUBLICATION_SMOKE_SCENARIO_DOMAIN: &[u8] =
+    b"rustok.alloy.publication-smoke.scenario\0";
 pub(crate) const MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES: u64 = 128;
 pub(crate) const MAX_PUBLICATION_REQUEST_ID_BYTES: usize = 128;
 pub(crate) const MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES: usize = 512;
@@ -130,4 +132,3 @@ pub(crate) const VALIDATION_WORK_ITEM_INVALID_ERROR: &str =
     "Validation job delivery facts are incomplete or malformed.";
 pub(crate) const VALIDATION_JOB_RETRY_ERROR: &str =
     "Validation job delivery failed before artifact checks completed.";
-

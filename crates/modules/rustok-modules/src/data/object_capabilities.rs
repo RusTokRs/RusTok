@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::*;
+use super::capabilities::*;
 use super::constants::*;
 use super::error::*;
 use super::objects::*;
@@ -19,6 +19,7 @@ use super::traits::*;
 use super::types::*;
 use super::upload::*;
 use super::validation::*;
+use super::*;
 
 /// The `platform.data.objects` adapter for bounded binary object calls. It is
 /// deliberately a distinct capability from structured `platform.data`, so
@@ -100,7 +101,7 @@ impl<A> CapabilityBroker for SeaOrmArtifactDataObjectCapabilityBroker<A>
 where
     A: ArtifactDataAuthorizer + Clone,
 {
-    pub(crate) async fn invoke(
+    async fn invoke(
         &self,
         call: &CapabilityCall,
         _grant: &CapabilityGrant,
@@ -263,7 +264,7 @@ impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
 
 #[async_trait]
 impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrokerResolver {
-    pub(crate) async fn resolve_broker(
+    async fn resolve_broker(
         &self,
         execution: &ArtifactCapabilityExecution,
         capability: &rustok_sandbox::CapabilityName,
@@ -296,7 +297,6 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataObjectCapabilityBrok
 }
 
 pub(crate) enum ObjectDataCapabilityCall {
-
     GetMetadata {
         name: String,
     },

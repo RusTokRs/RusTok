@@ -7,13 +7,13 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
 use super::purge_targets::*;
 use super::traits::*;
 use super::types::*;
+use super::*;
 
 /// Owner service for irreversible namespace deletion. Its authorization port
 /// keeps retention and installation lifecycle policy outside guest-controlled
@@ -517,7 +517,7 @@ impl ArtifactDataPurgeTarget {
     }
 }
 
-pub(crate) async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
+async fn find_artifact_data_purge_operation<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
     installation_id: Uuid,

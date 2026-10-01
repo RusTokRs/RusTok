@@ -2,14 +2,13 @@
 
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::admissions::*;
 use super::helpers::*;
 use super::publication_verification::*;
 use super::validation_evidence::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Publishes an approved request as one durable governance transition.
     ///
     /// The host performs authorization and assembles any override evidence;
@@ -659,6 +658,4 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
-
 }

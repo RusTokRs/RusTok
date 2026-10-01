@@ -43,11 +43,12 @@ impl FulfillmentProviderOperationJournal {
         input: BeginProviderOperation,
     ) -> FulfillmentResult<provider_operation::Model> {
         let input = normalize_begin_input(input)?;
-        let fulfillment_exists = crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
-            .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
-            .one(&self.db)
-            .await?
-            .is_some();
+        let fulfillment_exists =
+            crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
+                .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
+                .one(&self.db)
+                .await?
+                .is_some();
         if !fulfillment_exists {
             return Err(FulfillmentError::FulfillmentNotFound(input.fulfillment_id));
         }
@@ -187,19 +188,14 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ErrorMessage,
                 Expr::value(Option::<String>::None),
             )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Some(now)),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(
-                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
-            )
+            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .exec(&self.db)
             .await;
 
@@ -251,7 +247,6 @@ impl FulfillmentProviderOperationJournal {
         self.get(tenant_id, operation_id).await
     }
 
-
     pub async fn mark_provider_error(
         &self,
         tenant_id: Uuid,
@@ -282,7 +277,6 @@ impl FulfillmentProviderOperationJournal {
             to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
         })
     }
-
 
     /// Record an ambiguous provider outcome directly from an executing claim.
     ///
@@ -325,9 +319,7 @@ impl FulfillmentProviderOperationJournal {
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(
-                provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING),
-            )
+            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .exec(&self.db)
             .await?;
 
@@ -345,7 +337,6 @@ impl FulfillmentProviderOperationJournal {
         self.get(tenant_id, operation_id).await
     }
 
-
     pub async fn mark_reconciliation_required(
         &self,
         tenant_id: Uuid,
@@ -357,10 +348,7 @@ impl FulfillmentProviderOperationJournal {
         if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(current);
         }
-        ensure_transition(
-            &current.status,
-            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-        )?;
+        ensure_transition(&current.status, PROVIDER_OPERATION_RECONCILIATION_REQUIRED)?;
 
         let provider_completed_at = if current.provider_completed_at.is_none() {
             Expr::value(Some(Utc::now()))
@@ -387,10 +375,8 @@ impl FulfillmentProviderOperationJournal {
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(
-                provider_operation::Column::Status.is_in([
-                    PROVIDER_OPERATION_EXECUTING,
-                    PROVIDER_OPERATION_SUCCEEDED,
-                ]),
+                provider_operation::Column::Status
+                    .is_in([PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED]),
             )
             .exec(&self.db)
             .await?;
@@ -408,7 +394,6 @@ impl FulfillmentProviderOperationJournal {
 
         self.get(tenant_id, operation_id).await
     }
-
 
     pub async fn mark_committed(
         &self,
@@ -437,10 +422,7 @@ impl FulfillmentProviderOperationJournal {
                 provider_operation::Column::ErrorMessage,
                 Expr::value(Option::<String>::None),
             )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
                 provider_completed_at,
@@ -451,12 +433,10 @@ impl FulfillmentProviderOperationJournal {
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(
-                provider_operation::Column::Status.is_in([
-                    PROVIDER_OPERATION_SUCCEEDED,
-                    PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-                ]),
-            )
+            .filter(provider_operation::Column::Status.is_in([
+                PROVIDER_OPERATION_SUCCEEDED,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            ]))
             .exec(&self.db)
             .await?;
 
@@ -473,7 +453,6 @@ impl FulfillmentProviderOperationJournal {
 
         self.get(tenant_id, operation_id).await
     }
-
 }
 
 fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
@@ -553,8 +532,11 @@ fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
             )
         }
         PROVIDER_OPERATION_RECONCILIATION_REQUIRED => {
-            matches!(from, PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_SUCCEEDED)
-        },
+            matches!(
+                from,
+                PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_SUCCEEDED
+            )
+        }
         PROVIDER_OPERATION_COMMITTED => matches!(
             from,
             PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
@@ -650,7 +632,9 @@ mod tests {
 
     #[test]
     fn empty_provider_error_is_normalized_to_safe_default() {
-        assert_eq!(normalize_error("   ".to_string()), "provider operation failed");
+        assert_eq!(
+            normalize_error("   ".to_string()),
+            "provider operation failed"
+        );
     }
-
 }

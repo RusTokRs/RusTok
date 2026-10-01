@@ -57,7 +57,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             .operation_journal
             .find_by_key(tenant_id, provider_id, idempotency_key)
             .await
-            .map_err(|error| map_fulfillment_error_without_context(error))?
+            .map_err(map_fulfillment_error_without_context)?
         {
             ensure_create_label_request_unchanged(&existing, &request_payload)?;
             return Ok(existing);
@@ -82,7 +82,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                     .operation_journal
                     .find_by_key(tenant_id, provider_id, idempotency_key)
                     .await
-                    .map_err(|error| map_fulfillment_error_without_context(error))?;
+                    .map_err(map_fulfillment_error_without_context)?;
                 match existing {
                     Some(existing) => {
                         ensure_create_label_request_unchanged(&existing, &request_payload)?;
@@ -110,7 +110,11 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         fulfillment_id: Uuid,
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        match self.service.get_fulfillment(tenant_id, fulfillment_id).await {
+        match self
+            .service
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await
+        {
             Ok(existing) => Ok(existing),
             Err(FulfillmentError::FulfillmentNotFound(_)) => {
                 match self
@@ -304,7 +308,13 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
         };
 
         if let Err(error) = self
-            .execute_create_label(&context, OPERATION, provider_id.as_str(), operation.clone(), provider_request)
+            .execute_create_label(
+                &context,
+                OPERATION,
+                provider_id.as_str(),
+                operation.clone(),
+                provider_request,
+            )
             .await
         {
             tracing::error!(
@@ -343,7 +353,6 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         operation: provider_operation::Model,
         request: FulfillmentProviderOperationRequest,
     ) -> Result<FulfillmentProviderOperationResult, PortError> {
-
         if matches!(
             operation.status.as_str(),
             PROVIDER_OPERATION_COMMITTED
@@ -474,7 +483,11 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         owner_operation: &'static str,
         operation_id: Uuid,
     ) -> Result<(), PortError> {
-        if let Err(error) = self.operation_journal.mark_committed(tenant_id, operation_id).await {
+        if let Err(error) = self
+            .operation_journal
+            .mark_committed(tenant_id, operation_id)
+            .await
+        {
             if let Err(checkpoint_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
@@ -543,13 +556,14 @@ fn ensure_create_label_request_unchanged(
 
 fn map_fulfillment_error_without_context(error: FulfillmentError) -> PortError {
     match error {
-        FulfillmentError::Validation(_) => PortError::validation(
-            "fulfillment.validation",
-            "fulfillment request is invalid",
-        ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => {
-            PortError::not_found("fulfillment.not_found", "fulfillment resource was not found")
+        FulfillmentError::Validation(_) => {
+            PortError::validation("fulfillment.validation", "fulfillment request is invalid")
+        }
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => {
+            PortError::not_found(
+                "fulfillment.not_found",
+                "fulfillment resource was not found",
+            )
         }
         FulfillmentError::InvalidTransition { .. } => PortError::conflict(
             "fulfillment.invalid_transition",
@@ -701,10 +715,8 @@ mod tests {
         }));
         existing.operation = "ship".to_string();
 
-        assert!(ensure_create_label_request_unchanged(
-            &existing,
-            &existing.request_payload
-        )
-        .is_err());
+        assert!(
+            ensure_create_label_request_unchanged(&existing, &existing.request_payload).is_err()
+        );
     }
 }

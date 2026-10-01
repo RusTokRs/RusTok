@@ -131,7 +131,7 @@ impl MigrationTrait for Migration {
                     ORDER BY CASE WHEN locale = 'und' THEN 0 ELSE 1 END, locale
                     LIMIT 1
                  )"
-                    .to_string(),
+                .to_string(),
             ))
             .await?;
 

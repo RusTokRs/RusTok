@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use rustok_api::{
     PortError, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
-    StaticModuleSettingsTransactionReader, StaticModuleSettingsSnapshot,
+    StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
 };
 
 /// Database-backed owner implementation for static/native tenant-module settings.
@@ -48,7 +48,7 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
                 return Err(PortError::unavailable(
                     "modules.static_settings_unavailable",
                     "Static module settings are unavailable for this database backend",
-                ))
+                ));
             }
         };
 
@@ -57,7 +57,10 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
-                vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
+                vec![
+                    tenant_id_query_value(backend, tenant_id),
+                    module_slug.into(),
+                ],
             ))
             .await
             .map_err(|_| {
@@ -100,7 +103,6 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
     }
 }
 
-
 #[async_trait]
 impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReader {
     async fn settings_in_tx(
@@ -127,7 +129,7 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
                 return Err(PortError::unavailable(
                     "modules.static_settings_unavailable",
                     "Static module settings are unavailable for this database backend",
-                ))
+                ));
             }
         };
 
@@ -135,7 +137,10 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
                 query,
-                vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
+                vec![
+                    tenant_id_query_value(backend, tenant_id),
+                    module_slug.into(),
+                ],
             ))
             .await
             .map_err(|_| {
@@ -192,7 +197,9 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database};
 
     async fn db() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:").await.expect("database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
         db.execute_unprepared(
             "CREATE TABLE tenant_modules (
                 tenant_id TEXT NOT NULL,

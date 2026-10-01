@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
+use super::*;
 use crate::build::ModuleBuildPublicationReceipt;
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 
@@ -417,4 +417,3 @@ impl ModuleAlloyPublicationSource {
         }
     }
 }
-

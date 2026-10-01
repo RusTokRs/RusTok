@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
+use super::*;
 
 /// Host-owned namespace for untrusted artifact data. Guests never supply a
 /// physical table, bucket, database schema, or secret-store location.

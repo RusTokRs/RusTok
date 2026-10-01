@@ -9,7 +9,6 @@ use uuid::Uuid;
 
 use crate::ArtifactDataIndexField;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
@@ -17,6 +16,7 @@ use super::structured_persistence::*;
 use super::traits::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 /// SeaORM adapter for the host-owned structured-value namespace. It never
 /// accepts a guest-selected database object, SQL fragment, or storage path.

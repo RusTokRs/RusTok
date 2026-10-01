@@ -11,7 +11,6 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
@@ -19,6 +18,7 @@ use super::objects_persistence::*;
 use super::traits::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 /// SeaORM and storage implementation of the private artifact object broker.
 /// The generated path is intentionally not configurable through any artifact
@@ -77,7 +77,6 @@ where
         }
     }
 }
-
 
 #[async_trait]
 impl<A> ArtifactDataObjectBroker for SeaOrmArtifactDataObjectBroker<A>

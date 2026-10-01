@@ -2,13 +2,12 @@
 
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
 use super::receipts::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     pub async fn yank_release(
         &self,
         command: ModuleReleaseYankCommand,
@@ -249,5 +248,4 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
 }

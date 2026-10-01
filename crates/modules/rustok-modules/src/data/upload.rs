@@ -9,7 +9,6 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
@@ -19,6 +18,7 @@ use super::traits::*;
 use super::types::*;
 use super::upload_sessions::*;
 use super::validation::*;
+use super::*;
 
 /// Owner service for large-object transfers. Each sandbox invocation carries
 /// one bounded chunk, while session and chunk ordering are durable so a retry
@@ -48,10 +48,10 @@ where
     }
 
     pub fn with_infrastructure(
-        pub(crate) db: DatabaseConnection,
-        pub(crate) storage: StorageRuntime,
-        pub(crate) authorizer: A,
-        pub(crate) infrastructure: ControlPlaneInfrastructure,
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
         Self::with_infrastructure_and_quota(
             db,
@@ -63,11 +63,11 @@ where
     }
 
     pub fn with_infrastructure_and_quota(
-        pub(crate) db: DatabaseConnection,
-        pub(crate) storage: StorageRuntime,
-        pub(crate) authorizer: A,
-        pub(crate) infrastructure: ControlPlaneInfrastructure,
-        pub(crate) quota: ArtifactDataQuota,
+        db: DatabaseConnection,
+        storage: StorageRuntime,
+        authorizer: A,
+        infrastructure: ControlPlaneInfrastructure,
+        quota: ArtifactDataQuota,
     ) -> Self {
         Self {
             objects: SeaOrmArtifactDataObjectBroker::with_infrastructure_and_quota(
@@ -486,5 +486,4 @@ where
         transaction.commit().await.map_err(storage_error)?;
         Ok(object)
     }
-
 }

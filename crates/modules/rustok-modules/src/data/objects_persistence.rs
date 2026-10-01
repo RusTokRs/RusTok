@@ -2,17 +2,17 @@
 
 use bytes::Bytes;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 #[derive(Clone)]
 pub(crate) struct StoredArtifactDataObject {

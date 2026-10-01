@@ -2,14 +2,13 @@
 
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
 use super::receipts::*;
 use super::validation_evidence::*;
 use super::validation_work_items::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Enqueues at most one active automated validation job and records its
     /// request/job facts atomically. The worker is intentionally outside this
     /// transaction and may begin only after the host observes this result.
@@ -502,5 +501,4 @@ impl SeaOrmModuleGovernanceService {
         }
         Ok(None)
     }
-
 }

@@ -221,4 +221,3 @@ pub struct ModuleGovernanceLifecycleSnapshot {
     pub validation_stages: Vec<ModuleGovernanceValidationStageSnapshot>,
     pub governance_actions: Vec<ModuleGovernanceAction>,
 }
-

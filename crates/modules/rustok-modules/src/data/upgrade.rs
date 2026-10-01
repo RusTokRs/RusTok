@@ -1,16 +1,16 @@
 //! Artifact data upgrade hooks, planners, and appliers.
 
-use super::*;
 use super::error::*;
 use super::traits::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 /// Host-owned invocation of a pre-bound sandbox transformation. The hook has
 /// no storage handle and receives one record at a time.
 #[async_trait]
 pub trait ArtifactDataUpgradeHook: Send + Sync {
-    pub(crate) async fn transform_data(
+    async fn transform_data(
         &self,
         hook_binding_id: &str,
         input: ArtifactDataUpgradeInput,
@@ -48,7 +48,7 @@ impl<E> ArtifactDataUpgradeHook for ArtifactBindingDataUpgradeHook<E>
 where
     E: ArtifactBindingExecutor,
 {
-    pub(crate) async fn transform_data(
+    async fn transform_data(
         &self,
         hook_binding_id: &str,
         input: ArtifactDataUpgradeInput,
@@ -82,7 +82,6 @@ where
             .map_err(ArtifactDataError::UpgradeHook)
     }
 }
-
 
 /// Produces non-durable data-contract upgrade plans. The data broker call is
 /// complete before any sandbox hook begins, so an untrusted transformation can
@@ -155,7 +154,7 @@ where
     }
 }
 
-pub(crate) fn validate_upgrade_request(request: &ArtifactDataUpgradeRequest) -> Result<(), ArtifactDataError> {
+fn validate_upgrade_request(request: &ArtifactDataUpgradeRequest) -> Result<(), ArtifactDataError> {
     request.source.validate()?;
     request.target.validate()?;
     validate_page_request(&request.page)?;
@@ -170,7 +169,6 @@ pub(crate) fn validate_upgrade_request(request: &ArtifactDataUpgradeRequest) -> 
     }
     Ok(())
 }
-
 
 /// Applies a bounded plan without opening a control-plane transaction across
 /// source reads, target writes, or checkpointing. Repeating the same plan ID
@@ -255,7 +253,7 @@ where
     }
 }
 
-pub(crate) fn validate_upgrade_apply_request(
+fn validate_upgrade_apply_request(
     request: &ArtifactDataUpgradeApplyRequest,
 ) -> Result<(), ArtifactDataError> {
     validate_upgrade_plan(&request.plan)?;
@@ -275,7 +273,7 @@ pub(crate) fn validate_upgrade_apply_request(
     Ok(())
 }
 
-pub(crate) fn validate_upgrade_plan(plan: &ArtifactDataUpgradePlan) -> Result<(), ArtifactDataError> {
+fn validate_upgrade_plan(plan: &ArtifactDataUpgradePlan) -> Result<(), ArtifactDataError> {
     if plan.plan_id.is_nil()
         || plan.target_installation_id.is_nil()
         || !valid_upgrade_hook_binding_id(&plan.hook_binding_id)
@@ -301,7 +299,7 @@ pub(crate) fn validate_upgrade_plan(plan: &ArtifactDataUpgradePlan) -> Result<()
     Ok(())
 }
 
-pub(crate) fn upgrade_record_idempotency_key(
+fn upgrade_record_idempotency_key(
     plan_id: Uuid,
     target: &ArtifactDataScope,
     record: &ArtifactDataUpgradeRecord,

@@ -2,12 +2,12 @@
 
 use semver::Version;
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
+use super::*;
+use crate::ModuleCommandContext;
 use crate::build::ModuleBuildSignatureAuthority;
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
-use crate::ModuleCommandContext;
 
 impl ModuleReleaseYankCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
@@ -713,4 +713,3 @@ impl ModulePublishPlatformBuildStageCommand {
         Ok(())
     }
 }
-

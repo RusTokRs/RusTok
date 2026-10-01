@@ -2,14 +2,13 @@
 
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
 use super::receipts_reviews::*;
 use super::staging_alloy::*;
 use super::staging_external::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Rejects a publish request and records the terminal governance fact in
     /// the same transaction.
     pub async fn reject_publish_request(
@@ -642,5 +641,4 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
 }

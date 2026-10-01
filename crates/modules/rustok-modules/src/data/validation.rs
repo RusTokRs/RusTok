@@ -6,11 +6,11 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::traits::*;
 use super::types::*;
+use super::*;
 
 pub(crate) fn validate_artifact_data_value(value: &Value) -> Result<(), ArtifactDataError> {
     let encoded_bytes = artifact_data_value_size(value)?;
@@ -30,7 +30,9 @@ pub(crate) fn artifact_data_value_size(value: &Value) -> Result<u64, ArtifactDat
         .map_err(|_| ArtifactDataError::Storage("artifact data value size overflow".to_string()))
 }
 
-pub(crate) fn validate_artifact_data_batch(batch: &ArtifactDataBatchWrite) -> Result<(), ArtifactDataError> {
+pub(crate) fn validate_artifact_data_batch(
+    batch: &ArtifactDataBatchWrite,
+) -> Result<(), ArtifactDataError> {
     if batch.writes.is_empty() || batch.writes.len() > MAX_ARTIFACT_DATA_BATCH_SIZE {
         return Err(ArtifactDataError::InvalidBatch);
     }
@@ -49,7 +51,9 @@ pub(crate) fn validate_artifact_data_batch(batch: &ArtifactDataBatchWrite) -> Re
     Ok(())
 }
 
-pub(crate) fn validate_page_request(page: &ArtifactDataPageRequest) -> Result<(), ArtifactDataError> {
+pub(crate) fn validate_page_request(
+    page: &ArtifactDataPageRequest,
+) -> Result<(), ArtifactDataError> {
     validate_artifact_data_prefix(&page.prefix)?;
     if page.limit == 0 || page.limit > MAX_ARTIFACT_DATA_PAGE_SIZE {
         return Err(ArtifactDataError::InvalidPage);
@@ -162,7 +166,7 @@ impl SeaOrmArtifactDataSchemaValidator {
         }
     }
 
-    pub(crate) async fn data_contract_schema(
+    async fn data_contract_schema(
         &self,
         scope: &ArtifactDataScope,
     ) -> Result<(String, Value), ArtifactDataError> {
@@ -238,7 +242,7 @@ impl SeaOrmArtifactDataSchemaValidator {
 
 #[async_trait]
 impl ArtifactDataSchemaValidator for SeaOrmArtifactDataSchemaValidator {
-    pub(crate) async fn validate_data_value(
+    async fn validate_data_value(
         &self,
         scope: &ArtifactDataScope,
         value: &Value,

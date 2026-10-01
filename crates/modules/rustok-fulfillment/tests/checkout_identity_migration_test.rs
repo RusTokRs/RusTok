@@ -56,14 +56,16 @@ async fn insert_legacy_fulfillment(
 ) -> Result<Uuid, sea_orm::DbErr> {
     let id = Uuid::new_v4();
     let now = Utc::now().fixed_offset();
-    let mut active = <fulfillment::ActiveModel as std::default::Default>::default();
-    active.id = Set(id);
-    active.tenant_id = Set(tenant_id);
-    active.order_id = Set(Uuid::new_v4());
-    active.status = Set("pending".to_string());
-    active.metadata = Set(metadata);
-    active.created_at = Set(now);
-    active.updated_at = Set(now);
+    let active = fulfillment::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        order_id: Set(Uuid::new_v4()),
+        status: Set("pending".to_string()),
+        metadata: Set(metadata),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    };
     active.insert(db).await.map(|_| id)
 }
 
@@ -142,7 +144,9 @@ async fn typed_checkout_identity_rollback_restores_current_legacy_sqlite_guards(
         .await
         .expect("sqlite trigger catalog should be queryable")
         .expect("sqlite trigger catalog row should exist");
-    let trigger_sql: Option<String> = triggers.try_get_by_index(0).expect("trigger sql should be text");
+    let trigger_sql: Option<String> = triggers
+        .try_get_by_index(0)
+        .expect("trigger sql should be text");
     let trigger_sql = trigger_sql.unwrap_or_default();
     assert!(
         trigger_sql.contains("fulfillments_checkout_identity_guard_insert"),
@@ -296,10 +300,7 @@ async fn checkout_identity_allows_unrelated_metadata_updates() {
         .await
         .expect("unrelated metadata update should remain allowed");
 
-    assert_eq!(
-        updated.metadata["operator_note"].as_str(),
-        Some("after")
-    );
+    assert_eq!(updated.metadata["operator_note"].as_str(), Some("after"));
     assert_eq!(
         updated.metadata["checkout"]["fulfillment_key"].as_str(),
         Some("checkout:operation:fulfillment:0")

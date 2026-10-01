@@ -1,17 +1,17 @@
 //! Artifact data purge target resolution, candidate counts, and collision checks.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
 use super::traits::*;
 use super::types::*;
+use super::*;
 
 pub(crate) async fn load_artifact_data_purge_target<C: ConnectionTrait>(
     connection: &C,

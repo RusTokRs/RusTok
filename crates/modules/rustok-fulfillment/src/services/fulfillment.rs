@@ -239,8 +239,10 @@ impl FulfillmentService {
         if let Some(expected_revision) = expected_translation_revision.as_deref() {
             let current_translations =
                 load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
-            let current_revision =
-                shipping_option_translation_resource_revision(&shipping_option, &current_translations);
+            let current_revision = shipping_option_translation_resource_revision(
+                &shipping_option,
+                &current_translations,
+            );
             if expected_revision != current_revision {
                 return Err(FulfillmentError::ShippingOptionTranslationRevisionConflict(
                     shipping_option_id,
@@ -370,13 +372,8 @@ impl FulfillmentService {
         input: CreateFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
-        self.create_fulfillment_with_identity_and_id(
-            tenant_id,
-            input,
-            None,
-            fulfillment_id,
-        )
-        .await
+        self.create_fulfillment_with_identity_and_id(tenant_id, input, None, fulfillment_id)
+            .await
     }
 
     pub(crate) async fn create_checkout_fulfillment(
@@ -1255,9 +1252,7 @@ fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
     Ok(())
 }
 
-pub(crate) fn normalize_checkout_plan_hash(
-    checkout_plan_hash: &str,
-) -> FulfillmentResult<String> {
+pub(crate) fn normalize_checkout_plan_hash(checkout_plan_hash: &str) -> FulfillmentResult<String> {
     let checkout_plan_hash = checkout_plan_hash.trim().to_ascii_lowercase();
     if checkout_plan_hash.len() != 64
         || !checkout_plan_hash
@@ -1297,7 +1292,11 @@ fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
 
 fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
     let normalized = value.trim().to_ascii_uppercase();
-    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic()) {
+    if normalized.len() != 3
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
         return Err(FulfillmentError::Validation(
             "currency_code must be a 3-letter code".to_string(),
         ));
@@ -1560,10 +1559,7 @@ pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> Fulfillm
     Ok(Value::Object(root))
 }
 
-fn validate_object_metadata(
-    metadata: &Value,
-    resource: &str,
-) -> FulfillmentResult<()> {
+fn validate_object_metadata(metadata: &Value, resource: &str) -> FulfillmentResult<()> {
     if !metadata.is_object() {
         return Err(FulfillmentError::Validation(format!(
             "{resource} metadata must be a JSON object",
@@ -1745,10 +1741,7 @@ fn build_fulfillment_audit_event(
     })
 }
 
-fn append_audit_event(
-    metadata: Value,
-    event: Value,
-) -> FulfillmentResult<Value> {
+fn append_audit_event(metadata: Value, event: Value) -> FulfillmentResult<Value> {
     let mut metadata_object = match metadata {
         Value::Object(object) => object,
         _ => {
@@ -1835,8 +1828,7 @@ async fn load_shipping_options_with_translations(
             .push(translation);
     }
 
-    rows
-        .into_iter()
+    rows.into_iter()
         .map(|row| {
             let translations = translations_by_option.remove(&row.id).unwrap_or_default();
             map_shipping_option(row, translations, requested_locale, tenant_default_locale)
@@ -2194,14 +2186,15 @@ mod tests {
     fn persisted_locale_validation_rejects_invalid_and_noncanonical_rows() {
         let option_id = Uuid::new_v4();
 
-        let invalid = validate_persisted_shipping_option_locales(&[
-            translation(option_id, "not@a-locale", "Broken"),
-        ]);
+        let invalid = validate_persisted_shipping_option_locales(&[translation(
+            option_id,
+            "not@a-locale",
+            "Broken",
+        )]);
         assert!(invalid.is_err());
 
-        let noncanonical = validate_persisted_shipping_option_locales(&[
-            translation(option_id, "EN", "Broken"),
-        ]);
+        let noncanonical =
+            validate_persisted_shipping_option_locales(&[translation(option_id, "EN", "Broken")]);
         assert!(noncanonical.is_err());
     }
 
@@ -2230,12 +2223,11 @@ mod tests {
     #[test]
     fn normalize_translation_inputs_rejects_oversized_shipping_option_name() {
         let name = "x".repeat(121);
-        let result = super::normalize_translation_inputs(vec![
-            crate::dto::ShippingOptionTranslationInput {
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
                 locale: "en".to_string(),
                 name,
-            },
-        ]);
+            }]);
 
         assert!(result.is_err());
     }
@@ -2255,9 +2247,8 @@ mod tests {
             "note": "keep"
         });
 
-        let sanitized =
-            super::strip_fulfillment_item_checkout_metadata(metadata)
-                .expect("valid item checkout metadata should sanitize");
+        let sanitized = super::strip_fulfillment_item_checkout_metadata(metadata)
+            .expect("valid item checkout metadata should sanitize");
         let canonical_cart_line_item_id = cart_line_item_id.to_string();
         assert_eq!(
             sanitized
@@ -2272,10 +2263,7 @@ mod tests {
                 .and_then(|value| value.get("operation_id"))
                 .is_none()
         );
-        assert_eq!(
-            sanitized.get("note").and_then(Value::as_str),
-            Some("keep")
-        );
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
     }
 
     #[test]
@@ -2286,10 +2274,7 @@ mod tests {
             }
         });
 
-        assert!(
-            super::strip_fulfillment_item_checkout_metadata(metadata)
-                .is_err()
-        );
+        assert!(super::strip_fulfillment_item_checkout_metadata(metadata).is_err());
     }
 
     #[test]
@@ -2305,8 +2290,7 @@ mod tests {
     #[test]
     fn create_fulfillment_metadata_requires_object_shape() {
         assert!(
-            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment")
-                .is_err()
+            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment").is_err()
         );
         assert!(
             super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err()
@@ -2349,11 +2333,13 @@ mod tests {
 
     #[test]
     fn append_audit_event_rejects_non_object_metadata() {
-        assert!(super::append_audit_event(
-            serde_json::json!("legacy scalar"),
-            serde_json::json!({"type": "ship"}),
-        )
-        .is_err());
+        assert!(
+            super::append_audit_event(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -2439,12 +2425,11 @@ mod tests {
 
     #[test]
     fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
-        let result = super::normalize_translation_inputs(vec![
-            crate::dto::ShippingOptionTranslationInput {
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
                 locale: "und".to_string(),
                 name: "Express".to_string(),
-            },
-        ]);
+            }]);
 
         assert!(result.is_err());
     }
@@ -2470,8 +2455,8 @@ mod tests {
             }
         });
 
-        let merged = super::merge_fulfillment_metadata(current, patch)
-            .expect("valid metadata should merge");
+        let merged =
+            super::merge_fulfillment_metadata(current, patch).expect("valid metadata should merge");
 
         assert_eq!(
             merged.get("customer_note").and_then(Value::as_str),
@@ -2509,7 +2494,8 @@ mod tests {
             "customer_note": "keep"
         });
 
-        let sanitized = super::strip_fulfillment_metadata(value);
+        let sanitized =
+            super::strip_fulfillment_metadata(value).expect("valid metadata should sanitize");
 
         assert_eq!(
             sanitized.get("customer_note").and_then(Value::as_str),

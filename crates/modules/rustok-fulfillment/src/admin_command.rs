@@ -14,7 +14,6 @@ use crate::dto::{
 };
 use crate::entities::provider_operation;
 use crate::error::FulfillmentError;
-use crate::status::FulfillmentStatusKind;
 use crate::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID,
@@ -24,6 +23,7 @@ use crate::services::{
     PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
+use crate::status::FulfillmentStatusKind;
 
 const ADMIN_COMMAND_BOUNDARY: &str = "fulfillment_admin_command_port";
 
@@ -163,7 +163,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if !matches!(current.status_kind(), FulfillmentStatusKind::Pending | FulfillmentStatusKind::Shipped) {
+        if !matches!(
+            current.status_kind(),
+            FulfillmentStatusKind::Pending | FulfillmentStatusKind::Shipped
+        ) {
             return Err(map_fulfillment_error(
                 &context,
                 OPERATION,
@@ -236,8 +239,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "ship")
-                    .await?;
+                self.ensure_committed(
+                    &context,
+                    tenant_id,
+                    OPERATION,
+                    journaled.operation_id,
+                    "ship",
+                )
+                .await?;
                 Ok(updated)
             }
             Err(error) => {
@@ -385,8 +394,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "reship")
-                    .await?;
+                self.ensure_committed(
+                    &context,
+                    tenant_id,
+                    OPERATION,
+                    journaled.operation_id,
+                    "reship",
+                )
+                .await?;
                 Ok(updated)
             }
             Err(error) => {
@@ -479,8 +494,14 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .await;
         match updated {
             Ok(updated) => {
-                self.ensure_committed(&context, tenant_id, OPERATION, journaled.operation_id, "cancel")
-                    .await?;
+                self.ensure_committed(
+                    &context,
+                    tenant_id,
+                    OPERATION,
+                    journaled.operation_id,
+                    "cancel",
+                )
+                .await?;
                 Ok(updated)
             }
             Err(error) => {
@@ -986,10 +1007,7 @@ mod tests {
         )
         .expect("caller-owned key should produce provider request");
 
-        assert_eq!(
-            request.idempotency_key.as_deref(),
-            Some("caller-owned-key")
-        );
+        assert_eq!(request.idempotency_key.as_deref(), Some("caller-owned-key"));
     }
 
     #[test]
@@ -1001,13 +1019,8 @@ mod tests {
             "commerce-admin-fulfillment:ship:test",
         );
 
-        let error = operation_request(
-            &context,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Value::Null,
-        )
-        .expect_err("missing caller-owned key must fail closed");
+        let error = operation_request(&context, Uuid::new_v4(), Uuid::new_v4(), Value::Null)
+            .expect_err("missing caller-owned key must fail closed");
 
         assert!(matches!(error.kind, PortErrorKind::Validation));
         assert_eq!(error.code, "fulfillment.provider_idempotency_key_missing");

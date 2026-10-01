@@ -21,14 +21,9 @@ fn module_has_migrations() {
     );
 }
 
-
 #[test]
 fn migration_registry_covers_every_flat_migration_source() {
-    use std::{
-        collections::BTreeSet,
-        fs,
-        path::Path,
-    };
+    use std::{collections::BTreeSet, fs, path::Path};
 
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let migrations_dir = manifest_dir.join("src/migrations");
@@ -37,7 +32,10 @@ fn migration_registry_covers_every_flat_migration_source() {
 
     let registered = mod_rs
         .lines()
-        .filter_map(|line| line.strip_prefix("mod ").and_then(|value| value.strip_suffix(';')))
+        .filter_map(|line| {
+            line.strip_prefix("mod ")
+                .and_then(|value| value.strip_suffix(';'))
+        })
         .filter(|name| name.starts_with("m20"))
         .map(ToOwned::to_owned)
         .collect::<BTreeSet<_>>();

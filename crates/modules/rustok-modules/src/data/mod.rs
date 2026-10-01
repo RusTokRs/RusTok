@@ -57,6 +57,7 @@ pub mod upload_sessions;
 pub mod validation;
 
 pub use broker::*;
+pub(crate) use capabilities::escape_like_prefix;
 pub use capabilities::*;
 pub(crate) use constants::*;
 pub use error::*;

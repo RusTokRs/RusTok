@@ -6,12 +6,12 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
 use super::objects_persistence::*;
 use super::types::*;
+use super::*;
 
 /// Deletes only object bytes that an owner transaction has explicitly marked
 /// unreferenced and an external retention snapshot permits. It is tenant-scoped
@@ -161,13 +161,13 @@ impl SeaOrmArtifactDataObjectGcService {
     }
 }
 
-pub(crate) struct ArtifactDataObjectGcCandidate {
-    pub(crate) candidate_id: Uuid,
-    pub(crate) scope: ArtifactDataScope,
-    pub(crate) storage_key: String,
+struct ArtifactDataObjectGcCandidate {
+    candidate_id: Uuid,
+    scope: ArtifactDataScope,
+    storage_key: String,
 }
 
-pub(crate) fn artifact_data_object_gc_candidate_from_row(
+fn artifact_data_object_gc_candidate_from_row(
     row: sea_orm::QueryResult,
     backend: DbBackend,
 ) -> Result<ArtifactDataObjectGcCandidate, ArtifactDataError> {

@@ -1,8 +1,8 @@
 //! Artifact data broker, hook, authorizer, and validator traits.
 
-use super::*;
 use super::error::*;
 use super::types::*;
+use super::*;
 
 /// Read and write calls are self-contained owner operations. An implementation
 /// must finish any storage transaction before returning; it must not expose a
@@ -84,7 +84,6 @@ pub trait ArtifactDataObjectBroker: Send + Sync {
     ) -> Result<ArtifactDataObjectPage, ArtifactDataError>;
 }
 
-
 /// Policy evaluation is host-owned and request-scoped. The implementation can
 /// bind actor, grants, quotas, and the admitted policy revision without giving
 /// an artifact a direct handle to any of those systems.
@@ -110,7 +109,6 @@ pub trait ArtifactDataSchemaValidator: Send + Sync {
     ) -> Result<(), ArtifactDataError>;
 }
 
-
 /// implementation or replace this check through its broker capability.
 /// Current policy reads use the owner's write transaction. The host must
 /// additionally enforce operational, recovery/retention/hold, and revocation
@@ -134,7 +132,6 @@ pub trait ArtifactDataExportAuthorizer: Send + Sync {
         request: &ArtifactDataExportRequest,
     ) -> Result<(), ArtifactDataError>;
 }
-
 
 /// Owner-owned installation checkpoint boundary. Implementations must retain
 /// the installation revision CAS and transactional outbox semantics.

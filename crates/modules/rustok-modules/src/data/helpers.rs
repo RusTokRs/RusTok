@@ -1,15 +1,15 @@
 //! SQL query builders, placeholders, tenant scoping, and namespace lock helpers.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
 };
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::types::*;
+use super::*;
 
 pub(crate) async fn namespace_record_count<C: ConnectionTrait>(
     connection: &C,
@@ -313,7 +313,9 @@ pub(crate) async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
         .ok_or(ArtifactDataError::IndexQueryUnavailable)
 }
 
-pub(crate) fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Result<(), ArtifactDataError> {
+pub(crate) fn validate_purge_request(
+    request: &ArtifactDataPurgeRequest,
+) -> Result<(), ArtifactDataError> {
     if request.installation_id.is_nil()
         || request.expected_namespace_revision == 0
         || request.context.tenant_id.is_none()
@@ -327,7 +329,9 @@ pub(crate) fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Resu
     Ok(())
 }
 
-pub(crate) fn validate_export_request(request: &ArtifactDataExportRequest) -> Result<(), ArtifactDataError> {
+pub(crate) fn validate_export_request(
+    request: &ArtifactDataExportRequest,
+) -> Result<(), ArtifactDataError> {
     request.scope.validate()?;
     validate_page_request(&request.page)?;
     if request.expected_namespace_revision == 0
@@ -428,7 +432,9 @@ pub(crate) fn namespace_lock_clause(backend: DbBackend) -> &'static str {
     }
 }
 
-pub(crate) fn record_from_row(row: sea_orm::QueryResult) -> Result<ArtifactDataRecord, ArtifactDataError> {
+pub(crate) fn record_from_row(
+    row: sea_orm::QueryResult,
+) -> Result<ArtifactDataRecord, ArtifactDataError> {
     let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
     Ok(ArtifactDataRecord {
         key: row.try_get("", "data_key").map_err(storage_error)?,

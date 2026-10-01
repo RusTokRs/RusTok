@@ -3,17 +3,17 @@
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 use uuid::Uuid;
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
 use super::staging_alloy::*;
 use super::validation_evidence::*;
+use super::*;
 use crate::build::{
-    ModuleBuildOutcome, ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
+    ModuleBuildOutcome, ModuleBuildValidationOutcome, ModuleBuildValidationProfile,
+    SeaOrmModuleBuildService,
 };
 
 impl SeaOrmModuleGovernanceService {
-
     /// Stages one immutable completed platform build for a submitted registry
     /// artifact. The owner reloads the durable build pair under tenant RLS and
     /// binds its source, payload, and OCI receipt identities to this request.
@@ -582,5 +582,4 @@ impl SeaOrmModuleGovernanceService {
             descriptor_digest,
         })
     }
-
 }

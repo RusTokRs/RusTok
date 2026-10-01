@@ -1,4 +1,7 @@
-use std::{collections::{BTreeSet, HashMap}, fmt::Write as _};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Write as _,
+};
 
 use rustok_api::{PortError, TenantLocale, UNKNOWN_PROVENANCE_LOCALE, sha256_digest};
 use rustok_core::generate_id;

@@ -33,10 +33,10 @@ pub mod validation_work_items;
 
 pub use constants::*;
 pub use error::*;
+pub use projections::SeaOrmModuleGovernanceService;
 pub use snapshots::*;
 pub use types::*;
 pub use types_publication::*;
-pub use projections::SeaOrmModuleGovernanceService;
 
 #[cfg(test)]
 mod tests;

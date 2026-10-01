@@ -7,7 +7,6 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
@@ -17,6 +16,7 @@ use super::traits::*;
 use super::types::*;
 use super::upload::*;
 use super::validation::*;
+use super::*;
 
 impl<A> SeaOrmArtifactDataObjectUploadService<A>
 where
@@ -300,7 +300,6 @@ where
     }
 }
 
-
 pub(crate) struct StoredArtifactDataObjectUploadSession {
     pub(crate) name: String,
     pub(crate) content_type: String,
@@ -309,7 +308,6 @@ pub(crate) struct StoredArtifactDataObjectUploadSession {
 }
 
 pub(crate) enum ArtifactDataObjectUploadCompletion {
-
     Active(StoredArtifactDataObjectUploadSession),
     Completed { name: String },
 }

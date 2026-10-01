@@ -2,9 +2,8 @@
 
 use sea_orm::{ConnectionTrait, DatabaseTransaction, DbBackend, QueryResult, Statement, Value};
 
-use super::*;
 use super::helpers::*;
-
+use super::*;
 
 /// Loads the one immutable descriptor bound to the exact Alloy source stage
 /// that a validation lease is about to process. The worker receives this
@@ -290,7 +289,9 @@ pub(crate) fn module_publish_validation_contract_from_row(
     })
 }
 
-pub(crate) fn validation_warnings_from_row(row: &QueryResult) -> Result<Vec<String>, ModuleGovernanceError> {
+pub(crate) fn validation_warnings_from_row(
+    row: &QueryResult,
+) -> Result<Vec<String>, ModuleGovernanceError> {
     let warnings: serde_json::Value = serde_json::from_str(
         &row.try_get::<String>("", "validation_warnings")
             .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?,
@@ -311,4 +312,3 @@ pub(crate) fn validation_warnings_from_row(row: &QueryResult) -> Result<Vec<Stri
     warnings.dedup();
     Ok(warnings)
 }
-

@@ -9,8 +9,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::services::fulfillment::{
-    normalize_checkout_plan_hash, strip_fulfillment_identity_metadata,
-    strip_fulfillment_item_checkout_metadata, CheckoutFulfillmentRecord,
+    CheckoutFulfillmentRecord, normalize_checkout_plan_hash, strip_fulfillment_identity_metadata,
+    strip_fulfillment_item_checkout_metadata,
 };
 use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
@@ -673,10 +673,7 @@ fn build_input(
             Ok(CreateFulfillmentItemInput {
                 order_line_item_id: item.order_line_item_id,
                 quantity: item.quantity,
-                metadata: fulfillment_item_metadata(
-                    item.metadata.clone(),
-                    item.cart_line_item_id,
-                )?,
+                metadata: fulfillment_item_metadata(item.metadata.clone(), item.cart_line_item_id)?,
             })
         })
         .collect::<Result<Vec<_>, PortError>>()?;
@@ -693,8 +690,8 @@ fn build_input(
 }
 
 fn fulfillment_metadata(base: Value) -> Result<Value, PortError> {
-    let value = strip_fulfillment_identity_metadata(base)
-        .map_err(|_| metadata_projection_error())?;
+    let value =
+        strip_fulfillment_identity_metadata(base).map_err(|_| metadata_projection_error())?;
     let mut root = match value {
         Value::Object(object) => object,
         _ => return Err(metadata_projection_error()),
@@ -706,12 +703,9 @@ fn fulfillment_metadata(base: Value) -> Result<Value, PortError> {
     Ok(Value::Object(root))
 }
 
-fn fulfillment_item_metadata(
-    base: Value,
-    cart_line_item_id: Uuid,
-) -> Result<Value, PortError> {
-    let value = strip_fulfillment_item_checkout_metadata(base)
-        .map_err(|_| metadata_projection_error())?;
+fn fulfillment_item_metadata(base: Value, cart_line_item_id: Uuid) -> Result<Value, PortError> {
+    let value =
+        strip_fulfillment_item_checkout_metadata(base).map_err(|_| metadata_projection_error())?;
     let mut root = match value {
         Value::Object(object) => object,
         _ => return Err(metadata_projection_error()),
@@ -807,10 +801,7 @@ fn validate_fulfillment(
         .map(|item| {
             (
                 item.order_line_item_id,
-                (
-                    extract_cart_line_item_id(&item.metadata),
-                    item.quantity,
-                ),
+                (extract_cart_line_item_id(&item.metadata), item.quantity),
             )
         })
         .collect::<BTreeMap<_, _>>();
@@ -1234,7 +1225,6 @@ fn fulfillment_error_to_port_error(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1256,7 +1246,6 @@ mod tests {
         assert!(fulfillment_metadata(metadata).is_err());
     }
 
-
     #[test]
     fn checkout_item_metadata_preserves_cart_line_identity_projection() {
         let cart_line_item_id = Uuid::new_v4();
@@ -1274,10 +1263,7 @@ mod tests {
             extract_cart_line_item_id(&projected),
             Some(cart_line_item_id)
         );
-        assert_eq!(
-            projected.get("note").and_then(Value::as_str),
-            Some("keep")
-        );
+        assert_eq!(projected.get("note").and_then(Value::as_str), Some("keep"));
         assert!(
             projected
                 .get("checkout")
@@ -1329,13 +1315,8 @@ mod tests {
             }],
             metadata: Value::Null,
         };
-        let canonical = validate_request(
-            operation_id,
-            order_id,
-            &"A".repeat(64),
-            &[plan],
-        )
-        .expect("uppercase hexadecimal plan hash should canonicalize");
+        let canonical = validate_request(operation_id, order_id, &"A".repeat(64), &[plan])
+            .expect("uppercase hexadecimal plan hash should canonicalize");
         assert_eq!(canonical, "a".repeat(64));
     }
 

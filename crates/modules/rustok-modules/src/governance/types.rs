@@ -231,7 +231,6 @@ pub struct ModuleValidationJobEnqueueResult {
     pub validation_job_id: Option<String>,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationJobClaimCommand {
     pub validation_job_id: String,
@@ -361,4 +360,3 @@ pub struct ModulePublishRequestCreateCommand {
     /// owner binding before accepting a new request.
     pub actor_can_manage_modules: bool,
 }
-

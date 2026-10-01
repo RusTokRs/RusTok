@@ -1,19 +1,19 @@
 //! Low-level database operations for structured artifact data records.
 
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
+    TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::*;
 use super::constants::*;
 use super::error::*;
 use super::helpers::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 pub(crate) async fn find_artifact_data_delete_operation<C: ConnectionTrait>(
     connection: &C,

@@ -2,14 +2,13 @@
 
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
 use super::receipts::*;
 use super::receipts_reviews::*;
 use super::validation_evidence::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Persists a manual validation-stage transition or a fresh queued attempt
     /// with its stage and follow-up audit facts in one transaction.
     pub async fn report_validation_stage(
@@ -372,7 +371,6 @@ impl SeaOrmModuleGovernanceService {
         Ok(())
     }
 
-
     /// Completes a remote lease and emits the terminal stage and follow-up gate
     /// facts in the same transaction. Returns the canonical terminal state for
     /// a host adapter that needs to shape a transport response.
@@ -590,5 +588,4 @@ impl SeaOrmModuleGovernanceService {
             status: terminal_status.to_string(),
         })
     }
-
 }

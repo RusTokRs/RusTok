@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::*;
 use super::broker::*;
 use super::constants::*;
 use super::error::*;
 use super::traits::*;
 use super::types::*;
 use super::validation::*;
+use super::*;
 
 /// The `platform.data` adapter for one admitted artifact namespace. It is
 /// injected into the neutral sandbox runtime and delegates all persistence,
@@ -76,7 +76,7 @@ where
     A: ArtifactDataAuthorizer,
     V: ArtifactDataSchemaValidator,
 {
-    pub(crate) async fn invoke(
+    async fn invoke(
         &self,
         call: &CapabilityCall,
         _grant: &CapabilityGrant,
@@ -190,7 +190,7 @@ pub(crate) struct ExactArtifactDataAuthorizer {
 
 #[async_trait]
 impl ArtifactDataAuthorizer for ExactArtifactDataAuthorizer {
-    pub(crate) async fn authorize_data(
+    async fn authorize_data(
         &self,
         scope: &ArtifactDataScope,
         _access: ArtifactDataAccess,
@@ -205,7 +205,7 @@ impl ArtifactDataAuthorizer for ExactArtifactDataAuthorizer {
 
 #[async_trait]
 impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerResolver {
-    pub(crate) async fn resolve_broker(
+    async fn resolve_broker(
         &self,
         execution: &ArtifactCapabilityExecution,
         capability: &rustok_sandbox::CapabilityName,
@@ -246,9 +246,7 @@ impl ArtifactCapabilityBrokerResolver for SeaOrmArtifactDataCapabilityBrokerReso
     }
 }
 
-
 pub(crate) enum DataCapabilityCall {
-
     Get { key: String },
     Put { write: ArtifactDataWrite },
     PutBatch { batch: ArtifactDataBatchWrite },
@@ -398,7 +396,7 @@ pub(crate) fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResul
     }
 }
 
-pub(crate) fn decode_data_capability_write(
+fn decode_data_capability_write(
     call: &CapabilityCall,
     input: &serde_json::Map<String, Value>,
 ) -> SandboxResult<ArtifactDataWrite> {

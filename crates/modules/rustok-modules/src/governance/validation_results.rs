@@ -2,15 +2,14 @@
 
 use sea_orm::{ConnectionTrait, Statement, TransactionTrait, Value};
 
-use super::*;
 use super::helpers::*;
 use super::mapping::*;
 use super::staging_alloy::*;
 use super::staging_external::*;
 use super::validation_evidence::*;
+use super::*;
 
 impl SeaOrmModuleGovernanceService {
-
     /// Applies an automated validation result atomically. A host worker may
     /// inspect and execute an artifact bundle, but it cannot independently
     /// complete the job, mutate the request, or create follow-up stages.
@@ -375,5 +374,4 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         Ok(())
     }
-
 }
