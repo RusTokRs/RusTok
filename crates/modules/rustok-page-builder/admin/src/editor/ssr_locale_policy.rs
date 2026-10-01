@@ -289,7 +289,7 @@ mod tests {
     fn locale_lists_are_normalized_and_deduplicated() {
         assert_eq!(
             parse_locale_list(" RU_ru, en; EN\nde-DE ", "locale").unwrap(),
-            vec!["ru-ru", "en", "de-de"]
+            vec!["ru-RU", "en", "de-DE"]
         );
     }
 

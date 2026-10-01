@@ -30,6 +30,7 @@ ai-agents-noPrincipalSelected = Select a principal above
 ai-agents-operations = Operations
 ai-agents-ownerCatalog = Owner catalog
 ai-agents-principalEditor = Agent principal
+ai-agents-rbacCatalog = Tenant RBAC catalog
 ai-agents-requiredPermissions = Required permissions
 ai-agents-selectDescriptor = Select an owner descriptor
 ai-agents-selectPrincipal = Select an agent principal
@@ -64,7 +65,11 @@ ai-common-mcpTooling = MCP tooling
 ai-common-noTextualContent = (no textual content)
 ai-common-noTextualDelta = (no textual delta)
 ai-diagnostics-averageRunLatency = Average run latency: { $value } ms
-ai-diagnostics-cachedEventsCount = { $count } cached event(s)
+ai-diagnostics-cachedEventsCount =
+    { $count ->
+        [one] { $count } cached event
+       *[other] { $count } cached events
+    }
 ai-diagnostics-completedRuns = Completed runs
 ai-diagnostics-directSelected = Direct selected
 ai-diagnostics-executionTargets = Execution targets
@@ -122,6 +127,7 @@ ai-feedback-toolProfileUpdated = Tool profile `{ $slug }` updated.
 ai-field-active = Active
 ai-field-agentDescriptor = Agent descriptor
 ai-field-allowedProviderIdsCsv = Allowed provider ids (csv)
+ai-field-allowedProvidersCsv = Allowed providers (csv)
 ai-field-allowedTasksCsv = Allowed tasks (csv)
 ai-field-allowedToolsCsv = Allowed tools (csv)
 ai-field-altText = Alt text
@@ -133,6 +139,7 @@ ai-field-categorySlug = Category slug
 ai-field-copyInstructions = Copy instructions
 ai-field-dateFrom = Date from (RFC 3339, optional)
 ai-field-dateTo = Date to (RFC 3339, optional)
+ai-field-defaultExecutionMode = Default execution mode
 ai-field-deniedTasksCsv = Denied tasks (csv)
 ai-field-deniedToolsCsv = Denied tools (csv)
 ai-field-description = Description
@@ -157,6 +164,7 @@ ai-field-orderContext = Operator context
 ai-field-orderId = Order id
 ai-field-orderIdsCsv = Order ids (csv)
 ai-field-preferredProviderIdsCsv = Preferred provider ids (csv)
+ai-field-preferredProvidersCsv = Preferred providers (csv)
 ai-field-productId = Product id
 ai-field-prompt = Prompt
 ai-field-providerIntegration = Provider integration
@@ -192,6 +200,7 @@ ai-job-blogTitle = Blog Draft
 ai-job-imageTitle = Media Image
 ai-job-orderAnalyticsTitle = Order Analytics
 ai-job-orderOpsAssistantTitle = Order Operations Assistant
+ai-job-productAttributesTitle = Product Attributes
 ai-job-productTitle = Product Copy
 ai-session-liveStream = Live stream
 ai-session-loadBootstrap = Failed to load AI bootstrap: { $error }
@@ -215,12 +224,20 @@ ai-status-waitingApproval = WAITING_APPROVAL
 ai-subtitle = Provider profiles, tool policies, operator chat sessions, tool traces, and approval gates for rustok-ai.
 ai-summary-bucketNoData = no data
 ai-summary-localeFlow = locale: { $requested } -> { $resolved }
-ai-summary-providerList = { $kind } · { $model } · { $count } capabilities · { $state }
+ai-summary-providerList =
+    { $count ->
+        [one] { $kind } · { $model } · { $count } capability · { $state }
+       *[other] { $kind } · { $model } · { $count } capabilities · { $state }
+    }
 ai-summary-recentRunMeta = { $provider } · { $target } · { $requested } -> { $resolved }
 ai-summary-recentRunStartedAt = { $started_at }{ $task_suffix }
 ai-summary-recentRunTaskSuffix =  · task { $slug }
 ai-summary-recentRunTitle = { $title } · { $status } · { $duration } ms
-ai-summary-recentRuns = { $count } run(s), { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+ai-summary-recentRuns =
+    { $count ->
+        [one] { $count } run, { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+       *[other] { $count } runs, { $failed } failed, { $waiting } waiting approval, avg { $latency } ms
+    }
 ai-summary-runPath = { $status } · { $mode } · path { $path }
 ai-summary-sessionList = status: { $status } · mode: { $mode } · latest: { $latest } · approvals: { $approvals }
 ai-summary-sessionProfile = provider: { $provider } · model: { $model } · mode: { $mode }

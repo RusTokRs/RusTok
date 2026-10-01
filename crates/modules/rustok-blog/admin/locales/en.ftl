@@ -63,7 +63,11 @@ blog-table-publish = Publish
 blog-table-slug = Slug
 blog-table-status = Status
 blog-table-title = Title
-blog-table-total = { $count } post(s)
+blog-table-total =
+    { $count ->
+        [one] { $count } post
+       *[other] { $count } posts
+    }
 blog-table-unpublish = Unpublish
 blog-title = Blog Publishing
 richText-apply_link = Apply link
@@ -87,3 +91,5 @@ richText-redo = Redo
 richText-remove_link = Remove link
 richText-strike = Strike
 richText-undo = Undo
+blog-error-restorePost = Failed to restore post
+blog-table-restore = Restore

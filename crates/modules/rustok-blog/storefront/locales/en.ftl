@@ -1,5 +1,9 @@
 blog-badge = blog
-blog-body-rawFormat = Stored in `{ $format }` format. Raw body length: { $count } characters.
+blog-body-rawFormat =
+    { $count ->
+        [one] Stored in `{ $format }` format. Raw body length: { $count } character.
+       *[other] Stored in `{ $format }` format. Raw body length: { $count } characters.
+    }
 blog-comments-composer-editorLabel = Comment
 blog-comments-composer-emptyError = Write a comment before submitting.
 blog-comments-composer-hint = Formatting is preserved with the shared richtext editor.
@@ -37,3 +41,10 @@ blog-selected-slugLabel = slug
 blog-selected-unscheduled = Unscheduled
 blog-subtitle = This storefront surface reads blog data through GraphQL with no host-specific blog wiring.
 blog-title = Stories published from the module package
+blog-comments-timeout = Comments took too long to load. The article is still available.
+blog-comments-timeoutCached = Comments took too long to load. Showing a recent cached snapshot.
+blog-comments-unavailable = Comments are temporarily unavailable. The article is still available.
+blog-comments-unavailableCached = Comments are temporarily unavailable. Showing a recent cached snapshot.
+blog-list-publishedLabel = published
+blog-list-unknownStatus = unknown
+blog-selected-unknownStatus = unknown

@@ -7,6 +7,7 @@ rbac-info-userId = ID пользователя
 rbac-permissions-count = прав
 rbac-permissions-subtitle = Live-снимок, вычисленный из текущего security context.
 rbac-permissions-title = Выданные права
+rbac-roles-title = Встроенные роли
 rbac-subtitle = Модульный обзор live-снимка прав и словаря доступа, объявленного модулями.
 rbac-surfaces-title = Host-поверхности
 rbac-title = RBAC runtime

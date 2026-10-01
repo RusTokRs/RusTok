@@ -282,8 +282,12 @@ pub fn AiChatSessionPanel(
                                             }.into_any(),
                                             Err(err) => view! {
                                                 <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                                    {t(ui_locale.as_deref(), "ai.session.loadSession", "Failed to load session: {error}")
-                                                        .replace("{error}", err.to_string().as_str())}
+                                                    {crate::i18n::format(
+                                                        ui_locale.as_deref(),
+                                                        "ai.session.loadSession",
+                                                        Some(&rustok_ui_i18n::fluent_args!("error" => err.to_string())),
+                                                        "Failed to load session: {error}",
+                                                    )}
                                                 </div>
                                             }.into_any(),
                                             })

@@ -8,7 +8,7 @@ use crate::core::{
     MarketplaceListingAdminTransportProfile, build_marketplace_listing_admin_shell,
     selected_transport_profile,
 };
-use crate::i18n::normalize_admin_locale;
+use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
     MarketplaceListingAdminCommand, MarketplaceListingAdminDetail,
     MarketplaceListingAdminDirectory, MarketplaceListingAdminFilters,
@@ -35,7 +35,6 @@ where
 pub fn MarketplaceListingAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = normalize_admin_locale(route_context.locale.as_deref());
-    let russian = locale == "ru";
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let shell = build_marketplace_listing_admin_shell(Some(locale), profile);
     let transport = transport_context(profile, Some(locale.to_string()));
@@ -128,11 +127,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                     Ok(result) => {
                         selected_id.set(Some(result.listing.id));
                         pending_command.set(None);
-                        notice.set(Some(label(
-                            russian,
-                            "Marketplace listing command completed.",
-                            "Команда листинга выполнена.",
-                        )));
+                        notice.set(Some(t(Some(locale), "marketplaceListing.marketplaceListingCommandCompleted", "Marketplace listing command completed.")));
                         refresh_nonce.update(|value| *value = value.saturating_add(1));
                     }
                     Err(transport_error) => error.set(Some(transport_error.to_string())),
@@ -151,7 +146,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                 <p class="marketplace-listing-admin__family">"Marketplace Family"</p>
                 <h1>{shell.title.clone()}</h1>
                 <p>{shell.subtitle}</p>
-                <p>{format!("{}: {}", label(russian, "Transport", "Транспорт"), profile.as_str())}</p>
+                <p>{format!("{}: {}", t(Some(locale), "marketplaceListing.transport", "Transport"), profile.as_str())}</p>
             </header>
 
             {move || error.get().map(|message| view! {
@@ -169,7 +164,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                             }
                         }
                     >
-                        {label(russian, "Retry same command", "Повторить ту же команду")}
+                        {t(Some(locale), "marketplaceListing.retrySameCommand", "Retry same command")}
                     </button>
                 </div>
             })}
@@ -179,17 +174,17 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
 
             <div class="marketplace-listing-admin__layout">
                 <aside class="marketplace-listing-admin__directory">
-                    {render_filters(russian, search, status_filter, approval_filter)}
-                    <Suspense fallback=move || view! { <p>{label(russian, "Loading listings...", "Загрузка листингов...")}</p> }>
+                    {render_filters(locale, search, status_filter, approval_filter)}
+                    <Suspense fallback=move || view! { <p>{t(Some(locale), "marketplaceListing.loadingListings", "Loading listings...")}</p> }>
                         {move || directory.get().map(|result| match result {
-                            Ok(directory) => render_directory(russian, directory, selected_id).into_any(),
+                            Ok(directory) => render_directory(locale, directory, selected_id).into_any(),
                             Err(transport_error) => view! {
                                 <p class="marketplace-listing-admin__error">{transport_error.to_string()}</p>
                             }.into_any(),
                         })}
                     </Suspense>
                     {render_create_form(
-                        russian,
+                        locale,
                         busy,
                         CreateListingFormSignals {
                             seller_id: create_seller_id,
@@ -203,17 +198,13 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
                 </aside>
 
                 <main class="marketplace-listing-admin__detail">
-                    <Suspense fallback=move || view! { <p>{label(russian, "Loading listing detail...", "Загрузка листинга...")}</p> }>
+                    <Suspense fallback=move || view! { <p>{t(Some(locale), "marketplaceListing.loadingListingDetail", "Loading listing detail...")}</p> }>
                         {move || detail.get().map(|result| match result {
                             Ok(None) => view! {
-                                <p>{label(
-                                    russian,
-                                    "Select a listing to inspect terms and immutable history.",
-                                    "Выберите листинг для просмотра условий и неизменяемой истории.",
-                                )}</p>
+                                <p>{t(Some(locale), "marketplaceListing.selectAListingTo", "Select a listing to inspect terms and immutable history.")}</p>
                             }.into_any(),
                             Ok(Some(detail)) => render_detail(
-                                russian,
+                                locale,
                                 detail,
                                 shell.legacy_attribution_label.clone(),
                                 busy,
@@ -238,7 +229,7 @@ pub fn MarketplaceListingAdmin() -> impl IntoView {
 }
 
 fn render_filters(
-    russian: bool,
+    locale: &'static str,
     search: RwSignal<String>,
     status: RwSignal<String>,
     approval: RwSignal<String>,
@@ -247,12 +238,12 @@ fn render_filters(
         <div class="marketplace-listing-admin__filters">
             <input
                 type="search"
-                placeholder=label(russian, "Search listing scope or SKU", "Поиск по листингу или SKU")
+                placeholder=t(Some(locale), "marketplaceListing.searchListingScopeOr", "Search listing scope or SKU")
                 prop:value=move || search.get()
                 on:input=move |event| search.set(event_target_value(&event))
             />
             <select prop:value=move || status.get() on:change=move |event| status.set(event_target_value(&event))>
-                <option value="">{label(russian, "All statuses", "Все статусы")}</option>
+                <option value="">{t(Some(locale), "marketplaceListing.allStatuses", "All statuses")}</option>
                 <option value="draft">"draft"</option>
                 <option value="pending_review">"pending_review"</option>
                 <option value="active">"active"</option>
@@ -260,7 +251,7 @@ fn render_filters(
                 <option value="archived">"archived"</option>
             </select>
             <select prop:value=move || approval.get() on:change=move |event| approval.set(event_target_value(&event))>
-                <option value="">{label(russian, "All approval states", "Все состояния проверки")}</option>
+                <option value="">{t(Some(locale), "marketplaceListing.allApprovalStates", "All approval states")}</option>
                 <option value="draft">"draft"</option>
                 <option value="pending">"pending"</option>
                 <option value="approved">"approved"</option>
@@ -271,21 +262,21 @@ fn render_filters(
 }
 
 fn render_directory(
-    russian: bool,
+    locale: &'static str,
     directory: MarketplaceListingAdminDirectory,
     selected_id: RwSignal<Option<String>>,
 ) -> impl IntoView {
     if directory.items.is_empty() {
         return view! {
             <p class="marketplace-listing-admin__empty">
-                {label(russian, "No listings match the filters.", "Листинги по фильтрам не найдены.")}
+                {t(Some(locale), "marketplaceListing.noListingsMatchThe", "No listings match the filters.")}
             </p>
         }
         .into_any();
     }
 
     view! {
-        <p>{format!("{}: {}", label(russian, "Total", "Всего"), directory.total)}</p>
+        <p>{format!("{}: {}", t(Some(locale), "marketplaceListing.total", "Total"), directory.total)}</p>
         <ul class="marketplace-listing-admin__listing-list">
             {directory.items.into_iter().map(|listing| {
                 let active_id = listing.id.clone();
@@ -333,7 +324,7 @@ struct DetailFormSignals {
 }
 
 fn render_create_form(
-    russian: bool,
+    locale: &'static str,
     busy: RwSignal<bool>,
     form: CreateListingFormSignals,
     run_command: Arc<dyn Fn(MarketplaceListingAdminCommand) + Send + Sync>,
@@ -345,7 +336,7 @@ fn render_create_form(
     let channel = form.channel;
     view! {
         <section class="marketplace-listing-admin__create">
-            <h2>{label(russian, "Create listing", "Создать листинг")}</h2>
+            <h2>{t(Some(locale), "marketplaceListing.createListing", "Create listing")}</h2>
             <input placeholder="seller UUID" prop:value=move || seller_id.get() on:input=move |event| seller_id.set(event_target_value(&event)) />
             <input placeholder="master variant UUID" prop:value=move || variant_id.get() on:input=move |event| variant_id.set(event_target_value(&event)) />
             <input placeholder="seller SKU" prop:value=move || sku.get() on:input=move |event| sku.set(event_target_value(&event)) />
@@ -366,14 +357,14 @@ fn render_create_form(
                     },
                 })
             >
-                {label(russian, "Create", "Создать")}
+                {t(Some(locale), "marketplaceListing.create", "Create")}
             </button>
         </section>
     }
 }
 
 fn render_detail(
-    russian: bool,
+    locale: &'static str,
     detail: MarketplaceListingAdminDetail,
     legacy_label: String,
     busy: RwSignal<bool>,
@@ -409,15 +400,15 @@ fn render_detail(
             <h2>{listing.seller_sku}</h2>
             <dl>
                 <dt>"ID"</dt><dd>{listing_id.clone()}</dd>
-                <dt>{label(russian, "Seller", "Продавец")}</dt><dd>{listing.seller_id}</dd>
-                <dt>{label(russian, "Variant", "Вариант")}</dt><dd>{listing.master_variant_id}</dd>
-                <dt>{label(russian, "Scope", "Область")}</dt><dd>{format!("{} / {}", listing.market_slug, listing.channel_slug)}</dd>
-                <dt>{label(russian, "State", "Состояние")}</dt><dd>{format!("{} / {}", listing.status, listing.approval_status)}</dd>
-                <dt>{label(russian, "Terms version", "Версия условий")}</dt><dd>{listing.current_terms_version}</dd>
+                <dt>{t(Some(locale), "marketplaceListing.seller", "Seller")}</dt><dd>{listing.seller_id}</dd>
+                <dt>{t(Some(locale), "marketplaceListing.variant", "Variant")}</dt><dd>{listing.master_variant_id}</dd>
+                <dt>{t(Some(locale), "marketplaceListing.scope", "Scope")}</dt><dd>{format!("{} / {}", listing.market_slug, listing.channel_slug)}</dd>
+                <dt>{t(Some(locale), "marketplaceListing.state", "State")}</dt><dd>{format!("{} / {}", listing.status, listing.approval_status)}</dd>
+                <dt>{t(Some(locale), "marketplaceListing.termsVersion", "Terms version")}</dt><dd>{listing.current_terms_version}</dd>
             </dl>
 
             <section class="marketplace-listing-admin__terms">
-                <h3>{label(russian, "Commercial references", "Коммерческие ссылки")}</h3>
+                <h3>{t(Some(locale), "marketplaceListing.commercialReferences", "Commercial references")}</h3>
                 <input placeholder="pricing reference" prop:value=move || pricing_reference.get() on:input=move |event| pricing_reference.set(event_target_value(&event)) />
                 <input placeholder="inventory reference" prop:value=move || inventory_reference.get() on:input=move |event| inventory_reference.set(event_target_value(&event)) />
                 <input placeholder="fulfillment profile" prop:value=move || fulfillment_profile.get() on:input=move |event| fulfillment_profile.set(event_target_value(&event)) />
@@ -431,24 +422,24 @@ fn render_detail(
                             metadata: serde_json::json!({}),
                         },
                     })
-                }>{label(russian, "Save terms", "Сохранить условия")}</button>
+                }>{t(Some(locale), "marketplaceListing.saveTerms", "Save terms")}</button>
             </section>
 
             <section class="marketplace-listing-admin__commands">
-                <h3>{label(russian, "Lifecycle", "Жизненный цикл")}</h3>
-                <textarea placeholder=label(russian, "Moderation note", "Комментарий модерации") prop:value=move || moderation_note.get() on:input=move |event| moderation_note.set(event_target_value(&event)) />
-                <input placeholder=label(russian, "Suspension reason", "Причина приостановки") prop:value=move || suspension_reason.get() on:input=move |event| suspension_reason.set(event_target_value(&event)) />
-                <button type="button" disabled=move || busy.get() on:click=move |_| submit_command(MarketplaceListingAdminCommand::SubmitForReview { listing_id: submit_id.clone() })>{label(russian, "Submit", "Отправить на проверку")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| approve_command(MarketplaceListingAdminCommand::Review { listing_id: approve_id.clone(), approved: true, note: optional_text(moderation_note.get_untracked()) })>{label(russian, "Approve", "Одобрить")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| reject_command(MarketplaceListingAdminCommand::Review { listing_id: reject_id.clone(), approved: false, note: optional_text(moderation_note.get_untracked()) })>{label(russian, "Reject", "Отклонить")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| publish_command(MarketplaceListingAdminCommand::Publish { listing_id: publish_id.clone() })>{label(russian, "Publish", "Опубликовать")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| suspend_command(MarketplaceListingAdminCommand::Suspend { listing_id: suspend_id.clone(), reason: suspension_reason.get_untracked() })>{label(russian, "Suspend", "Приостановить")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| reactivate_command(MarketplaceListingAdminCommand::Reactivate { listing_id: reactivate_id.clone() })>{label(russian, "Reactivate", "Возобновить")}</button>
-                <button type="button" disabled=move || busy.get() on:click=move |_| archive_command(MarketplaceListingAdminCommand::Archive { listing_id: archive_id.clone() })>{label(russian, "Archive", "Архивировать")}</button>
+                <h3>{t(Some(locale), "marketplaceListing.lifecycle", "Lifecycle")}</h3>
+                <textarea placeholder=t(Some(locale), "marketplaceListing.moderationNote", "Moderation note") prop:value=move || moderation_note.get() on:input=move |event| moderation_note.set(event_target_value(&event)) />
+                <input placeholder=t(Some(locale), "marketplaceListing.suspensionReason", "Suspension reason") prop:value=move || suspension_reason.get() on:input=move |event| suspension_reason.set(event_target_value(&event)) />
+                <button type="button" disabled=move || busy.get() on:click=move |_| submit_command(MarketplaceListingAdminCommand::SubmitForReview { listing_id: submit_id.clone() })>{t(Some(locale), "marketplaceListing.submit", "Submit")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| approve_command(MarketplaceListingAdminCommand::Review { listing_id: approve_id.clone(), approved: true, note: optional_text(moderation_note.get_untracked()) })>{t(Some(locale), "marketplaceListing.approve", "Approve")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| reject_command(MarketplaceListingAdminCommand::Review { listing_id: reject_id.clone(), approved: false, note: optional_text(moderation_note.get_untracked()) })>{t(Some(locale), "marketplaceListing.reject", "Reject")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| publish_command(MarketplaceListingAdminCommand::Publish { listing_id: publish_id.clone() })>{t(Some(locale), "marketplaceListing.publish", "Publish")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| suspend_command(MarketplaceListingAdminCommand::Suspend { listing_id: suspend_id.clone(), reason: suspension_reason.get_untracked() })>{t(Some(locale), "marketplaceListing.suspend", "Suspend")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| reactivate_command(MarketplaceListingAdminCommand::Reactivate { listing_id: reactivate_id.clone() })>{t(Some(locale), "marketplaceListing.reactivate", "Reactivate")}</button>
+                <button type="button" disabled=move || busy.get() on:click=move |_| archive_command(MarketplaceListingAdminCommand::Archive { listing_id: archive_id.clone() })>{t(Some(locale), "marketplaceListing.archive", "Archive")}</button>
             </section>
 
             <section class="marketplace-listing-admin__events">
-                <h3>{label(russian, "Immutable history", "Неизменяемая история")}</h3>
+                <h3>{t(Some(locale), "marketplaceListing.immutableHistory", "Immutable history")}</h3>
                 <ol>
                     {detail.events.into_iter().map(|event| {
                         let attribution = if event.has_unknown_attribution() {
@@ -494,10 +485,3 @@ fn optional_text(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-fn label(russian: bool, english: &str, russian_text: &str) -> String {
-    if russian {
-        russian_text.to_string()
-    } else {
-        english.to_string()
-    }
-}

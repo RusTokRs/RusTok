@@ -6,6 +6,7 @@ license.workspace = true
 description = "Framework-neutral visual editor engine and lossless GrapesJS compatibility core"
 
 [dependencies]
+rustok-ui-i18n.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

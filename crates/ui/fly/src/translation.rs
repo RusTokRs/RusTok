@@ -450,7 +450,7 @@ mod tests {
         .expect("set locale policy");
         assert_eq!(
             document.project.extensions[FLY_LOCALES_FIELD]["default_locale"],
-            "ru-ru"
+            "ru-RU"
         );
         assert_eq!(
             document.project.extensions[FLY_LOCALES_FIELD]["future"],

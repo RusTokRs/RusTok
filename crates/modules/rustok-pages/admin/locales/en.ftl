@@ -72,7 +72,11 @@ pages-table-publish = Publish
 pages-table-slug = Slug
 pages-table-status = Status
 pages-table-title = Title
-pages-table-total = { $count } page(s)
+pages-table-total =
+    { $count ->
+        [one] { $count } page
+       *[other] { $count } pages
+    }
 pages-table-unpublish = Unpublish
 pages-table-untitled = Untitled page
 pages-table-updated = Updated

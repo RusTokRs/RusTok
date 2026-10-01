@@ -16,8 +16,12 @@
 //! documented lower-level catalog or locale primitive.
 
 pub use crate::{
-    BundleBuildError, FluentArgs, I18nError, LazyUiLocaleTranslator, LazyUiMessages,
-    MAX_MESSAGE_KEY_LEN, MessageKeyError, PreparedUiMessages, ResolvedMessage, TextDirection,
-    UiLocaleTranslator, UiMessages, UiTranslator, declare_module_i18n, fluent_args,
-    locale_text_direction, module_t, t, validate_message_attribute, validate_message_key,
+    AcceptLanguageError, AcceptLanguagePreference, BundleBuildError, FluentArgs, FluentValue,
+    I18nError, LazyUiLocaleTranslator, LazyUiMessages, MAX_ACCEPT_LANGUAGE_LEN,
+    MAX_ACCEPT_LANGUAGE_RANGES, MAX_LOCALE_TAG_LEN, MAX_MESSAGE_KEY_LEN, MessageKeyError,
+    PreparedUiMessages, ResolvedMessage, TextDirection, UiLocaleTranslator, UiMessages,
+    UiTranslator, accept_language_catalog_locales, accept_language_locales, declare_module_i18n,
+    fluent_args, locale_text_direction, module_t, parse_accept_language,
+    preferred_catalog_locale_from_accept_language, preferred_locale_from_accept_language, t,
+    try_parse_accept_language, validate_message_attribute, validate_message_key,
 };

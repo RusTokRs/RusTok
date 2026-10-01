@@ -32,28 +32,26 @@ pub fn build_marketplace_listing_admin_shell(
     locale: Option<&str>,
     profile: MarketplaceListingAdminTransportProfile,
 ) -> MarketplaceListingAdminShell {
-    let russian = locale
-        .map(|value| value.eq_ignore_ascii_case("ru") || value.starts_with("ru-"))
-        .unwrap_or(false);
-    if russian {
-        MarketplaceListingAdminShell {
-            title: "Листинги маркетплейса".to_string(),
-            subtitle: "Управление публикацией, коммерческими ссылками и историей листингов"
-                .to_string(),
-            empty_state: "Транспорт листингов ещё не подключён к этому хосту".to_string(),
-            legacy_attribution_label: "Импортированная запись: исходный оператор и язык неизвестны"
-                .to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
-    } else {
-        MarketplaceListingAdminShell {
-            title: "Marketplace listings".to_string(),
-            subtitle: "Manage publication, commercial references, and listing history".to_string(),
-            empty_state: "Listing transport is not mounted in this host yet".to_string(),
-            legacy_attribution_label: "Imported record: original operator and locale are unknown"
-                .to_string(),
-            transport_profile: profile.as_str().to_string(),
-        }
+    use crate::i18n::t;
+
+    MarketplaceListingAdminShell {
+        title: t(locale, "marketplaceListing.title", "Marketplace listings"),
+        subtitle: t(
+            locale,
+            "marketplaceListing.shell.subtitle",
+            "Manage publication, commercial references, and listing history",
+        ),
+        empty_state: t(
+            locale,
+            "marketplaceListing.shell.emptyState",
+            "Listing transport is not mounted in this host yet",
+        ),
+        legacy_attribution_label: t(
+            locale,
+            "marketplaceListing.legacyAttribution",
+            "Imported record: original operator and locale are unknown",
+        ),
+        transport_profile: profile.as_str().to_string(),
     }
 }
 

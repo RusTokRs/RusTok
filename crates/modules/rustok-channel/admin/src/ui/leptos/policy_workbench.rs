@@ -90,12 +90,12 @@ pub(super) fn PolicyWorkbench(
                 match result {
                     Ok(policy_set) => {
                         set_feedback.set(Some(
-                            t(
+                            crate::i18n::format(
                                 ui_locale.as_deref(),
                                 "channel.policies.feedback.created",
+                                Some(&rustok_ui_i18n::fluent_args!("slug" => policy_set.slug.to_string())),
                                 "Policy set `{slug}` created.",
-                            )
-                            .replace("{slug}", policy_set.slug.as_str()),
+                            ),
                         ));
                         create_slug.set(String::new());
                         create_name.set(String::new());

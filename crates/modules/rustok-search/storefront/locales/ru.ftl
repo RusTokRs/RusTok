@@ -30,7 +30,13 @@ search-results-none = none
 search-results-openResult = Открыть результат
 search-results-preset = preset = { $preset }
 search-results-queryLabel = Запрос
-search-results-summary = { $count } результатов за { $took_ms } мс через { $engine } ({ $ranking_profile })
+search-results-summary =
+    { $count ->
+        [one] { $count } результат за { $took_ms } мс через { $engine } ({ $ranking_profile })
+        [few] { $count } результата за { $took_ms } мс через { $engine } ({ $ranking_profile })
+        [many] { $count } результатов за { $took_ms } мс через { $engine } ({ $ranking_profile })
+       *[other] { $count } результата за { $took_ms } мс через { $engine } ({ $ranking_profile })
+    }
 search-subtitle = Эта storefront-поверхность работает на PostgreSQL full-text search по опубликованному контенту и товарам.
 search-suggestions-badge = autocomplete
 search-suggestions-empty = Введите минимум 2 символа, чтобы увидеть поисковые подсказки.

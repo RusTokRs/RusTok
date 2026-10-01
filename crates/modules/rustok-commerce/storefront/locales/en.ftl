@@ -45,6 +45,7 @@ commerce-delivery-empty = No shipping options are currently available for this d
 commerce-delivery-group = Delivery group
 commerce-delivery-inactive = inactive
 commerce-delivery-lineItems = Line items
+commerce-delivery-moduleOwnership = Shipping options and fulfillment details stay in fulfillment-owned UI; commerce only triggers cross-module checkout orchestration.
 commerce-delivery-noSelection = No shipping option
 commerce-delivery-provider = Provider
 commerce-delivery-required = selection required

@@ -168,7 +168,13 @@ search-preview-noTargetUrl = Для этого результата пока н�
 search-preview-openResult = Открыть результат
 search-preview-preset = пресет = { $preset }
 search-preview-score = score { $score }
-search-preview-summary = { $total } результатов за { $took_ms } мс через { $engine } ({ $ranking_profile })
+search-preview-summary =
+    { $total ->
+        [one] { $total } результат за { $took_ms } мс через { $engine } ({ $ranking_profile })
+        [few] { $total } результата за { $took_ms } мс через { $engine } ({ $ranking_profile })
+        [many] { $total } результатов за { $took_ms } мс через { $engine } ({ $ranking_profile })
+       *[other] { $total } результата за { $took_ms } мс через { $engine } ({ $ranking_profile })
+    }
 search-preview-title = Результаты превью
 search-profile-balanced = сбалансированный
 search-profile-catalog = каталог

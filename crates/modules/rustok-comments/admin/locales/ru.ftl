@@ -5,7 +5,13 @@ comments-comment-spam = Спам
 comments-comment-trash = В корзину
 comments-detail-authorLine = автор { $author } · { $created_at }
 comments-detail-localeLine = локаль { $requested } -> { $effective }
-comments-detail-statusLine = { $count } комментариев, статус { $status }
+comments-detail-statusLine =
+    { $count ->
+        [one] { $count } комментарий, статус { $status }
+        [few] { $count } комментария, статус { $status }
+        [many] { $count } комментариев, статус { $status }
+       *[other] { $count } комментария, статус { $status }
+    }
 comments-detail-thread = Тред
 comments-detail-title = Детали треда
 comments-error-loadThreads = Не удалось загрузить треды
@@ -17,7 +23,7 @@ comments-filters-allThreadStatuses = Все статусы тредов
 comments-filters-localePlaceholder = Локаль
 comments-filters-targetTypePlaceholder = Тип цели
 comments-pagination-next = Далее
-comments-pagination-page = Страница { $count }
+comments-pagination-page = Страница { $page }
 comments-pagination-prev = Назад
 comments-subtitle = Module-owned поверхность модерации для обычных нефорумных комментариев. Этот UI остаётся native-first и не вводит отдельный GraphQL или REST transport.
 comments-thread-closed = Закрыть

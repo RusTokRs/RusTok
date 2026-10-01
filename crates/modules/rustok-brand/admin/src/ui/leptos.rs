@@ -6,7 +6,7 @@ use crate::core::{
     BrandAdminTransportProfile, build_brand_admin_shell, selected_transport_profile,
     validate_brand_name, validate_brand_slug,
 };
-use crate::i18n::normalize_admin_locale;
+use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
     BrandAdminCommand, BrandAdminCreateDraft, BrandAdminFilters,
     BrandAdminUpdateDraft,
@@ -31,7 +31,6 @@ where
 pub fn BrandAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = normalize_admin_locale(route_context.locale.as_deref());
-    let russian = locale == "ru";
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let shell = build_brand_admin_shell(Some(locale), profile);
     let transport = transport_context(profile);
@@ -130,11 +129,7 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(if russian {
-                            "Бренд успешно создан".to_string()
-                        } else {
-                            "Brand created successfully".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "brand.notice-created", "Brand created successfully")));
                         reset_form();
                         refresh_nonce.update(|n| *n += 1);
                     }
@@ -186,11 +181,7 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(if russian {
-                            "Бренд успешно обновлён".to_string()
-                        } else {
-                            "Brand updated successfully".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "brand.notice-updated", "Brand updated successfully")));
                         reset_form();
                         refresh_nonce.update(|n| *n += 1);
                     }
@@ -220,11 +211,7 @@ pub fn BrandAdmin() -> impl IntoView {
                 busy.set(false);
                 match result {
                     Ok(_) => {
-                        notice.set(Some(if russian {
-                            "Бренд успешно удалён".to_string()
-                        } else {
-                            "Brand deleted successfully".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "brand.notice-deleted", "Brand deleted successfully")));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Err(e) => {
@@ -241,7 +228,7 @@ pub fn BrandAdmin() -> impl IntoView {
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b pb-4">
                 <div>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300 mb-1">
-                        {if russian { "Каталог брендов" } else { "Brand Catalog" }}
+                        {t(Some(locale), "brand.badge", "Brand Catalog")}
                     </span>
                     <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
                         {shell.title}
@@ -259,7 +246,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             show_create_modal.set(true);
                         }
                     >
-                        {if russian { "+ Новый бренд" } else { "+ New Brand" }}
+                        {t(Some(locale), "brand.action-create", "+ New Brand")}
                     </button>
                 </div>
             </div>
@@ -304,7 +291,7 @@ pub fn BrandAdmin() -> impl IntoView {
                 <div class="flex-1">
                     <input
                         type="text"
-                        placeholder=if russian { "Поиск по названию или ЧПУ..." } else { "Search by name or slug..." }
+                        placeholder=t(Some(locale), "brand.filter-searchPlaceholder", "Search by name or slug...")
                         class="w-full px-3 py-2 border rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white dark:bg-gray-800 dark:border-gray-700"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
@@ -323,7 +310,7 @@ pub fn BrandAdmin() -> impl IntoView {
                         }
                         on:click=move |_| is_active_filter.set(None)
                     >
-                        {if russian { "Все" } else { "All" }}
+                        {t(Some(locale), "brand.filter-all", "All")}
                     </button>
                     <button
                         type="button"
@@ -337,7 +324,7 @@ pub fn BrandAdmin() -> impl IntoView {
                         }
                         on:click=move |_| is_active_filter.set(Some(true))
                     >
-                        {if russian { "Активные" } else { "Active" }}
+                        {t(Some(locale), "brand.active", "Active")}
                     </button>
                     <button
                         type="button"
@@ -351,7 +338,7 @@ pub fn BrandAdmin() -> impl IntoView {
                         }
                         on:click=move |_| is_active_filter.set(Some(false))
                     >
-                        {if russian { "Неактивные" } else { "Inactive" }}
+                        {t(Some(locale), "brand.inactive", "Inactive")}
                     </button>
                 </div>
             </div>
@@ -367,11 +354,9 @@ pub fn BrandAdmin() -> impl IntoView {
 
                 let current_id = edit_brand_id.get();
                 let title = if is_editing {
-                    if russian { "Редактирование бренда" } else { "Edit Brand" }
-                } else if russian {
-                    "Создание нового бренда"
+                    t(Some(locale), "brand.edit", "Edit Brand")
                 } else {
-                    "Create New Brand"
+                    t(Some(locale), "brand.action.createTitle", "Create New Brand")
                 };
 
                 let on_save = {
@@ -401,7 +386,7 @@ pub fn BrandAdmin() -> impl IntoView {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "Название *" } else { "Name *" }}
+                                    {t(Some(locale), "brand.form-nameRequired", "Name *")}
                                 </label>
                                 <input
                                     type="text"
@@ -419,7 +404,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "ЧПУ (slug) *" } else { "Slug *" }}
+                                    {t(Some(locale), "brand.form-slugRequired", "Slug *")}
                                 </label>
                                 <input
                                     type="text"
@@ -431,7 +416,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "Веб-сайт" } else { "Website URL" }}
+                                    {t(Some(locale), "brand.form-websiteUrl", "Website URL")}
                                 </label>
                                 <input
                                     type="url"
@@ -443,7 +428,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "URL логотипа" } else { "Logo URL" }}
+                                    {t(Some(locale), "brand.logo", "Logo URL")}
                                 </label>
                                 <input
                                     type="url"
@@ -455,7 +440,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             </div>
                             <div class="md:col-span-2">
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "Описание" } else { "Description" }}
+                                    {t(Some(locale), "brand.description", "Description")}
                                 </label>
                                 <textarea
                                     rows="2"
@@ -472,11 +457,11 @@ pub fn BrandAdmin() -> impl IntoView {
                                         prop:checked=move || draft_is_active.get()
                                         on:change=move |ev| draft_is_active.set(event_target_checked(&ev))
                                     />
-                                    {if russian { "Активен в каталоге" } else { "Active in catalog" }}
+                                    {t(Some(locale), "brand.form-activeInCatalog", "Active in catalog")}
                                 </label>
                                 <div class="flex items-center gap-2 text-sm">
                                     <span class="text-xs text-gray-600 dark:text-gray-400">
-                                        {if russian { "Сортировка:" } else { "Sort order:" }}
+                                        {t(Some(locale), "brand.form-sortOrder", "Sort order:")}
                                     </span>
                                     <input
                                         type="number"
@@ -497,7 +482,7 @@ pub fn BrandAdmin() -> impl IntoView {
                                 class="px-4 py-2 border rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                                 on:click=move |_| reset_form()
                             >
-                                {if russian { "Отмена" } else { "Cancel" }}
+                                {t(Some(locale), "brand.cancel", "Cancel")}
                             </button>
                             <button
                                 type="button"
@@ -506,11 +491,9 @@ pub fn BrandAdmin() -> impl IntoView {
                                 on:click=on_save
                             >
                                 {if busy.get() {
-                                    if russian { "Сохранение..." } else { "Saving..." }
-                                } else if russian {
-                                    "Сохранить"
+                                    t(Some(locale), "brand.action-saving", "Saving...")
                                 } else {
-                                    "Save"
+                                    t(Some(locale), "brand.save", "Save")
                                 }}
                             </button>
                         </div>
@@ -522,18 +505,18 @@ pub fn BrandAdmin() -> impl IntoView {
             <div class="border rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm">
                 <Suspense fallback=move || view! {
                     <div class="p-8 text-center text-gray-500 dark:text-gray-400">
-                        {if russian { "Загрузка списка брендов..." } else { "Loading brands..." }}
+                        {t(Some(locale), "brand.loadingList", "Loading brands...")}
                     </div>
                 }>
                     {move || match directory.get() {
                         None => view! {
                             <div class="p-8 text-center text-gray-500 dark:text-gray-400">
-                                {if russian { "Загрузка..." } else { "Loading..." }}
+                                {t(Some(locale), "brand.loading", "Loading...")}
                             </div>
                         }.into_any(),
                         Some(Err(err)) => view! {
                             <div class="p-8 text-center text-red-500">
-                                <p class="font-semibold">{if russian { "Ошибка загрузки брендов" } else { "Failed to load brands" }}</p>
+                                <p class="font-semibold">{t(Some(locale), "brand.error-load", "Failed to load brands")}</p>
                                 <p class="text-sm mt-1">{err.to_string()}</p>
                             </div>
                         }.into_any(),
@@ -542,10 +525,10 @@ pub fn BrandAdmin() -> impl IntoView {
                                 return view! {
                                     <div class="p-8 text-center text-gray-500 dark:text-gray-400">
                                         <p class="font-medium text-base">
-                                            {if russian { "Бренды не найдены" } else { "No brands found" }}
+                                            {t(Some(locale), "brand.empty", "No brands found")}
                                         </p>
                                         <p class="text-xs mt-1 text-gray-400">
-                                            {if russian { "Создайте первый бренд с помощью кнопки выше" } else { "Create your first brand using the button above" }}
+                                            {t(Some(locale), "brand.empty-hint", "Create your first brand using the button above")}
                                         </p>
                                     </div>
                                 }.into_any();
@@ -556,12 +539,12 @@ pub fn BrandAdmin() -> impl IntoView {
                                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-left text-sm">
                                     <thead class="bg-gray-50 dark:bg-gray-900/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                         <tr>
-                                            <th class="px-6 py-3">{if russian { "Бренд" } else { "Brand" }}</th>
-                                            <th class="px-6 py-3">{if russian { "ЧПУ" } else { "Slug" }}</th>
-                                            <th class="px-6 py-3">{if russian { "Веб-сайт" } else { "Website" }}</th>
-                                            <th class="px-6 py-3">{if russian { "Товары" } else { "Products" }}</th>
-                                            <th class="px-6 py-3">{if russian { "Статус" } else { "Status" }}</th>
-                                            <th class="px-6 py-3 text-right">{if russian { "Действия" } else { "Actions" }}</th>
+                                            <th class="px-6 py-3">{t(Some(locale), "brand.column-brand", "Brand")}</th>
+                                            <th class="px-6 py-3">{t(Some(locale), "brand.slug", "Slug")}</th>
+                                            <th class="px-6 py-3">{t(Some(locale), "brand.website", "Website")}</th>
+                                            <th class="px-6 py-3">{t(Some(locale), "brand.productsCount", "Products")}</th>
+                                            <th class="px-6 py-3">{t(Some(locale), "brand.status", "Status")}</th>
+                                            <th class="px-6 py-3 text-right">{t(Some(locale), "brand.actions", "Actions")}</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -619,13 +602,13 @@ pub fn BrandAdmin() -> impl IntoView {
                                                         {if brand.is_active {
                                                             view! {
                                                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                                                                    {if russian { "Активен" } else { "Active" }}
+                                                                    {t(Some(locale), "brand.active", "Active")}
                                                                 </span>
                                                             }.into_any()
                                                         } else {
                                                             view! {
                                                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                                                                    {if russian { "Неактивен" } else { "Inactive" }}
+                                                                    {t(Some(locale), "brand.inactive", "Inactive")}
                                                                 </span>
                                                             }.into_any()
                                                         }}
@@ -648,7 +631,7 @@ pub fn BrandAdmin() -> impl IntoView {
                                                                 }
                                                             }
                                                         >
-                                                            {if russian { "Изменить" } else { "Edit" }}
+                                                            {t(Some(locale), "brand.action-edit", "Edit")}
                                                         </button>
                                                         <button
                                                             type="button"
@@ -660,7 +643,7 @@ pub fn BrandAdmin() -> impl IntoView {
                                                                 }
                                                             }
                                                         >
-                                                            {if russian { "Удалить" } else { "Delete" }}
+                                                            {t(Some(locale), "brand.delete", "Delete")}
                                                         </button>
                                                     </td>
                                                 </tr>

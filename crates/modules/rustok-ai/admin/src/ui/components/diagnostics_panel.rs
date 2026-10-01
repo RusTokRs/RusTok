@@ -133,8 +133,12 @@ pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap
                                                 {if bootstrap.recent_stream_events.is_empty() {
                                                     t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.noRecentEvents", "No recent events yet.")
                                                 } else {
-                                                    t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.cachedEventsCount", "{count} cached event(s)")
-                                                        .replace("{count}", bootstrap.recent_stream_events.len().to_string().as_str())
+                                                    crate::i18n::format(
+                                                        ui_locale_diagnostics.as_deref(),
+                                                        "ai.diagnostics.cachedEventsCount",
+                                                        Some(&rustok_ui_i18n::fluent_args!("count" => bootstrap.recent_stream_events.len())),
+                                                        "{count} cached event(s)",
+                                                    )
                                                 }}
                                             </div>
                                         </div>

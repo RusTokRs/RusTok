@@ -1,4 +1,8 @@
-media-asset-bytes = { $count } bytes
+media-asset-bytes =
+    { $count ->
+        [one] { $count } byte
+       *[other] { $count } bytes
+    }
 media-asset-notAvailable = n/a
 media-assets-title = Assets
 media-badge = media
@@ -24,6 +28,7 @@ media-error-selectAsset = Select an asset first.
 media-error-uploadFailed = Upload failed
 media-error-uploadInputUnavailable = Upload input is not available.
 media-pagination-next = Next
+# plural-exempt: $count is a page number, not a quantity
 media-pagination-page = Page { $count }
 media-pagination-prev = Prev
 media-subtitle = Module-owned media operations surface. Native server functions handle list/detail/translations/delete, while upload keeps the existing REST path.

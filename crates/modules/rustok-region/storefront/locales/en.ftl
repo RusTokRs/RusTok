@@ -15,9 +15,12 @@ region-error-status-nativeUnavailable = Native unavailable
 region-list-empty = No regions are available for storefront discovery yet.
 region-list-open = Open
 region-list-title = Available regions
+# plural-exempt: adjectival 'N total' is invariant in English
 region-list-total = { $count } total
 region-selected-body = This region defines the storefront baseline for supported countries, currency, and tax semantics.
 region-selected-countries = Supported countries
+region-selected-countryPolicies = Country-specific tax policies
+region-selected-countryPolicyCount = Country policies
 region-selected-coverage = Coverage
 region-selected-currency = Currency
 region-selected-emptyBody = Create a region in the region admin package or enable region data for the current tenant first.
