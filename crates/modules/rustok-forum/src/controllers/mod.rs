@@ -5,7 +5,7 @@ use axum::{
     extract::{Request, State},
     http::StatusCode,
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use rustok_api::{
     HostRuntimeContext, SharedStaticModuleSettingsReader,

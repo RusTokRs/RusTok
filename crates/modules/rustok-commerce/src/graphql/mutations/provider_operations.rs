@@ -120,7 +120,8 @@ fn fulfillment_error_envelope(error: &FulfillmentError) -> (&'static str, &'stat
             "FULFILLMENT_RESOURCE_NOT_FOUND",
             false,
         ),
-        FulfillmentError::InvalidTransition { .. } => (
+        FulfillmentError::InvalidTransition { .. }
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
             "Fulfillment operation conflicts with the current state",
             "FULFILLMENT_STATE_CONFLICT",
             false,

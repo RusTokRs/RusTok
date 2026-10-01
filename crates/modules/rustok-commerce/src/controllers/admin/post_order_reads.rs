@@ -77,7 +77,7 @@ fn map_admin_post_order_port_error(
     change_id: Option<Uuid>,
     order_id: Option<Uuid>,
 ) -> HttpError {
-    let (status, code, message, error_kind) = match &error.kind {
+    let (status, code, message, _error_kind) = match &error.kind {
         PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_order_invalid",

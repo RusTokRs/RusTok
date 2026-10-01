@@ -46,7 +46,7 @@ impl FulfillmentCreateLabelRecoveryService {
         operation_id: Uuid,
     ) -> FulfillmentOrchestrationResult<crate::dto::FulfillmentResponse> {
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
-        let operation = journal.get(operation_id).await?;
+        let operation = journal.get(tenant_id, operation_id).await?;
         if operation.tenant_id != tenant_id || operation.operation != "create_label" {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment provider operation {operation_id} is not a create_label operation for tenant {tenant_id}"
@@ -84,8 +84,8 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
-        if journal.claim_execution(operation_id).await?.is_none() {
-            let current = journal.get(operation_id).await?;
+        if journal.claim_execution(tenant_id, operation_id).await?.is_none() {
+            let current = journal.get(tenant_id, operation_id).await?;
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} is now `{}` and was not claimed for retry",
                 current.status
@@ -114,7 +114,7 @@ impl FulfillmentCreateLabelRecoveryService {
             Ok(result) => result,
             Err(source) => {
                 if let Err(journal_error) = journal
-                    .mark_provider_error(operation_id, source.to_string())
+                    .mark_provider_error(tenant_id, operation_id, source.to_string())
                     .await
                 {
                     return Err(FulfillmentOrchestrationError::Validation(format!(
@@ -130,7 +130,7 @@ impl FulfillmentCreateLabelRecoveryService {
             ))
         })?;
         let operation = journal
-            .mark_provider_succeeded(operation_id, result.external_reference.clone(), payload)
+            .mark_provider_succeeded(tenant_id, operation_id, result.external_reference.clone(), payload)
             .await?;
         self.commit_provider_result(&journal, operation).await
     }
@@ -157,6 +157,7 @@ impl FulfillmentCreateLabelRecoveryService {
                 if operation.status == PROVIDER_OPERATION_SUCCEEDED {
                     let _ = journal
                         .mark_reconciliation_required(
+                            operation.tenant_id,
                             operation.id,
                             format!(
                                 "create_label provider succeeded, but local fulfillment projection failed: {error}"
@@ -168,10 +169,11 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         };
 
-        if let Err(source) = journal.mark_committed(operation.id).await {
+        if let Err(source) = journal.mark_committed(operation.tenant_id, operation.id).await {
             if operation.status == PROVIDER_OPERATION_SUCCEEDED {
                 let _ = journal
                     .mark_reconciliation_required(
+                        operation.tenant_id,
                         operation.id,
                         format!(
                             "create_label provider result was persisted locally, but journal commit failed: {source}"

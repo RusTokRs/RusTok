@@ -2006,7 +2006,6 @@ impl From<dto::RegionResponse> for GqlRegion {
             requested_locale: value.requested_locale,
             effective_locale: value.effective_locale,
             available_locales: value.available_locales,
-            translation_revision: value.translation_revision,
             translations: value
                 .translations
                 .into_iter()
@@ -2036,6 +2035,7 @@ impl From<dto::ShippingOptionResponse> for GqlShippingOption {
             requested_locale: value.requested_locale,
             effective_locale: value.effective_locale,
             available_locales: value.available_locales,
+            translation_revision: value.translation_revision,
             translations: value
                 .translations
                 .into_iter()

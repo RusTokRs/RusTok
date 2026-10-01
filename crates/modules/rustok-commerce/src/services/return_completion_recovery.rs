@@ -536,11 +536,11 @@ fn map_operation(
         lease_expires_at: operation
             .lease_expires_at
             .map(|value| value.with_timezone(&Utc)),
-        last_error_code: operation.last_error_code,
         last_error_message: safe_last_error_message(
             operation.last_error_code.as_deref(),
             operation.last_error_message.is_some(),
         ),
+        last_error_code: operation.last_error_code,
         requested_by_actor_id: command.map(|value| value.requested_by_actor_id),
         retry_count: command.map(|value| value.retry_count).unwrap_or(0),
         last_retry_actor_id: command.and_then(|value| value.last_retry_actor_id),

@@ -3,7 +3,8 @@ use sea_orm::Condition;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, SqlErr, TransactionError, Value,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, SqlErr, TransactionError,
+    TransactionTrait, Value,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
@@ -70,7 +71,7 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    self.ensure_slug_available(txn, tenant_id, &slug, None).await?;
+                    Self::ensure_slug_available(txn, tenant_id, &slug, None).await?;
 
                     let now = Utc::now();
                     let requested_slug = slug.clone();
@@ -161,8 +162,7 @@ impl ShippingProfileService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> CommerceResult<ShippingProfileResponse> {
-        let row = self
-            .load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
+        let row = Self::load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
             .await?;
         let items = load_profiles_with_translations(
             &self.db,
@@ -210,14 +210,13 @@ impl ShippingProfileService {
         self.db
             .transaction::<_, _, CommerceError>(|txn| {
                 Box::pin(async move {
-                    let row = self
-                        .load_shipping_profile(txn, tenant_id, shipping_profile_id)
+                    let row = Self::load_shipping_profile(txn, tenant_id, shipping_profile_id)
                         .await?;
                     let mut active: shipping_profile::ActiveModel = row.into();
                     let requested_slug = normalized_slug.clone();
 
                     if let Some(slug) = normalized_slug {
-                        self.ensure_slug_available(
+                        Self::ensure_slug_available(
                             txn,
                             tenant_id,
                             &slug,
@@ -317,7 +316,6 @@ impl ShippingProfileService {
     }
 
     async fn ensure_slug_available<C: ConnectionTrait>(
-        &self,
         db: &C,
         tenant_id: Uuid,
         slug: &str,
@@ -339,7 +337,6 @@ impl ShippingProfileService {
     }
 
     async fn load_shipping_profile<C: ConnectionTrait>(
-        &self,
         db: &C,
         tenant_id: Uuid,
         shipping_profile_id: Uuid,
@@ -357,8 +354,7 @@ impl ShippingProfileService {
         shipping_profile_id: Uuid,
         active: bool,
     ) -> CommerceResult<ShippingProfileResponse> {
-        let row = self
-            .load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
+        let row = Self::load_shipping_profile(&self.db, tenant_id, shipping_profile_id)
             .await?;
         let mut model: shipping_profile::ActiveModel = row.into();
         model.active = Set(active);

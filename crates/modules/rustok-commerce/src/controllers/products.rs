@@ -344,6 +344,7 @@ pub(crate) fn map_admin_product_port_error(
         "commerce admin product owner command failed with bounded diagnostics"
     );
 
+    HttpError::new(status, code, message)
 }
 
 /// Shared admin product list handler.
@@ -599,7 +600,7 @@ pub async fn delete_product(
         "delete_product",
     )?;
     let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "delete_product", idempotency_key);
     runtime
         .product_catalog_command_port()
         .delete_product(port_context.clone(), id)
@@ -638,7 +639,7 @@ pub async fn publish_product(
         "publish_product",
     )?;
     let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "publish_product", idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .publish_product(port_context.clone(), id)
@@ -677,7 +678,7 @@ pub async fn unpublish_product(
         "unpublish_product",
     )?;
     let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, idempotency_key);
+        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "unpublish_product", idempotency_key);
     let product = runtime
         .product_catalog_command_port()
         .unpublish_product(port_context.clone(), id)

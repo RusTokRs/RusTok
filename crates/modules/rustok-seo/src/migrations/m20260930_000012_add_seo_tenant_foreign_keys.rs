@@ -42,6 +42,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(statements.as_str())
             .await
+            .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -60,5 +61,6 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(statements.as_str())
             .await
+            .map(|_| ())
     }
 }

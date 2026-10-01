@@ -409,7 +409,8 @@ fn map_reconciliation_fulfillment_error(
             "Commerce resource not found",
             "not_found",
         ),
-        FulfillmentError::InvalidTransition { .. } => (
+        FulfillmentError::InvalidTransition { .. }
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_fulfillment_state_conflict",
             "Fulfillment operation conflicts with the current state",

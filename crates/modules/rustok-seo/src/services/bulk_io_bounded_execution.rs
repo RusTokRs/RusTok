@@ -8,7 +8,6 @@ use super::{LoadedMeta, TargetState, trimmed_option};
 
 const BULK_IO_CHUNK_SIZE: usize = 50;
 const BULK_IO_META_BATCH_SIZE: usize = 256;
-const MAX_BULK_TARGETS: usize = 100_000;
 const MAX_BULK_IMPORT_BYTES: usize = 10 * 1024 * 1024;
 const MAX_BULK_IMPORT_ROWS: usize = 100_000;
 
