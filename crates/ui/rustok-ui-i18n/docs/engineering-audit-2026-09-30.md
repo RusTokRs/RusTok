@@ -58,8 +58,15 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 ## Статус починки (обновляется по мере работ)
 
 > **Workflow `UI I18n Verify` зелёный целиком** на ветке `arena/01a0f3f0-rustok`
-> (run `36817196798`): Format, Repository i18n contracts, UI catalog parity,
-> UI key inventory, Test, Consumer integration, Clippy, WASM check.
+> (run `36818624786`): Format, Repository i18n contracts, UI catalog parity,
+> UI key inventory, Test, Consumer integration, Clippy, WASM check, и новый шаг Converted consumer packages, который
+> компилирует все семь модулей с переписанными call-site'ами интерполяции.
+>
+> Отдельно: `ci.yml` красный **на `main`** целиком (Cargo Check, Clippy,
+> Formatting, Cargo Deny, Typos, Security Audit, Unused Dependencies, оба
+> Next.js). Это пред-существующее состояние репозитория, не следствие ветки,
+> но оно означает, что workspace-широкие проверки сейчас не дают сигнала —
+> поэтому пакеты, затронутые конверсией, проверяются внутри i18n-воркфлоу.
 >
 > До этой работы шаг Format падал ещё на `main`, поэтому **ни один** из
 > последующих шагов воркфлоу не выполнялся — именно так дрейф контракта A-01
