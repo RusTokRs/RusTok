@@ -6,7 +6,7 @@ use crate::core::{
     BundleAdminTransportProfile, build_bundle_admin_shell, selected_transport_profile,
     validate_bundle_discount, validate_bundle_name, validate_bundle_slug,
 };
-use crate::i18n::normalize_admin_locale;
+use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
     BundleAdminCommand, BundleAdminCreateDraft, BundleAdminFilters, BundleAdminUpdateDraft,
 };
@@ -30,7 +30,6 @@ where
 pub fn ProductBundlesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = normalize_admin_locale(route_context.locale.as_deref());
-    let russian = locale == "ru";
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let shell = build_bundle_admin_shell(Some(locale), profile);
     let transport = transport_context(profile);
@@ -143,11 +142,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         reset_form();
-                        notice.set(Some(if russian {
-                            "Комплект успешно создан.".to_string()
-                        } else {
-                            "Bundle created successfully.".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "bundle.notice-created", "Bundle created successfully.")));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -207,11 +202,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         reset_form();
-                        notice.set(Some(if russian {
-                            "Комплект успешно обновлён.".to_string()
-                        } else {
-                            "Bundle updated successfully.".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "bundle.notice-updated", "Bundle updated successfully.")));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -244,11 +235,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                 match res {
                     Ok(out) if out.is_success() => {
                         delete_confirm_id.set(None);
-                        notice.set(Some(if russian {
-                            "Комплект успешно удалён.".to_string()
-                        } else {
-                            "Bundle deleted successfully.".to_string()
-                        }));
+                        notice.set(Some(t(Some(locale), "bundle.notice-deleted", "Bundle deleted successfully.")));
                         refresh_nonce.update(|n| *n += 1);
                     }
                     Ok(out) => {
@@ -268,7 +255,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 pb-5 dark:border-gray-800">
                 <div>
                     <div class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 mb-2">
-                        {if russian { "Комплекты товаров" } else { "Product Bundles" }}
+                        {t(Some(locale), "bundle.badge", "Product Bundles")}
                     </div>
                     <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                         {shell.title}
@@ -289,7 +276,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                         </svg>
-                        {if russian { "Новый комплект" } else { "New Bundle" }}
+                        {t(Some(locale), "bundle.create", "New Bundle")}
                     </button>
                 </div>
             </div>
@@ -324,7 +311,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                     <input
                         type="text"
                         class="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        placeholder=if russian { "Поиск по названию или slug..." } else { "Search by name or slug..." }
+                        placeholder=t(Some(locale), "bundle.filter-searchPlaceholder", "Search by name or slug...")
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
                     />
@@ -343,7 +330,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         )
                         on:click=move |_| status_filter.set(None)
                     >
-                        {if russian { "Все" } else { "All" }}
+                        {t(Some(locale), "bundle.filter-all", "All")}
                     </button>
                     <button
                         type="button"
@@ -357,7 +344,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         )
                         on:click=move |_| status_filter.set(Some("active".to_string()))
                     >
-                        {if russian { "Активные" } else { "Active" }}
+                        {t(Some(locale), "bundle.statusActive", "Active")}
                     </button>
                     <button
                         type="button"
@@ -371,7 +358,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         )
                         on:click=move |_| status_filter.set(Some("draft".to_string()))
                     >
-                        {if russian { "Черновики" } else { "Draft" }}
+                        {t(Some(locale), "bundle.statusDraft", "Draft")}
                     </button>
                 </div>
             </div>
@@ -380,7 +367,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
             <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                 <Suspense fallback=move || view! {
                     <div class="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-                        {if russian { "Загрузка комплектов..." } else { "Loading bundles..." }}
+                        {t(Some(locale), "bundle.loadingList", "Loading bundles...")}
                     </div>
                 }>
                     {move || {
@@ -391,10 +378,10 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                                     </svg>
                                     <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                                        {if russian { "Комплекты не найдены" } else { "No bundles found" }}
+                                        {t(Some(locale), "bundle.empty", "No bundles found")}
                                     </h3>
                                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                        {if russian { "Создайте первый комплект товаров для вашего каталога." } else { "Create the first product bundle for your catalog." }}
+                                        {t(Some(locale), "bundle.empty-hint", "Create the first product bundle for your catalog.")}
                                     </p>
                                 </div>
                             }.into_any(),
@@ -403,13 +390,13 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-left text-sm">
                                         <thead class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 font-medium">
                                             <tr>
-                                                <th class="px-6 py-3">{if russian { "Название" } else { "Name" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Слаг" } else { "Slug" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Тип" } else { "Type" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Скидка" } else { "Discount" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Позиций" } else { "Items" }}</th>
-                                                <th class="px-6 py-3">{if russian { "Статус" } else { "Status" }}</th>
-                                                <th class="px-6 py-3 text-right">{if russian { "Действия" } else { "Actions" }}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.name", "Name")}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.slug", "Slug")}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.type", "Type")}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.column-discount", "Discount")}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.itemsCount", "Items")}</th>
+                                                <th class="px-6 py-3">{t(Some(locale), "bundle.status", "Status")}</th>
+                                                <th class="px-6 py-3 text-right">{t(Some(locale), "bundle.actions", "Actions")}</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
@@ -469,14 +456,14 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                                                     edit_bundle_id.set(Some(id_for_edit.clone()));
                                                                 }
                                                             >
-                                                                {if russian { "Ред." } else { "Edit" }}
+                                                                {t(Some(locale), "bundle.action-edit", "Edit")}
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 class="text-red-600 hover:text-red-800 dark:text-red-400 text-xs font-medium"
                                                                 on:click=move |_| delete_confirm_id.set(Some(id_for_del.clone()))
                                                             >
-                                                                {if russian { "Удалить" } else { "Delete" }}
+                                                                {t(Some(locale), "bundle.delete", "Delete")}
                                                             </button>
                                                         </td>
                                                     </tr>
@@ -506,7 +493,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-gray-200 dark:border-gray-800">
                         <div class="flex items-center justify-between">
                             <h2 class="text-lg font-bold text-gray-900 dark:text-white">
-                                {if russian { "Создать комплект" } else { "Create Bundle" }}
+                                {t(Some(locale), "bundle.action-createTitle", "Create Bundle")}
                             </h2>
                             <button type="button" class="text-gray-400 hover:text-gray-600" on:click=move |_| show_create_modal.set(false)>
                                 "×"
@@ -516,7 +503,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         <div class="space-y-3 text-sm">
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "Название *" } else { "Name *" }}
+                                    {t(Some(locale), "bundle.form-nameRequired", "Name *")}
                                 </label>
                                 <input
                                     type="text"
@@ -528,7 +515,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "ЧПУ (slug) *" } else { "Slug *" }}
+                                    {t(Some(locale), "bundle.form-slugRequired", "Slug *")}
                                 </label>
                                 <input
                                     type="text"
@@ -541,37 +528,37 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Тип" } else { "Type" }}
+                                        {t(Some(locale), "bundle.type", "Type")}
                                     </label>
                                     <select
                                         class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                         on:change=move |ev| draft_bundle_type.set(event_target_value(&ev))
                                     >
                                         <option value="fixed" selected=move || draft_bundle_type.get() == "fixed">
-                                            {if russian { "Фиксированный" } else { "Fixed" }}
+                                            {t(Some(locale), "bundle.typeFixed", "Fixed")}
                                         </option>
                                         <option value="flexible" selected=move || draft_bundle_type.get() == "flexible">
-                                            {if russian { "Настраиваемый" } else { "Flexible" }}
+                                            {t(Some(locale), "bundle.typeFlexible", "Flexible")}
                                         </option>
                                     </select>
                                 </div>
 
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Статус" } else { "Status" }}
+                                        {t(Some(locale), "bundle.status", "Status")}
                                     </label>
                                     <select
                                         class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                         on:change=move |ev| draft_status.set(event_target_value(&ev))
                                     >
                                         <option value="active" selected=move || draft_status.get() == "active">
-                                            {if russian { "Активен" } else { "Active" }}
+                                            {t(Some(locale), "bundle.statusActive", "Active")}
                                         </option>
                                         <option value="draft" selected=move || draft_status.get() == "draft">
-                                            {if russian { "Черновик" } else { "Draft" }}
+                                            {t(Some(locale), "bundle.statusDraft", "Draft")}
                                         </option>
                                         <option value="archived" selected=move || draft_status.get() == "archived">
-                                            {if russian { "В архиве" } else { "Archived" }}
+                                            {t(Some(locale), "bundle.statusArchived", "Archived")}
                                         </option>
                                     </select>
                                 </div>
@@ -580,27 +567,27 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Тип скидки" } else { "Discount Type" }}
+                                        {t(Some(locale), "bundle.discountType", "Discount Type")}
                                     </label>
                                     <select
                                         class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                         on:change=move |ev| draft_discount_type.set(event_target_value(&ev))
                                     >
                                         <option value="none" selected=move || draft_discount_type.get() == "none">
-                                            {if russian { "Без скидки" } else { "None" }}
+                                            {t(Some(locale), "bundle.discountTypeNone", "None")}
                                         </option>
                                         <option value="percentage" selected=move || draft_discount_type.get() == "percentage">
-                                            {if russian { "Процентная (%)" } else { "Percentage (%)" }}
+                                            {t(Some(locale), "bundle.discountTypePercentage", "Percentage (%)")}
                                         </option>
                                         <option value="fixed_amount" selected=move || draft_discount_type.get() == "fixed_amount">
-                                            {if russian { "Фикс. сумма" } else { "Fixed Amount" }}
+                                            {t(Some(locale), "bundle.discountTypeFixedAmount", "Fixed Amount")}
                                         </option>
                                     </select>
                                 </div>
 
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Размер скидки" } else { "Discount Value" }}
+                                        {t(Some(locale), "bundle.discountValue", "Discount Value")}
                                     </label>
                                     <input
                                         type="text"
@@ -613,7 +600,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    {if russian { "Описание" } else { "Description" }}
+                                    {t(Some(locale), "bundle.description", "Description")}
                                 </label>
                                 <textarea
                                     class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
@@ -630,14 +617,14 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                 class="px-4 py-2 text-sm border rounded-lg dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
                                 on:click=move |_| show_create_modal.set(false)
                             >
-                                {if russian { "Отмена" } else { "Cancel" }}
+                                {t(Some(locale), "bundle.cancel", "Cancel")}
                             </button>
                             <button
                                 type="button"
                                 class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
                                 on:click=on_create
                             >
-                                {if russian { "Создать" } else { "Create" }}
+                                {t(Some(locale), "bundle.action-create", "Create")}
                             </button>
                         </div>
                     </div>
@@ -656,7 +643,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-gray-200 dark:border-gray-800">
                             <div class="flex items-center justify-between">
                                 <h2 class="text-lg font-bold text-gray-900 dark:text-white">
-                                    {if russian { "Редактировать комплект" } else { "Edit Bundle" }}
+                                    {t(Some(locale), "bundle.edit", "Edit Bundle")}
                                 </h2>
                                 <button type="button" class="text-gray-400 hover:text-gray-600" on:click=move |_| edit_bundle_id.set(None)>
                                     "×"
@@ -666,7 +653,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                             <div class="space-y-3 text-sm">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Название *" } else { "Name *" }}
+                                        {t(Some(locale), "bundle.form-nameRequired", "Name *")}
                                     </label>
                                     <input
                                         type="text"
@@ -678,7 +665,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "ЧПУ (slug) *" } else { "Slug *" }}
+                                        {t(Some(locale), "bundle.form-slugRequired", "Slug *")}
                                     </label>
                                     <input
                                         type="text"
@@ -691,37 +678,37 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            {if russian { "Тип" } else { "Type" }}
+                                            {t(Some(locale), "bundle.type", "Type")}
                                         </label>
                                         <select
                                             class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                             on:change=move |ev| draft_bundle_type.set(event_target_value(&ev))
                                         >
                                             <option value="fixed" selected=move || draft_bundle_type.get() == "fixed">
-                                                {if russian { "Фиксированный" } else { "Fixed" }}
+                                                {t(Some(locale), "bundle.typeFixed", "Fixed")}
                                             </option>
                                             <option value="flexible" selected=move || draft_bundle_type.get() == "flexible">
-                                                {if russian { "Настраиваемый" } else { "Flexible" }}
+                                                {t(Some(locale), "bundle.typeFlexible", "Flexible")}
                                             </option>
                                         </select>
                                     </div>
 
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            {if russian { "Статус" } else { "Status" }}
+                                            {t(Some(locale), "bundle.status", "Status")}
                                         </label>
                                         <select
                                             class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                             on:change=move |ev| draft_status.set(event_target_value(&ev))
                                         >
                                             <option value="active" selected=move || draft_status.get() == "active">
-                                                {if russian { "Активен" } else { "Active" }}
+                                                {t(Some(locale), "bundle.statusActive", "Active")}
                                             </option>
                                             <option value="draft" selected=move || draft_status.get() == "draft">
-                                                {if russian { "Черновик" } else { "Draft" }}
+                                                {t(Some(locale), "bundle.statusDraft", "Draft")}
                                             </option>
                                             <option value="archived" selected=move || draft_status.get() == "archived">
-                                                {if russian { "В архиве" } else { "Archived" }}
+                                                {t(Some(locale), "bundle.statusArchived", "Archived")}
                                             </option>
                                         </select>
                                     </div>
@@ -730,27 +717,27 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            {if russian { "Тип скидки" } else { "Discount Type" }}
+                                            {t(Some(locale), "bundle.discountType", "Discount Type")}
                                         </label>
                                         <select
                                             class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-xs"
                                             on:change=move |ev| draft_discount_type.set(event_target_value(&ev))
                                         >
                                             <option value="none" selected=move || draft_discount_type.get() == "none">
-                                                {if russian { "Без скидки" } else { "None" }}
+                                                {t(Some(locale), "bundle.discountTypeNone", "None")}
                                             </option>
                                             <option value="percentage" selected=move || draft_discount_type.get() == "percentage">
-                                                {if russian { "Процентная (%)" } else { "Percentage (%)" }}
+                                                {t(Some(locale), "bundle.discountTypePercentage", "Percentage (%)")}
                                             </option>
                                             <option value="fixed_amount" selected=move || draft_discount_type.get() == "fixed_amount">
-                                                {if russian { "Фикс. сумма" } else { "Fixed Amount" }}
+                                                {t(Some(locale), "bundle.discountTypeFixedAmount", "Fixed Amount")}
                                             </option>
                                         </select>
                                     </div>
 
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            {if russian { "Размер скидки" } else { "Discount Value" }}
+                                            {t(Some(locale), "bundle.discountValue", "Discount Value")}
                                         </label>
                                         <input
                                             type="text"
@@ -763,7 +750,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
 
                                 <div>
                                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        {if russian { "Описание" } else { "Description" }}
+                                        {t(Some(locale), "bundle.description", "Description")}
                                     </label>
                                     <textarea
                                         class="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
@@ -780,7 +767,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                     class="px-4 py-2 text-sm border rounded-lg dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
                                     on:click=move |_| edit_bundle_id.set(None)
                                 >
-                                    {if russian { "Отмена" } else { "Cancel" }}
+                                    {t(Some(locale), "bundle.cancel", "Cancel")}
                                 </button>
                                 <button
                                     type="button"
@@ -791,7 +778,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                         move |_| on_save(id_clone.clone())
                                     }
                                 >
-                                    {if russian { "Сохранить" } else { "Save" }}
+                                    {t(Some(locale), "bundle.save", "Save")}
                                 </button>
                             </div>
                         </div>
@@ -808,10 +795,10 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                     <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                         <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 border border-gray-200 dark:border-gray-800">
                             <h3 class="text-base font-bold text-gray-900 dark:text-white">
-                                {if russian { "Удаление комплекта" } else { "Delete Bundle" }}
+                                {t(Some(locale), "bundle.delete-title", "Delete Bundle")}
                             </h3>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                {if russian { "Вы уверены, что хотите удалить этот комплект? Это действие необратимо." } else { "Are you sure you want to delete this bundle? This action cannot be undone." }}
+                                {t(Some(locale), "bundle.delete-confirmBody", "Are you sure you want to delete this bundle? This action cannot be undone.")}
                             </p>
                             <div class="flex justify-end gap-3 pt-2">
                                 <button
@@ -819,7 +806,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                     class="px-4 py-2 text-sm border rounded-lg dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
                                     on:click=move |_| delete_confirm_id.set(None)
                                 >
-                                    {if russian { "Отмена" } else { "Cancel" }}
+                                    {t(Some(locale), "bundle.cancel", "Cancel")}
                                 </button>
                                 <button
                                     type="button"
@@ -830,7 +817,7 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                                         move |_| on_del(id_clone.clone())
                                     }
                                 >
-                                    {if russian { "Удалить" } else { "Delete" }}
+                                    {t(Some(locale), "bundle.delete", "Delete")}
                                 </button>
                             </div>
                         </div>

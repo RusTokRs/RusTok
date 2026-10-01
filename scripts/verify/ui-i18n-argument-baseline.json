@@ -47,7 +47,6 @@
   "unwiredCatalogs": [
     "rustok-marketplace-listing/admin",
     "rustok-marketplace-seller/admin",
-    "rustok-navigation/storefront",
-    "rustok-product-bundles/admin"
+    "rustok-navigation/storefront"
   ]
 }
