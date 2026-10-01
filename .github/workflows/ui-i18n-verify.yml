@@ -160,7 +160,7 @@ jobs:
           # module packages whose Fluent interpolation call sites changed would
           # otherwise have no green compile gate at all.
           check_log="$(mktemp)"
-          if cargo check --lib \
+          if cargo check --lib --all-features \
             -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin \
             -p rustok-fulfillment-admin -p rustok-pricing-storefront \
             -p rustok-product-admin -p rustok-product-storefront \

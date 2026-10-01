@@ -266,11 +266,7 @@ pub fn AiAdmin() -> impl IntoView {
     let alloy_completed_locale = ui_locale.clone();
     let image_completed_locale = ui_locale.clone();
     let product_completed_locale = ui_locale.clone();
-    let product_attributes_completed_template = t(
-        ui_locale.as_deref(),
-        "ai.feedback.productAttributesCompleted",
-        "Product attributes job `{title}` completed.",
-    );
+    let product_attributes_completed_locale = ui_locale.clone();
     let order_analytics_completed_template = t(
         ui_locale.as_deref(),
         "ai.feedback.orderAnalyticsCompleted",
@@ -1529,7 +1525,7 @@ pub fn AiAdmin() -> impl IntoView {
             return;
         };
 
-        let product_completed_locale = product_attributes_completed_template.clone();
+        let product_attributes_completed_locale = product_attributes_completed_locale.clone();
         let product_attributes_session_query_writer =
             product_attributes_session_query_writer.clone();
         spawn_local(async move {
@@ -1550,10 +1546,10 @@ pub fn AiAdmin() -> impl IntoView {
                         .replace_value(AdminQueryKey::SessionId.as_str(), session_id);
                     set_feedback.set(Some(
                         crate::i18n::format(
-                            product_completed_locale.as_deref(),
-                            "ai.feedback.productCompleted",
+                            product_attributes_completed_locale.as_deref(),
+                            "ai.feedback.productAttributesCompleted",
                             Some(&rustok_ui_i18n::fluent_args!("title" => result.session.session.title.to_string())),
-                            "Product copy job `{title}` completed.",
+                            "Product attributes job `{title}` completed.",
                         ),
                     ));
                     set_refresh_nonce.update(|value| *value += 1);
