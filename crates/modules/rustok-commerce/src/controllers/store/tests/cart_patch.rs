@@ -3,31 +3,47 @@ use super::*;
 #[test]
 fn guest_cart_allows_missing_customer_context() {
     let cart = sample_cart(None);
-    assert!(ensure_store_cart_access(&cart, None).is_ok());
+    assert!(ensure_store_cart_access(&cart, None, None).is_ok());
 }
 
 #[test]
 fn customer_owned_cart_allows_matching_customer() {
     let customer_id = Uuid::new_v4();
     let cart = sample_cart(Some(customer_id));
-    assert!(ensure_store_cart_access(&cart, Some(customer_id)).is_ok());
+    assert!(ensure_store_cart_access(&cart, Some(customer_id), None).is_ok());
 }
 
 #[test]
 fn customer_owned_cart_rejects_missing_customer_context() {
     let cart = sample_cart(Some(Uuid::new_v4()));
-    let error = ensure_store_cart_access(&cart, None).expect_err("customer auth required");
+    let error = ensure_store_cart_access(&cart, None, None).expect_err("customer auth required");
     assert_eq!(error.status, StatusCode::UNAUTHORIZED);
     assert_eq!(error.code, "commerce_store_denied");
-    assert_eq!(error.message, "Cart belongs to another customer");
+    assert_eq!(
+        error.message,
+        "Authentication is required to access this customer-owned cart"
+    );
+}
+
+fn sample_auth() -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        permissions: vec![],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    }
 }
 
 #[test]
 fn customer_owned_cart_rejects_different_customer() {
     let cart = sample_cart(Some(Uuid::new_v4()));
-    let error = ensure_store_cart_access(&cart, Some(Uuid::new_v4()))
+    let auth = sample_auth();
+    let error = ensure_store_cart_access(&cart, Some(Uuid::new_v4()), Some(&auth))
         .expect_err("foreign customer access must be rejected");
-    assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(error.status, StatusCode::FORBIDDEN);
     assert_eq!(error.code, "commerce_store_denied");
     assert_eq!(error.message, "Cart belongs to another customer");
 }

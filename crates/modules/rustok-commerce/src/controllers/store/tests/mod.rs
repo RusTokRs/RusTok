@@ -388,7 +388,6 @@ impl StorefrontTestClient {
             .lock()
             .expect("guest cart test token lock") = None;
     }
-
 }
 
 #[test]
@@ -409,12 +408,8 @@ fn store_cart_ownership_distinguishes_authentication_from_authorization() {
         scopes: Vec::new(),
         grant_type: "direct".to_string(),
     };
-    let forbidden = super::ensure_store_cart_access(
-        &cart,
-        None,
-        Some(&authenticated),
-    )
-    .expect_err("authenticated non-owner access must be forbidden");
+    let forbidden = super::ensure_store_cart_access(&cart, None, Some(&authenticated))
+        .expect_err("authenticated non-owner access must be forbidden");
     assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
 
     let owner_auth = AuthContext {
@@ -433,21 +428,25 @@ fn store_cart_ownership_distinguishes_authentication_from_authorization() {
     );
 }
 
-
 pub(crate) async fn inject_transport_context(
     State(context): State<TransportRequestContext>,
-    mut req: axum::extract::Request,
+    req: axum::extract::Request,
     next: Next,
 ) -> Response {
-    req.extensions_mut()
+    let (mut parts, body) = req.into_parts();
+    let resolved_locale =
+        rustok_api::resolve_request_locale(&parts, Some(context.tenant.default_locale.as_str()));
+    parts.extensions.insert(resolved_locale);
+    parts
+        .extensions
         .insert(TenantContextExtension(context.tenant));
     if let Some(auth) = context.auth {
-        req.extensions_mut().insert(AuthContextExtension(auth));
+        parts.extensions.insert(AuthContextExtension(auth));
     }
     if let Some(channel) = context.channel {
-        req.extensions_mut()
-            .insert(ChannelContextExtension(channel));
+        parts.extensions.insert(ChannelContextExtension(channel));
     }
+    let req = axum::extract::Request::from_parts(parts, body);
     next.run(req).await
 }
 

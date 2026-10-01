@@ -1,8 +1,8 @@
+use crate::core::gate_error_message;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
 use fly::{
     GrapesJsCodec, ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy, TraitSchemaRegistry, ValidationSeverity,
-    evaluate_runtime_publish_gate,
+    RuntimePublishGatePolicy, TraitSchemaRegistry, evaluate_runtime_publish_gate,
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
@@ -433,22 +433,38 @@ impl AdminEditorRuntime {
             .controller
             .try_update(|controller| controller.mark_save_failed());
     }
-}
 
-fn gate_error_message(evaluation: &RuntimePublishGateEvaluation) -> String {
-    let messages = evaluation
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity == ValidationSeverity::Error)
-        .take(4)
-        .map(|diagnostic| diagnostic.message.clone())
-        .collect::<Vec<_>>();
-    if messages.is_empty() {
-        "Runtime publish gate rejected the current project".to_string()
-    } else {
-        format!(
-            "Runtime publish gate rejected publish: {}",
-            messages.join("; ")
-        )
+    pub fn to_session_state(&self) -> crate::core::EditorSessionState {
+        crate::core::EditorSessionState {
+            controller: self.controller.get_untracked(),
+            last_error: self.last_error.get_untracked(),
+            last_announcement: self.last_announcement.get_untracked(),
+            server_preview_html: self.server_preview_html.get_untracked(),
+            preview_in_progress: self.preview_in_progress.get_untracked(),
+            trait_schemas: Arc::clone(&self.trait_schemas),
+            editor_capability_evaluation: self.editor_capability_evaluation.clone(),
+            runtime_context: self.runtime_context.get_untracked(),
+            runtime_context_configured: self.runtime_context_configured.get_untracked(),
+            runtime_scenarios: Arc::clone(&self.runtime_scenarios),
+            active_runtime_scenario: self.active_runtime_scenario.get_untracked(),
+            runtime_publish_gate_policy: self.runtime_publish_gate_policy.clone(),
+            runtime_publish_gate_evaluation: self.runtime_publish_gate_evaluation.get_untracked(),
+            preview_request: self.preview_request.get_untracked(),
+            facade_missing: self.facade_missing.clone(),
+            save_succeeded: self.save_succeeded.clone(),
+        }
+    }
+
+    pub fn apply_session_state(&self, state: &crate::core::EditorSessionState) {
+        self.controller.set(state.controller.clone());
+        self.last_error.set(state.last_error.clone());
+        self.last_announcement.set(state.last_announcement.clone());
+        self.server_preview_html.set(state.server_preview_html.clone());
+        self.preview_in_progress.set(state.preview_in_progress);
+        self.runtime_context.set(state.runtime_context.clone());
+        self.runtime_context_configured.set(state.runtime_context_configured);
+        self.active_runtime_scenario.set(state.active_runtime_scenario.clone());
+        self.runtime_publish_gate_evaluation.set(state.runtime_publish_gate_evaluation.clone());
+        self.preview_request.set(state.preview_request.clone());
     }
 }

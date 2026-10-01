@@ -13,6 +13,7 @@ pub mod browser_intent;
 mod capability_access;
 pub mod consumer_properties;
 pub mod contribution_host;
+pub mod core;
 pub mod draft_session;
 pub mod editor;
 mod i18n;
@@ -52,6 +53,9 @@ pub use contribution_host::{
     PageBuilderContributionPropertySchemaFuture, PageBuilderContributionPropertySchemaRequest,
     PageBuilderContributionPropertyValidation, PageBuilderContributionPropertyValidationFuture,
     PageBuilderContributionPropertyValidationRequest, PageBuilderRegistryInstaller,
+};
+pub use core::{
+    EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,

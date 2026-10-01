@@ -16928,10 +16928,13 @@ dependencies = [
 name = "rustok-page-builder-admin"
 version = "0.1.0"
 dependencies = [
+ "dioxus",
  "fly",
  "fly-browser",
+ "fly-dioxus",
  "fly-leptos",
  "fly-ui",
+ "fly-web",
  "leptos",
  "rustok-page-builder",
  "rustok-ui-core",

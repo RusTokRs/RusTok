@@ -253,9 +253,7 @@ fn log_cart_delivery_group_enrichment_error(
         | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
-        FulfillmentError::Database(_) => {
-            ("fulfillment.database_unavailable", "unavailable", true)
-        }
+        FulfillmentError::Database(_) => ("fulfillment.database_unavailable", "unavailable", true),
     };
     let technical = matches!(error, FulfillmentError::Database(_));
     let tenant_id_shape = uuid_shape(tenant_id);
@@ -342,6 +340,7 @@ mod tests {
             requested_locale: Some("en".to_string()),
             effective_locale: Some("en".to_string()),
             available_locales: vec!["en".to_string()],
+            translation_revision: "rev-1".to_string(),
             translations: vec![crate::dto::ShippingOptionTranslationResponse {
                 locale: "en".to_string(),
                 name: "Bulky Freight".to_string(),

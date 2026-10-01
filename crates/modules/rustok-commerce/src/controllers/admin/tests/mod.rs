@@ -171,25 +171,30 @@ pub(crate) struct TransportRequestContext {
 
 pub(crate) async fn inject_transport_context(
     State(context): State<TransportRequestContext>,
-    mut req: axum::extract::Request,
+    req: axum::extract::Request,
     next: Next,
 ) -> Response {
-    req.extensions_mut()
+    let (mut parts, body) = req.into_parts();
+    let resolved_locale =
+        rustok_api::resolve_request_locale(&parts, Some(context.tenant.default_locale.as_str()));
+    parts.extensions.insert(resolved_locale);
+    parts
+        .extensions
         .insert(TenantContextExtension(context.tenant));
-    req.extensions_mut()
-        .insert(AuthContextExtension(context.auth));
+    parts.extensions.insert(AuthContextExtension(context.auth));
 
-    if req.method() != Method::GET
-        && req.method() != Method::HEAD
-        && req.method() != Method::OPTIONS
-        && !req.headers().contains_key("idempotency-key")
+    if parts.method != Method::GET
+        && parts.method != Method::HEAD
+        && parts.method != Method::OPTIONS
+        && !parts.headers.contains_key("idempotency-key")
     {
         let value =
             HeaderValue::from_str(format!("controller-http-fixture:{}", Uuid::new_v4()).as_str())
                 .expect("fixture idempotency key must be a valid header");
-        req.headers_mut().insert("idempotency-key", value);
+        parts.headers.insert("idempotency-key", value);
     }
 
+    let req = axum::extract::Request::from_parts(parts, body);
     next.run(req).await
 }
 

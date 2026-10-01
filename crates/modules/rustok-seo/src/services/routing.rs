@@ -747,7 +747,7 @@ pub(super) fn with_x_default(
 #[cfg(test)]
 mod tests {
     use crate::migrations as seo_migrations;
-    use crate::services::{normalize_route, SeoService};
+    use crate::services::{SeoService, normalize_route};
     use rustok_api::TenantContext;
     use rustok_core::{MemoryTransport, SecurityContext};
     use rustok_forum::{
@@ -769,8 +769,8 @@ mod tests {
     #[test]
     fn route_normalization_keeps_public_lookup_bounded() {
         assert!(normalize_route("/".to_string().as_str()).is_ok());
-        assert!(normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_ok());
-        assert!(normalize_route(format!("/{}", "x".repeat(513)).as_str()).is_err());
+        assert!(normalize_route(format!("/{}", "x".repeat(511)).as_str()).is_ok());
+        assert!(normalize_route(format!("/{}", "x".repeat(512)).as_str()).is_err());
         assert!(normalize_route("//external.example/path").is_err());
     }
 
@@ -1084,19 +1084,19 @@ mod tests {
             .await
             .expect("forum topic should be created");
 
-        let now = chrono::Utc::now().to_rfc3339();
-        db.execute_unprepared(
-            format!(
-                "INSERT INTO content_url_aliases (id, tenant_id, target_kind, target_id, locale, alias_url, canonical_url, created_at, updated_at) VALUES ('{}', '{}', 'forum_topic', '{}', 'en', '/modules/forum?topic=legacy', '/modules/forum?topic={}', '{}', '{}')",
-                Uuid::new_v4(),
-                tenant_id,
-                topic.id,
-                topic.id,
-                now,
-                now,
-            )
-            .as_str(),
-        )
+        let now = chrono::Utc::now().fixed_offset();
+        rustok_content::entities::url_alias::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            target_kind: Set("forum_topic".to_string()),
+            target_id: Set(topic.id),
+            locale: Set("en".to_string()),
+            alias_url: Set("/modules/forum?topic=legacy".to_string()),
+            canonical_url: Set(format!("/modules/forum?topic={}", topic.id)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&db)
         .await
         .expect("legacy content alias should be inserted");
 

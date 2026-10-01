@@ -559,8 +559,8 @@ async fn store_checkout_transport_end_to_end_preserves_updated_cart_context() {
         "unexpected replay body: {}",
         String::from_utf8_lossy(&replay_body)
     );
-    let replayed: serde_json::Value = serde_json::from_slice(&replay_body)
-        .expect("replay response should be JSON");
+    let replayed: serde_json::Value =
+        serde_json::from_slice(&replay_body).expect("replay response should be JSON");
     assert_eq!(replayed["order"]["id"], completed["order"]["id"]);
     assert_eq!(replayed["cart"]["id"], completed["cart"]["id"]);
     assert_eq!(replayed["order"]["status"], json!("paid"));

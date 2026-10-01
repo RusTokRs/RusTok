@@ -116,11 +116,14 @@ impl RedirectLookup {
             }
         }
 
-        let mut wildcard_match = self
+        if let Some(source_index) = self
             .wildcard_literals
             .get(route)
             .copied()
-            .filter(|source_index| redirect_is_live(&self.source[*source_index], &now));
+            .filter(|source_index| redirect_is_live(&self.source[*source_index], &now))
+        {
+            return Some(self.source[source_index].clone());
+        }
 
         for prefix_len in &self.wildcard_prefix_lengths {
             if *prefix_len > route.len() || !route.is_char_boundary(*prefix_len) {
@@ -131,7 +134,7 @@ impl RedirectLookup {
             };
 
             for suffix_len in &bucket.suffix_lengths {
-                if *suffix_len > route.len() {
+                if *prefix_len + *suffix_len > route.len() {
                     continue;
                 }
                 let suffix_start = route.len() - *suffix_len;
@@ -142,19 +145,14 @@ impl RedirectLookup {
                 else {
                     continue;
                 };
-                if !redirect_is_live(&self.source[source_index], &now) {
-                    continue;
-                }
-                if wildcard_match
-                    .map(|current| source_index < current)
-                    .unwrap_or(true)
-                {
-                    wildcard_match = Some(source_index);
+                let redirect = &self.source[source_index];
+                if redirect_is_live(redirect, &now) {
+                    return Some(redirect.clone());
                 }
             }
         }
 
-        wildcard_match.map(|source_index| self.source[source_index].clone())
+        None
     }
 }
 

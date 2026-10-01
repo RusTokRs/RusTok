@@ -106,7 +106,7 @@ pub use ports::{
     PortOperationKind,
 };
 #[cfg(feature = "server")]
-pub use request::RequestContext;
+pub use request::{RequestContext, ResolvedRequestLocale, resolve_request_locale};
 pub use richtext::{
     RichTextDocument, RichTextMark, RichTextNode, RichTextProfileId, RichTextProfileIdError,
     RichTextView, document_json_schema,

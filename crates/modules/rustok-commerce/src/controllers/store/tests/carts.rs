@@ -805,10 +805,8 @@ async fn store_guest_cart_transport_rejects_missing_access_capability() {
         is_active: true,
     };
     let cart_service = CartService::new(db.clone());
-    let (metadata, _guest_token) = rustok_cart::prepare_guest_cart_metadata(
-        None,
-        json!({ "source": "access-regression" }),
-    );
+    let (metadata, _guest_token) =
+        rustok_cart::prepare_guest_cart_metadata(None, json!({ "source": "access-regression" }));
     let cart = cart_service
         .create_cart(
             tenant_id,
