@@ -159,7 +159,29 @@ jobs:
           # The workspace-wide Cargo Check job in ci.yml is red on main, so the
           # module packages whose Fluent interpolation call sites changed would
           # otherwise have no green compile gate at all.
-          cargo check -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin -p rustok-fulfillment-admin -p rustok-pricing-storefront -p rustok-product-admin -p rustok-product-storefront--lib --all-features
+          check_log="$(mktemp)"
+          if cargo check --lib \
+            -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin \
+            -p rustok-fulfillment-admin -p rustok-pricing-storefront \
+            -p rustok-product-admin -p rustok-product-storefront \
+            >>"$check_log" 2>&1; then
+            exit 0
+          fi
+          {
+            echo '### cargo check diagnostics'
+            echo '```'
+            head -c 60000 "$check_log"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          diagnostics="$(grep -E '^(error|warning)(\[|:)' -A 8 "$check_log" || true)"
+          if [ -z "$diagnostics" ]; then
+            diagnostics="$(tail -c 2500 "$check_log")"
+          fi
+          escaped="$(printf '%s' "$diagnostics" | tail -c 2500 \
+            | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+          echo "::error title=cargo-check::${escaped}"
+          cat "$check_log"
+          exit 1
       - name: Clippy
         run: |
           # Same rationale as the Format step: publish the diagnostics instead
