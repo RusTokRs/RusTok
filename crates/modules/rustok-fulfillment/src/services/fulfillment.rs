@@ -1628,11 +1628,31 @@ enum FulfillmentItemAction {
     Cancel,
 }
 
+fn validate_item_progress_snapshot(
+    item: &entities::fulfillment_item::Model,
+) -> FulfillmentResult<()> {
+    if item.quantity <= 0
+        || item.shipped_quantity < 0
+        || item.delivered_quantity < 0
+        || item.delivered_quantity > item.shipped_quantity
+        || item.shipped_quantity > item.quantity
+    {
+        return Err(FulfillmentError::Validation(
+            "fulfillment item progress counters are inconsistent".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn resolve_item_adjustments(
     items: &[entities::fulfillment_item::Model],
     requested: Option<&[FulfillmentItemQuantityInput]>,
     action: FulfillmentItemAction,
 ) -> FulfillmentResult<Vec<(Uuid, i32)>> {
+    for item in items {
+        validate_item_progress_snapshot(item)?;
+    }
+
     let planned = if let Some(requested) = requested {
         requested
             .iter()
@@ -2237,6 +2257,31 @@ mod tests {
             }]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn item_progress_validation_rejects_inconsistent_persisted_counters() {
+        let now = Utc::now().into();
+        let item = entities::fulfillment_item::Model {
+            id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            order_line_item_id: Uuid::new_v4(),
+            quantity: 1,
+            shipped_quantity: 2,
+            delivered_quantity: 0,
+            metadata: serde_json::json!({}),
+            created_at: now,
+            updated_at: now,
+        };
+
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
+
+        let item = entities::fulfillment_item::Model {
+            shipped_quantity: 0,
+            delivered_quantity: -1,
+            ..item
+        };
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
     }
 
     #[test]
