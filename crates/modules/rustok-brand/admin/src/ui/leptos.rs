@@ -6,7 +6,7 @@ use crate::core::{
     BrandAdminTransportProfile, build_brand_admin_shell, selected_transport_profile,
     validate_brand_name, validate_brand_slug,
 };
-use crate::i18n::normalize_admin_locale;
+use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
     BrandAdminCommand, BrandAdminCreateDraft, BrandAdminFilters,
     BrandAdminUpdateDraft,
