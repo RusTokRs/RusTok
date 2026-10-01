@@ -2240,7 +2240,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn item_metadata_drops_caller_supplied_audit_history() {
         let metadata = serde_json::json!({
             "audit": {
@@ -2271,6 +2270,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn item_checkout_metadata_removes_legacy_identity_keys() {
         let cart_line_item_id = Uuid::new_v4();
         let metadata = serde_json::json!({
