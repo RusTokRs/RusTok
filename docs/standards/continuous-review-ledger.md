@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `2c8fe11533e33bd554bea5502edd74b371e51dea`  
+**Current main SHA:** `1baac86b8cdcd10c839b48cfc9f63d199d56bfb9`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4145,5 +4145,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh second pass:** independently re-read the changed service/checkout functions, all fulfillment-item model write sites, the owner README contract, and the branch diff. No remaining repository-owned item create/projection path can seed `metadata.audit` in the inspected surface.
 - **Documentation:** Fulfillment README now explicitly records that item create inputs and checkout projections strip caller-supplied `metadata.audit` before persistence.
 - **Verification:** repository source inspection, adjacent-boundary tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
-- **Status:** `FS-22.06.84` implementation complete on the dedicated branch; PR/merge integration is the remaining step for this iteration.
+- **Status:** `FS-22.06.84` complete and integrated via PR #4454, squash merge `1baac86b8cdcd10c839b48cfc9f63d199d56bfb9`.
+- **Post-merge reconciliation:** refreshed `main` at the merge SHA and re-read the changed Fulfillment service/checkout projection plus owner documentation; the expected production and documentation changes are present with no concurrent drift affecting this iteration.
 - **Next primary module iteration:** `FS-22.06.85` — same primary module, select the next fulfillment-item trust/metadata boundary only after refreshing integrated `main`.
