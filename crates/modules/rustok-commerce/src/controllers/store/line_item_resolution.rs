@@ -3,15 +3,17 @@ use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
 use rustok_pricing::ResolveProductPriceRequest;
-use rustok_product::{ProductCatalogReadPort, ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest};
+use rustok_product::{
+    ProductCatalogReadPort, ProductFulfillmentRequirement,
+    StorefrontVariantProductProjectionRequest,
+};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::controllers::store::{ResolvedStoreLineItemInput, StoreLineItemResolution};
 use crate::{
-    CommerceError, dto::AddCartLineItemInput,
-    storefront_shipping::effective_shipping_profile_slug,
+    CommerceError, dto::AddCartLineItemInput, storefront_shipping::effective_shipping_profile_slug,
 };
 
 fn storefront_product_port_context(
@@ -76,12 +78,9 @@ fn pick_product_translation_response<'a>(
         .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
         .or_else(|| {
             (!rustok_api::locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| rustok_api::locale_tags_match(
-                        &translation.locale,
-                        default_locale,
-                    ))
+                translations.iter().find(|translation| {
+                    rustok_api::locale_tags_match(&translation.locale, default_locale)
+                })
             })?
         })
         .or_else(|| translations.first())
@@ -97,12 +96,9 @@ fn pick_variant_translation_response<'a>(
         .find(|translation| rustok_api::locale_tags_match(&translation.locale, locale))
         .or_else(|| {
             (!rustok_api::locale_tags_match(default_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| rustok_api::locale_tags_match(
-                        &translation.locale,
-                        default_locale,
-                    ))
+                translations.iter().find(|translation| {
+                    rustok_api::locale_tags_match(&translation.locale, default_locale)
+                })
             })?
         })
         .or_else(|| translations.first())
@@ -228,12 +224,8 @@ pub(crate) async fn resolve_store_line_item_input(
         input,
     } = resolution;
 
-    let port_context = storefront_product_port_context(
-        tenant_id,
-        locale,
-        public_channel_slug,
-        input.variant_id,
-    );
+    let port_context =
+        storefront_product_port_context(tenant_id, locale, public_channel_slug, input.variant_id);
     let product = product_catalog_read_port
         .read_storefront_variant_product_projection(
             port_context.clone(),
@@ -311,42 +303,34 @@ pub(crate) async fn resolve_store_line_item_input(
     )
     .await?;
 
-    let base_title = pick_product_translation_response(
-        &product.translations,
-        locale,
-        default_locale,
-    )
-    .map(|translation| translation.title.clone())
-    .unwrap_or_else(|| {
-        variant
-            .sku
-            .clone()
-            .unwrap_or_else(|| format!("Variant {}", variant.id))
-    });
+    let base_title =
+        pick_product_translation_response(&product.translations, locale, default_locale)
+            .map(|translation| translation.title.clone())
+            .unwrap_or_else(|| {
+                variant
+                    .sku
+                    .clone()
+                    .unwrap_or_else(|| format!("Variant {}", variant.id))
+            });
 
-    let title = match pick_variant_translation_response(
-        &variant.translations,
-        locale,
-        default_locale,
-    )
-    .and_then(|translation| translation.title.clone())
-    {
-        Some(variant_title) if !variant_title.trim().is_empty() => {
-            format!("{base_title} / {}", variant_title.trim())
-        }
-        _ => base_title,
-    };
+    let title =
+        match pick_variant_translation_response(&variant.translations, locale, default_locale)
+            .and_then(|translation| translation.title.clone())
+        {
+            Some(variant_title) if !variant_title.trim().is_empty() => {
+                format!("{base_title} / {}", variant_title.trim())
+            }
+            _ => base_title,
+        };
 
     let fulfillment_requirement = product.fulfillment_requirement;
     let shipping_profile_slug = match fulfillment_requirement {
         ProductFulfillmentRequirement::Digital => None,
-        ProductFulfillmentRequirement::Physical => Some(
-            effective_shipping_profile_slug(
-                product.shipping_profile_slug.as_deref(),
-                &product.metadata,
-                variant.shipping_profile_slug.as_deref(),
-            ),
-        ),
+        ProductFulfillmentRequirement::Physical => Some(effective_shipping_profile_slug(
+            product.shipping_profile_slug.as_deref(),
+            &product.metadata,
+            variant.shipping_profile_slug.as_deref(),
+        )),
     };
 
     Ok(ResolvedStoreLineItemInput {
@@ -354,8 +338,12 @@ pub(crate) async fn resolve_store_line_item_input(
             product_id: Some(product.id),
             variant_id: Some(variant.id),
             fulfillment_requirement: match fulfillment_requirement {
-                ProductFulfillmentRequirement::Digital => rustok_cart::CartLineFulfillmentRequirement::Digital,
-                ProductFulfillmentRequirement::Physical => rustok_cart::CartLineFulfillmentRequirement::Physical,
+                ProductFulfillmentRequirement::Digital => {
+                    rustok_cart::CartLineFulfillmentRequirement::Digital
+                }
+                ProductFulfillmentRequirement::Physical => {
+                    rustok_cart::CartLineFulfillmentRequirement::Physical
+                }
             },
             shipping_profile_slug,
             sku: variant.sku.clone(),
@@ -379,12 +367,8 @@ pub(crate) async fn validate_store_line_item_quantity(
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> HttpResult<()> {
-    let port_context = storefront_product_port_context(
-        tenant_id,
-        "en",
-        public_channel_slug,
-        variant_id,
-    );
+    let port_context =
+        storefront_product_port_context(tenant_id, "en", public_channel_slug, variant_id);
     let product = product_catalog_read_port
         .read_storefront_variant_product_projection(
             port_context.clone(),

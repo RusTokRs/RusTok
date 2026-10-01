@@ -86,7 +86,6 @@ fn admin_fulfillment_command_context(
     }
 }
 
-
 fn admin_fulfillment_create_read_context(
     tenant: &TenantContext,
     auth: &AuthContext,
@@ -126,7 +125,6 @@ fn admin_fulfillment_create_command_context(
         None => context,
     }
 }
-
 
 fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentCommandHttpPolicy {
     match error.code.as_str() {

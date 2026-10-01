@@ -467,12 +467,8 @@ impl CommerceCatalogMutation {
 
         if let Some(shipping_profile_slug) = input.shipping_profile_slug.as_deref() {
             let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-            validate_product_shipping_profile_input(
-                db,
-                tenant_id,
-                Some(shipping_profile_slug),
-            )
-            .await?;
+            validate_product_shipping_profile_input(db, tenant_id, Some(shipping_profile_slug))
+                .await?;
         }
         let domain_input = convert_update_variant_input(input)?;
         let port_context = product_command_context(
@@ -688,11 +684,7 @@ impl CommerceCatalogMutation {
         Ok(rel.into())
     }
 
-    async fn remove_product_relation(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-    ) -> Result<bool> {
+    async fn remove_product_relation(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, "product_relations").await?;
         require_commerce_permission(
             ctx,
@@ -816,11 +808,7 @@ impl CommerceCatalogMutation {
         Ok(updated.into())
     }
 
-    async fn delete_brand(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-    ) -> Result<bool> {
+    async fn delete_brand(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, "brand").await?;
         require_commerce_permission(
             ctx,
@@ -969,11 +957,7 @@ impl CommerceCatalogMutation {
         Ok(bundle.into())
     }
 
-    async fn delete_bundle(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-    ) -> Result<bool> {
+    async fn delete_bundle(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, "product_bundles").await?;
         require_commerce_permission(
             ctx,

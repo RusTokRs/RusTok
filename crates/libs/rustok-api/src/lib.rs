@@ -73,8 +73,8 @@ pub use locale::{
 };
 pub use module_composition::{ModuleCompositionSnapshotView, StaticInstalledModuleView};
 pub use module_lifecycle::{
-    ModuleOperationRecoveryPlanView, SharedStaticModuleSettingsReader,
-    StaticModuleSettingsReader, StaticModuleSettingsSnapshot, StaticTenantModuleView,
+    ModuleOperationRecoveryPlanView, SharedStaticModuleSettingsReader, StaticModuleSettingsReader,
+    StaticModuleSettingsSnapshot, StaticTenantModuleView,
 };
 pub use module_marketplace::{
     MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
@@ -96,8 +96,8 @@ pub use module_transition::{
 pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
-pub use permissions::{Action, Permission, Resource};
 pub use patch::Patch;
+pub use permissions::{Action, Permission, Resource};
 pub use platform_build::{
     PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
 };

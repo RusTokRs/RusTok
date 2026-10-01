@@ -1,21 +1,21 @@
-use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rust_decimal::Decimal;
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_core::generate_id;
+use rustok_order::dto::{
+    CompleteOrderReturnInput, CreateOrderChangeInput, OrderChangeResponse, OrderReturnResponse,
+};
 use rustok_order::{
     CompleteOrderReturnRequest, CreateOrderChangeRequest, ListOrderChangeProjectionsRequest,
     OrderPostOrderCommandPort, OrderReadPort, ReadOrderChangeProjectionRequest,
     ReadOrderReturnProjectionRequest,
 };
-use rustok_order::dto::{
-    CompleteOrderReturnInput, CreateOrderChangeInput, OrderChangeResponse, OrderReturnResponse,
+use rustok_payment::dto::{
+    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 use rustok_payment::{
     CompleteAdminRefundRequest, CreateAdminRefundRequest, ListPaymentCollectionProjectionsRequest,
     PaymentAdminReadPort, PaymentAdminRefundCommandPort, ReadPaymentCollectionProjectionRequest,
     ReadRefundProjectionRequest,
-};
-use rustok_payment::dto::{
-    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -190,7 +190,6 @@ impl ReturnCompletionOrchestrationService {
             }
         }
     }
-
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_claimed(
@@ -476,7 +475,8 @@ impl ReturnCompletionOrchestrationService {
         metadata: Value,
     ) -> PostOrderOrchestrationResult<OrderChangeResponse> {
         let order_change = if let Some(order_change_id) = operation.order_change_id {
-            self.read_order_change(tenant_id, actor_id, order_change_id).await?
+            self.read_order_change(tenant_id, actor_id, order_change_id)
+                .await?
         } else {
             if stage != ReturnCompletionOperationStage::Created {
                 return Err(PostOrderOrchestrationError::Validation(format!(
@@ -623,10 +623,7 @@ impl ReturnCompletionOrchestrationService {
             tenant_id.to_string(),
             PortActor::user(actor_id.to_string()),
             "en",
-            format!(
-                "commerce-return-completion:{}:{}",
-                operation, resource_id
-            ),
+            format!("commerce-return-completion:{}:{}", operation, resource_id),
         )
         .with_deadline(std::time::Duration::from_secs(3))
     }
@@ -769,7 +766,12 @@ impl ReturnCompletionOrchestrationService {
     ) -> PostOrderOrchestrationResult<PaymentCollectionResponse> {
         self.payment_admin_read_port
             .read_payment_collection_projection(
-                self.read_context(tenant_id, actor_id, "read_payment_collection", collection_id),
+                self.read_context(
+                    tenant_id,
+                    actor_id,
+                    "read_payment_collection",
+                    collection_id,
+                ),
                 ReadPaymentCollectionProjectionRequest { collection_id },
             )
             .await
@@ -879,9 +881,7 @@ enum FailureDisposition {
 
 fn failure_disposition(error: &PostOrderOrchestrationError) -> FailureDisposition {
     match error {
-        PostOrderOrchestrationError::OwnerPort { error, .. } => {
-            port_failure_disposition(error)
-        }
+        PostOrderOrchestrationError::OwnerPort { error, .. } => port_failure_disposition(error),
         PostOrderOrchestrationError::Order(_)
         | PostOrderOrchestrationError::Payment(_)
         | PostOrderOrchestrationError::PaymentOrchestration(_)
@@ -1078,9 +1078,7 @@ fn map_journal_error(error: ReturnCompletionOperationError) -> PostOrderOrchestr
     }
 }
 
-fn implicit_refund_collection_request(
-    order_id: Uuid,
-) -> ListPaymentCollectionProjectionsRequest {
+fn implicit_refund_collection_request(order_id: Uuid) -> ListPaymentCollectionProjectionsRequest {
     ListPaymentCollectionProjectionsRequest {
         page: 1,
         per_page: 1,
@@ -1182,10 +1180,7 @@ mod tests {
             PostOrderOrchestrationError::OwnerPort { error, .. } => {
                 assert_eq!(error.kind, PortErrorKind::Conflict);
                 assert!(!error.retryable);
-                assert_eq!(
-                    error.code,
-                    "commerce.return_completion_operation_conflict"
-                );
+                assert_eq!(error.code, "commerce.return_completion_operation_conflict");
                 assert_eq!(
                     error.message,
                     "return completion operation conflicts with the current state"

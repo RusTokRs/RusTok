@@ -1,7 +1,7 @@
-use ::rustok_channel::{
-    in_process_channel_read_port, ChannelListRequest, ChannelReadPort, ChannelResponse,
-};
 use ::rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
+use ::rustok_channel::{
+    ChannelListRequest, ChannelReadPort, ChannelResponse, in_process_channel_read_port,
+};
 use ::sea_orm::DatabaseConnection;
 use ::uuid::Uuid;
 

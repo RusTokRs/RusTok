@@ -174,9 +174,7 @@ pub(crate) fn map_admin_product_error(
     HttpError::new(status, code, message)
 }
 
-pub(crate) fn admin_product_command_idempotency_key(
-    headers: &HeaderMap,
-) -> HttpResult<String> {
+pub(crate) fn admin_product_command_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
     let value = headers
         .get("Idempotency-Key")
         .ok_or_else(|| {
@@ -599,8 +597,14 @@ pub async fn delete_product(
         id,
         "delete_product",
     )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "delete_product", idempotency_key);
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "delete_product",
+        idempotency_key,
+    );
     runtime
         .product_catalog_command_port()
         .delete_product(port_context.clone(), id)
@@ -638,8 +642,14 @@ pub async fn publish_product(
         id,
         "publish_product",
     )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "publish_product", idempotency_key);
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "publish_product",
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .publish_product(port_context.clone(), id)
@@ -677,8 +687,14 @@ pub async fn unpublish_product(
         id,
         "unpublish_product",
     )?;
-    let port_context =
-        admin_product_command_context(tenant.id, &auth, &request_context, Some(id), "unpublish_product", idempotency_key);
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "unpublish_product",
+        idempotency_key,
+    );
     let product = runtime
         .product_catalog_command_port()
         .unpublish_product(port_context.clone(), id)
@@ -724,7 +740,6 @@ pub struct ProductListItem {
     pub created_at: String,
     pub published_at: Option<String>,
 }
-
 
 #[cfg(test)]
 mod tests {

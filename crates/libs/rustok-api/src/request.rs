@@ -1,9 +1,9 @@
 use crate::{PLATFORM_FALLBACK_LOCALE, extract_locale_tag_from_header, normalize_locale_tag};
-use url::form_urlencoded;
 use axum::{
     extract::FromRequestParts,
     http::{HeaderMap, StatusCode, header, request::Parts},
 };
+use url::form_urlencoded;
 use uuid::Uuid;
 
 use crate::context::{
@@ -49,12 +49,10 @@ where
             .get::<TenantContextExtension>()
             .map(|ext| &ext.0);
 
-        let tenant_id = tenant_context
-            .map(|tenant| tenant.id)
-            .ok_or((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Trusted tenant context required",
-            ))?;
+        let tenant_id = tenant_context.map(|tenant| tenant.id).ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Trusted tenant context required",
+        ))?;
 
         // Never trust a caller-supplied X-User-ID header. The authenticated
         // middleware owns identity resolution and inserts AuthContextExtension
@@ -64,13 +62,10 @@ where
             .get::<AuthContextExtension>()
             .map(|extension| extension.0.user_id);
 
-        let resolved_locale = parts
-            .extensions
-            .get::<ResolvedRequestLocale>()
-            .ok_or((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Trusted resolved locale context required",
-            ))?;
+        let resolved_locale = parts.extensions.get::<ResolvedRequestLocale>().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Trusted resolved locale context required",
+        ))?;
         let locale = resolved_locale.effective_locale.clone();
 
         let auth_context = parts
@@ -189,10 +184,7 @@ fn extract_locale_from_accept_language(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use axum::http::{
-        Request,
-        request::Parts,
-    };
+    use axum::http::{Request, request::Parts};
     use tokio::runtime::Runtime;
     use uuid::Uuid;
 
@@ -204,15 +196,17 @@ mod tests {
     use super::*;
 
     fn insert_test_tenant(parts: &mut Parts, tenant_id: Uuid, default_locale: &str) {
-        parts.extensions.insert(TenantContextExtension(TenantContext {
-            id: tenant_id,
-            name: "Test".to_string(),
-            slug: "test".to_string(),
-            domain: None,
-            settings: serde_json::json!({}),
-            default_locale: default_locale.to_string(),
-            is_active: true,
-        }));
+        parts
+            .extensions
+            .insert(TenantContextExtension(TenantContext {
+                id: tenant_id,
+                name: "Test".to_string(),
+                slug: "test".to_string(),
+                domain: None,
+                settings: serde_json::json!({}),
+                default_locale: default_locale.to_string(),
+                is_active: true,
+            }));
     }
 
     fn insert_resolved_locale(parts: &mut Parts, locale: &str) {
@@ -230,10 +224,7 @@ mod tests {
             .expect("request");
         let (parts, _) = request.into_parts();
 
-        assert_eq!(
-            extract_requested_locale(&parts).as_deref(),
-            Some("ru-RU")
-        );
+        assert_eq!(extract_requested_locale(&parts).as_deref(), Some("ru-RU"));
     }
 
     #[test]
@@ -420,10 +411,7 @@ mod tests {
             .expect("request");
         let (parts, _) = request.into_parts();
 
-        assert_eq!(
-            extract_requested_locale(&parts).as_deref(),
-            Some("ru-RU")
-        );
+        assert_eq!(extract_requested_locale(&parts).as_deref(), Some("ru-RU"));
     }
 
     #[test]
@@ -464,19 +452,21 @@ mod tests {
         let (mut parts, _) = request.into_parts();
         insert_test_tenant(&mut parts, tenant_id, "en");
         insert_resolved_locale(&mut parts, "en");
-        parts.extensions.insert(ChannelContextExtension(ChannelContext {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::new_v4(),
-            slug: "web".to_string(),
-            name: "Web".to_string(),
-            is_active: true,
-            status: "experimental".to_string(),
-            target_type: Some("web_domain".to_string()),
-            target_value: Some("example.test".to_string()),
-            settings: serde_json::json!({}),
-            resolution_source: ChannelResolutionSource::Host,
-            resolution_trace: Vec::new(),
-        }));
+        parts
+            .extensions
+            .insert(ChannelContextExtension(ChannelContext {
+                id: Uuid::new_v4(),
+                tenant_id: Uuid::new_v4(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                status: "experimental".to_string(),
+                target_type: Some("web_domain".to_string()),
+                target_value: Some("example.test".to_string()),
+                settings: serde_json::json!({}),
+                resolution_source: ChannelResolutionSource::Host,
+                resolution_trace: Vec::new(),
+            }));
 
         let runtime = Runtime::new().expect("tokio runtime");
         let rejection = runtime

@@ -93,14 +93,8 @@ fn admin_order_command_port_context(
     operation: &'static str,
     idempotency_key: String,
 ) -> PortContext {
-    admin_order_port_context(
-        tenant,
-        auth,
-        request_context,
-        Some(order_id),
-        operation,
-    )
-    .with_idempotency_key(idempotency_key)
+    admin_order_port_context(tenant, auth, request_context, Some(order_id), operation)
+        .with_idempotency_key(idempotency_key)
 }
 
 fn port_error_kind(error: &PortError) -> &'static str {
@@ -525,8 +519,14 @@ pub async fn ship_order(
     )?;
 
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context =
-        admin_order_command_port_context(&tenant, &auth, &request_context, id, "ship_order", idempotency_key);
+    let context = admin_order_command_port_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "ship_order",
+        idempotency_key,
+    );
     let order = runtime
         .order_admin_command_port()
         .ship(
@@ -583,8 +583,14 @@ pub async fn deliver_order(
     )?;
 
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context =
-        admin_order_command_port_context(&tenant, &auth, &request_context, id, "deliver_order", idempotency_key);
+    let context = admin_order_command_port_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "deliver_order",
+        idempotency_key,
+    );
     let order = runtime
         .order_admin_command_port()
         .deliver(
@@ -640,8 +646,14 @@ pub async fn cancel_order(
     )?;
 
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context =
-        admin_order_command_port_context(&tenant, &auth, &request_context, id, "cancel_order", idempotency_key);
+    let context = admin_order_command_port_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        "cancel_order",
+        idempotency_key,
+    );
     let order = runtime
         .order_admin_command_port()
         .cancel(

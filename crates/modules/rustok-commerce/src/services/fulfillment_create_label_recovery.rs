@@ -84,7 +84,11 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
-        if journal.claim_execution(tenant_id, operation_id).await?.is_none() {
+        if journal
+            .claim_execution(tenant_id, operation_id)
+            .await?
+            .is_none()
+        {
             let current = journal.get(tenant_id, operation_id).await?;
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} is now `{}` and was not claimed for retry",
@@ -130,7 +134,12 @@ impl FulfillmentCreateLabelRecoveryService {
             ))
         })?;
         let operation = journal
-            .mark_provider_succeeded(tenant_id, operation_id, result.external_reference.clone(), payload)
+            .mark_provider_succeeded(
+                tenant_id,
+                operation_id,
+                result.external_reference.clone(),
+                payload,
+            )
             .await?;
         self.commit_provider_result(&journal, operation).await
     }
@@ -169,7 +178,10 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         };
 
-        if let Err(source) = journal.mark_committed(operation.tenant_id, operation.id).await {
+        if let Err(source) = journal
+            .mark_committed(operation.tenant_id, operation.id)
+            .await
+        {
             if operation.status == PROVIDER_OPERATION_SUCCEEDED {
                 let _ = journal
                     .mark_reconciliation_required(

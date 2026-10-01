@@ -14,10 +14,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::{
-    super::CommerceHttpRuntime,
-    super::common::ensure_permissions,
-};
+use super::{super::CommerceHttpRuntime, super::common::ensure_permissions};
 use crate::services::OrderChangeOrchestrationService;
 use crate::{
     ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderChangeOrchestrationError,
@@ -389,8 +386,7 @@ fn map_admin_order_change_orchestration_error(
             "rustok_commerce",
         ),
         PostOrderOrchestrationError::OwnerPort { owner, error } => {
-            let (status, code, message, error_kind) =
-                admin_order_change_port_error_policy(error);
+            let (status, code, message, error_kind) = admin_order_change_port_error_policy(error);
             (status, code, message, error_kind, *owner)
         }
     };
@@ -489,13 +485,8 @@ pub async fn apply_order_change(
     let actor_id = auth.user_id;
     let idempotency_key = require_idempotency_key(&headers)?;
     let read_context = admin_order_change_read_context(&tenant, &auth, &request_context, id);
-    let command_context = admin_order_change_apply_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        idempotency_key,
-    );
+    let command_context =
+        admin_order_change_apply_context(&tenant, &auth, &request_context, id, idempotency_key);
     let result = OrderChangeOrchestrationService::from_order_ports(
         runtime.db_clone(),
         runtime.event_bus(),

@@ -109,8 +109,13 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(tenant_id, journaled.operation_id, "ship", &source)
-                    .await;
+                self.mark_reconciliation_required(
+                    tenant_id,
+                    journaled.operation_id,
+                    "ship",
+                    &source,
+                )
+                .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "ship",
@@ -191,8 +196,13 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(tenant_id, journaled.operation_id, "reship", &source)
-                    .await;
+                self.mark_reconciliation_required(
+                    tenant_id,
+                    journaled.operation_id,
+                    "reship",
+                    &source,
+                )
+                .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "reship",
@@ -265,8 +275,13 @@ impl JournaledFulfillmentOrchestrationService {
         {
             Ok(updated) => updated,
             Err(source) => {
-                self.mark_reconciliation_required(tenant_id, journaled.operation_id, "cancel", &source)
-                    .await;
+                self.mark_reconciliation_required(
+                    tenant_id,
+                    journaled.operation_id,
+                    "cancel",
+                    &source,
+                )
+                .await;
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id,
                     operation: "cancel",
@@ -339,7 +354,9 @@ impl JournaledFulfillmentOrchestrationService {
             .await?
             .is_none()
         {
-            let current = journal.get(journal_operation.tenant_id, journal_operation.id).await?;
+            let current = journal
+                .get(journal_operation.tenant_id, journal_operation.id)
+                .await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_COMMITTED
@@ -385,7 +402,11 @@ impl JournaledFulfillmentOrchestrationService {
             Ok(result) => result,
             Err(source) => {
                 if let Err(journal_error) = journal
-                    .mark_provider_error(journal_operation.tenant_id, journal_operation.id, source.to_string())
+                    .mark_provider_error(
+                        journal_operation.tenant_id,
+                        journal_operation.id,
+                        source.to_string(),
+                    )
                     .await
                 {
                     return Err(FulfillmentOrchestrationError::Validation(format!(

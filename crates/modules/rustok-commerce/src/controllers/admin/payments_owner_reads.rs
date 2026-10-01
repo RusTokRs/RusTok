@@ -114,7 +114,6 @@ fn admin_payment_collection_command_context(
     }
 }
 
-
 fn admin_refund_create_context(
     tenant: &TenantContext,
     auth: &AuthContext,
@@ -157,7 +156,6 @@ fn admin_refund_transition_context(
         None => context,
     }
 }
-
 
 fn payment_read_error_policy(error: &PortError) -> AdminPaymentReadHttpPolicy {
     match &error.kind {

@@ -136,11 +136,7 @@ impl PostOrderOrchestrationService {
                 tenant_id,
                 actor_id,
                 order_id,
-                derive_command_idempotency_key(
-                    idempotency_key.as_str(),
-                    "create_return",
-                    order_id,
-                ),
+                derive_command_idempotency_key(idempotency_key.as_str(), "create_return", order_id),
                 input.return_request,
             )
             .await?;
@@ -285,11 +281,7 @@ impl PostOrderOrchestrationService {
         let collection_id = match input.payment_collection_id {
             Some(id) => {
                 let collection = payment_service.get_collection(tenant_id, id).await?;
-                validate_return_payment_collection_order(
-                    collection.order_id,
-                    id,
-                    order_id,
-                )?
+                validate_return_payment_collection_order(collection.order_id, id, order_id)?
             }
             None => {
                 let (collections, _) = payment_service
@@ -550,11 +542,7 @@ async fn complete_return_decision(
             tenant_id,
             actor_id,
             return_id,
-            derive_command_idempotency_key(
-                root_idempotency_key,
-                "complete_return",
-                return_id,
-            ),
+            derive_command_idempotency_key(root_idempotency_key, "complete_return", return_id),
             CompleteOrderReturnInput {
                 resolution_type: resolution_type.map(str::to_string),
                 refund_id,

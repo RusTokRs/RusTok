@@ -8,7 +8,8 @@ use rustok_cart::{
     in_process_marketplace_cart_snapshot_read_port,
 };
 use rustok_fulfillment::{
-    in_process_shipping_option_read_port, ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
+    ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
+    in_process_shipping_option_read_port,
 };
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_product::{
@@ -424,9 +425,7 @@ impl CheckoutPlanBuilder {
                     },
                 )
                 .await
-                .map_err(|error| {
-                    checkout_plan_shipping_option_boundary_error(&context, error)
-                })?;
+                .map_err(|error| checkout_plan_shipping_option_boundary_error(&context, error))?;
             if !option
                 .currency_code
                 .eq_ignore_ascii_case(&cart.currency_code)
@@ -842,10 +841,7 @@ fn checkout_plan_shipping_option_boundary_error(
     boundary_error("load_shipping_option", error)
 }
 
-fn log_checkout_plan_shipping_option_boundary_failure(
-    context: &PortContext,
-    error: &PortError,
-) {
+fn log_checkout_plan_shipping_option_boundary_failure(context: &PortContext, error: &PortError) {
     match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(

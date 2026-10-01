@@ -87,7 +87,9 @@ impl CheckoutOrderStageExecutor {
         mut self,
         order_identity_port: Arc<dyn rustok_order::CheckoutOrderIdentityPort>,
     ) -> Self {
-        self.order_creation = self.order_creation.with_order_identity_port(order_identity_port);
+        self.order_creation = self
+            .order_creation
+            .with_order_identity_port(order_identity_port);
         self
     }
 

@@ -77,12 +77,11 @@ pub(super) fn ensure_permissions(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::ensure_permissions;
-    use rustok_api::Permission;
     use rustok_api::AuthContext;
+    use rustok_api::Permission;
     use uuid::Uuid;
 
     #[test]

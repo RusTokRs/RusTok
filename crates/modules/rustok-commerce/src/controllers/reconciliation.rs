@@ -140,12 +140,13 @@ impl From<provider_operation::Model> for AdminReconciliationProviderOperationRes
             error_present: operation.error_message.is_some(),
             created_at: operation.created_at.to_rfc3339(),
             updated_at: operation.updated_at.to_rfc3339(),
-            provider_completed_at: operation.provider_completed_at.map(|value| value.to_rfc3339()),
+            provider_completed_at: operation
+                .provider_completed_at
+                .map(|value| value.to_rfc3339()),
             committed_at: operation.committed_at.map(|value| value.to_rfc3339()),
         }
     }
 }
-
 
 pub fn axum_router() -> Router<CommerceHttpRuntime> {
     Router::new()
@@ -536,7 +537,6 @@ fn require_manage_permission(auth: &AuthContext) -> HttpResult<()> {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,7 +563,9 @@ mod tests {
                     "sensitive": "provider-result"
                 }
             })),
-            error_message: Some("database detail that must not cross the HTTP boundary".to_string()),
+            error_message: Some(
+                "database detail that must not cross the HTTP boundary".to_string(),
+            ),
             created_at: Utc::now().into(),
             updated_at: Utc::now().into(),
             provider_completed_at: Some(Utc::now().into()),
@@ -573,7 +575,13 @@ mod tests {
         let response: AdminReconciliationProviderOperationResponse = operation.into();
         let value = serde_json::to_value(response).expect("response projection must serialize");
 
-        for field in ["request_payload", "provider_result", "error_message", "tenant_id", "idempotency_key"] {
+        for field in [
+            "request_payload",
+            "provider_result",
+            "error_message",
+            "tenant_id",
+            "idempotency_key",
+        ] {
             assert!(
                 value.get(field).is_none(),
                 "sensitive persistence field {field} must not be exposed"

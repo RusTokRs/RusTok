@@ -444,7 +444,8 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
 }
 
 #[tokio::test]
-async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and_requires_order_created_with_adopted_ledger() {
+async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and_requires_order_created_with_adopted_ledger()
+ {
     let (db, catalog, inventory, orders) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -617,6 +618,7 @@ async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and
     orders
         .confirm_order(tenant_id, actor_id, order.id)
         .await
-        .expect("order confirmation MUST succeed once stage is order_created and inventory is adopted");
+        .expect(
+            "order confirmation MUST succeed once stage is order_created and inventory is adopted",
+        );
 }
-

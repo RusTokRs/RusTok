@@ -213,17 +213,24 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
                     item.cart_line_item_id
                 )));
             }
-            let order_line = payload.order_input.line_items.iter().find(|line| {
-                line.metadata
-                    .get("checkout")
-                    .and_then(|checkout| checkout.get("cart_line_item_id"))
-                    .and_then(Value::as_str)
-                    .and_then(|value| Uuid::parse_str(value).ok())
-                    == Some(item.cart_line_item_id)
-            }).ok_or_else(|| CheckoutOrderPlanError::Validation(format!(
-                "fulfillment plan references cart line {} without order provenance",
-                item.cart_line_item_id
-            )))?;
+            let order_line = payload
+                .order_input
+                .line_items
+                .iter()
+                .find(|line| {
+                    line.metadata
+                        .get("checkout")
+                        .and_then(|checkout| checkout.get("cart_line_item_id"))
+                        .and_then(Value::as_str)
+                        .and_then(|value| Uuid::parse_str(value).ok())
+                        == Some(item.cart_line_item_id)
+                })
+                .ok_or_else(|| {
+                    CheckoutOrderPlanError::Validation(format!(
+                        "fulfillment plan references cart line {} without order provenance",
+                        item.cart_line_item_id
+                    ))
+                })?;
             if order_line.fulfillment_requirement != OrderLineFulfillmentRequirement::Physical {
                 return Err(CheckoutOrderPlanError::Validation(format!(
                     "digital order line {} cannot require fulfillment",
@@ -249,9 +256,12 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
                     .and_then(|checkout| checkout.get("cart_line_item_id"))
                     .and_then(Value::as_str)
                     .and_then(|value| Uuid::parse_str(value).ok())
-                    .ok_or_else(|| CheckoutOrderPlanError::Validation(
-                        "physical order line is missing checkout cart-line provenance".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        CheckoutOrderPlanError::Validation(
+                            "physical order line is missing checkout cart-line provenance"
+                                .to_string(),
+                        )
+                    })?;
                 if !fulfillment_line_ids.contains(&cart_line_id) {
                     return Err(CheckoutOrderPlanError::Validation(format!(
                         "physical order line {} is not covered by fulfillment plans",

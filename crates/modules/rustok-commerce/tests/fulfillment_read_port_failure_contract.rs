@@ -18,10 +18,9 @@ use rustok_commerce::MarketplaceFinancialRuntime;
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::graphql_runtime::{
     CommerceFulfillmentLifecycleReadRuntime, CommerceOrderReadRuntime,
-    CommercePaymentCommandRuntime, CommercePaymentReadRuntime,
-    CommerceShippingOptionReadRuntime, CommerceShippingOptionReadScope,
+    CommercePaymentCommandRuntime, CommercePaymentReadRuntime, CommerceShippingOptionReadRuntime,
+    CommerceShippingOptionReadScope,
 };
-use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_fulfillment::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentProjectionPage, FulfillmentReadPort,
     FulfillmentResponse, ListFulfillmentProjectionsRequest, ReadFulfillmentProjectionRequest,
@@ -30,6 +29,7 @@ use rustok_order::{
     OrderService,
     dto::{CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement},
 };
+use rustok_payment::providers::PaymentProviderRegistry;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{Value, json};

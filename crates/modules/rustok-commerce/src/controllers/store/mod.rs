@@ -688,7 +688,6 @@ pub(crate) fn pick_product_translation<'a>(
         .or_else(|| translations.first())
 }
 
-
 pub(crate) fn default_metadata() -> Value {
     json!({})
 }

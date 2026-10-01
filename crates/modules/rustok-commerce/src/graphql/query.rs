@@ -1,12 +1,8 @@
 use super::{
-    async_graphql_shim as async_graphql,
-    rustok_api_shim as rustok_api,
-    rustok_cart_shim as rustok_cart,
-    rustok_channel_shim as rustok_channel,
-    rustok_customer_shim as rustok_customer,
-    rustok_fulfillment_shim as rustok_fulfillment,
-    rustok_order_shim as rustok_order,
-    rustok_payment_shim as rustok_payment,
+    async_graphql_shim as async_graphql, rustok_api_shim as rustok_api,
+    rustok_cart_shim as rustok_cart, rustok_channel_shim as rustok_channel,
+    rustok_customer_shim as rustok_customer, rustok_fulfillment_shim as rustok_fulfillment,
+    rustok_order_shim as rustok_order, rustok_payment_shim as rustok_payment,
     rustok_pricing_shim as rustok_pricing,
 };
 use async_graphql::{Context, FieldError, Object, Result};
@@ -27,7 +23,7 @@ use rustok_pricing::{
     ResolveProductPriceRequest, StorefrontProductPricingProjectionRequest,
     in_process_pricing_read_port,
 };
-use rustok_region::{in_process_region_read_port, RegionListRequest};
+use rustok_region::{RegionListRequest, in_process_region_read_port};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -383,7 +379,9 @@ impl CommerceQuery {
             )
             .await
             .map_err(|error| {
-                async_graphql::Error::new(super::super::query_error_boundary::RegionGraphqlMessage::new(error))
+                async_graphql::Error::new(
+                    super::super::query_error_boundary::RegionGraphqlMessage::new(error),
+                )
             })?;
 
         Ok(regions
@@ -2535,21 +2533,18 @@ async fn resolve_storefront_context(
         locale.as_deref(),
         tenant.default_locale.as_str(),
     ));
-    StoreContextService::new(
-        db.clone(),
-        in_process_region_read_port(db.clone()),
-    )
-    .resolve_context(
-        tenant_id,
-        crate::dto::ResolveStoreContextInput {
-            region_id,
-            country_code,
-            locale,
-            currency_code,
-        },
-    )
-    .await
-    .map_err(|err| async_graphql::Error::new(err.to_string()))
+    StoreContextService::new(db.clone(), in_process_region_read_port(db.clone()))
+        .resolve_context(
+            tenant_id,
+            crate::dto::ResolveStoreContextInput {
+                region_id,
+                country_code,
+                locale,
+                currency_code,
+            },
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))
 }
 
 fn resolve_commerce_graphql_locale(

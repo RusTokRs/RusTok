@@ -41,7 +41,6 @@ impl CommercePaymentCommandRuntime {
         )
     }
 
-
     pub fn collection_create_or_reuse_port(&self) -> Arc<dyn PaymentCollectionPort> {
         self.collection_create_or_reuse.port()
     }

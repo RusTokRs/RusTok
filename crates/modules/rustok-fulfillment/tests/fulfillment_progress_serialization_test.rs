@@ -108,7 +108,10 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .await
         .expect("partial delivery should preserve shipped status");
     assert_eq!(partially_delivered.status, "shipped");
-    assert_eq!(find_item(&partially_delivered, item_id).delivered_quantity, 1);
+    assert_eq!(
+        find_item(&partially_delivered, item_id).delivered_quantity,
+        1
+    );
     assert_eq!(
         partially_delivered.metadata["audit"]["events"]
             .as_array()
@@ -148,7 +151,10 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .expect("remaining quantity should be deliverable");
     assert_eq!(delivered_first.status, "shipped");
     assert_eq!(find_item(&delivered_first, item_id).delivered_quantity, 3);
-    assert_eq!(find_item(&delivered_first, untouched_item_id).delivered_quantity, 0);
+    assert_eq!(
+        find_item(&delivered_first, untouched_item_id).delivered_quantity,
+        0
+    );
 
     let shipped_second = service
         .ship_fulfillment(
@@ -166,7 +172,10 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         )
         .await
         .expect("the untouched item should be independently shippable");
-    assert_eq!(find_item(&shipped_second, untouched_item_id).shipped_quantity, 1);
+    assert_eq!(
+        find_item(&shipped_second, untouched_item_id).shipped_quantity,
+        1
+    );
 
     let delivered = service
         .deliver_fulfillment(
@@ -185,7 +194,10 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
         .expect("the remaining item should be deliverable");
     assert_eq!(delivered.status, "delivered");
     assert_eq!(find_item(&delivered, item_id).delivered_quantity, 3);
-    assert_eq!(find_item(&delivered, untouched_item_id).delivered_quantity, 1);
+    assert_eq!(
+        find_item(&delivered, untouched_item_id).delivered_quantity,
+        1
+    );
 
     let reopened = service
         .reopen_fulfillment(

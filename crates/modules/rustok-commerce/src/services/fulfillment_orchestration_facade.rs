@@ -1,5 +1,5 @@
-use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 

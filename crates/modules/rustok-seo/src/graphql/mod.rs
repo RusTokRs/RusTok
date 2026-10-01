@@ -826,7 +826,9 @@ mod tests {
         Arc::new(extensions)
     }
 
-    fn empty_seo_registry_runtime_extensions(db: DatabaseConnection) -> Arc<ModuleRuntimeExtensions> {
+    fn empty_seo_registry_runtime_extensions(
+        db: DatabaseConnection,
+    ) -> Arc<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(Arc::new(crate::SeoTargetRegistry::default()));
         extensions.insert(SharedStaticModuleSettingsReader(Arc::new(

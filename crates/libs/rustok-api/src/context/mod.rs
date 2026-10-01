@@ -29,6 +29,4 @@ pub use host_authority::{HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityCo
 pub use oauth_scope::scope_matches;
 pub use principal_kind::AuthPrincipalKind;
 #[cfg(feature = "server")]
-pub use tenant::{
-    OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension,
-};
+pub use tenant::{OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension};

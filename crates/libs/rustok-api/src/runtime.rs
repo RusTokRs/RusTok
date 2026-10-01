@@ -96,7 +96,7 @@ pub async fn tenant_module_settings_in_tx(
         _ => {
             return Err(DbErr::Custom(format!(
                 "tenant module settings transaction read is unsupported for {backend:?}"
-            )))
+            )));
         }
     };
 

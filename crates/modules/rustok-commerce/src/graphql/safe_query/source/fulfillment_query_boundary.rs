@@ -1,4 +1,4 @@
-use super::{error::FulfillmentError, BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY};
+use super::{BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, error::FulfillmentError};
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::uuid::Uuid;
 

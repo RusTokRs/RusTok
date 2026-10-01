@@ -102,7 +102,11 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
         if operation.status == PROVIDER_OPERATION_EXECUTING {
             return Err(operation_in_progress(operation.id));
         }
-        if journal.claim_execution(operation.tenant_id, operation.id).await?.is_none() {
+        if journal
+            .claim_execution(operation.tenant_id, operation.id)
+            .await?
+            .is_none()
+        {
             let current = journal.get(operation.tenant_id, operation.id).await?;
             if matches!(
                 current.status.as_str(),

@@ -2352,8 +2352,12 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             product_id: value.product_id,
             variant_id: value.variant_id,
             fulfillment_requirement: match value.fulfillment_requirement {
-                dto::CartLineFulfillmentRequirement::Digital => GqlCartFulfillmentRequirement::Digital,
-                dto::CartLineFulfillmentRequirement::Physical => GqlCartFulfillmentRequirement::Physical,
+                dto::CartLineFulfillmentRequirement::Digital => {
+                    GqlCartFulfillmentRequirement::Digital
+                }
+                dto::CartLineFulfillmentRequirement::Physical => {
+                    GqlCartFulfillmentRequirement::Physical
+                }
             },
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
@@ -2503,8 +2507,12 @@ impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
             product_id: item.product_id,
             variant_id: item.variant_id,
             fulfillment_requirement: match item.fulfillment_requirement {
-                dto::OrderLineFulfillmentRequirement::Digital => GqlOrderFulfillmentRequirement::Digital,
-                dto::OrderLineFulfillmentRequirement::Physical => GqlOrderFulfillmentRequirement::Physical,
+                dto::OrderLineFulfillmentRequirement::Digital => {
+                    GqlOrderFulfillmentRequirement::Digital
+                }
+                dto::OrderLineFulfillmentRequirement::Physical => {
+                    GqlOrderFulfillmentRequirement::Physical
+                }
             },
             shipping_profile_slug: item.shipping_profile_slug,
             seller_id: item.seller_id,
@@ -2752,7 +2760,9 @@ impl From<GqlRelationType> for rustok_product_relations::dto::RelationType {
             GqlRelationType::UpSell => rustok_product_relations::dto::RelationType::UpSell,
             GqlRelationType::Related => rustok_product_relations::dto::RelationType::Related,
             GqlRelationType::Accessory => rustok_product_relations::dto::RelationType::Accessory,
-            GqlRelationType::Alternative => rustok_product_relations::dto::RelationType::Alternative,
+            GqlRelationType::Alternative => {
+                rustok_product_relations::dto::RelationType::Alternative
+            }
         }
     }
 }
@@ -2764,7 +2774,9 @@ impl From<rustok_product_relations::dto::RelationType> for GqlRelationType {
             rustok_product_relations::dto::RelationType::UpSell => GqlRelationType::UpSell,
             rustok_product_relations::dto::RelationType::Related => GqlRelationType::Related,
             rustok_product_relations::dto::RelationType::Accessory => GqlRelationType::Accessory,
-            rustok_product_relations::dto::RelationType::Alternative => GqlRelationType::Alternative,
+            rustok_product_relations::dto::RelationType::Alternative => {
+                GqlRelationType::Alternative
+            }
             rustok_product_relations::dto::RelationType::Custom(_) => GqlRelationType::Related,
         }
     }

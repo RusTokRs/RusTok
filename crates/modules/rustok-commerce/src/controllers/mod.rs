@@ -224,9 +224,7 @@ impl CommerceHttpRuntime {
         self.payment_admin_refund_command_runtime.command_port()
     }
 
-    fn return_completion_orchestration(
-        &self,
-    ) -> crate::ReturnCompletionOrchestrationService {
+    fn return_completion_orchestration(&self) -> crate::ReturnCompletionOrchestrationService {
         crate::ReturnCompletionOrchestrationService::new(
             self.db_clone(),
             self.order_read_port(),
@@ -245,7 +243,8 @@ impl CommerceHttpRuntime {
     fn product_storefront_http_read_port(
         &self,
     ) -> Option<std::sync::Arc<dyn rustok_product::ProductStorefrontHttpReadPort>> {
-        self.product_catalog_read_runtime.storefront_http_read_port()
+        self.product_catalog_read_runtime
+            .storefront_http_read_port()
     }
 
     fn product_catalog_command_port(

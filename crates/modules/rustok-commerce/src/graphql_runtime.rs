@@ -419,11 +419,12 @@ impl CommerceGraphqlRuntimeData {
 pub fn attach_schema_data(
     inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
 ) -> Result<CommerceGraphqlRuntimeData, String> {
-    let payment_provider_registry = inputs
-        .shared_get::<PaymentProviderRegistry>()
-        .ok_or_else(|| {
-            "commerce GraphQL requires PaymentProviderRegistry in host composition".to_string()
-        })?;
+    let payment_provider_registry =
+        inputs
+            .shared_get::<PaymentProviderRegistry>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires PaymentProviderRegistry in host composition".to_string()
+            })?;
     let fulfillment_provider_registry = inputs
         .shared_get::<FulfillmentProviderRegistry>()
         .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
@@ -436,16 +437,15 @@ pub fn attach_schema_data(
     let payment_command_runtime = inputs
         .shared_get::<CommercePaymentCommandRuntime>()
         .ok_or_else(|| {
-            "commerce GraphQL requires CommercePaymentCommandRuntime in host composition".to_string()
+            "commerce GraphQL requires CommercePaymentCommandRuntime in host composition"
+                .to_string()
         })?;
     let fulfillment_command_runtime = inputs
         .shared_get::<CommerceFulfillmentCommandRuntime>()
         .unwrap_or_else(|| CommerceFulfillmentCommandRuntime::from_graphql_inputs(inputs));
     let fulfillment_lifecycle_read_runtime = inputs
         .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
-        .unwrap_or_else(|| {
-            CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone())
-        });
+        .unwrap_or_else(|| CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone()));
 
     Ok(CommerceGraphqlRuntimeData {
         payment_provider_registry,

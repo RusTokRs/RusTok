@@ -281,11 +281,7 @@ impl ReturnDecisionOwnerOrchestrationService {
                     )
                     .await
                     .map_err(ReturnDecisionOwnerOrchestrationError::PaymentRead)?;
-                validate_return_payment_collection_order(
-                    collection.order_id,
-                    id,
-                    order_id,
-                )?
+                validate_return_payment_collection_order(collection.order_id, id, order_id)?
             }
             None => {
                 let read_context =
@@ -406,12 +402,10 @@ mod tests {
         let order_id = Uuid::new_v4();
 
         assert!(validate_return_payment_collection_order(None, collection_id, order_id).is_err());
-        assert!(validate_return_payment_collection_order(
-            Some(Uuid::new_v4()),
-            collection_id,
-            order_id
-        )
-        .is_err());
+        assert!(
+            validate_return_payment_collection_order(Some(Uuid::new_v4()), collection_id, order_id)
+                .is_err()
+        );
         assert_eq!(
             validate_return_payment_collection_order(Some(order_id), collection_id, order_id)
                 .unwrap(),

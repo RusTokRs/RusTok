@@ -191,7 +191,6 @@ fn storefront_order_return_command_context(
     }
 }
 
-
 fn map_storefront_order_port_error(
     error: PortError,
     context: &PortContext,

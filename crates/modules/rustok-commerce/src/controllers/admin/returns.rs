@@ -13,19 +13,14 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
-    super::{
-        CommerceHttpRuntime,
-        common::ensure_permissions,
-    },
+    super::{CommerceHttpRuntime, common::ensure_permissions},
     AdminCompleteOrderReturnInput,
 };
 use crate::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,
     CompleteReturnResolutionInput, CreateReturnDecisionInput, PaymentOrchestrationError,
-    PostOrderOrchestrationError,
-    ReturnDecisionOwnerOrchestrationError, ReturnDecisionOwnerOrchestrationService,
-    ReturnDecisionResponse,
-    dto::OrderReturnResponse,
+    PostOrderOrchestrationError, ReturnDecisionOwnerOrchestrationError,
+    ReturnDecisionOwnerOrchestrationService, ReturnDecisionResponse, dto::OrderReturnResponse,
 };
 
 const ADMIN_ORDER_RETURN_ORCHESTRATION_OWNER: &str =
@@ -116,8 +111,6 @@ fn admin_return_decision_order_context(
 
     context
 }
-
-
 
 fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
     match value {
@@ -320,8 +313,6 @@ fn admin_payment_port_error_policy(error: &PortError) -> AdminOrderReturnHttpPol
     }
 }
 
-
-
 fn map_admin_return_decision_order_port_error(
     tenant_id: Uuid,
     actor_id: Uuid,
@@ -497,13 +488,8 @@ pub async fn create_order_return_decision(
     }
 
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_return_decision_order_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        idempotency_key,
-    );
+    let context =
+        admin_return_decision_order_context(&tenant, &auth, &request_context, id, idempotency_key);
     let service = ReturnDecisionOwnerOrchestrationService::new(
         runtime.db_clone(),
         runtime.order_post_order_command_port(),
@@ -603,7 +589,8 @@ pub async fn complete_order_return(
         }),
         metadata: input.metadata,
     };
-    let item = runtime.return_completion_orchestration()
+    let item = runtime
+        .return_completion_orchestration()
         .complete_return(tenant.id, auth.user_id, id, command)
         .await
         .map_err(|error| {

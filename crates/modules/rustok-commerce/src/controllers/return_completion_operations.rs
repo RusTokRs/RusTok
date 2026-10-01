@@ -13,9 +13,9 @@ use super::{
     CommerceHttpRuntime,
     common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions},
 };
+use crate::PostOrderOrchestrationError;
 use crate::dto::OrderReturnResponse;
 use crate::services::{ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse};
-use crate::PostOrderOrchestrationError;
 
 const RETURN_COMPLETION_OPERATOR_OWNER: &str = "rustok_commerce.return_completion_operation";
 const RETURN_COMPLETION_OPERATOR_BOUNDARY: &str = "commerce_admin_return_completion_operation_http";
@@ -127,28 +127,28 @@ pub async fn list_return_completion_operations(
         "Permission denied: orders:read required",
     )?;
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) =
-        runtime.return_completion_orchestration()
-            .list_operations(
-                tenant.id,
-                ListReturnCompletionOperationsInput {
-                    page: pagination.page,
-                    per_page: pagination.limit(),
-                    status: params.status,
-                },
+    let (items, total) = runtime
+        .return_completion_orchestration()
+        .list_operations(
+            tenant.id,
+            ListReturnCompletionOperationsInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                status: params.status,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_operator_error(
+                ReturnCompletionOperatorErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_return_completion_operations",
+                ),
+                error,
             )
-            .await
-            .map_err(|error| {
-                map_operator_error(
-                    ReturnCompletionOperatorErrorContext::new(
-                        tenant.id,
-                        auth.user_id,
-                        None,
-                        "list_return_completion_operations",
-                    ),
-                    error,
-                )
-            })?;
+        })?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -179,21 +179,21 @@ pub async fn show_return_completion_operation(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
-    let operation =
-        runtime.return_completion_orchestration()
-            .get_operation(tenant.id, id)
-            .await
-            .map_err(|error| {
-                map_operator_error(
-                    ReturnCompletionOperatorErrorContext::new(
-                        tenant.id,
-                        auth.user_id,
-                        Some(id),
-                        "show_return_completion_operation",
-                    ),
-                    error,
-                )
-            })?;
+    let operation = runtime
+        .return_completion_orchestration()
+        .get_operation(tenant.id, id)
+        .await
+        .map_err(|error| {
+            map_operator_error(
+                ReturnCompletionOperatorErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "show_return_completion_operation",
+                ),
+                error,
+            )
+        })?;
     Ok(Json(operation))
 }
 
@@ -222,21 +222,21 @@ pub async fn retry_return_completion_operation(
         &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
         "Permission denied: orders:manage and payments:manage required",
     )?;
-    let order_return =
-        runtime.return_completion_orchestration()
-            .retry_operation(tenant.id, auth.user_id, id)
-            .await
-            .map_err(|error| {
-                map_operator_error(
-                    ReturnCompletionOperatorErrorContext::new(
-                        tenant.id,
-                        auth.user_id,
-                        Some(id),
-                        "retry_return_completion_operation",
-                    ),
-                    error,
-                )
-            })?;
+    let order_return = runtime
+        .return_completion_orchestration()
+        .retry_operation(tenant.id, auth.user_id, id)
+        .await
+        .map_err(|error| {
+            map_operator_error(
+                ReturnCompletionOperatorErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "retry_return_completion_operation",
+                ),
+                error,
+            )
+        })?;
     Ok(Json(order_return))
 }
 
@@ -318,7 +318,6 @@ fn map_operator_error(
     HttpError::new(status, code, message)
 }
 
-
 #[cfg(test)]
 mod permission_tests {
     use super::*;
@@ -363,11 +362,13 @@ mod permission_tests {
         );
 
         let both = auth_with(vec![Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE]);
-        assert!(ensure_all_permissions(
-            &both,
-            &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
-            message
-        )
-        .is_ok());
+        assert!(
+            ensure_all_permissions(
+                &both,
+                &[Permission::ORDERS_MANAGE, Permission::PAYMENTS_MANAGE],
+                message
+            )
+            .is_ok()
+        );
     }
 }

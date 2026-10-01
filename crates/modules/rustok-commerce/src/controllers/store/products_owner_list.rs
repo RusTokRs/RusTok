@@ -23,7 +23,6 @@ const STOREFRONT_PRODUCT_OWNER: &str = "rustok_product";
 const STOREFRONT_PRODUCT_BOUNDARY: &str = "commerce_storefront_product_http";
 const STOREFRONT_PRODUCT_LIST_OPERATION: &str = "list_legacy_storefront_http_products";
 
-
 fn storefront_product_list_port_context(
     tenant_id: Uuid,
     locale: &str,

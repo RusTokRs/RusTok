@@ -588,10 +588,7 @@ async fn test_create_product_populates_variant_translation_groups() {
     input.translations.push(ProductTranslationInput {
         locale: "ru".to_string(),
         title: "Тестовый продукт".to_string(),
-        description: Some(
-            "Русская локализация"
-                .to_string(),
-        ),
+        description: Some("Русская локализация".to_string()),
         handle: Some(unique_slug("test-product-ru")),
         meta_title: None,
         meta_description: None,
@@ -742,14 +739,16 @@ async fn test_create_product_with_multiple_variants() {
     let product = result.unwrap();
     assert_eq!(product.variants.len(), 3);
 
-    let small = product
-        .variants
-        .iter()
-        .find(|v| v.prices.iter().any(|p| p.amount == Decimal::from_str("79.99").unwrap()));
-    let large = product
-        .variants
-        .iter()
-        .find(|v| v.prices.iter().any(|p| p.amount == Decimal::from_str("119.99").unwrap()));
+    let small = product.variants.iter().find(|v| {
+        v.prices
+            .iter()
+            .any(|p| p.amount == Decimal::from_str("79.99").unwrap())
+    });
+    let large = product.variants.iter().find(|v| {
+        v.prices
+            .iter()
+            .any(|p| p.amount == Decimal::from_str("119.99").unwrap())
+    });
 
     assert!(small.is_some());
     assert!(large.is_some());

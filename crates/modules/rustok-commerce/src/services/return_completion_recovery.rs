@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use chrono::Utc;
 use rustok_api::{PortActor, PortContext};
 use rustok_core::generate_id;
-use rustok_order::{OrderReadPort, ReadOrderReturnProjectionRequest};
 use rustok_order::dto::OrderReturnResponse;
 use rustok_order::error::OrderError;
+use rustok_order::{OrderReadPort, ReadOrderReturnProjectionRequest};
 use rustok_payment::{PaymentAdminReadPort, PaymentAdminRefundCommandPort};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -276,11 +276,9 @@ impl ReturnCompletionOrchestrationService {
                 ReadOrderReturnProjectionRequest { return_id },
             )
             .await
-            .map_err(|error| {
-                PostOrderOrchestrationError::OwnerPort {
-                    owner: "rustok_order",
-                    error,
-                }
+            .map_err(|error| PostOrderOrchestrationError::OwnerPort {
+                owner: "rustok_order",
+                error,
             })
     }
 
@@ -561,10 +559,7 @@ fn pagination_offset(page: u64, per_page: u64) -> u64 {
     page.saturating_sub(1).saturating_mul(per_page)
 }
 
-fn safe_last_error_message(
-    error_code: Option<&str>,
-    has_error_message: bool,
-) -> Option<String> {
+fn safe_last_error_message(error_code: Option<&str>, has_error_message: bool) -> Option<String> {
     if !has_error_message {
         return None;
     }
@@ -774,7 +769,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod safety_tests {
     use super::*;
@@ -784,7 +778,10 @@ mod safety_tests {
     fn pagination_offset_saturates_on_extreme_page_values() {
         assert_eq!(pagination_offset(1, 100), 0);
         assert_eq!(pagination_offset(2, 100), 100);
-        assert_eq!(pagination_offset(u64::MAX, 100), u64::MAX - (u64::MAX % 100));
+        assert_eq!(
+            pagination_offset(u64::MAX, 100),
+            u64::MAX - (u64::MAX % 100)
+        );
     }
 
     #[test]

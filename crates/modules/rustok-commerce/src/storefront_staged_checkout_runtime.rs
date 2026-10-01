@@ -303,10 +303,9 @@ pub async fn complete_storefront_checkout_input_with_product_port(
             rustok_marketplace_commission::in_process_marketplace_commission_command_port(
                 runtime.db_clone(),
             );
-        let ledger_port =
-            rustok_marketplace_ledger::in_process_marketplace_ledger_command_port(
-                runtime.db_clone(),
-            );
+        let ledger_port = rustok_marketplace_ledger::in_process_marketplace_ledger_command_port(
+            runtime.db_clone(),
+        );
         pipeline
             .with_marketplace_allocation_port(allocation_port)
             .with_marketplace_commission_port(commission_port)

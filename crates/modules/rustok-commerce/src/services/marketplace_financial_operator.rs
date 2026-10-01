@@ -299,37 +299,36 @@ impl MarketplaceFinancialOperatorService {
         }
 
         let now = Utc::now().fixed_offset();
-        let operation_update =
-            marketplace_financial_operation::Entity::update_many()
-                .col_expr(
-                    marketplace_financial_operation::Column::Status,
-                    Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
-                )
-                .col_expr(
-                    marketplace_financial_operation::Column::LastErrorCode,
-                    Expr::value(Option::<String>::None),
-                )
-                .col_expr(
-                    marketplace_financial_operation::Column::LastErrorMessage,
-                    Expr::value(Option::<String>::None),
-                )
-                .col_expr(
-                    marketplace_financial_operation::Column::UpdatedAt,
-                    Expr::value(now),
-                )
-                .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
-                .filter(
-                    marketplace_financial_operation::Column::CheckoutOperationId
-                        .eq(event.checkout_operation_id),
-                )
-                .filter(
-                    marketplace_financial_operation::Column::Status
-                        .eq(MarketplaceFinancialOperationStatus::OperatorReview.as_str()),
-                )
-                .filter(marketplace_financial_operation::Column::Stage.eq("admitted"))
-                .filter(marketplace_financial_operation::Column::LedgerTransactionId.is_null())
-                .exec(&transaction)
-                .await?;
+        let operation_update = marketplace_financial_operation::Entity::update_many()
+            .col_expr(
+                marketplace_financial_operation::Column::Status,
+                Expr::value(MarketplaceFinancialOperationStatus::RetryableError.as_str()),
+            )
+            .col_expr(
+                marketplace_financial_operation::Column::LastErrorCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                marketplace_financial_operation::Column::LastErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                marketplace_financial_operation::Column::UpdatedAt,
+                Expr::value(now),
+            )
+            .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
+            .filter(
+                marketplace_financial_operation::Column::CheckoutOperationId
+                    .eq(event.checkout_operation_id),
+            )
+            .filter(
+                marketplace_financial_operation::Column::Status
+                    .eq(MarketplaceFinancialOperationStatus::OperatorReview.as_str()),
+            )
+            .filter(marketplace_financial_operation::Column::Stage.eq("admitted"))
+            .filter(marketplace_financial_operation::Column::LedgerTransactionId.is_null())
+            .exec(&transaction)
+            .await?;
 
         require_single_retry_transition(
             operation_update.rows_affected,

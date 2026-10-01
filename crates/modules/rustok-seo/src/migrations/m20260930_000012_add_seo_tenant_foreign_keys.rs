@@ -16,10 +16,22 @@ const TENANT_FK_TABLES: &[(&str, &str)] = &[
     ("seo_index_deliveries", "fk_seo_index_deliveries_tenant"),
     ("seo_index_cursors", "fk_seo_index_cursors_tenant"),
     ("seo_index_repair_jobs", "fk_seo_index_repair_jobs_tenant"),
-    ("seo_translation_resource_state", "fk_seo_translation_resource_state_tenant"),
-    ("seo_translation_locale_state", "fk_seo_translation_locale_state_tenant"),
-    ("seo_translation_change_journal", "fk_seo_translation_change_journal_tenant"),
-    ("seo_translation_apply_receipts", "fk_seo_translation_apply_receipts_tenant"),
+    (
+        "seo_translation_resource_state",
+        "fk_seo_translation_resource_state_tenant",
+    ),
+    (
+        "seo_translation_locale_state",
+        "fk_seo_translation_locale_state_tenant",
+    ),
+    (
+        "seo_translation_change_journal",
+        "fk_seo_translation_change_journal_tenant",
+    ),
+    (
+        "seo_translation_apply_receipts",
+        "fk_seo_translation_apply_receipts_tenant",
+    ),
 ];
 
 #[async_trait::async_trait]
