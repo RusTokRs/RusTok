@@ -4194,5 +4194,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh second pass:** independently re-read the complete lifecycle update blocks, provider-operation stripping, audit preservation, checkout metadata boundaries, and the new regression. No alternate fulfillment lifecycle metadata merge path was found in the primary module, and valid object-patch semantics remain unchanged.
 - **Documentation:** Fulfillment README now explicitly states that lifecycle metadata merge rejects both non-object persisted metadata and non-object patches before merging.
 - **Verification:** repository source inspection, lifecycle call-site tracing, immediate reread, fresh second pass, and exact branch-diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer/CI verification remains required.
-- **Status:** `FS-22.06.87` complete and ready for integration.
+- **Status:** `FS-22.06.87` complete and integrated via PR #4458, squash merge `f972b9419bb067a7ac07a5bd64125c1bd20099e4`.
+- **Post-merge reconciliation:** refreshed `main` at `f972b9419bb067a7ac07a5bd64125c1bd20099e4` and re-read the strengthened metadata merge boundary, all lifecycle callers, Fulfillment README invariant, and the ledger entry. The expected production/documentation changes are present with no concurrent drift affecting this iteration.
 - **Next primary module iteration:** `FS-22.06.88` — same primary module, next fulfillment metadata/lifecycle owner boundary after refreshing integrated `main`.
