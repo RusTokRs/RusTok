@@ -45,7 +45,7 @@ fn shipping_read_context(
         auth,
         cart_id,
         operation,
-        false,
+        None,
     )
 }
 
@@ -283,6 +283,7 @@ pub(super) async fn apply_cart_context_patch(
     auth: Option<&AuthContext>,
     tenant_default_locale: &str,
     cart: &CartResponse,
+    idempotency_key: &str,
     patch: StoreCartContextPatch,
 ) -> HttpResult<StoreCartResponse> {
     let requested = super::super::requested_cart_context(cart, request_context, patch);
@@ -326,7 +327,7 @@ pub(super) async fn apply_cart_context_patch(
                 None,
                 cart.id,
                 "update-context",
-                true,
+                Some(idempotency_key),
             ),
             CartStorefrontContextUpdateRequest {
                 cart_id: cart.id,
@@ -351,6 +352,7 @@ pub(super) async fn apply_cart_context_patch(
         event_bus,
         tenant_id,
         request_context,
+        idempotency_key,
         storefront_port.as_ref(),
         updated_cart,
     )

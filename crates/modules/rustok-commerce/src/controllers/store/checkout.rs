@@ -128,7 +128,7 @@ fn storefront_payment_collection_port_context(
     request_context: &RequestContext,
     auth: Option<&AuthContext>,
     operation: &'static str,
-    is_write: bool,
+    idempotency_key: Option<&str>,
 ) -> PortContext {
     let locale = if request_context.locale.trim().is_empty() {
         "und"
@@ -147,10 +147,9 @@ fn storefront_payment_collection_port_context(
         Some(channel) => context.with_channel(channel),
         None => context,
     };
-    if is_write {
-        context.with_idempotency_key(format!("storefront-payment-collection:{cart_id}"))
-    } else {
-        context
+    match idempotency_key {
+        Some(value) => context.with_idempotency_key(value.to_string()),
+        None => context,
     }
 }
 
@@ -159,6 +158,7 @@ fn storefront_payment_collection_port_context(
     post,
     path = "/store/payment-collections",
     tag = "store",
+    params(("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")),
     request_body = StoreCreatePaymentCollectionInput,
     responses(
         (status = 201, description = "Payment collection created", body = PaymentCollectionResponse),
@@ -173,9 +173,11 @@ pub async fn create_payment_collection(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> HttpResult<(StatusCode, Json<PaymentCollectionResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = required_idempotency_key(&headers)?;
 
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
     let customer_id =
@@ -189,7 +191,7 @@ pub async fn create_payment_collection(
                 auth.0.as_ref(),
                 input.cart_id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest {
                 cart_id: input.cart_id,
@@ -204,6 +206,7 @@ pub async fn create_payment_collection(
         runtime.event_bus(),
         tenant.id,
         &request_context,
+        &idempotency_key,
         cart_storefront_port.as_ref(),
         cart,
     )
@@ -218,7 +221,7 @@ pub async fn create_payment_collection(
         &request_context,
         auth.0.as_ref(),
         "find_reusable_collection_by_cart",
-        false,
+        None,
     );
     if let Some(existing) = runtime
         .payment_cart_read_port()
@@ -251,7 +254,7 @@ pub async fn create_payment_collection(
         &request_context,
         auth.0.as_ref(),
         "create_or_reuse_collection",
-        true,
+        Some(&idempotency_key),
     );
     let collection = runtime
         .payment_collection_port()

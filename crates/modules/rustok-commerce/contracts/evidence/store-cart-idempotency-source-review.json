@@ -1,0 +1,42 @@
+{
+  "status": "commerce_store_cart_idempotency_source_reviewed_unvalidated",
+  "reviewed_scope": [
+    "crates/modules/rustok-commerce/src/controllers/store/carts.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/carts/shipping_owner_reads.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
+    "crates/modules/rustok-cart/src/services/cart.rs",
+    "crates/modules/rustok-cart/src/ports.rs",
+    "crates/modules/rustok-cart/src/migrations/mod.rs",
+    "crates/modules/rustok-cart/tests/cart_service_test.rs",
+    "crates/modules/rustok-cart/tests/support.rs",
+    "scripts/verify/verify-commerce-store-cart-idempotency.mjs",
+    "crates/modules/rustok-commerce/docs/implementation-plan.md"
+  ],
+  "source_contract": {
+    "cart_write_endpoints_reviewed": 5,
+    "caller_owned_idempotency_required": true,
+    "synthetic_cart_write_idempotency_removed": true,
+    "cart_reads_observational": true,
+    "shipping_patch_key_propagated": true,
+    "cart_reprice_key_propagated": true,
+    "payment_collection_key_propagated": true,
+    "openapi_write_headers_declared": true,
+    "durable_owner_receipt_admission": true,
+    "transactional_receipt_completion": true,
+    "failure_receipt_persistence": true,
+    "key_rebinding_fails_closed": true,
+    "receipt_schema_migration_dependency_declared": true
+  },
+  "validation": {
+    "tests_run": false,
+    "cargo_run": false,
+    "format_run": false,
+    "verifier_run": false,
+    "workflow_checks_run": false,
+    "ci_run": false,
+    "compile_proven": false,
+    "runtime_proven": false
+  },
+  "validation_disclosure": "Source and test-code review completed. The new replay/failure test is authored but not executed locally. Container network access cannot reach GitHub and the environment has no Rust toolchain; PR CI remains the execution authority. No compile/runtime pass is promoted."
+}

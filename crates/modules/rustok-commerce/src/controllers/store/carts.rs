@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use rustok_api::{OptionalAuthContext, PortError, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
@@ -61,6 +61,7 @@ fn map_cart_port_error(
     post,
     path = "/store/carts",
     tag = "store",
+    params(("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")),
     request_body = StoreCreateCartInput,
     responses(
         (status = 201, description = "Cart created", body = StoreCartResponse),
@@ -72,9 +73,11 @@ pub async fn create_cart(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Json(input): Json<StoreCreateCartInput>,
 ) -> HttpResult<(StatusCode, Json<StoreCartResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = super::required_storefront_idempotency_key(&headers)?;
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
@@ -107,7 +110,7 @@ pub async fn create_cart(
                 auth.0.as_ref(),
                 tenant.id,
                 "create",
-                true,
+                Some(&idempotency_key),
             ),
             CartStorefrontCreateRequest {
                 input: crate::dto::CreateCartInput {
@@ -175,7 +178,7 @@ pub async fn get_cart(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -201,7 +204,10 @@ pub async fn get_cart(
     post,
     path = "/store/carts/{id}",
     tag = "store",
-    params(("id" = Uuid, Path, description = "Cart ID")),
+    params(
+        ("id" = Uuid, Path, description = "Cart ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = StoreUpdateCartInput,
     responses(
         (status = 200, description = "Updated cart context", body = StoreCartResponse),
@@ -215,10 +221,12 @@ pub async fn update_cart_context(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreUpdateCartInput>,
 ) -> HttpResult<Json<StoreCartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = super::required_storefront_idempotency_key(&headers)?;
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
@@ -230,7 +238,7 @@ pub async fn update_cart_context(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -250,6 +258,7 @@ pub async fn update_cart_context(
         auth.0.as_ref(),
         tenant.default_locale.as_str(),
         &cart,
+        &idempotency_key,
         StoreCartContextPatch {
             email: input.email,
             region_id: input.region_id,
@@ -274,7 +283,10 @@ pub async fn update_cart_context(
     post,
     path = "/store/carts/{id}/line-items",
     tag = "store",
-    params(("id" = Uuid, Path, description = "Cart ID")),
+    params(
+        ("id" = Uuid, Path, description = "Cart ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
+    ),
     request_body = StoreAddCartLineItemInput,
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
@@ -288,10 +300,12 @@ pub async fn add_cart_line_item(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreAddCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = super::required_storefront_idempotency_key(&headers)?;
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
@@ -304,7 +318,7 @@ pub async fn add_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -346,7 +360,7 @@ pub async fn add_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "add-line-item",
-                true,
+                Some(&idempotency_key),
             ),
             CartStorefrontAddLineItemRequest {
                 cart_id: id,
@@ -377,7 +391,8 @@ pub async fn add_cart_line_item(
     tag = "store",
     params(
         ("id" = Uuid, Path, description = "Cart ID"),
-        ("line_id" = Uuid, Path, description = "Cart line item ID")
+        ("line_id" = Uuid, Path, description = "Cart line item ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
     ),
     request_body = StoreUpdateCartLineItemInput,
     responses(
@@ -392,10 +407,12 @@ pub async fn update_cart_line_item(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<StoreUpdateCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = super::required_storefront_idempotency_key(&headers)?;
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
@@ -408,7 +425,7 @@ pub async fn update_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -474,7 +491,7 @@ pub async fn update_cart_line_item(
                     auth.0.as_ref(),
                     id,
                     "update-line-item",
-                    true,
+                    Some(&idempotency_key),
                 ),
                 CartStorefrontLineItemPricingRequest {
                     cart_id: id,
@@ -497,7 +514,7 @@ pub async fn update_cart_line_item(
                     auth.0.as_ref(),
                     id,
                     "update-line-item",
-                    true,
+                    Some(&idempotency_key),
                 ),
                 CartStorefrontLineItemQuantityRequest {
                     cart_id: id,
@@ -531,7 +548,8 @@ pub async fn update_cart_line_item(
     tag = "store",
     params(
         ("id" = Uuid, Path, description = "Cart ID"),
-        ("line_id" = Uuid, Path, description = "Cart line item ID")
+        ("line_id" = Uuid, Path, description = "Cart line item ID"),
+        ("Idempotency-Key" = String, Header, description = "Caller-owned idempotency key")
     ),
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
@@ -545,9 +563,11 @@ pub async fn remove_cart_line_item(
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
+    headers: HeaderMap,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<CartResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
+    let idempotency_key = super::required_storefront_idempotency_key(&headers)?;
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
@@ -560,7 +580,7 @@ pub async fn remove_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "read",
-                false,
+                None,
             ),
             CartStorefrontReadRequest { cart_id: id },
         )
@@ -578,7 +598,7 @@ pub async fn remove_cart_line_item(
                 auth.0.as_ref(),
                 id,
                 "remove-line-item",
-                true,
+                Some(&idempotency_key),
             ),
             CartStorefrontRemoveLineItemRequest {
                 cart_id: id,

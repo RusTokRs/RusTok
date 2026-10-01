@@ -68,5 +68,12 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260721_000118_create_cart_marketplace_snapshots",
             vec!["m20260713_000117_lock_checkout_shipping_option_economics"],
         ),
+        MigrationDependencyDescriptor::new(
+            "m20260925_000119_add_cart_line_fulfillment_requirement",
+            vec![
+                "m20260721_000118_create_cart_marketplace_snapshots",
+                "m20260803_000001_create_owner_operation_receipts",
+            ],
+        ),
     ]
 }
