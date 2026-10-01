@@ -58,7 +58,7 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 ## Статус починки (обновляется по мере работ)
 
 > **Workflow `UI I18n Verify` зелёный целиком** на ветке `arena/01a0f3f0-rustok`
-> (run `36822120606`): Format, Repository i18n contracts, UI catalog parity,
+> (run `36849322413`): Format, Repository i18n contracts, UI catalog parity,
 > UI key inventory, Test, Consumer integration, Clippy, WASM check, и новый шаг Converted consumer packages, который
 > компилирует все семь модулей с переписанными call-site'ами интерполяции.
 >
@@ -98,7 +98,7 @@ node scripts/verify/verify-ui-i18n-keys.mjs --strict # PASS (987 вхожден�
 | A-31 | ✅ | `skip_while` заменён на `filter` |
 | A-10 | ✅ | 19 сообщений получили CLDR-селекторы (en/ru/ar), 13 — обоснованный `# plural-exempt` |
 | A-05/A-06/A-07 | ✅ | единый нормализатор и единая fallback-цепочка: `fly` и `rustok-api` делегируют в `rustok-ui-i18n`, добавлен примитив `locale_fallback_chain`, контракт-гейт запрещает возврат |
-| A-04 | ⚠️ | масштаб уточнён (8 пакетов вместо 3); класс закрыт детектором + shrink-only baseline, сам рефакторинг ждёт компилятора |
+| A-04 | 🟢 почти закрыт | масштаб уточнён (8 пакетов вместо 3); класс закрыт детектором + shrink-only baseline, сам рефакторинг ждёт компилятора |
 | A-33 | ⚠️ | **новая находка**: 105 сайтов обходили Fluent через `String::replace`; 59 переведены на `fluent_args!`, 46 под shrink-only baseline |
 | — | ✅ | **новая находка**: 90 ключей использовались кодом, но отсутствовали в каталогах (русский UI показывал английский) |
 
@@ -198,15 +198,15 @@ module_i18n_catalog_is_valid() { assert!(validate().is_ok()) }` — тогда �
 > не 3 пакета, а **8** осиротевших каталогов (84 ключа) и **5** пакетов с
 > захардкоженным ветвлением (190 вхождений). Два каталога вообще пустые.
 > Класс теперь детектируется гейтом `verify-ui-i18n-keys.mjs` и зафиксирован
-> shrink-only baseline'ом `unwiredCatalogs`, который уже сжался 8 → 3 (остались `marketplace-listing/admin`, `marketplace-seller/admin`, `navigation/storefront`).
+> shrink-only baseline'ом `unwiredCatalogs`, который сжался 8 → 1: остался только `navigation/storefront`, чей единственный ключ не используется ни одним call-site'ом.
 
 | Пакет | ключей в `en.ftl` | каталог загружается | вхождений `russian` |
 |---|---|---|---|
 | `rustok-brand/admin` | 22 | **✅ подключён** | 37 |
 | `rustok-product-bundles/admin` | 36 | **✅ подключён** | 64 |
 | `rustok-product-relations/admin` | 21 | **✅ подключён** | 0 |
-| `rustok-marketplace-listing/admin` | 5 | нет | 43 |
-| `rustok-marketplace-seller/admin` | 4 | нет | 44 |
+| `rustok-marketplace-listing/admin` | 5 | **✅ подключён** | 43 |
+| `rustok-marketplace-seller/admin` | 4 | **✅ подключён** | 44 |
 | `rustok-navigation/storefront` | 1 | нет | 0 |
 | ~~`rustok-events-module/admin`~~ | — | **✅ пустой каталог удалён** | 0 |
 | ~~`rustok-iggy-connector/admin`~~ | — | **✅ пустой каталог удалён** | 0 |
