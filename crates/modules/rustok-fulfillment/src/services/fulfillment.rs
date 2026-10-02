@@ -781,6 +781,9 @@ impl FulfillmentService {
         mut input: DeliverFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -1108,6 +1111,9 @@ impl FulfillmentService {
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
