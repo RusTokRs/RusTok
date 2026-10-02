@@ -4228,5 +4228,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** PR #4465 was squash-merged as `f195d3f27ebcfacfb03adce0fe96080ec4912b87`. Refreshed `main` at that merge commit and re-read the production helper, new regression tests, and README contract; the expected changes are present and no concurrent drift affects this iteration.
 - **Verification:** source inspection, direct caller/consumer tracing, immediate reread, fresh second pass, exact PR patch review, and post-merge reconciliation. Local Cargo/gatekeeper/test/runtime commands were not executable because the repository is not mounted in the runtime and external GitHub DNS is unavailable; CI checks were queued on the PR, so no passing runtime/test evidence is claimed.
 - **Status:** `FS-22.06.89` complete and integrated on `main`.
-- **Next primary module iteration:** `FS-22.06.90` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
+### FS-22.06.90 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Shipping-profile compatibility namespace write integrity
+
+- **Base:** `8aed58a9f8ff97635f499403434e2c8689ff4626`; dedicated branch `audit/fs-22.06.90-shipping-profile-write-invariant` was created from refreshed `main`.
+- **Primary scope:** one production owner module only — write-side validation of the compatibility `shipping_profiles` namespace across shipping-option create/update metadata flows.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.90-01:** FS-22.06.89 rejected malformed `shipping_profiles` only when typed `allowed_shipping_profile_slugs` were supplied. The helper otherwise returned the metadata unchanged, so an ordinary shipping-option metadata create/update could still persist a scalar/array/null `shipping_profiles` namespace.
+- **Production remediation:** `apply_allowed_shipping_profiles_to_metadata` now validates a present `shipping_profiles` namespace even when the typed restriction field is absent. Valid namespace objects remain unchanged when no typed restriction is requested; unrelated scalar root metadata remains supported. Typed restrictions continue to replace only `allowed_slugs` inside a valid namespace.
+- **Call-site audit:** shipping-option create invokes the helper unconditionally; update invokes it whenever metadata or typed profile restrictions are changed. Both propagate the typed owner error before persistence.
+- **Compatibility reconciliation:** Commerce still consumes the Fulfillment projection, and the prior FS-22.06.73 read-side fail-closed behavior for malformed compatibility metadata remains unchanged.
+- **Regression coverage:** added tests for malformed scalar/array/null namespaces without typed restrictions, valid namespace preservation, and preservation of unrelated scalar root metadata.
+- **Immediate re-audit:** re-read the helper, all production call sites, existing `.89` tests, response extraction, and Commerce compatibility consumer. No alternate shipping-option metadata write path in the inspected owner surface bypasses the validation.
+- **Fresh second pass:** independently reviewed the owner DTOs, admin HTTP command path, shipping-profile existence validation, persistence entity/schema, and previous `.73/.76/.89` invariants. No additional owner-level defect was confirmed within this narrow namespace-shape boundary.
+- **Post-merge reconciliation:** PR #4466 was squash-merged as `c2b9f5c0b5d32b99b362ae5aa9e3b9023be10ad0`. Refreshed `main` at that merge commit and re-read the helper/tests/README; expected changes are present and no concurrent drift affects this iteration.
+- **Verification:** source inspection, caller/consumer tracing, immediate reread, fresh second pass, exact PR review, and post-merge reconciliation. Local Cargo/gatekeeper/test/runtime commands remain unavailable in the current runtime; CI/runtime success is not claimed.
+- **Status:** `FS-22.06.90` complete and integrated on `main`.
+- **Next primary module iteration:** `FS-22.06.91` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
 
