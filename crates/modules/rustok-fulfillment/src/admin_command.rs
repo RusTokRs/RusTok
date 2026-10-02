@@ -217,7 +217,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .ship_fulfillment(
+            .ship_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
                 ShipFulfillmentInput {
@@ -228,13 +228,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         .clone()
                         .unwrap_or(tracking_number),
                     items,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "ship",
-                    )?,
+                    metadata,
                 },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -378,7 +375,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .reship_fulfillment(
+            .reship_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
                 ReshipFulfillmentInput {
@@ -389,13 +386,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         .clone()
                         .unwrap_or(tracking_number),
                     items,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "reship",
-                    )?,
+                    metadata,
                 },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -490,18 +484,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .cancel_fulfillment(
+            .cancel_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
-                CancelFulfillmentInput {
-                    reason,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "cancel",
-                    )?,
-                },
+                CancelFulfillmentInput { reason, metadata },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -966,23 +954,6 @@ fn deserialize_provider_result(
             "fulfillment provider operation has an invalid persisted provider result",
         )
     })
-}
-
-fn local_commit_metadata(
-    input_metadata: Value,
-    provider_metadata: Value,
-    operation_id: Uuid,
-    operation: &'static str,
-) -> Result<Value, PortError> {
-    merge_metadata(
-        merge_metadata(input_metadata, provider_metadata)?,
-        serde_json::json!({
-            "provider_operation": {
-                "id": operation_id,
-                "operation": operation
-            }
-        }),
-    )
 }
 
 fn validate_provider_operation_metadata(metadata: &Value) -> Result<(), PortError> {

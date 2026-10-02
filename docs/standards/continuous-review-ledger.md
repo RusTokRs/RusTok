@@ -4286,5 +4286,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.93` complete and integrated on `main`.
 - **Next primary module iteration:** `FS-22.06.94` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
 
+### FS-22.06.94 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` provider receipt ownership at lifecycle service boundary
+
+- **Base:** refreshed `main` at `7f580d2218882937085fb862d8ac3f8a370756c4`; dedicated branch `audit/fs-22.06.94-fulfillment-receipt-boundary`.
+- **Primary scope:** one production owner module only — reserved `metadata.provider_operation` across public fulfillment lifecycle service entrypoints and the journal-backed provider result handoff used by the direct admin caller.
+- **Invariant map:** caller metadata must not forge owner-generated provider commit receipts; public owner-service lifecycle operations must not persist receipt-shaped metadata; only a crate-internal path tied to a journaled provider result may attach the authoritative receipt.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.94-01:** public `ship_fulfillment`, `reship_fulfillment`, and `cancel_fulfillment` accepted root `provider_operation` metadata directly. Unlike `deliver` and `reopen`, these public owner boundaries did not strip the reserved receipt before metadata merge/persistence. Database guards limited some invalid rows, but the owner API itself did not enforce the documented write-reservation contract and left behavior dependent on downstream persistence checks.
+- **Production remediation:** public `ship`/`reship`/`cancel` now delegate to internal lifecycle implementations that strip caller-supplied `provider_operation`. Added crate-internal `*_with_provider_result` paths that accept the already-journaled provider metadata and operation UUID, strip any receipt-shaped provider metadata, merge the structured result, and insert only the authoritative journal-owned receipt. The provider-backed admin caller now uses these internal paths instead of constructing receipts itself.
+- **Adjacent-boundary review:** the provider operation journal still supplies `journaled.operation_id`; provider result metadata remains validated as an object by the provider registry; the existing database trigger continues to require a same-tenant, same-fulfillment provider operation in an appropriate lifecycle state before a receipt can be committed.
+- **Immediate re-audit:** re-read all five fulfillment lifecycle write paths, the metadata merge/sanitization helpers, the provider-backed admin handoff, provider result validation, and the provider-operation persistence guards. Public lifecycle paths now remove reserved receipts, while only the three journal-backed internal handoffs can reattach one.
+- **Regression audit:** the receipt insertion is now centralized at the owner boundary, preventing the admin adapter and public service API from each having separate receipt-construction rules. The internal handoff rejects a nil journal operation identity and authoritative insertion overwrites any `provider_operation` key returned in provider metadata.
+- **Fresh second pass:** independently re-read the full lifecycle update blocks, all `provider_operation` references in the service/admin paths, the Fulfillment README invariant, and the integrated database trigger contract. No alternate public fulfillment-service receipt writer remains in the inspected module.
+- **Regression coverage:** added pure coverage proving a caller/provider-supplied receipt is replaced by the journal operation identity and that a nil journal identity is rejected.
+- **Documentation:** Fulfillment README now states that public lifecycle service entrypoints strip caller-supplied provider receipts and only crate-internal provider-result paths attach journal-owned receipts.
+- **Verification:** repository source inspection, lifecycle call-site tracing, migration/trigger reconciliation, immediate reread, fresh second pass, and branch diff review. Per the maintainer-owned test rule, no test suite, Cargo test, clippy, build, migration, gatekeeper, or runtime command was executed; no passing runtime/CI evidence is claimed.
+- **Status:** implementation complete on the dedicated branch; integration pending.
+
 
 

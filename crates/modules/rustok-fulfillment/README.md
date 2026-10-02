@@ -54,7 +54,7 @@
 - Fulfillment-item create inputs and checkout projections strip caller-supplied `metadata.audit` before persistence; lifecycle append is the sole owner path that creates item audit history.
 - All FulfillmentService entrypoints that accept tenant identity reject the nil UUID before persistence or tenant-scoped reads; tenant identity remains an explicit invariant of the owner service boundary.
 - Checkout fulfillment plan hashes are canonical lowercase 64-character hexadecimal values at the owner boundary; validation normalizes both incoming and persisted hashes so legacy typed rows with valid uppercase hex remain readable and adoptable.
-- `metadata.provider_operation` is write-reserved: fulfillment creation strips caller-supplied receipt data, while provider-backed lifecycle commands attach the receipt only after the provider operation has been journaled.
+- `metadata.provider_operation` is write-reserved: fulfillment creation and public lifecycle service entrypoints strip caller-supplied receipt data; only crate-internal provider-result lifecycle paths attach the journal-owned receipt after the provider operation has been journaled.
 - Shipping-option `provider_id` values use the canonical Fulfillment provider-registry identifier grammar at the owner boundary, so persisted options cannot contain provider IDs that the registry would later reject.
 - The broad `fulfillment/fulfillment_copy` readiness row is an aggregate classification only and must not be registered as a second Translation provider.
 - `carrier` and `tracking_number` are identifiers; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
