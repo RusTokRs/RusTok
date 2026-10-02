@@ -1,4 +1,4 @@
-use fly::ProjectHash;
+use fly::{ProjectHash, constant_time_eq};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -105,19 +105,35 @@ impl AuthenticatedInlineEditGrant {
         if self.is_expired(now_unix_ms) || request.expires_at_unix_ms <= now_unix_ms {
             return Err(InlineEditContractError::ExpiredGrant);
         }
-        if request.session_id != self.session_id
-            || request.page_id != self.page_id
-            || request.revision_id != self.revision_id
-            || request.expected_project_hash != self.expected_project_hash
-            || request.authorization_proof != self.authorization_proof
-            || request.expires_at_unix_ms != self.expires_at_unix_ms
-        {
+        // The proof is a secret, so it is compared in constant time and separately from the
+        // public fields. `!=` inside the `||` chain short-circuits on the first differing byte,
+        // and the chain's position made the timing depend on which field mismatched. The crate
+        // already ships `constant_time_eq` for exactly this; it simply was not used here.
+        let public_fields_match = request.session_id == self.session_id
+            && request.page_id == self.page_id
+            && request.revision_id == self.revision_id
+            && request.expected_project_hash == self.expected_project_hash
+            && request.expires_at_unix_ms == self.expires_at_unix_ms;
+        let proof_matches = constant_time_eq(
+            request.authorization_proof.as_bytes(),
+            self.authorization_proof.as_bytes(),
+        );
+        if !public_fields_match || !proof_matches {
             return Err(InlineEditContractError::GrantIdentityMismatch);
         }
         if request.sequence == 0 {
             return Err(InlineEditContractError::InvalidSequence);
         }
-        normalize_plain_text(request.value.clone())?;
+        // The value must already be in normal form. Validating a *copy* and discarding it, as
+        // this did, meant a request deserialized straight from JSON could pass validation and
+        // still carry a carriage return or a control character into stored page content.
+        let normalized = normalize_plain_text(request.value.clone())?;
+        if normalized != request.value {
+            return Err(InlineEditContractError::InvalidPlainText(
+                "value is not in normal form; submit it as the grant would have bound it"
+                    .to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -226,12 +242,46 @@ fn normalized_required(value: String, label: &str) -> Result<String, InlineEditC
     }
 }
 
+/// Characters that reorder or hide text without being visible themselves.
+///
+/// These survive HTML escaping untouched — escaping protects the *markup*, not the reader — so a
+/// right-to-left override embedded in page content can make rendered text read differently from
+/// the text that was stored and reviewed. This is the "Trojan Source" class of spoofing, and an
+/// inline editor that writes directly into published content is exactly where it pays off.
+const DISALLOWED_DIRECTIONALITY_CHARS: &[char] = &[
+    '\u{202a}', // LEFT-TO-RIGHT EMBEDDING
+    '\u{202b}', // RIGHT-TO-LEFT EMBEDDING
+    '\u{202c}', // POP DIRECTIONAL FORMATTING
+    '\u{202d}', // LEFT-TO-RIGHT OVERRIDE
+    '\u{202e}', // RIGHT-TO-LEFT OVERRIDE
+    '\u{2066}', // LEFT-TO-RIGHT ISOLATE
+    '\u{2067}', // RIGHT-TO-LEFT ISOLATE
+    '\u{2068}', // FIRST STRONG ISOLATE
+    '\u{2069}', // POP DIRECTIONAL ISOLATE
+];
+
 fn normalize_plain_text(value: String) -> Result<String, InlineEditContractError> {
     let value = value.replace("\r\n", "\n").replace('\r', "\n");
-    if value.contains('\0') {
-        return Err(InlineEditContractError::InvalidPlainText(
-            "NUL bytes are not allowed".to_string(),
-        ));
+
+    // `\n` and `\t` are the only control characters a plain-text field has any use for. The
+    // previous check rejected NUL alone, which let every other C0 and C1 control through.
+    if let Some(found) = value
+        .chars()
+        .find(|character| character.is_control() && *character != '\n' && *character != '\t')
+    {
+        return Err(InlineEditContractError::InvalidPlainText(format!(
+            "control character U+{:04X} is not allowed",
+            found as u32
+        )));
+    }
+    if let Some(found) = value
+        .chars()
+        .find(|character| DISALLOWED_DIRECTIONALITY_CHARS.contains(character))
+    {
+        return Err(InlineEditContractError::InvalidPlainText(format!(
+            "bidirectional control character U+{:04X} is not allowed",
+            found as u32
+        )));
     }
     if value.len() > MAX_INLINE_TEXT_BYTES {
         return Err(InlineEditContractError::InvalidPlainText(format!(
@@ -526,4 +576,104 @@ mod tests {
             Err(InlineEditContractError::InvalidPlainText(_))
         ));
     }
+
+    #[test]
+    fn control_characters_beyond_nul_are_rejected() {
+        // The previous check named NUL specifically, which let every other C0 and C1 control
+        // through into stored page content.
+        for bad in ["bell\u{7}", "escape\u{1b}[31m", "vertical\u{b}tab", "c1\u{85}next"] {
+            assert!(
+                matches!(
+                    grant().bind_request(1_000, 1, "hero", bad),
+                    Err(InlineEditContractError::InvalidPlainText(_))
+                ),
+                "accepted {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn newlines_and_tabs_remain_usable() {
+        // Rejecting controls must not make the field useless for actual prose.
+        let request = grant()
+            .bind_request(1_000, 1, "hero", "first line\nsecond\tcolumn")
+            .expect("plain text with newline and tab");
+        assert_eq!(request.value, "first line\nsecond\tcolumn");
+    }
+
+    #[test]
+    fn carriage_returns_are_still_normalized_rather_than_rejected() {
+        let request = grant()
+            .bind_request(1_000, 1, "hero", "a\r\nb\rc")
+            .expect("crlf is normalized");
+        assert_eq!(request.value, "a\nb\nc");
+    }
+
+    #[test]
+    fn bidirectional_overrides_are_rejected() {
+        // These survive HTML escaping untouched, so rendered text can read differently from the
+        // text that was stored and reviewed.
+        for bad in [
+            "safe\u{202e}gnp.exe",
+            "\u{2066}isolated\u{2069}",
+            "\u{202d}override",
+        ] {
+            assert!(
+                matches!(
+                    grant().bind_request(1_000, 1, "hero", bad),
+                    Err(InlineEditContractError::InvalidPlainText(_))
+                ),
+                "accepted {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_request_that_bypassed_binding_must_still_be_in_normal_form() {
+        // A request deserialized straight from JSON never went through `bind_request`.
+        // Validation used to normalize a copy and throw it away, so a carriage return reached
+        // stored content while validation reported success.
+        let grant = grant();
+        let mut request = grant
+            .bind_request(1_000, 1, "hero", "clean")
+            .expect("request");
+        request.value = "dirty\r\nvalue".to_string();
+
+        assert!(matches!(
+            grant.validate_request(&request, 1_000),
+            Err(InlineEditContractError::InvalidPlainText(_))
+        ));
+    }
+
+    #[test]
+    fn a_wrong_proof_is_rejected_as_an_identity_mismatch() {
+        let grant = grant();
+        let mut request = grant
+            .bind_request(1_000, 1, "hero", "clean")
+            .expect("request");
+        assert_eq!(grant.validate_request(&request, 1_000), Ok(()));
+
+        request.authorization_proof = "signed-proo".to_string();
+        assert_eq!(
+            grant.validate_request(&request, 1_000),
+            Err(InlineEditContractError::GrantIdentityMismatch)
+        );
+
+        request.authorization_proof = "Signed-proof".to_string();
+        assert_eq!(
+            grant.validate_request(&request, 1_000),
+            Err(InlineEditContractError::GrantIdentityMismatch)
+        );
+    }
+
+    #[test]
+    fn the_secret_never_appears_in_debug_output() {
+        let grant = grant();
+        let request = grant.bind_request(1_000, 1, "hero", "clean").expect("req");
+        for rendered in [format!("{grant:?}"), format!("{request:?}")] {
+            assert!(!rendered.contains("signed-proof"), "{rendered}");
+            assert!(rendered.contains("[REDACTED]"), "{rendered}");
+        }
+    }
 }
+

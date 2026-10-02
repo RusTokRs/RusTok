@@ -4,6 +4,10 @@
 //! Server-rendered hosts can embed the JavaScript asset and keep project state, commands,
 //! validation, persistence, and HTML rendering in Rust.
 
+// The entire Fly stack is safe Rust. `forbid` (not `deny`) so it cannot be re-enabled
+// locally with an `allow` attribute.
+#![forbid(unsafe_code)]
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
