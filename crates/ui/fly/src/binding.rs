@@ -1,3 +1,4 @@
+use crate::ComponentIndex;
 use crate::{
     ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
     is_valid_runtime_context_path, resolve_context_path,
@@ -216,6 +217,9 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
     let catalog = BindingCatalog::from_document(document);
     let mut diagnostics = Vec::new();
     let mut ids = BTreeSet::new();
+    // One traversal for the whole catalog. `contains_component` walks every page, and this loop
+    // called it once per binding.
+    let components = ComponentIndex::build(document);
 
     for binding in &catalog.bindings {
         if binding.id.trim().is_empty() {
@@ -248,7 +252,7 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
                 format!("runtime binding `{}` has an invalid target: {error}", binding.id),
             ));
         }
-        if !document.contains_component(&binding.component_id) {
+        if !components.contains(&binding.component_id) {
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_binding_target_missing",
