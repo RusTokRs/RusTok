@@ -661,6 +661,11 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} idempotency_key must be at most 191 characters"
         )));
     }
+    if !request.metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider `{provider_id}` {operation} metadata must be a JSON object"
+        )));
+    }
     Ok(())
 }
 
@@ -786,6 +791,17 @@ mod boundary_tests {
             tenant_id: Uuid::new_v4(),
             fulfillment_id: Uuid::new_v4(),
             idempotency_key: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_non_object_operation_request_metadata() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: Some("request-key".to_string()),
             metadata: Value::Null,
         };
         assert!(validate_operation_request("carrier", "ship", &request).is_err());
