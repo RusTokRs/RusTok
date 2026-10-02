@@ -1485,7 +1485,13 @@ fn apply_allowed_shipping_profiles_to_metadata(
     };
     let mut shipping_profiles = match metadata_object.remove("shipping_profiles") {
         Some(Value::Object(object)) => object,
-        _ => Map::new(),
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "shipping option shipping_profiles metadata namespace must be a JSON object"
+                    .to_string(),
+            ));
+        }
+        None => Map::new(),
     };
     shipping_profiles.insert(
         "allowed_slugs".to_string(),
@@ -2474,6 +2480,58 @@ mod tests {
             .and_then(Value::as_array)
             .map(Vec::len),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_rejects_malformed_existing_namespace() {
+        for malformed in [
+            serde_json::json!({"shipping_profiles": "legacy scalar"}),
+            serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
+            serde_json::json!({"shipping_profiles": null}),
+        ] {
+            assert!(
+                super::apply_allowed_shipping_profiles_to_metadata(
+                    malformed,
+                    Some(vec!["bulky".to_string()]),
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_preserves_existing_namespace_fields() {
+        let projected = super::apply_allowed_shipping_profiles_to_metadata(
+            serde_json::json!({
+                "customer_note": "keep",
+                "shipping_profiles": {
+                    "source": "legacy",
+                    "allowed_slugs": ["old"],
+                }
+            }),
+            Some(vec!["bulky".to_string(), "standard".to_string()]),
+        )
+        .expect("valid shipping-profile namespace should project");
+
+        assert_eq!(
+            projected.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            projected
+                .get("shipping_profiles")
+                .and_then(|value| value.get("source"))
+                .and_then(Value::as_str),
+            Some("legacy")
+        );
+        assert_eq!(
+            projected
+                .get("shipping_profiles")
+                .and_then(|value| value.get("allowed_slugs"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
         );
     }
 
