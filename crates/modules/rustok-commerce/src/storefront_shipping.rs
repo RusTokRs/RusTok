@@ -301,8 +301,16 @@ fn log_cart_delivery_group_enrichment_error(
 fn extract_allowed_shipping_profile_slugs_from_metadata(
     metadata: &Value,
 ) -> Option<BTreeSet<String>> {
-    let profiles = metadata.get("shipping_profiles")?.as_object()?;
-    let values = profiles.get("allowed_slugs")?.as_array()?;
+    let profiles = metadata.get("shipping_profiles")?;
+    let Some(profiles) = profiles.as_object() else {
+        return Some(BTreeSet::new());
+    };
+    let Some(values) = profiles.get("allowed_slugs") else {
+        return Some(BTreeSet::new());
+    };
+    let Some(values) = values.as_array() else {
+        return Some(BTreeSet::new());
+    };
     if values.is_empty() {
         return None;
     }
@@ -356,6 +364,39 @@ mod tests {
         let required_profiles = BTreeSet::from([String::from("bulky")]);
 
         assert!(is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+    }
+
+    #[test]
+    fn malformed_shipping_profile_metadata_fails_closed() {
+        let option = ShippingOptionResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Standard".to_string(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(999, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            allowed_shipping_profile_slugs: None,
+            metadata: serde_json::json!({
+                "shipping_profiles": "legacy scalar"
+            }),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            requested_locale: Some("en".to_string()),
+            effective_locale: Some("en".to_string()),
+            available_locales: vec!["en".to_string()],
+            translation_revision: "rev-1".to_string(),
+            translations: vec![crate::dto::ShippingOptionTranslationResponse {
+                locale: "en".to_string(),
+                name: "Standard".to_string(),
+            }],
+        };
+        let required_profiles = BTreeSet::from([String::from("default")]);
+
+        assert!(!is_shipping_option_compatible_with_profiles(
             &option,
             &required_profiles,
         ));
