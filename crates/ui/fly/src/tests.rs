@@ -261,3 +261,197 @@ proptest! {
         prop_assert_eq!(output, input);
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Property-based coverage
+//
+// The suite previously contained a single property (round-tripping one opaque scalar field),
+// which left the invariants that actually matter — escaping, URL policy agreement, id remapping,
+// history accounting — covered only by hand-picked examples. Each property below states an
+// invariant that example tests can only sample.
+// ---------------------------------------------------------------------------------------------
+
+/// Strings that exercise escaping: markup, quotes, CSS terminators, and benign text.
+fn hostile_text() -> impl Strategy<Value = String> {
+    prop_oneof![
+        Just("</style><script>alert(1)</script>".to_string()),
+        Just("</script><svg onload=alert(1)>".to_string()),
+        Just("\"><img src=x onerror=alert(1)>".to_string()),
+        Just("5 < 10 && 3 > 2".to_string()),
+        Just("--></style>".to_string()),
+        "[ -~]{0,40}".prop_map(|value| value.to_string()),
+        "[<>\"'&;{}()\\\\/*]{0,24}".prop_map(|value| value.to_string()),
+    ]
+}
+
+/// A component subtree of bounded size, with author-controlled ids, text and attributes.
+fn component_tree() -> impl Strategy<Value = Value> {
+    let leaf = (
+        "[a-z][a-z0-9-]{0,8}",
+        hostile_text(),
+        hostile_text(),
+    )
+        .prop_map(|(id, content, attribute)| {
+            json!({
+                "id": id,
+                "type": "text",
+                "content": content,
+                "components": [],
+                "attributes": { "title": attribute, "data-x": "static" }
+            })
+        });
+
+    leaf.prop_recursive(4, 24, 3, |inner| {
+        ("[a-z][a-z0-9-]{0,8}", prop::collection::vec(inner, 0..3)).prop_map(|(id, children)| {
+            json!({
+                "id": id,
+                "type": "section",
+                "components": children,
+                "style": { "margin-top": "4px" }
+            })
+        })
+    })
+}
+
+/// Build a complete project around a generated subtree.
+///
+/// `assets` and `styles` are spelled out because `GrapesProject` serializes them unconditionally;
+/// omitting them would make the round-trip property fail on a generator artefact rather than on a
+/// real defect.
+fn project_from(component: Value) -> Value {
+    json!({
+        "assets": [],
+        "styles": [],
+        "pages": [{
+            "id": "home",
+            "component": { "id": "root", "type": "wrapper", "components": [component] }
+        }]
+    })
+}
+
+proptest! {
+    /// Rendering must never let authored content escape into markup, whatever it contains.
+    ///
+    /// Stated as a property because the escaping bug this guards against (`component.id` landing
+    /// unescaped in a `<style>` selector) was invisible to every example test in the suite.
+    #[test]
+    fn rendering_never_emits_executable_markup_from_authored_content(tree in component_tree()) {
+        let document = match GrapesJsCodec::decode_value(project_from(tree)) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let rendered = match render_page(&document, &PageSelection::First, &RenderPolicy::default())
+        {
+            Ok(rendered) => rendered,
+            Err(_) => return Ok(()),
+        };
+        let html = rendered.document_html();
+        let lowered = html.to_ascii_lowercase();
+
+        prop_assert!(!lowered.contains("<script"), "script element in output: {html}");
+        prop_assert!(!lowered.contains("onerror="), "event handler in output: {html}");
+        prop_assert!(!lowered.contains("onload="), "event handler in output: {html}");
+        prop_assert!(!lowered.contains("<svg"), "raw svg in output: {html}");
+        // Exactly the one real closing tag; a second means the stylesheet broke out.
+        prop_assert_eq!(lowered.matches("</style>").count(), 1, "style breakout: {html}");
+        prop_assert!(!rendered.css.contains('<'), "raw `<` in css: {}", rendered.css);
+    }
+
+    /// Decoding then encoding must reproduce the input byte for byte.
+    #[test]
+    fn codec_round_trips_arbitrary_component_trees(tree in component_tree()) {
+        let input = project_from(tree);
+        let document = match GrapesJsCodec::decode_value(input.clone()) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let output = GrapesJsCodec::encode_value(&document).expect("encode");
+        prop_assert_eq!(output, input);
+    }
+
+    /// Ids accepted by validation must be safe to interpolate into a CSS selector unchanged.
+    ///
+    /// This ties the two halves of the id defence together: if `validate_identifier` ever admits
+    /// a character that `escape_css_attribute` has to escape, the two have drifted apart.
+    #[test]
+    fn accepted_identifiers_need_no_css_escaping(id in "[A-Za-z0-9_.:-]{1,64}") {
+        prop_assert!(validate_identifier(&id).is_ok(), "rejected {id}");
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{ "id": "home", "component": {
+                "id": "root", "type": "wrapper",
+                "components": [{ "id": id.clone(), "type": "section",
+                                 "style": { "margin-top": "1px" } }]
+            }}]
+        }))
+        .expect("decode");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
+        // The id appears verbatim in the selector: nothing needed escaping.
+        prop_assert!(
+            rendered.css.contains(&id),
+            "accepted id was escaped in css: {} / {}",
+            id,
+            rendered.css
+        );
+    }
+
+    /// Anything rejected as an identifier must never reach the stylesheet unescaped.
+    #[test]
+    fn rejected_identifiers_are_always_escaped(id in "[^\\x00-\\x1f]{1,24}") {
+        prop_assume!(validate_identifier(&id).is_err());
+        let document = match GrapesJsCodec::decode_value(json!({
+            "pages": [{ "id": "home", "component": {
+                "id": "root", "type": "wrapper",
+                "components": [{ "id": id, "type": "section",
+                                 "style": { "margin-top": "1px" } }]
+            }}]
+        })) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let rendered = match render_page(&document, &PageSelection::First, &RenderPolicy::default())
+        {
+            Ok(rendered) => rendered,
+            Err(_) => return Ok(()),
+        };
+        // An id is rejected here only because it contains a character outside the allow-list
+        // (the generated length is far below the limit), so it must not survive verbatim.
+        prop_assert!(!rendered.css.contains('<'));
+        prop_assert!(
+            !rendered.css.contains(&id),
+            "rejected id reached the stylesheet unescaped: {id} / {}",
+            rendered.css
+        );
+    }
+
+    /// Validation must account for every component, including ones it cannot type.
+    ///
+    /// The opaque bypass was precisely a violation of this: nodes existed but were not counted.
+    #[test]
+    fn every_component_is_counted_exactly_once(tree in component_tree()) {
+        let input = project_from(tree);
+        let expected = count_components(&input["pages"][0]["component"]);
+        let document = match GrapesJsCodec::decode_value(input) {
+            Ok(document) => document,
+            Err(_) => return Ok(()),
+        };
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        prop_assert_eq!(report.node_count, expected);
+    }
+}
+
+/// Count component-shaped nodes in raw project JSON, independently of the typed model.
+fn count_components(value: &Value) -> usize {
+    let mut total = 1;
+    if let Some(children) = value.get("components").and_then(Value::as_array) {
+        for child in children {
+            total += count_components(child);
+        }
+    }
+    total
+}
+

@@ -6,6 +6,12 @@ license.workspace = true
 description = "SSR and Web/Desktop Dioxus 0.6 adapter foundation for Fly visual editors"
 
 [features]
+# No renderer by default, unlike `fly-leptos` which defaults to `ssr`.
+#
+# The asymmetry is deliberate: Dioxus selects its renderer per target (`web` for wasm, `desktop`
+# for native) and enabling one by default would force it on every consumer. `fly-leptos` has a
+# meaningful server-side default, so it ships one. Both the non-default combinations are compiled
+# by the "Check Fly adapter feature combinations" job, because the default build exercises neither.
 default = []
 web = ["dioxus/web", "fly-web/wasm-client"]
 desktop = ["dioxus/desktop"]
@@ -17,3 +23,6 @@ fly-web = { path = "../web" }
 dioxus = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
+
+[lints]
+workspace = true

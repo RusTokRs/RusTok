@@ -5,9 +5,6 @@ on:
     branches: [main]
     paths:
       - "crates/ui/fly/**"
-      - "crates/ui/fly-ui/**"
-      - "crates/ui/fly-browser/**"
-      - "crates/ui/fly-leptos/**"
       - "crates/modules/rustok-page-builder/**"
       - "crates/modules/rustok-page-builder-storefront/**"
       - "crates/modules/rustok-pages/**"
@@ -22,9 +19,6 @@ on:
   pull_request:
     paths:
       - "crates/ui/fly/**"
-      - "crates/ui/fly-ui/**"
-      - "crates/ui/fly-browser/**"
-      - "crates/ui/fly-leptos/**"
       - "crates/modules/rustok-page-builder/**"
       - "crates/modules/rustok-page-builder-storefront/**"
       - "crates/modules/rustok-pages/**"
@@ -59,7 +53,11 @@ jobs:
         run: >-
           cargo fmt
           -p fly
+          -p fly-ui
+          -p fly-web
           -p fly-browser
+          -p fly-leptos
+          -p fly-dioxus
           -p rustok-page-builder-admin
           -p rustok-pages
           -p rustok-pages-admin
@@ -83,12 +81,43 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run Fly unit tests
-        run: cargo test -p fly --lib
+      - name: Run Fly core tests
+        run: cargo test -p fly --all-targets
 
+      # `--lib` used to be passed here, which silently skipped every integration test under
+      # `crates/ui/fly/browser/tests/` - eight adapter contract suites that never ran in CI.
       - name: Run Fly browser contract tests
         if: ${{ !cancelled() }}
-        run: cargo test -p fly-browser --lib
+        run: cargo test -p fly-browser --all-targets
+
+      - name: Run Fly UI and web runtime tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p fly-ui -p fly-web --all-targets
+
+      - name: Check Fly framework adapters
+        if: ${{ !cancelled() }}
+        run: cargo check -p fly-leptos -p fly-dioxus --all-targets
+
+      # The adapters' non-default features built in no job before this. `fly-leptos` defaults to
+      # `ssr` and `fly-dioxus` to no renderer at all, so the combinations below — the ones actually
+      # shipped — were never compiled by CI.
+      # The standalone extraction path. `fly` builds without `rustok-ui-i18n` only in this
+      # configuration, so without a job for it the self-contained locale resolver would rot
+      # exactly like the verification gates that no workflow ran.
+      - name: Check Fly without the platform i18n dependency
+        if: ${{ !cancelled() }}
+        run: |
+          cargo check -p fly --no-default-features --all-targets
+          cargo test -p fly --no-default-features --lib
+
+      - name: Check Fly adapter feature combinations
+        if: ${{ !cancelled() }}
+        run: |
+          cargo check -p fly-dioxus --features desktop
+          cargo check -p fly-leptos --no-default-features
+          rustup target add wasm32-unknown-unknown
+          cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web
+          cargo check --target wasm32-unknown-unknown -p fly-leptos --no-default-features --features wasm-client
 
       - name: Run Page Builder admin unit tests
         if: ${{ !cancelled() }}
@@ -116,7 +145,14 @@ jobs:
 
       - name: Lint Fly
         if: ${{ !cancelled() }}
-        run: cargo clippy -p fly --lib -- -D warnings
+        run: >-
+          cargo clippy
+          -p fly
+          -p fly-ui
+          -p fly-web
+          -p fly-leptos
+          -p fly-dioxus
+          --all-targets -- -D warnings
 
       - name: Lint Fly browser and Page Builder integrations
         if: ${{ !cancelled() }}
@@ -128,6 +164,50 @@ jobs:
           -p rustok-pages-admin
           -p rustok-pages-storefront
           --lib -- -D warnings
+
+      # The wasm-only code behind `cfg(target_arch = "wasm32")` compiled in no CI job before this.
+      - name: Check Fly browser runtime on wasm32
+        if: ${{ !cancelled() }}
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check --target wasm32-unknown-unknown -p fly-web --features wasm-client
+          cargo check --target wasm32-unknown-unknown -p fly-leptos --features wasm-client
+
+      - name: Verify Fly admin runtime
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-admin-runtime.mjs
+
+      - name: Verify Fly admin browser runtime
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-admin-browser-runtime.mjs
+
+      - name: Verify Fly command transactions
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-command-transactions.mjs
+
+      - name: Verify Fly snapshots
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-snapshots.mjs
+
+      - name: Verify Fly interaction capabilities
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-interaction-capabilities.mjs
+
+      - name: Verify Fly multilingual runtime
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-multilingual.mjs
+
+      - name: Verify every Fly gate is wired into CI
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-gates-are-wired.mjs
+
+      - name: Verify Fly standalone workspace template
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-standalone-workspace.mjs
+
+      - name: Verify Fly dependency boundaries
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-fly-dependency-boundaries.mjs
 
       - name: Verify current-only Pages runtime
         if: ${{ !cancelled() }}
@@ -164,3 +244,20 @@ jobs:
       - name: Verify capability denial response
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-fly-capability-denial-response.mjs
+
+  advisories:
+    name: Dependency advisories (advisory only)
+    runs-on: ubuntu-latest
+    # Non-blocking on purpose: the repository already carries a backlog of advisories on the
+    # default branch, so gating here would turn every Fly change red for unrelated reasons. The
+    # job exists so that a *newly introduced* advisory is visible in the PR instead of invisible.
+    # Flip `continue-on-error` to false once `cargo audit` is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
