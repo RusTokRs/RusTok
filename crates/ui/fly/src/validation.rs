@@ -1,3 +1,4 @@
+use crate::{ComponentIndex, ComponentNode};
 use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
 use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
@@ -31,6 +32,11 @@ pub struct ValidationReport {
     pub page_count: usize,
     pub asset_count: usize,
     pub style_rule_count: usize,
+    /// Components that could not be parsed into the typed model.
+    ///
+    /// Additive field: `#[serde(default)]` so older serialized reports still deserialize.
+    #[serde(default)]
+    pub opaque_component_count: usize,
 }
 
 impl ValidationReport {
@@ -90,13 +96,17 @@ pub fn validate_project(
     limits: ValidationLimits,
 ) -> ValidationReport {
     let mut report = ValidationReport::default();
+    // Built once and shared by the passes that need id lookups, instead of each of them walking
+    // the whole document per query.
+    let index = ComponentIndex::build(document);
     validate_pages(document, &mut report);
+    validate_opaque_components(document, &mut report);
     validate_components(document, registries, limits, &mut report);
     report
         .diagnostics
         .extend(validate_component_public_urls(document));
     validate_assets(document, &mut report);
-    validate_style_rules(document, &mut report);
+    validate_style_rules(document, &index, &mut report);
 
     if report.node_count > limits.maximum_nodes {
         report.diagnostics.push(ValidationDiagnostic {
@@ -257,6 +267,42 @@ pub fn validate_identifier(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Report components that degraded into [`ComponentNode::Opaque`].
+///
+/// `ComponentNode` is `#[serde(untagged)]`, so anything that fails to deserialize into the typed
+/// model silently becomes raw JSON. `ProjectGraph::visit_components` then skips it — and with it
+/// the entire subtree beneath it. The practical consequence is a validation bypass: an opaque
+/// subtree is not counted toward `maximum_nodes`, its nesting is not counted toward
+/// `maximum_depth`, and its component ids are checked neither for duplication nor for a valid
+/// character set. Surfacing it is the minimum; making the typed model total is tracked as H-2.
+fn validate_opaque_components(document: &ProjectDocument, report: &mut ValidationReport) {
+    fn walk(node: &ComponentNode, path: &str, report: &mut ValidationReport) {
+        match node {
+            ComponentNode::Object(object) => {
+                for (index, child) in object.children().iter().enumerate() {
+                    walk(child, &format!("{path}.components[{index}]"), report);
+                }
+            }
+            ComponentNode::Opaque(_) => {
+                report.opaque_component_count += 1;
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Warning,
+                    "opaque_component",
+                    path,
+                    "component does not match the typed model and is preserved verbatim; it and \
+                     everything nested inside it are excluded from id, depth and node-count checks",
+                ));
+            }
+        }
+    }
+
+    for (page_index, page) in document.project.pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            walk(root, &format!("pages[{page_index}].component"), report);
+        }
+    }
+}
+
 fn validate_components(
     document: &ProjectDocument,
     registries: &RegistrySet,
@@ -409,14 +455,19 @@ fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
     }
 }
 
-fn validate_style_rules(document: &ProjectDocument, report: &mut ValidationReport) {
+fn validate_style_rules(
+    document: &ProjectDocument,
+    index: &ComponentIndex,
+    report: &mut ValidationReport,
+) {
     let catalog = StyleRuleCatalog::from_document(document);
     report.style_rule_count = catalog.rules.len() + catalog.unknown_entries.len();
     let mut identities = BTreeSet::new();
-    for (index, rule) in catalog.rules.iter().enumerate() {
-        let path = format!("styles[{index}]");
+    for (rule_index, rule) in catalog.rules.iter().enumerate() {
+        let path = format!("styles[{rule_index}]");
         if let Some(component_id) = rule.component_id.as_deref() {
-            if !document.contains_component(component_id) {
+            // Was `document.contains_component(...)`, i.e. a full walk of every page per rule.
+            if !index.contains(component_id) {
                 report.diagnostics.push(diagnostic(
                     ValidationSeverity::Warning,
                     "orphan_component_style_rule",
@@ -790,6 +841,44 @@ mod tests {
                 patch: crate::ComponentPatch::default(),
             })
             .expect("document remains editable");
+    }
+
+    #[test]
+    fn opaque_components_are_reported_as_a_validation_blind_spot() {
+        // `ComponentNode` is untagged, so a component that does not fit the typed model becomes
+        // raw JSON and the typed walker skips its whole subtree. Until the model is total, the
+        // least we can do is say so out loud.
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "ok", "type": "section" },
+                        ["this is not a component object"]
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert_eq!(report.opaque_component_count, 1);
+        let opaque = report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "opaque_component")
+            .expect("opaque diagnostic");
+        assert_eq!(opaque.path, "pages[0].component.components[1]");
+
+        // The typed walker never saw it: only `root` and `ok` were counted.
+        assert_eq!(report.node_count, 2);
     }
 }
 

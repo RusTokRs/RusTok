@@ -183,7 +183,7 @@ pub fn render_page(
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
-        render_project_styles(document, page)
+        render_project_styles(document, page, policy)
     } else {
         String::new()
     };
@@ -305,7 +305,7 @@ fn render_component(
     {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -329,7 +329,11 @@ fn render_component(
     output.push('>');
 }
 
-fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> String {
+fn render_project_styles(
+    document: &ProjectDocument,
+    page: &ProjectPage,
+    policy: &RenderPolicy,
+) -> String {
     let mut component_ids = Vec::new();
     if let Some(root) = page.component.as_ref() {
         root.collect_ids(&mut component_ids);
@@ -347,7 +351,7 @@ fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> Stri
         let declarations = rule
             .declarations
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if declarations.is_empty() {
@@ -370,12 +374,12 @@ fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> Stri
         }
     }
     if let Some(root) = page.component.as_ref() {
-        append_component_style_rules(root, &mut css);
+        append_component_style_rules(root, policy, &mut css);
     }
     css
 }
 
-fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
+fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css: &mut String) {
     let ComponentNode::Object(component) = node else {
         return;
     };
@@ -385,7 +389,7 @@ fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
     ) {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -397,7 +401,7 @@ fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
         }
     }
     for child in component.children() {
-        append_component_style_rules(child, css);
+        append_component_style_rules(child, policy, css);
     }
 }
 
@@ -557,7 +561,21 @@ fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bo
 
 
 
-fn safe_style(name: &str, value: &Value) -> Option<String> {
+/// Properties that can execute script regardless of their value.
+const DENIED_STYLE_PROPERTIES: &[&str] = &[
+    "behavior",
+    "-moz-binding",
+    "-ms-behavior",
+    "expression",
+];
+
+/// Decide whether a single CSS declaration may be emitted.
+///
+/// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
+/// `background-image` unusable. References are now allowed when the URL inside them satisfies the
+/// same resource policy the renderer applies to `src`, so `url(/hero.png)` works while
+/// `url(javascript:...)` and `url(data:text/html,...)` remain blocked.
+fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
     if name.is_empty()
         || name.starts_with("--")
         || !name
@@ -566,32 +584,110 @@ fn safe_style(name: &str, value: &Value) -> Option<String> {
     {
         return None;
     }
+    // These properties execute code by design, so no value is safe. Previously they were blocked
+    // only as a side effect of banning `url(` outright; now that safe references are permitted,
+    // the property itself has to be refused.
+    if DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str()) {
+        return None;
+    }
     let value = scalar_string(value)?;
-    let normalized = value.to_ascii_lowercase();
-    let compact = normalized
+    if value.chars().any(char::is_control) {
+        return None;
+    }
+
+    // Validate and blank out every `url(...)` token *before* the structural check, because a
+    // legitimate data-image reference legally contains `;` (`data:image/png;base64,...`) and the
+    // structural check must not see it. Characters that are dangerous *inside* a reference are
+    // rejected by `url_allowed` and by the stricter check in the stripping pass.
+    let without_urls = validate_and_strip_url_tokens(&value, policy)?;
+
+    // Structural characters in what remains are what would let a declaration escape into a new
+    // rule or a comment.
+    if without_urls.contains('\\')
+        || without_urls.contains('<')
+        || without_urls.contains('>')
+        || without_urls.contains(';')
+        || without_urls.contains('{')
+        || without_urls.contains('}')
+        || without_urls.contains("/*")
+        || without_urls.contains("*/")
+    {
+        return None;
+    }
+
+    let compact = without_urls
+        .to_ascii_lowercase()
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
     if compact.contains("expression(")
         || compact.contains("javascript:")
-        || compact.contains("url(")
         || compact.contains("@import")
         || compact.contains("behavior:")
         || compact.contains("-moz-binding")
         || compact.contains("data:")
-        || value.contains('\\')
-        || value.contains('<')
-        || value.contains('>')
-        || value.contains(';')
-        || value.contains('{')
-        || value.contains('}')
-        || value.contains("/*")
-        || value.contains("*/")
-        || value.chars().any(char::is_control)
+        || compact.contains("url(")
     {
         return None;
     }
+
     Some(format!("{name}:{value}"))
+}
+
+/// Replace each well-formed `url(...)` token with a placeholder, rejecting the declaration if any
+/// of them fails the resource URL policy.
+fn validate_and_strip_url_tokens(value: &str, policy: &RenderPolicy) -> Option<String> {
+    let lowered = value.to_ascii_lowercase();
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+
+    while let Some(offset) = lowered[cursor..].find("url(") {
+        let start = cursor + offset;
+        // Something like `blurl(` is not a reference; require a non-identifier character before.
+        let preceded_by_identifier = value[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
+        if preceded_by_identifier {
+            output.push_str(&value[cursor..start + 4]);
+            cursor = start + 4;
+            continue;
+        }
+
+        let open = start + 4;
+        // An unterminated reference is rejected outright rather than guessed at.
+        let close = value[open..].find(')')? + open;
+        let raw = value[open..close].trim();
+        let unquoted = raw
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+            .or_else(|| {
+                raw.strip_prefix('\'')
+                    .and_then(|rest| rest.strip_suffix('\''))
+            })
+            .unwrap_or(raw);
+
+        // `;` is legal inside a data URL, but these would still let the reference break out of
+        // the declaration or open a comment.
+        if unquoted.is_empty()
+            || unquoted.contains('{')
+            || unquoted.contains('}')
+            || unquoted.contains('<')
+            || unquoted.contains('>')
+            || unquoted.contains("/*")
+            || unquoted.contains("*/")
+            || !safe_url::url_allowed(unquoted, UrlAttributeKind::Resource, &policy.url_policy())
+        {
+            return None;
+        }
+
+        output.push_str(&value[cursor..start]);
+        output.push_str("url-ok");
+        cursor = close + 1;
+    }
+
+    output.push_str(&value[cursor..]);
+    Some(output)
 }
 
 fn safe_media_query(query: &str) -> bool {
@@ -909,14 +1005,18 @@ mod tests {
 
     #[test]
     fn style_policy_rejects_resource_loading_and_custom_properties() {
-        assert!(safe_style("color", &Value::String("red".to_string())).is_some());
+        let policy = RenderPolicy::default();
+        assert!(safe_style("color", &Value::String("red".to_string()), &policy).is_some());
         for (name, value) in [
             ("--payload", "red"),
             ("background", "u r l(https://evil.example/x)"),
             ("color", "\\75rl(https://evil.example/x)"),
             ("behavior", "url(x.htc)"),
         ] {
-            assert!(safe_style(name, &Value::String(value.to_string())).is_none());
+            assert!(
+                safe_style(name, &Value::String(value.to_string()), &policy).is_none(),
+                "accepted {name}: {value}"
+            );
         }
     }
 
@@ -983,6 +1083,63 @@ mod tests {
         assert!(!head.contains("data:image/svg"));
         assert!(!head.contains("canonical"));
         assert!(!head.contains("og:image"));
+    }
+
+    #[test]
+    fn safe_url_references_are_allowed_in_declarations() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "url(/hero.png)",
+            "url(\"/hero.png\")",
+            "url('/hero.png')",
+            "url(https://cdn.example/hero.png)",
+            "url(  /hero.png  )",
+            "linear-gradient(red, blue), url(/hero.png)",
+            "url(data:image/png;base64,iVBORw0KGgo=)",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy)
+                    .is_some(),
+                "rejected legitimate {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn hostile_url_references_are_still_refused() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "url(javascript:alert(1))",
+            "url(data:text/html;base64,PHNjcmlwdD4=)",
+            "url(//attacker.example/x.png)",
+            "url()",
+            "url(/a.png) ; background: url(javascript:alert(1))",
+            "url(/unterminated.png",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy)
+                    .is_none(),
+                "accepted hostile {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_disabled_resource_scheme_also_disables_it_inside_url() {
+        // The declaration path must honour the same policy flags as the attribute path, rather
+        // than quietly applying a more permissive rule of its own.
+        let policy = RenderPolicy {
+            allow_data_images: false,
+            ..RenderPolicy::default()
+        };
+        assert!(
+            safe_style(
+                "background-image",
+                &Value::String("url(data:image/png;base64,iVBORw0KGgo=)".to_string()),
+                &policy
+            )
+            .is_none()
+        );
     }
 
     #[test]
