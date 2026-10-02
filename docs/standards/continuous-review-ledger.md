@@ -4303,7 +4303,22 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** PR #4470 was squash-merged as `6bc7a0201ae1f240898fb970d94c531445a68469`. Refreshed `main` at that merge SHA and re-read the changed Fulfillment service/admin paths plus the README invariant; the provider receipt handoff is present with no concurrent drift.
 - **Verification:** repository source inspection, exact PR diff review, and post-merge source reconciliation. No test suite, Cargo test, clippy, build, migration, gatekeeper, or runtime command was executed by the agent under the maintainer-owned test rule; no passing runtime/CI evidence is claimed.
 - **Status:** `FS-22.06.94` complete and integrated on `main`.
-- **Next primary module iteration:** `FS-22.06.95` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
+### FS-22.06.95 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` typed shipping-profile allow-list validation
+
+- **Base:** refreshed `main` at `535ad1b6802d7b7a0914b49a3ad7d693f19a1530`; dedicated branch `audit/fs-22.06.95-fulfillment-profile-allowlist-v2`.
+- **Primary scope:** one Fulfillment owner boundary — normalization of typed `allowed_shipping_profile_slugs` — reconciled against the canonical Commerce shipping-profile DTO/compatibility contract.
+- **Confirmed finding FULFILLMENT-22.06.95-01:** the Fulfillment normalizer previously used `filter_map(normalize_shipping_profile_slug)`, so blank or whitespace-only entries were silently removed. Because the established compatibility contract treats an explicit empty allow-list as unrestricted, malformed input such as `Some(["   "])` was converted into `Some([])`, unintentionally dropping the restriction instead of rejecting invalid input. Mixed lists could also silently discard malformed entries.
+- **Production remediation:** the owner normalizer now returns `FulfillmentResult<Option<Vec<String>>>`, rejects blank/whitespace-only entries, rejects entries longer than the shipping-profile owner's 64-character limit, and preserves explicit `Some([])` as the intentional unrestricted state. Valid entries retain trim/lowercase/deduplication semantics.
+- **Call-site audit:** both production callers in `create_shipping_option` and `update_shipping_option` now propagate the validation error before metadata projection/persistence.
+- **Compatibility reconciliation:** the 64-character bound matches `CreateShippingProfileInput.slug` / update validation in the Commerce owner; empty-list semantics remain aligned with the existing storefront compatibility predicate, which treats a valid empty allow-list as unrestricted while malformed persisted metadata remains fail-closed.
+- **Regression coverage:** added focused tests for blank-entry rejection, preservation of explicit empty unrestricted state, and the 64-character boundary.
+- **Immediate re-audit:** re-read the complete normalizer, both production callers, the adjacent metadata projection/extractor, and the new tests. A transient duplicate `#[test]`/annotation regression from the first branch attempt was caught during this re-audit; the stale branch was superseded and the refreshed branch was recreated from current `main` with the pre-existing test annotation restored.
+- **Fresh second pass:** re-compared the final branch against current `main`, verified exactly one production file is changed, exactly two production normalizer callers remain, and no new test annotation duplication exists.
+- **CI verification:** PR #4472 required `Migration harness approval` and `Repository ruleset contract`; both completed successfully. The Fulfillment PostgreSQL evidence job reached the focused rustfmt gate and failed only on three pre-existing formatting differences elsewhere in `fulfillment.rs` (current-main lines around 2674 and 2966/2975), not on the changed allow-list lines; compile/test steps were therefore skipped by that workflow. Repository-wide CI failures observed concurrently were likewise outside this change surface.
+- **Local verification limitation:** the current agent runtime has no repository checkout, so local Cargo/check/test/clippy commands were not executable; no local passing runtime/test evidence is claimed.
+- **Post-merge reconciliation:** PR #4472 was squash-merged as `aa556c618d37db71360d4d80508770ebb318198f`. Refreshed `main` at that merge SHA and re-verified that the expected Fulfillment changes are present.
+- **Status:** `FS-22.06.95` complete and integrated on `main`.
+- **Next primary module iteration:** `FS-22.06.96` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
 
 
 
