@@ -20,6 +20,7 @@ rustok-graphql.workspace = true
 rustok-navigation = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
+rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }
 web-sys = { version = "0.3", features = ["Location", "Window"] }

@@ -77,6 +77,13 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::TranslationMemory,
         Resource::TranslationGlossaries,
         Resource::Navigation,
+        Resource::Fulfillments,
+        Resource::Payments,
+        Resource::Regions,
+        Resource::Profiles,
+        Resource::Groups,
+        Resource::MarketplaceSellers,
+        Resource::MarketplaceListings,
     ])
 });
 
@@ -112,6 +119,13 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::TranslationMemory,
         Resource::TranslationGlossaries,
         Resource::Navigation,
+        Resource::Fulfillments,
+        Resource::Payments,
+        Resource::Regions,
+        Resource::Profiles,
+        Resource::Groups,
+        Resource::MarketplaceSellers,
+        Resource::MarketplaceListings,
     ]);
 
     permissions.insert(Permission::MODULES_READ);

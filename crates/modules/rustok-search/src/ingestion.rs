@@ -462,8 +462,8 @@ mod tests {
             handle: "public-author".to_string(),
             locale: Some("en".to_string()),
         }));
-        assert!(!handler.handles(&DomainEvent::UserDeleted {
-            user_id: Uuid::new_v4(),
+        assert!(!handler.handles(&DomainEvent::CategoryCreated {
+            category_id: Uuid::new_v4(),
         }));
     }
 }

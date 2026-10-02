@@ -15,6 +15,11 @@ focused fixture enforce the guard ordering and reject silent availability decode
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 
+## Contract and error policy completion
+
+- [x] Expand capability matrix and contract tests
+- [x] Finalize search-facing error catalog and validation policy
+
 ## Current state
 
 `rustok-search` owns normalized search documents, PostgreSQL FTS, catalog, Blog,

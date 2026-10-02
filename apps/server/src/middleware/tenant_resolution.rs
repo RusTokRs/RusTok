@@ -11,7 +11,6 @@ use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
     settings::{
         RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile,
-        TenantSettings,
     },
 };
 

@@ -1,0 +1,17 @@
+events-badge = events
+events-title = События
+events-subtitle = Выберите глобальный профиль доставки. Настройки подключения Iggy управляются модулем Iggy Connector.
+events-header-eyebrow = Модуль платформы
+events-profile-outbox = Outbox
+events-profile-outbox-description = Транзакционный outbox в базе данных с легковесным in-process relay.
+events-profile-outbox-iggy = Outbox + Iggy
+events-profile-outbox-iggy-description = Транзакционный outbox с relay в Iggy для высоконагруженных сценариев.
+events-active-profile = Активный профиль
+events-desired-profile = Желаемый профиль
+events-iggy-connector = Коннектор Iggy
+events-iggy-ready = готов
+events-iggy-config-required = требуется настройка
+events-save-profile = Сохранить профиль
+events-saving = Сохранение...
+events-saved = Профиль обновлен
+events-error = Не удалось сохранить профиль

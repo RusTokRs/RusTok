@@ -42,7 +42,7 @@ fn durable_inbox_stores_replayable_envelopes_and_terminal_state() {
 fn forum_events_are_strictly_ordered_by_envelope_revision() {
     for marker in [
         "status IN ('pending', 'retryable_error')",
-        "ORDER BY revision_at ASC, event_id ASC",
+        "ORDER BY ingest_sequence ASC",
         "FOR UPDATE",
         "due_at > Utc::now()",
         "return Ok(None)",
@@ -51,7 +51,7 @@ fn forum_events_are_strictly_ordered_by_envelope_revision() {
         "search:{FORUM_SOURCE_MODULE}:{tenant_id}:{FULL_SCOPE_KEY}",
         "load_effective_watermark",
         "load_watermark(transaction, tenant_id, FULL_SCOPE_KEY)",
-        "incoming_event_id.as_bytes() > watermark_event_id.as_bytes()",
+        "ingest_sequence <= watermark_sequence",
         "Some(\"stale_revision\")",
         "ON CONFLICT (tenant_id, source_module, scope_key)",
         "MAX_ATTEMPTS: u32 = 12",

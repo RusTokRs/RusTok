@@ -15615,6 +15615,7 @@ dependencies = [
  "leptos_axum",
  "rustok-api",
  "rustok-graphql",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
 ]
@@ -15947,6 +15948,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-iggy-connector",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
 ]
@@ -16739,6 +16741,7 @@ dependencies = [
  "rustok-navigation",
  "rustok-tenant",
  "rustok-ui-core",
+ "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
  "web-sys",

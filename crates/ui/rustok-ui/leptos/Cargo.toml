@@ -10,7 +10,7 @@ description = "SSR-first Leptos 0.8 design system adapter for RusToK UI"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["ssr"]
+default = []
 ssr = ["leptos/ssr"]
 hydrate = ["leptos/hydrate"]
 csr = ["leptos/csr"]

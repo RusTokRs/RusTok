@@ -21,5 +21,6 @@ rustok-api = { workspace = true, default-features = false }
 rustok-graphql.workspace = true
 rustok-iggy-connector = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
+rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }

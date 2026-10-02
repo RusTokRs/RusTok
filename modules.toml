@@ -88,7 +88,7 @@ flex = { crate = "flex", source = "path", path = "crates/modules/flex" }
 # Capability extensions are deployment-scoped `RusToKModule` entries. They are
 # globally active when compiled and never tenant-toggled; the generic
 # runtime-extension host seam composes their handles and workers.
-ai = { crate = "rustok-ai", source = "path", path = "crates/modules/rustok-ai", runtime = "extension" }
+ai = { crate = "rustok-ai", source = "path", path = "crates/modules/rustok-ai", required = true, runtime = "extension" }
 iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/modules/rustok-iggy-connector", runtime = "extension" }
 
 [settings]

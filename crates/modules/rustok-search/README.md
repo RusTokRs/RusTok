@@ -85,7 +85,7 @@ transport-local Blog route builder, or compatibility URL implementation.
 | Dictionaries | dictionary queries/mutations | Operators | Tenant-owned synonyms, stop words, and pin rules |
 | Settings/rebuild | `triggerSearchRebuild` and settings mutations | Operators | Permission-gated and event-published |
 
-## Validation and error policy
+## Error catalog and validation policy
 
 - Invalid engines, ranking profiles, presets, filters, dictionary values, UUIDs,
   and malformed route payloads are rejected before execution.

@@ -5,7 +5,14 @@ use std::path::{Path, PathBuf};
 
 pub fn default_manifest_path() -> PathBuf {
     if let Ok(path) = std::env::var("RUSTOK_MODULES_MANIFEST") {
-        return PathBuf::from(path);
+        let p = PathBuf::from(path);
+        if p.is_absolute() {
+            return p;
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            return cwd.join(p);
+        }
+        return p;
     }
 
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules.toml")
@@ -18,9 +25,7 @@ pub fn module_package_manifest_path(spec: &ManifestModuleSpec) -> Option<PathBuf
 
     let module_path = spec.path.as_ref()?;
     Some(
-        default_manifest_path()
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
+        workspace_root_path()
             .join(module_path)
             .join("rustok-module.toml"),
     )
@@ -33,18 +38,18 @@ pub fn module_root_path(spec: &ManifestModuleSpec) -> Option<PathBuf> {
 
     let module_path = spec.path.as_ref()?;
     Some(
-        default_manifest_path()
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
+        workspace_root_path()
             .join(module_path),
     )
 }
 
 pub fn workspace_root_path() -> PathBuf {
-    default_manifest_path()
+    let manifest = default_manifest_path();
+    let parent = manifest
         .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    parent.to_path_buf()
 }
 
 pub fn resolve_module_contract_path(

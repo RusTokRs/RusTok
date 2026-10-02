@@ -38,6 +38,7 @@ async fn forum_storefront_search_native(
     .await
 }
 
+#[cfg(feature = "ssr")]
 async fn execute_forum_storefront_search_native(
     query: String,
     locale: Option<String>,

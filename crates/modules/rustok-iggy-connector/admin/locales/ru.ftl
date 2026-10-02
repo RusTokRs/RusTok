@@ -1,0 +1,15 @@
+iggy-badge = iggy
+iggy-title = Коннектор Iggy
+iggy-subtitle = Выберите встроенный Iggy или подключение к внешнему кластеру.
+iggy-eyebrow = Модуль возможностей
+iggy-mode-bundled = Встроенный
+iggy-mode-bundled-desc = Использовать артефакт сервера Iggy, установленный с этим модулем.
+iggy-mode-external = Внешний
+iggy-mode-external-desc = Подключиться к развертыванию Iggy, управляемому оператором.
+iggy-active-mode = Активный режим
+iggy-desired-mode = Желаемый режим
+iggy-status = Статус
+iggy-save = Сохранить конфигурацию
+iggy-saving = Сохранение...
+iggy-saved = Конфигурация сохранена
+iggy-error = Не удалось сохранить конфигурацию

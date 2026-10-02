@@ -1,0 +1,15 @@
+iggy-badge = iggy
+iggy-title = Iggy Connector
+iggy-subtitle = Choose bundled Iggy or connect to an external deployment.
+iggy-eyebrow = Capability module
+iggy-mode-bundled = Bundled
+iggy-mode-bundled-desc = Use the Iggy server artifact installed with this module.
+iggy-mode-external = External
+iggy-mode-external-desc = Connect to an operator-managed Iggy deployment.
+iggy-active-mode = Active mode
+iggy-desired-mode = Desired mode
+iggy-status = Status
+iggy-save = Save configuration
+iggy-saving = Saving...
+iggy-saved = Configuration saved
+iggy-error = Failed to save configuration

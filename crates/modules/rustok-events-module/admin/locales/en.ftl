@@ -1,0 +1,17 @@
+events-badge = events
+events-title = Events
+events-subtitle = Choose one global delivery profile. Iggy connection settings remain owned by the Iggy Connector module.
+events-header-eyebrow = Platform module
+events-profile-outbox = Outbox
+events-profile-outbox-description = Transactional database outbox with a lightweight in-process relay.
+events-profile-outbox-iggy = Outbox + Iggy
+events-profile-outbox-iggy-description = Transactional outbox with Iggy relay for high-throughput workloads.
+events-active-profile = Active profile
+events-desired-profile = Desired profile
+events-iggy-connector = Iggy connector
+events-iggy-ready = ready
+events-iggy-config-required = configuration required
+events-save-profile = Save profile
+events-saving = Saving...
+events-saved = Profile updated
+events-error = Failed to save profile
