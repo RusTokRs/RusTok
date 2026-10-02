@@ -192,11 +192,7 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         "fulfillment.error.saveShippingOption",
         "Failed to save shipping option",
     );
-    let locale_unavailable_label = t(
-        ui_locale.as_deref(),
-        "fulfillment.error.localeUnavailable",
-        "Host locale is unavailable.",
-    );
+
     let toggle_error_label = t(
         ui_locale.as_deref(),
         "fulfillment.error.changeShippingOptionStatus",
@@ -313,10 +309,8 @@ pub fn FulfillmentAdmin() -> impl IntoView {
             set_error.set(Some(submit_bootstrap_loading_label.clone()));
             return;
         };
-        let Some(submit_locale) = submit_ui_locale.clone() else {
-            set_error.set(Some(locale_unavailable_label.clone()));
-            return;
-        };
+        let submit_locale = submit_ui_locale.clone().unwrap_or_else(|| "en".to_string());
+
         let draft = ShippingOptionDraft {
             name: name.get_untracked().trim().to_string(),
             currency_code: currency_code.get_untracked().trim().to_string(),

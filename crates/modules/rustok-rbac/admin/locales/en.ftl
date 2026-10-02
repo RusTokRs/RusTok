@@ -4,7 +4,11 @@ rbac-error-loadBootstrap = Failed to load RBAC bootstrap
 rbac-info-role = Role
 rbac-info-tenant = Tenant
 rbac-info-userId = User ID
-rbac-permissions-count = permissions
+rbac-permissions-count =
+    { $count ->
+        [one] { $count } permission
+       *[other] { $count } permissions
+    }
 rbac-permissions-subtitle = Live snapshot derived from the current security context.
 rbac-permissions-title = Granted Permissions
 rbac-roles-title = Built-in Roles

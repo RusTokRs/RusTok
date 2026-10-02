@@ -833,8 +833,13 @@ fn format_product_meta(locale: Option<&str>, product: &InventoryProductListItem)
         .clone()
         .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
     format!(
-        "handle: {} | vendor: {} | type: {}",
-        product.handle, vendor, product_type
+        "{}: {} | {}: {} | {}: {}",
+        t(locale, "inventory.field.handle", "handle"),
+        product.handle,
+        t(locale, "inventory.field.vendor", "vendor"),
+        vendor,
+        t(locale, "inventory.field.productType", "type"),
+        product_type
     )
 }
 
@@ -847,8 +852,13 @@ fn format_variant_identity(locale: Option<&str>, variant: &InventoryVariant) -> 
         .barcode
         .clone()
         .unwrap_or_else(|| t(locale, "inventory.common.notSet", "not set"));
-    format!("sku: {sku} | barcode: {barcode}")
+    format!(
+        "{}: {sku} | {}: {barcode}",
+        t(locale, "inventory.field.sku", "sku"),
+        t(locale, "inventory.field.barcode", "barcode"),
+    )
 }
+
 
 fn format_variant_price(locale: Option<&str>, variant: &InventoryVariant) -> String {
     if variant.prices.is_empty() {
@@ -1245,4 +1255,46 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn format_product_meta_and_variant_identity_localize_correctly() {
+        let product = InventoryProductListItem {
+            id: "p1".to_string(),
+            title: "T-Shirt".to_string(),
+            handle: "t-shirt".to_string(),
+            status: "ACTIVE".to_string(),
+            vendor: Some("Acme".to_string()),
+            product_type: Some("apparel".to_string()),
+            shipping_profile_slug: None,
+            tags: vec![],
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            published_at: None,
+        };
+
+        let meta_en = format_product_meta(Some("en"), &product);
+        assert_eq!(meta_en, "handle: t-shirt | vendor: Acme | type: apparel");
+
+        let meta_ru = format_product_meta(Some("ru"), &product);
+        assert_eq!(meta_ru, "handle: t-shirt | производитель: Acme | тип: apparel");
+
+        let variant = InventoryVariant {
+            id: "v1".to_string(),
+            title: "M".to_string(),
+            sku: Some("TSHIRT-M".to_string()),
+            barcode: Some("12345678".to_string()),
+            shipping_profile_slug: None,
+            combination_identity: None,
+            prices: vec![],
+            inventory_quantity: 10,
+            inventory_policy: "deny".to_string(),
+            in_stock: true,
+        };
+
+        let id_en = format_variant_identity(Some("en"), &variant);
+        assert_eq!(id_en, "sku: TSHIRT-M | barcode: 12345678");
+
+        let id_ru = format_variant_identity(Some("ru"), &variant);
+        assert_eq!(id_ru, "артикул: TSHIRT-M | штрихкод: 12345678");
+    }
 }
+

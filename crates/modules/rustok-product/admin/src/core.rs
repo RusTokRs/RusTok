@@ -2369,6 +2369,10 @@ mod tests {
     use super::*;
     use crate::model::{CurrentTenant, CurrentUser};
 
+    fn without_bidi_isolates(value: &str) -> String {
+        value.replace(['\u{2068}', '\u{2069}'], "")
+    }
+
     fn admin_bootstrap() -> ProductAdminBootstrap {
         ProductAdminBootstrap {
             current_tenant: CurrentTenant {
@@ -2907,7 +2911,10 @@ mod tests {
         assert_eq!(view_model.type_label, "general");
         assert_eq!(view_model.meta_label, "handle: winter-coat | vendor: Acme");
         assert!(view_model.show_shipping_profile);
-        assert_eq!(view_model.shipping_profile_label, "profile standard");
+        assert_eq!(
+            without_bidi_isolates(&view_model.shipping_profile_label),
+            "profile standard"
+        );
         assert_eq!(view_model.timestamp_label, "2026-01-02T00:00:00Z");
         assert!(view_model.status_badge_class.starts_with("inline-flex"));
         assert!(view_model.status_badge_class.contains("emerald"));
@@ -2992,10 +2999,11 @@ mod tests {
             },
         );
         assert_eq!(
-            build_product_admin_profile_panel_ready_view_model(Some("en"), &[active, inactive]),
-            ProductAdminProfilePanelViewModel::Ready {
-                message: "Known profiles: standard".to_string(),
-            },
+            without_bidi_isolates(
+                &build_product_admin_profile_panel_ready_view_model(Some("en"), &[active, inactive])
+                    .into_message()
+            ),
+            "Known profiles: standard"
         );
     }
 
@@ -3050,7 +3058,10 @@ mod tests {
         );
         assert_eq!(ready.options.len(), 1);
         assert_eq!(ready.options[0].value, "standard");
-        assert_eq!(ready.panel.into_message(), "Known profiles: standard");
+        assert_eq!(
+            without_bidi_isolates(&ready.panel.into_message()),
+            "Known profiles: standard"
+        );
     }
 
     #[test]
@@ -3119,7 +3130,7 @@ mod tests {
             "handle: winter-coat | vendor: Acme",
         );
         assert_eq!(
-            format_product_shipping_profile(Some("en"), "standard"),
+            without_bidi_isolates(&format_product_shipping_profile(Some("en"), "standard")),
             "profile standard",
         );
     }

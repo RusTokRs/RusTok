@@ -592,7 +592,7 @@ pub fn OrderAdmin() -> impl IntoView {
                                 let open_id = order.id.clone();
                                 let item_query_writer = list_query_writer.clone();
                                 let status_label = localized_order_status(ui_locale_for_list.as_deref(), order.status.as_str());
-                                let order_lines = summarize_order_lines(order.line_items.as_slice());
+                                let order_lines = summarize_order_lines(ui_locale_for_list.as_deref(), order.line_items.as_slice());
                                 view! {
                                     <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                         <div class="flex items-start justify-between gap-3">
@@ -601,7 +601,7 @@ pub fn OrderAdmin() -> impl IntoView {
                                                     <h4 class="font-medium text-card-foreground">{short_order_id(order.id.as_str())}</h4>
                                                     <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", order_status_badge(order.status.as_str()))>{status_label}</span>
                                                 </div>
-                                                <p class="text-sm text-muted-foreground">{format_order_caption(&order)}</p>
+                                                <p class="text-sm text-muted-foreground">{format_order_caption(ui_locale_for_list.as_deref(), &order)}</p>
                                                 <p class="text-xs text-muted-foreground">{order_lines}</p>
                                             </div>
                                             <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::OrderId.as_str(), open_id.clone())>{open_label.clone()}</button>
@@ -641,33 +641,202 @@ pub fn OrderAdmin() -> impl IntoView {
                                                 <h4 class="text-base font-semibold text-card-foreground">{short_order_id(order.id.as_str())}</h4>
                                                 <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", order_status_badge(order.status.as_str()))>{localized_order_status(ui_locale_for_detail.as_deref(), order.status.as_str())}</span>
                                             </div>
-                                            <p class="text-sm text-muted-foreground">{summarize_order_header(&order)}</p>
+                                            <p class="text-sm text-muted-foreground">{summarize_order_header(ui_locale_for_detail.as_deref(), &order)}</p>
                                         </div>
-                                        <div class="text-right text-xs text-muted-foreground"><p>{format!("created {}", order.created_at)}</p><p>{format!("updated {}", order.updated_at)}</p></div>
+                                        <div class="text-right text-xs text-muted-foreground">
+                                            <p>{
+                                                let created_args = rustok_ui_i18n::fluent_args!("date" => order.created_at.clone());
+                                                crate::i18n::format(
+                                                    ui_locale_for_detail.as_deref(),
+                                                    "order.detail.created",
+                                                    Some(&created_args),
+                                                    &format!("created {}", order.created_at),
+                                                )
+                                            }</p>
+                                            <p>{
+                                                let updated_args = rustok_ui_i18n::fluent_args!("date" => order.updated_at.clone());
+                                                crate::i18n::format(
+                                                    ui_locale_for_detail.as_deref(),
+                                                    "order.detail.updated",
+                                                    Some(&updated_args),
+                                                    &format!("updated {}", order.updated_at),
+                                                )
+                                            }</p>
+                                        </div>
                                     </div>
                                     <div class="mt-4 grid gap-3 md:grid-cols-2">
-                                        <div class="rounded-xl border border-border p-4"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale.as_deref(), "order.section.lifecycle", "Lifecycle")}</p><p class="mt-2 text-sm text-muted-foreground">{summarize_order_timeline(&order)}</p></div>
-                                        <div class="rounded-xl border border-border p-4"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale.as_deref(), "order.section.customer", "Customer")}</p><p class="mt-2 text-sm text-muted-foreground">{text_or_dash(order.customer_id.as_deref())}</p><p class="mt-2 text-xs text-muted-foreground">{format!("channel {}", text_or_dash(order.channel_slug.as_deref()))}</p></div>
+                                        <div class="rounded-xl border border-border p-4"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale.as_deref(), "order.section.lifecycle", "Lifecycle")}</p><p class="mt-2 text-sm text-muted-foreground">{summarize_order_timeline(ui_locale_for_detail.as_deref(), &order)}</p></div>
+                                        <div class="rounded-xl border border-border p-4">
+                                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale.as_deref(), "order.section.customer", "Customer")}</p>
+                                            <p class="mt-2 text-sm text-muted-foreground">{text_or_dash(order.customer_id.as_deref())}</p>
+                                            <p class="mt-2 text-xs text-muted-foreground">{
+                                                let channel_name = text_or_dash(order.channel_slug.as_deref());
+                                                let channel_args = rustok_ui_i18n::fluent_args!("channel" => channel_name.clone());
+                                                crate::i18n::format(
+                                                    ui_locale_for_detail.as_deref(),
+                                                    "order.detail.channel",
+                                                    Some(&channel_args),
+                                                    &format!("channel {channel_name}"),
+                                                )
+                                            }</p>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="rounded-2xl border border-border bg-background p-5">
-                                    <div class="flex items-center justify-between gap-3"><h4 class="text-base font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.section.lines", "Line items")}</h4><span class="text-xs text-muted-foreground">{format!("{} items", order.line_items.len())}</span></div>
+                                    <div class="flex items-center justify-between gap-3">
+                                        <h4 class="text-base font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.section.lines", "Line items")}</h4>
+                                        <span class="text-xs text-muted-foreground">{
+                                            let count = order.line_items.len();
+                                            let count_args = rustok_ui_i18n::fluent_args!("count" => count);
+                                            crate::i18n::format(
+                                                ui_locale_for_detail.as_deref(),
+                                                "order.lines.itemsCount",
+                                                Some(&count_args),
+                                                &format!("{count} items"),
+                                            )
+                                        }</span>
+                                    </div>
                                     <div class="mt-4 space-y-3">
-                                        {order.line_items.into_iter().map(|line| view! { <div class="rounded-xl border border-border p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="font-medium text-card-foreground">{line.title.clone()}</p><p class="mt-1 text-xs text-muted-foreground">{format!("{} · qty {} · profile {}", text_or_dash(line.sku.as_deref()), line.quantity, line.shipping_profile_slug)}</p></div><div class="text-right text-sm text-muted-foreground"><p>{format!("{} {}", line.total_price, line.currency_code)}</p><p class="text-xs">{format!("unit {}", line.unit_price)}</p></div></div></div> }).collect_view()}
+                                        {order.line_items.into_iter().map(|line| {
+                                            let sku_str = text_or_dash(line.sku.as_deref());
+                                            let line_details_args = rustok_ui_i18n::fluent_args!(
+                                                "sku" => sku_str.clone(),
+                                                "quantity" => line.quantity,
+                                                "profile" => line.shipping_profile_slug.clone()
+                                            );
+                                            let line_details = crate::i18n::format(
+                                                ui_locale_for_detail.as_deref(),
+                                                "order.lines.lineDetails",
+                                                Some(&line_details_args),
+                                                &format!("{sku_str} · qty {} · profile {}", line.quantity, line.shipping_profile_slug),
+                                            );
+                                            let unit_args = rustok_ui_i18n::fluent_args!("price" => line.unit_price.clone());
+                                            let unit_price_str = crate::i18n::format(
+                                                ui_locale_for_detail.as_deref(),
+                                                "order.lines.unitPrice",
+                                                Some(&unit_args),
+                                                &format!("unit {}", line.unit_price),
+                                            );
+                                            view! {
+                                                <div class="rounded-xl border border-border p-4">
+                                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                                        <div>
+                                                            <p class="font-medium text-card-foreground">{line.title.clone()}</p>
+                                                            <p class="mt-1 text-xs text-muted-foreground">{line_details}</p>
+                                                        </div>
+                                                        <div class="text-right text-sm text-muted-foreground">
+                                                            <p>{format!("{} {}", line.total_price, line.currency_code)}</p>
+                                                            <p class="text-xs">{unit_price_str}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        }).collect_view()}
                                     </div>
                                 </div>
                                 <div class="grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-2xl border border-border bg-background p-5">
                                         <h4 class="text-base font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.section.payment", "Payment collection")}</h4>
                                         {match payment_collection {
-                                            Some(payment) => view! { <div class="mt-4 space-y-2 text-sm text-muted-foreground"><p>{format!("status: {}", localized_order_status(ui_locale_for_payment.as_deref(), payment.status.as_str()))}</p><p>{format!("provider: {}", text_or_dash(payment.provider_id.as_deref()))}</p><p>{format!("authorized: {} {}", payment.authorized_amount, payment.currency_code)}</p><p>{format!("captured: {} {}", payment.captured_amount, payment.currency_code)}</p><p>{format!("payments: {}", payment.payments.len())}</p></div> }.into_any(),
+                                            Some(payment) => {
+                                                let status_str = localized_order_status(ui_locale_for_payment.as_deref(), payment.status.as_str());
+                                                let status_args = rustok_ui_i18n::fluent_args!("status" => status_str.clone());
+                                                let status_line = crate::i18n::format(
+                                                    ui_locale_for_payment.as_deref(),
+                                                    "order.payment.status",
+                                                    Some(&status_args),
+                                                    &format!("status: {status_str}"),
+                                                );
+                                                let provider_str = text_or_dash(payment.provider_id.as_deref());
+                                                let provider_args = rustok_ui_i18n::fluent_args!("provider" => provider_str.clone());
+                                                let provider_line = crate::i18n::format(
+                                                    ui_locale_for_payment.as_deref(),
+                                                    "order.payment.provider",
+                                                    Some(&provider_args),
+                                                    &format!("provider: {provider_str}"),
+                                                );
+                                                let authorized_amount_str = format!("{} {}", payment.authorized_amount, payment.currency_code);
+                                                let auth_args = rustok_ui_i18n::fluent_args!("amount" => authorized_amount_str.clone());
+                                                let authorized_line = crate::i18n::format(
+                                                    ui_locale_for_payment.as_deref(),
+                                                    "order.payment.authorized",
+                                                    Some(&auth_args),
+                                                    &format!("authorized: {authorized_amount_str}"),
+                                                );
+                                                let captured_amount_str = format!("{} {}", payment.captured_amount, payment.currency_code);
+                                                let cap_args = rustok_ui_i18n::fluent_args!("amount" => captured_amount_str.clone());
+                                                let captured_line = crate::i18n::format(
+                                                    ui_locale_for_payment.as_deref(),
+                                                    "order.payment.captured",
+                                                    Some(&cap_args),
+                                                    &format!("captured: {captured_amount_str}"),
+                                                );
+                                                let pcount = payment.payments.len();
+                                                let count_args = rustok_ui_i18n::fluent_args!("count" => pcount);
+                                                let count_line = crate::i18n::format(
+                                                    ui_locale_for_payment.as_deref(),
+                                                    "order.payment.paymentsCount",
+                                                    Some(&count_args),
+                                                    &format!("payments: {pcount}"),
+                                                );
+                                                view! {
+                                                    <div class="mt-4 space-y-2 text-sm text-muted-foreground">
+                                                        <p>{status_line}</p>
+                                                        <p>{provider_line}</p>
+                                                        <p>{authorized_line}</p>
+                                                        <p>{captured_line}</p>
+                                                        <p>{count_line}</p>
+                                                    </div>
+                                                }.into_any()
+                                            }
                                             None => view! { <p class="mt-4 text-sm text-muted-foreground">{load_related_empty_label.clone()}</p> }.into_any(),
                                         }}
                                     </div>
                                     <div class="rounded-2xl border border-border bg-background p-5">
                                         <h4 class="text-base font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.section.fulfillment", "Fulfillment")}</h4>
                                         {match fulfillment {
-                                            Some(item) => view! { <div class="mt-4 space-y-2 text-sm text-muted-foreground"><p>{format!("status: {}", localized_order_status(ui_locale_for_fulfillment.as_deref(), item.status.as_str()))}</p><p>{format!("carrier: {}", text_or_dash(item.carrier.as_deref()))}</p><p>{format!("tracking: {}", text_or_dash(item.tracking_number.as_deref()))}</p><p>{format!("delivered note: {}", text_or_dash(item.delivered_note.as_deref()))}</p></div> }.into_any(),
+                                            Some(item) => {
+                                                let status_str = localized_order_status(ui_locale_for_fulfillment.as_deref(), item.status.as_str());
+                                                let status_args = rustok_ui_i18n::fluent_args!("status" => status_str.clone());
+                                                let status_line = crate::i18n::format(
+                                                    ui_locale_for_fulfillment.as_deref(),
+                                                    "order.fulfillment.status",
+                                                    Some(&status_args),
+                                                    &format!("status: {status_str}"),
+                                                );
+                                                let carrier_str = text_or_dash(item.carrier.as_deref());
+                                                let carrier_args = rustok_ui_i18n::fluent_args!("carrier" => carrier_str.clone());
+                                                let carrier_line = crate::i18n::format(
+                                                    ui_locale_for_fulfillment.as_deref(),
+                                                    "order.fulfillment.carrier",
+                                                    Some(&carrier_args),
+                                                    &format!("carrier: {carrier_str}"),
+                                                );
+                                                let tracking_str = text_or_dash(item.tracking_number.as_deref());
+                                                let tracking_args = rustok_ui_i18n::fluent_args!("tracking" => tracking_str.clone());
+                                                let tracking_line = crate::i18n::format(
+                                                    ui_locale_for_fulfillment.as_deref(),
+                                                    "order.fulfillment.tracking",
+                                                    Some(&tracking_args),
+                                                    &format!("tracking: {tracking_str}"),
+                                                );
+                                                let note_str = text_or_dash(item.delivered_note.as_deref());
+                                                let note_args = rustok_ui_i18n::fluent_args!("note" => note_str.clone());
+                                                let note_line = crate::i18n::format(
+                                                    ui_locale_for_fulfillment.as_deref(),
+                                                    "order.fulfillment.deliveredNote",
+                                                    Some(&note_args),
+                                                    &format!("delivered note: {note_str}"),
+                                                );
+                                                view! {
+                                                    <div class="mt-4 space-y-2 text-sm text-muted-foreground">
+                                                        <p>{status_line}</p>
+                                                        <p>{carrier_line}</p>
+                                                        <p>{tracking_line}</p>
+                                                        <p>{note_line}</p>
+                                                    </div>
+                                                }.into_any()
+                                            }
                                             None => view! { <p class="mt-4 text-sm text-muted-foreground">{load_related_empty_label.clone()}</p> }.into_any(),
                                         }}
                                     </div>

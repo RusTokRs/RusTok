@@ -7,7 +7,8 @@ mod shipping_profile;
 pub use common::{
     DEFAULT_ORDER_CHANGE_STATUS, DEFAULT_PROMOTION_AMOUNT, DEFAULT_PROMOTION_KIND,
     DEFAULT_PROMOTION_SCOPE, DEFAULT_PROMOTION_SOURCE_ID, active_badge_class, error_with_context,
-    optional_value, order_change_status_badge_class, trimmed_non_empty,
+    localized_order_change_status, optional_value, order_change_status_badge_class,
+    trimmed_non_empty,
 };
 pub use order_change::{order_change_resolution_summary, prepare_order_change_action_command};
 pub use presentation::{

@@ -14,8 +14,8 @@ fulfillment-error-changeShippingOptionStatus = Не удалось измени�
 fulfillment-error-loadRegistrySlugs = Не удалось загрузить slugs из реестра
 fulfillment-error-loadShippingOption = Не удалось загрузить способ доставки
 fulfillment-error-loadShippingOptions = Не удалось загрузить способы доставки
-fulfillment-error-localeUnavailable = Хостовая локаль недоступна.
 fulfillment-error-saveShippingOption = Не удалось сохранить способ доставки
+
 fulfillment-error-shippingOptionNameRequired = Название способа доставки обязательно.
 fulfillment-error-shippingOptionNotFound = Способ доставки не найден.
 fulfillment-field-currency = Валюта

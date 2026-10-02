@@ -89,7 +89,7 @@ pub(crate) fn unlisted_channel_option_label(
         "{}: {}",
         t(locale, "pricing.channel.unlisted", "Unlisted scope"),
         format_channel_scope_text(
-            None,
+            locale,
             normalize_channel_value(channel_id).as_deref(),
             normalize_channel_value(channel_slug).as_deref(),
         )
@@ -139,11 +139,20 @@ mod tests {
     fn unlisted_channel_option_label_formats_scope_or_not_set() {
         assert_eq!(
             unlisted_channel_option_label(Some("en"), "channel-id", "web"),
-            "Unlisted scope: channel web (channel-id)"
+            "Unlisted scope: Channel web (channel-id)"
+        );
+        assert_eq!(
+            unlisted_channel_option_label(Some("ru"), "channel-id", "web"),
+            "Вне списка: Канал web (channel-id)"
         );
         assert_eq!(
             unlisted_channel_option_label(Some("en"), "", ""),
             "Unlisted scope: not set"
         );
+        assert_eq!(
+            unlisted_channel_option_label(Some("ru"), "", ""),
+            "Вне списка: не задано"
+        );
     }
 }
+

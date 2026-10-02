@@ -165,11 +165,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         "commerce.error.saveShippingProfile",
         "Failed to save shipping profile",
     );
-    let locale_unavailable_label = t(
-        ui_locale.as_deref(),
-        "commerce.error.localeUnavailable",
-        "Host locale is unavailable.",
-    );
+
     let toggle_error_label = t(
         ui_locale.as_deref(),
         "commerce.error.changeShippingProfileStatus",
@@ -490,10 +486,8 @@ pub fn CommerceAdmin() -> impl IntoView {
             set_error.set(Some(submit_bootstrap_loading_label.clone()));
             return;
         };
-        let Some(submit_locale) = submit_ui_locale.clone() else {
-            set_error.set(Some(locale_unavailable_label.clone()));
-            return;
-        };
+        let submit_locale = submit_ui_locale.clone().unwrap_or_else(|| "en".to_string());
+
         let Some(draft) = core::prepare_shipping_profile_draft(
             slug.get_untracked().as_str(),
             name.get_untracked().as_str(),
@@ -916,10 +910,10 @@ pub fn CommerceAdmin() -> impl IntoView {
                             set_order_change_status.set(event_target_value(&ev));
                             set_order_change_refresh_nonce.update(|value| *value += 1);
                         }>
-                            <option value="pending">"pending"</option>
-                            <option value="applied">"applied"</option>
-                            <option value="cancelled">"cancelled"</option>
-                            <option value="">"all"</option>
+                            <option value="pending">{core::localized_order_change_status(ui_locale_for_order_changes.as_deref(), "pending")}</option>
+                            <option value="applied">{core::localized_order_change_status(ui_locale_for_order_changes.as_deref(), "applied")}</option>
+                            <option value="cancelled">{core::localized_order_change_status(ui_locale_for_order_changes.as_deref(), "cancelled")}</option>
+                            <option value="">{core::localized_order_change_status(ui_locale_for_order_changes.as_deref(), "all")}</option>
                         </select>
                         <textarea class="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=metadata_placeholder_label.clone() prop:value=move || order_change_metadata_json.get() on:input=move |ev| set_order_change_metadata_json.set(event_target_value(&ev)) />
                         <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=cancel_reason_placeholder_label.clone() prop:value=move || order_change_cancel_reason.get() on:input=move |ev| set_order_change_cancel_reason.set(event_target_value(&ev)) />
@@ -1121,7 +1115,7 @@ fn render_order_changes(
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="space-y-2">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::order_change_status_badge_class(change.status.as_str()))>{change.status.clone()}</span>
+                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::order_change_status_badge_class(change.status.as_str()))>{core::localized_order_change_status(locale, change.status.as_str())}</span>
                                     <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{change.change_type.clone()}</span>
                                 </div>
                                 <h4 class="break-all text-base font-semibold text-card-foreground">{change.id.clone()}</h4>

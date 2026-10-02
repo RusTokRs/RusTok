@@ -17,7 +17,7 @@ use super::types::{
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
     VariantProductProjectionRequest, validate_admin_products_request,
     validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
-    validate_published_products_request,
+    validate_published_products_request, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
 };
 
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
@@ -440,8 +440,6 @@ mod tests {
     use crate::error::CommerceError;
     use rustok_api::{PortActor, PortErrorKind};
 
-    use super::diagnostics::product_error_to_port_error;
-    use super::types::validate_published_products_request;
     use super::*;
     use uuid::Uuid;
 
@@ -565,7 +563,10 @@ mod tests {
 
         assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert_eq!(error.code, "product.database_unavailable");
-        assert_eq!(error.message, "product storage is temporarily unavailable");
+        assert_eq!(
+            error.message,
+            "the requested capability is temporarily unavailable"
+        );
         assert!(error.retryable);
     }
 

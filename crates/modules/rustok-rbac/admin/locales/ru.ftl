@@ -4,7 +4,13 @@ rbac-error-loadBootstrap = Не удалось загрузить RBAC bootstrap
 rbac-info-role = Роль
 rbac-info-tenant = Тенант
 rbac-info-userId = ID пользователя
-rbac-permissions-count = прав
+rbac-permissions-count =
+    { $count ->
+        [one] { $count } право
+        [few] { $count } права
+       *[many] { $count } прав
+        [other] { $count } прав
+    }
 rbac-permissions-subtitle = Live-снимок, вычисленный из текущего security context.
 rbac-permissions-title = Выданные права
 rbac-roles-title = Встроенные роли

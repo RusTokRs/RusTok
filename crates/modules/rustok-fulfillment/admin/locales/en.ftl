@@ -14,8 +14,8 @@ fulfillment-error-changeShippingOptionStatus = Failed to change shipping option 
 fulfillment-error-loadRegistrySlugs = Failed to load registry slugs
 fulfillment-error-loadShippingOption = Failed to load shipping option
 fulfillment-error-loadShippingOptions = Failed to load shipping options
-fulfillment-error-localeUnavailable = Host locale is unavailable.
 fulfillment-error-saveShippingOption = Failed to save shipping option
+
 fulfillment-error-shippingOptionNameRequired = Shipping option name is required.
 fulfillment-error-shippingOptionNotFound = Shipping option not found.
 fulfillment-field-currency = Currency

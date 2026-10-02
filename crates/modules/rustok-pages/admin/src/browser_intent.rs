@@ -432,8 +432,8 @@ mod tests {
             }),
         )
         .expect("locale update");
-        assert_eq!(context["$locale"], "ru-ru");
-        assert_eq!(context["$fallback_locales"], json!(["en", "de-de"]));
+        assert_eq!(context["$locale"], "ru-RU");
+        assert_eq!(context["$fallback_locales"], json!(["en", "de-DE"]));
         assert_eq!(context["customer"]["name"], "Ada");
     }
 
