@@ -271,6 +271,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "deliver_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        request.input.validate().map_err(|_| {
+            PortError::validation(
+                "fulfillment.validation",
+                "fulfillment delivery request is invalid",
+            )
+        })?;
         self.service
             .deliver_fulfillment(tenant_id, request.fulfillment_id, request.input)
             .await
@@ -426,6 +432,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "cancel_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        request.input.validate().map_err(|_| {
+            PortError::validation(
+                "fulfillment.validation",
+                "fulfillment cancellation request is invalid",
+            )
+        })?;
         let current = self
             .service
             .get_fulfillment(tenant_id, request.fulfillment_id)
