@@ -39,6 +39,16 @@ impl FlyEditor {
         self
     }
 
+    /// Cap how many bytes of retained document state undo history may hold.
+    ///
+    /// An entry count alone does not bound memory: each entry keeps a full before/after document
+    /// pair, so a large project multiplies the limit by its own size.
+    pub fn with_history_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
+        self.history = std::mem::replace(&mut self.history, History::new(1))
+            .with_memory_budget(memory_budget_bytes);
+        self
+    }
+
     pub fn with_validation_limits(mut self, limits: ValidationLimits) -> Self {
         self.validation_limits = limits;
         self
@@ -94,8 +104,9 @@ impl FlyEditor {
             return Ok(self.validate());
         }
 
-        let before = self.document.clone();
-        let mut after = before.clone();
+        // One speculative copy to mutate. A command must not leave a partially applied document
+        // behind when validation rejects it, so the working copy is unavoidable.
+        let mut after = self.document.clone();
         self.apply_to_document(&mut after, &command)?;
         after.ensure_stable_ids(&mut self.id_generator);
         let report = extend_with_runtime_validation(
@@ -107,7 +118,12 @@ impl FlyEditor {
             return Err(FlyError::Validation(errors));
         }
 
-        self.document = after.clone();
+        // Install the new document by moving it, then take the displaced one as the history
+        // `before`. This used to be three deep clones per command (`before`, `after`, and a third
+        // to install); two is the floor while `HistoryEntry` stores whole documents rather than
+        // inverse commands.
+        let history_after = after.clone();
+        let before = std::mem::replace(&mut self.document, after);
         self.selection = self
             .selection
             .take()
@@ -115,7 +131,7 @@ impl FlyEditor {
         self.history.push(HistoryEntry {
             command,
             before,
-            after,
+            after: history_after,
         });
         self.revision.mark_changed(&self.document);
         Ok(report)
@@ -124,7 +140,7 @@ impl FlyEditor {
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_undo()?;
         self.document = entry.before.clone();
-        self.history.redo.push(entry);
+        self.history.push_redo(entry);
         self.selection = self
             .selection
             .take()
@@ -136,7 +152,7 @@ impl FlyEditor {
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_redo()?;
         self.document = entry.after.clone();
-        self.history.undo.push(entry);
+        self.history.push_undo(entry);
         self.selection = self
             .selection
             .take()

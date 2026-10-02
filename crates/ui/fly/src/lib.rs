@@ -3,18 +3,25 @@
 //! The crate is deliberately independent from UI frameworks, browser APIs, RusTok modules,
 //! persistence, and transports. Consumers own persistence and framework adapters.
 
+// The entire Fly stack is safe Rust. `forbid` (not `deny`) so it cannot be re-enabled
+// locally with an `allow` attribute.
+#![forbid(unsafe_code)]
+
 mod action;
 mod asset;
 mod audit;
 mod binding;
 mod codec;
 mod command;
+mod component_index;
 mod component_visit;
+mod id_reference;
 mod context_contract;
 mod context_dependency;
 mod context_json_schema;
 mod context_scenario;
 mod context_schema;
+mod digest;
 mod dynamic;
 mod error;
 mod fragment;
@@ -57,12 +64,14 @@ pub use audit::*;
 pub use binding::*;
 pub use codec::*;
 pub use command::*;
+pub use component_index::ComponentIndex;
 pub use component_visit::{ComponentVisit, visit_project_components};
 pub use context_contract::*;
 pub use context_dependency::*;
 pub use context_json_schema::*;
 pub use context_scenario::*;
 pub use context_schema::*;
+pub use digest::*;
 pub use dynamic::*;
 pub use error::*;
 pub use fragment::*;
@@ -96,9 +105,6 @@ pub use style_rule::*;
 pub use trait_model::*;
 pub use translation::*;
 pub use validation::*;
-
-impl Copy for ConditionOperator {}
-impl Copy for EmptyRepeaterBehavior {}
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs";
 pub const FLY_FRAGMENT_FORMAT: &str = "fly_fragment";

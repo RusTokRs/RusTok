@@ -1,6 +1,17 @@
 # Standalone Cargo workspace template for Fly
+#
 # When extracting `crates/ui/fly` into an independent repository (e.g. `github.com/rustok/fly`),
-# rename this file to `Cargo.toml` or include it in the repository root.
+# rename this file to `Cargo.toml`.
+#
+# Every sub-crate uses `version.workspace = true` and `<dep>.workspace = true`, so the template has
+# to supply `[workspace.package]` and `[workspace.dependencies]`. Keep the dependency versions in
+# step with the host workspace's root `Cargo.toml`; `scripts/verify/verify-fly-standalone-workspace.mjs`
+# fails the build when they drift.
+#
+# Remaining extraction blocker: the root `fly` crate depends on `rustok-ui-i18n` for CLDR locale
+# fallback (`src/runtime_locale.rs`). That dependency has to be inverted behind a trait before this
+# template can actually build. See `docs/audits/fly-builder-engineering-audit-2026-10-02.md`.
+
 [workspace]
 resolver = "2"
 members = [
@@ -11,3 +22,20 @@ members = [
     "leptos",
     "dioxus",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "BUSL-1.1"
+description = "Framework-neutral visual editor engine and lossless GrapesJS compatibility core"
+repository = "https://github.com/rustok/fly"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+thiserror = "2.0.18"
+leptos = "0.8.19"
+dioxus = { version = "0.6" }
+proptest = "1.11"

@@ -342,3 +342,69 @@ fn tampered_snapshot_does_not_change_document_or_history() {
     assert_eq!(editor.document().hash(), before);
     assert_eq!(editor.history().undo_len(), 0);
 }
+
+#[test]
+fn history_evicts_oldest_entries_once_the_entry_limit_is_reached() {
+    let mut editor = editor().with_history_limit(2);
+    for index in 0..4 {
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([(
+                        "data-step".to_string(),
+                        json!(index.to_string()),
+                    )]),
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+    }
+
+    assert_eq!(editor.history().undo_len(), 2);
+    assert!(editor.history().retained_bytes() > 0);
+}
+
+#[test]
+fn history_respects_its_memory_budget_but_always_keeps_one_entry() {
+    let mut editor = editor().with_history_memory_budget(1);
+
+    for index in 0..5 {
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([(
+                        "data-step".to_string(),
+                        json!(index.to_string()),
+                    )]),
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+    }
+
+    // The budget is deliberately unreachable, but undo must never be emptied by eviction.
+    assert_eq!(editor.history().undo_len(), 1);
+    assert!(editor.undo().is_ok());
+}
+
+#[test]
+fn retained_bytes_returns_to_zero_after_undoing_everything() {
+    let mut editor = editor();
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch {
+                attributes: Map::from_iter([("data-step".to_string(), json!("1"))]),
+                ..ComponentPatch::default()
+            },
+        })
+        .expect("patch");
+
+    assert!(editor.history().retained_bytes() > 0);
+    editor.undo().expect("undo");
+    assert_eq!(editor.history().retained_bytes(), 0);
+    assert_eq!(editor.history().undo_len(), 0);
+}
+
