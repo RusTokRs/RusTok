@@ -878,6 +878,7 @@ impl AuthLifecycleService {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn create_session_and_tokens_db(
         db: &DatabaseConnection,
         config: &AuthConfig,
@@ -1126,11 +1127,11 @@ mod tests {
 
     #[test]
     fn session_list_limit_is_bounded() {
-        assert_eq!(clamp_session_list_limit(0), 1);
-        assert_eq!(clamp_session_list_limit(50), 50);
-        assert_eq!(clamp_session_list_limit(100), 100);
-        assert_eq!(clamp_session_list_limit(101), 100);
-        assert_eq!(clamp_session_list_limit(u64::MAX), 100);
+        assert_eq!(AuthLifecycleService::clamp_session_list_limit(0), 1);
+        assert_eq!(AuthLifecycleService::clamp_session_list_limit(50), 50);
+        assert_eq!(AuthLifecycleService::clamp_session_list_limit(100), 100);
+        assert_eq!(AuthLifecycleService::clamp_session_list_limit(101), 100);
+        assert_eq!(AuthLifecycleService::clamp_session_list_limit(u64::MAX), 100);
     }
 
     #[test]

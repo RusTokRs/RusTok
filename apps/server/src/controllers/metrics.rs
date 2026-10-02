@@ -188,10 +188,7 @@ async fn render_tenant_activity_metrics(ctx: &ServerRuntimeContext) -> String {
 
     match (active_total, inactive_total) {
         (Ok(active_total), Ok(inactive_total)) => {
-            format!(
-                "rustok_tenant_activity_metrics_collection_status 1\nrustok_tenant_active_total {active_total}\nrustok_tenant_inactive_total {inactive_total}\nrustok_tenant_total {tenant_total}\n",
-                tenant_total = active_total + inactive_total,
-            )
+            format_tenant_activity_metrics(active_total, inactive_total)
         }
         _ => {
             warn!("failed to collect tenant activity metrics");
@@ -408,6 +405,7 @@ fn format_outbox_metrics_optional(
     )
 }
 
+#[cfg(test)]
 fn format_outbox_metrics(
     backlog_size: u64,
     dlq_total: u64,

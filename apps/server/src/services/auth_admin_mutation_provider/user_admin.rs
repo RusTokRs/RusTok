@@ -713,7 +713,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_role_mutation_policy_error, parse_user_role, parse_user_status, status_change_requested,
+        ensure_custom_field_snapshot_is_current, map_role_mutation_policy_error, parse_user_role,
+        parse_user_status, status_change_requested,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::{UserRole, UserStatus};

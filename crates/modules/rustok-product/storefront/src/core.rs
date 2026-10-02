@@ -690,6 +690,10 @@ mod tests {
     use super::*;
     use crate::model::{ProductDetail, ProductPrice, ProductPricingContext, ProductTranslation};
 
+    fn without_bidi_isolates(value: &str) -> String {
+        value.replace(['\u{2068}', '\u{2069}'], "")
+    }
+
     #[test]
     fn route_input_parses_quantity_without_ui_runtime() {
         let input = build_route_input(
@@ -941,7 +945,10 @@ mod tests {
         assert_eq!(view_model.title, "Trail boot");
         assert_eq!(view_model.description, "Ready for mud");
         assert_eq!(view_model.seller_boundary, "seller id: seller-1");
-        assert_eq!(view_model.catalog_snapshot, "USD 25.00 (compare-at 30.00)");
+        assert_eq!(
+            without_bidi_isolates(&view_model.catalog_snapshot),
+            "USD 25.00 (compare-at 30.00)"
+        );
         assert_eq!(
             view_model.pricing_preview,
             "Pricing module preview is unavailable."

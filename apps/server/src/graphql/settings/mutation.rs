@@ -189,7 +189,7 @@ impl SettingsMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        graphql_settings_internal_error, map_event_delivery_settings_error,
+        FieldError, graphql_settings_internal_error, map_event_delivery_settings_error,
         map_iggy_settings_error, map_platform_settings_update_error,
     };
     use crate::services::{

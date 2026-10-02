@@ -2158,7 +2158,7 @@ mod tests {
     use super::{
         fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
     };
-    use crate::entities::{shipping_option, shipping_option_translation};
+    use crate::entities::{self, shipping_option, shipping_option_translation};
     use chrono::Utc;
     use rust_decimal::Decimal;
     use serde_json::Value;

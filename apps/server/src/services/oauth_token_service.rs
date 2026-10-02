@@ -654,8 +654,9 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("SQLite database");
-        let schema = Schema::new(db.get_database_backend());
-        db.execute(schema.create_table_from_entity(oauth_apps::Entity))
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
             .await
             .expect("OAuth apps table");
 

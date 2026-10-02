@@ -6,11 +6,12 @@ module.exports = {
     "../../crates/ui/rustok-ui/src/**/*.rs",
     "../../crates/ui/rustok-ui/leptos/src/**/*.rs",
     "../../crates/ui/leptos-ui/src/**/*.rs",
+    "../../crates/modules/*/storefront/src/**/*.rs",
   ],
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["'Plus Jakarta Sans'", "Inter", "system-ui", "sans-serif"],
       },
       colors: {
         background: "hsl(var(--background))",

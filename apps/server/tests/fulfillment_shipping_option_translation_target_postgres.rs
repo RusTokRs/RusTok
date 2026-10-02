@@ -335,6 +335,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             option.id,
             UpdateShippingOptionInput {
                 translations: None,
+                expected_translation_revision: None,
                 currency_code: Some("eur".to_string()),
                 amount: Some(19.into()),
                 provider_id: Some("manual".to_string()),

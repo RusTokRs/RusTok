@@ -29,7 +29,7 @@ mod tests {
         assert_eq!(pages[0].slug, "home");
 
         let blog = content.blog.expect("blog should be present");
-        assert_eq!(blog.posts.len(), 4);
+        assert_eq!(blog.posts.len(), 5);
 
         let forum = content.forum.expect("forum should be present");
         assert_eq!(forum.categories.len(), 4);

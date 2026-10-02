@@ -126,15 +126,14 @@ fn render_document(
     csp_nonce: Option<&CspNonce>,
 ) -> String {
     #[cfg(feature = "blog-comment-assets")]
-    let comment_bootstrap = if app_html.contains("data-blog-comment-island=\"true\"") {
-        csp_nonce
-            .map(|nonce| {
-                format!(
-                    r#"<script nonce="{}" type="module" src="/assets/blog-comment-bootstrap.js"></script>"#,
-                    nonce.as_str()
-                )
-            })
-            .unwrap_or_default()
+    let comment_bootstrap = if app_html.contains(r#"data-blog-comment-island="true""#) {
+        csp_nonce.map(|nonce| {
+            format!(
+                r#"<script nonce="{}" type="module" src="/assets/blog-comment-bootstrap.js"></script>"#,
+                nonce.as_str()
+            )
+        })
+        .unwrap_or_default()
     } else {
         String::new()
     };
@@ -150,6 +149,9 @@ fn render_document(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   {extra_head}
   <link rel="stylesheet" href="/assets/app.css" />
 </head>

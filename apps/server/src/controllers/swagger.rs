@@ -595,39 +595,64 @@ mod tests {
 
         use utoipa::openapi::HttpMethod;
 
-        for (path, method) in [
-            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Put),
-            ("/api/rbac/artifact-permissions/roles/{role_id}", HttpMethod::Delete),
-            ("/api/users", HttpMethod::Get),
-            ("/api/v1/flex/schemas", HttpMethod::Get),
-            ("/api/v1/flex/schemas", HttpMethod::Post),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Put),
-            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Delete),
+        for (path, method, method_name) in [
+            (
+                "/api/rbac/artifact-permissions/roles/{role_id}",
+                HttpMethod::Put,
+                "PUT",
+            ),
+            (
+                "/api/rbac/artifact-permissions/roles/{role_id}",
+                HttpMethod::Delete,
+                "DELETE",
+            ),
+            ("/api/users", HttpMethod::Get, "GET"),
+            ("/api/v1/flex/schemas", HttpMethod::Get, "GET"),
+            ("/api/v1/flex/schemas", HttpMethod::Post, "POST"),
+            (
+                "/api/v1/flex/schemas/{schema_id}",
+                HttpMethod::Get,
+                "GET",
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}",
+                HttpMethod::Put,
+                "PUT",
+            ),
+            (
+                "/api/v1/flex/schemas/{schema_id}",
+                HttpMethod::Delete,
+                "DELETE",
+            ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries",
                 HttpMethod::Get,
+                "GET",
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries",
                 HttpMethod::Post,
+                "POST",
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
                 HttpMethod::Get,
+                "GET",
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
                 HttpMethod::Put,
+                "PUT",
             ),
             (
                 "/api/v1/flex/schemas/{schema_id}/entries/{entry_id}",
                 HttpMethod::Delete,
+                "DELETE",
             ),
         ] {
             assert!(
                 openapi.paths.get_path_operation(path, method).is_some(),
-                "OpenAPI spec must include {method:?} operation for {path}"
+                "OpenAPI spec must include {method_name} operation for {path}"
             );
         }
     }

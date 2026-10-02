@@ -204,7 +204,10 @@ fn map_settings_error(error: UpdateModuleSettingsError) -> FieldError {
 
 #[cfg(test)]
 mod tests {
-    use super::{MODULE_SETTINGS_SNAPSHOT_CONFLICT, map_settings_error};
+    use super::{
+        MODULE_SETTINGS_SNAPSHOT_CONFLICT, graphql_module_settings_internal_error,
+        map_settings_error,
+    };
     use crate::services::module_lifecycle::UpdateModuleSettingsError;
 
     fn error_code(error: &async_graphql::Error) -> Option<String> {

@@ -1694,10 +1694,12 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthLifecycleError, ManifestError, ModuleCompositionError, PlatformCompositionBuildError,
-        PlatformCompositionError, TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError,
-        map_create_user_error, map_manifest_error, map_platform_composition_build_error,
-        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
+        AuthLifecycleError, ManifestError, ModuleCompositionError, ModuleOperationRecoveryError,
+        PlatformCompositionBuildError, PlatformCompositionError, TOGGLE_ERR_UNKNOWN_MODULE,
+        ToggleModuleError, graphql_mutation_internal_error, map_create_user_error,
+        map_manifest_error, map_module_operation_recovery_error,
+        map_platform_composition_build_error, map_platform_composition_error,
+        map_toggle_module_error, prepare_user_custom_fields_write,
         require_platform_composition_operator, toggle_err_core_module_cannot_be_disabled,
         toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_missing_dependencies,
         validate_custom_fields,

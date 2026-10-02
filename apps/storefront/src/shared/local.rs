@@ -66,24 +66,86 @@ pub fn locale_strings(locale: &str) -> LocaleStrings {
 pub fn featured_products(locale: &str) -> Vec<crate::entities::product::ProductCardData> {
     use crate::entities::product::ProductCardData;
 
+    let is_ru = locale.starts_with("ru");
+
     vec![
         ProductCardData {
             title: message(locale, "product.smart.title"),
             description: message(locale, "product.smart.description"),
             price: message(locale, "product.smart.price"),
             badge: Some(message(locale, "product.smart.badge")),
+            image_url: Some("https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Гаджеты".to_string() } else { "Smart Tech".to_string() }),
+            rating: Some(4.9),
+            review_count: Some(142),
+            original_price: Some(if is_ru { "6 490 ₽".to_string() } else { "$119".to_string() }),
         },
         ProductCardData {
             title: message(locale, "product.eco.title"),
             description: message(locale, "product.eco.description"),
             price: message(locale, "product.eco.price"),
             badge: None,
+            image_url: Some("https://images.unsplash.com/photo-1544816155-12df9643f363?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Эко-стиль".to_string() } else { "Sustainable".to_string() }),
+            rating: Some(4.8),
+            review_count: Some(89),
+            original_price: Some(if is_ru { "3 200 ₽".to_string() } else { "$69".to_string() }),
         },
         ProductCardData {
             title: message(locale, "product.city.title"),
             description: message(locale, "product.city.description"),
             price: message(locale, "product.city.price"),
             badge: Some(message(locale, "product.city.badge")),
+            image_url: Some("https://images.unsplash.com/photo-1585336261026-613d54f59c87?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Город".to_string() } else { "Everyday Carry".to_string() }),
+            rating: Some(5.0),
+            review_count: Some(214),
+            original_price: Some(if is_ru { "7 900 ₽".to_string() } else { "$159".to_string() }),
+        },
+        ProductCardData {
+            title: if is_ru { "RusTok Pro Sound".to_string() } else { "RusTok Pro Sound".to_string() },
+            description: if is_ru {
+                "Студийные беспроводные наушники с адаптивным ANC и кристальным Hi-Fi звуком.".to_string()
+            } else {
+                "Studio-grade wireless headphones with adaptive ANC and ultra-low latency.".to_string()
+            },
+            price: if is_ru { "8 990 ₽".to_string() } else { "$139".to_string() },
+            badge: Some(if is_ru { "Хит".to_string() } else { "Best Seller".to_string() }),
+            image_url: Some("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Аудио".to_string() } else { "Hi-Fi Audio".to_string() }),
+            rating: Some(4.9),
+            review_count: Some(95),
+            original_price: Some(if is_ru { "10 500 ₽".to_string() } else { "$169".to_string() }),
+        },
+        ProductCardData {
+            title: if is_ru { "Магнитная станция 3-в-1".to_string() } else { "Magnetic 3-in-1 Dock".to_string() },
+            description: if is_ru {
+                "Быстрая беспроводная зарядка из авиационного алюминия для смартфона, часов и наушников.".to_string()
+            } else {
+                "Aircraft-grade aluminum fast wireless charging station for all your Apple & Android gear.".to_string()
+            },
+            price: if is_ru { "3 790 ₽".to_string() } else { "$59".to_string() },
+            badge: Some(if is_ru { "Новинка".to_string() } else { "New".to_string() }),
+            image_url: Some("https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Зарядка".to_string() } else { "Power & Desk".to_string() }),
+            rating: Some(4.7),
+            review_count: Some(63),
+            original_price: Some(if is_ru { "4 500 ₽".to_string() } else { "$75".to_string() }),
+        },
+        ProductCardData {
+            title: if is_ru { "Керамическая термокружка".to_string() } else { "Artisan Thermal Flask".to_string() },
+            description: if is_ru {
+                "Вакуумная изоляция до 12 часов с керамическим внутренним покрытием без металлического привкуса.".to_string()
+            } else {
+                "Ceramic interior vacuum insulation maintaining optimal temperature up to 12 hours.".to_string()
+            },
+            price: if is_ru { "1 990 ₽".to_string() } else { "$29".to_string() },
+            badge: Some("-25%".to_string()),
+            image_url: Some("https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&auto=format&fit=crop&q=80".to_string()),
+            category: Some(if is_ru { "Стиль".to_string() } else { "Lifestyle".to_string() }),
+            rating: Some(4.8),
+            review_count: Some(118),
+            original_price: Some(if is_ru { "2 650 ₽".to_string() } else { "$39".to_string() }),
         },
     ]
 }

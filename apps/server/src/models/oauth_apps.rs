@@ -649,13 +649,13 @@ mod tests {
 
     #[test]
     fn auto_created_apps_require_explicit_refresh_grant() {
-        let app = app(true, serde_json::json!(["authorization_code"]));
-        assert!(!app.supports_grant_type("refresh_token"));
+        let code_only_app = app(true, serde_json::json!(["authorization_code"]));
+        assert!(!code_only_app.supports_grant_type("refresh_token"));
 
-        let app = app(
+        let refresh_app = app(
             true,
             serde_json::json!(["authorization_code", "refresh_token"]),
         );
-        assert!(app.supports_grant_type("refresh_token"));
+        assert!(refresh_app.supports_grant_type("refresh_token"));
     }
 }

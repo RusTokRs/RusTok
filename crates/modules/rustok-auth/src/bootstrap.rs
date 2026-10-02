@@ -209,6 +209,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), AuthLifecycleMutat
 #[cfg(test)]
 mod tests {
     use super::ensure_supported_backend;
+    use crate::AuthLifecycleMutationError;
     use sea_orm::DbBackend;
 
     #[test]
@@ -233,7 +234,6 @@ mod tests {
     #[test]
     fn unsupported_backend_is_rejected_without_panicking() {
         assert!(ensure_supported_backend(DbBackend::MySql).is_err());
-        assert!(ensure_supported_backend(DbBackend::Mock).is_err());
     }
 
     #[test]

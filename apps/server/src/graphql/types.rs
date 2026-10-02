@@ -1380,9 +1380,10 @@ mod tests {
         ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
     };
 
-    use async_graphql::ErrorExtensions;
-
-    use super::{ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error, sanitized_recovery_error_message};
+    use super::{
+        ArtifactUiContribution, ArtifactUiSurface, graphql_internal_error,
+        sanitized_recovery_error_message,
+    };
 
     #[test]
     fn graphql_user_internal_error_redacts_backend_diagnostics() {
@@ -1406,10 +1407,9 @@ mod tests {
         );
     }
 
-
     #[test]
     fn recovery_error_message_redacts_owner_diagnostics() {
-        let redacted = super::sanitized_recovery_error_message(
+        let redacted = sanitized_recovery_error_message(
             "post_hook_failed",
             Some("post-hook: database password=secret table=module_operations".to_string()),
         );

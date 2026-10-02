@@ -381,7 +381,7 @@ mod tests {
     use super::{
         PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
         auth_can_resolve_without_tenant_context, is_direct_user_self_service_path,
-        is_human_user_self_service_path,
+        is_direct_user_self_service_principal, is_human_user_self_service_path,
         is_observability_auth_path, is_pages_inline_authoring_server_fn,
         is_pages_inline_authoring_surface,
         pages_inline_authoring_response, service_forum_boundary_violation,
@@ -389,7 +389,7 @@ mod tests {
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
-    use rustok_api::Permission;
+    use rustok_api::{AuthPrincipalKind, Permission};
     use uuid::Uuid;
 
     #[test]

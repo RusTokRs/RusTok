@@ -254,7 +254,7 @@ pub async fn bootstrap_application_router(
 mod tests {
     use super::{
         check_production_secrets, known_dev_jwt_fragment, known_sample_superadmin_password,
-        sample_database_credentials_pattern,
+        sample_database_credentials_pattern, should_initialize_default_superadmin_for_mode,
     };
 
     #[test]

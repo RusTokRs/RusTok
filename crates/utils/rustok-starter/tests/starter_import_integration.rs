@@ -48,6 +48,12 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<(DatabaseConnection, Uuid)> {
     ))
     .await?;
 
+    db.execute_raw(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE users (id TEXT NOT NULL, tenant_id TEXT NOT NULL, PRIMARY KEY (id), UNIQUE (tenant_id, id))".to_string(),
+    ))
+    .await?;
+
     let now = Utc::now();
     db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
@@ -144,10 +150,10 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
     assert_eq!(report.blueprint_id, "default-starter");
     assert_eq!(report.pages_created, 1);
     assert_eq!(report.blog_categories_created, 3);
-    assert_eq!(report.blog_posts_created, 4);
+    assert_eq!(report.blog_posts_created, 5);
     assert_eq!(report.forum_categories_created, 4);
     assert_eq!(report.forum_topics_created, 4);
-    assert_eq!(report.forum_replies_created, 4);
+    assert_eq!(report.forum_replies_created, 2);
     assert_eq!(report.menus_created, 1);
     assert_eq!(report.skipped_existing, 0);
 
@@ -164,10 +170,10 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
     // 2. Verify Blog Posts are published and accessible
     let post_service = PostService::new(db.clone(), event_bus.clone());
     let post = post_service
-        .get_post_by_slug(tenant_id, SecurityContext::system(), "rustok-initial-release", "ru")
+        .get_post_by_slug(tenant_id, SecurityContext::system(), "ru", "welcome-to-rustok")
         .await?
         .expect("Blog post should be found and published");
-    assert_eq!(post.slug, "rustok-initial-release");
+    assert_eq!(post.slug, "welcome-to-rustok");
     assert_eq!(post.status, BlogPostStatus::Published);
 
     // 3. Verify Forum Topics are listed
@@ -194,8 +200,8 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
 
     assert_eq!(active_header.items.len(), 3);
     assert_eq!(active_header.items[0].url, "/");
-    assert_eq!(active_header.items[1].url, "/blog");
-    assert_eq!(active_header.items[2].url, "/forum");
+    assert_eq!(active_header.items[1].url, "/modules/blog");
+    assert_eq!(active_header.items[2].url, "/modules/forum");
 
     // 5. Verify Idempotency: Re-running import should not fail and should skip existing
     let report_second_run = engine

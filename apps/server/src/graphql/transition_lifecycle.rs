@@ -190,8 +190,8 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
 
 #[cfg(test)]
 mod tests {
-    use super::map_transition_coordinator_error;
-    use rustok_modules::{TransitionCoordinatorError, security_epoch::SecurityEpochConflictError};
+    use super::{ModuleTransitionStateView, map_transition_coordinator_error};
+    use rustok_modules::{SecurityEpochConflictError, TransitionCoordinatorError};
 
     #[test]
     fn recovery_limit_error_redacts_owner_reason() {

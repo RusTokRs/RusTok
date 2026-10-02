@@ -58,11 +58,15 @@ mod tests {
             "Artifact installation lifecycle command conflicts with the current owner state"
         );
         let extended = error.extend();
+        let code = extended
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned));
         assert_eq!(
-            extended
-                .extensions
-                .get("code")
-                .and_then(|value| value.as_str()),
+            code.as_deref(),
             Some("ARTIFACT_INSTALLATION_LIFECYCLE_CONFLICT")
         );
         assert!(!extended.message.contains("database password=secret"));

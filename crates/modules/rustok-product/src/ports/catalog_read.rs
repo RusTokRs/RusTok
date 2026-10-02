@@ -17,7 +17,7 @@ use super::types::{
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
     VariantProductProjectionRequest, validate_admin_products_request,
     validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
-    validate_published_products_request, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
+    validate_published_products_request,
 };
 
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";
@@ -440,6 +440,7 @@ mod tests {
     use crate::error::CommerceError;
     use rustok_api::{PortActor, PortErrorKind};
 
+    use super::super::types::MAX_PUBLISHED_PRODUCTS_PER_PAGE;
     use super::*;
     use uuid::Uuid;
 
