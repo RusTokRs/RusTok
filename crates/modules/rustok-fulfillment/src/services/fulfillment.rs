@@ -2674,9 +2674,7 @@ mod tests {
             serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
             serde_json::json!({"shipping_profiles": null}),
         ] {
-            assert!(
-                super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err()
-            );
+            assert!(super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err());
         }
 
         let untouched = serde_json::json!({
@@ -2966,15 +2964,11 @@ mod tests {
         .expect("provider-backed metadata should be normalized");
 
         assert_eq!(
-            metadata
-                .get("customer_note")
-                .and_then(Value::as_str),
+            metadata.get("customer_note").and_then(Value::as_str),
             Some("keep")
         );
         assert_eq!(
-            metadata
-                .get("provider_field")
-                .and_then(Value::as_str),
+            metadata.get("provider_field").and_then(Value::as_str),
             Some("keep")
         );
         assert_eq!(
