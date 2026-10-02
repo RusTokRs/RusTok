@@ -1,3 +1,4 @@
+use crate::id_reference::{remap_attribute_ids, remap_map_ids, remap_value_ids};
 use crate::{FlyError, FlyResult, IdGenerator, ProjectHash, validate_identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -288,21 +289,21 @@ impl ComponentNode {
 
     pub(crate) fn remap_ids(&mut self, mapping: &BTreeMap<String, String>) {
         match self {
-            Self::Opaque(value) => replace_value_references(value, mapping),
+            Self::Opaque(value) => remap_value_ids(value, mapping),
             Self::Object(object) => {
                 if let Some(id) = object.id.as_mut()
                     && let Some(replacement) = mapping.get(id)
                 {
                     *id = replacement.clone();
                 }
-                replace_map_references(&mut object.attributes, mapping);
+                remap_attribute_ids(&mut object.attributes, mapping);
                 if let Some(style) = object.style.as_mut() {
-                    replace_value_references(style, mapping);
+                    remap_value_ids(style, mapping);
                 }
                 for trait_value in &mut object.traits {
-                    replace_value_references(trait_value, mapping);
+                    remap_value_ids(trait_value, mapping);
                 }
-                replace_map_references(&mut object.extensions, mapping);
+                remap_map_ids(&mut object.extensions, mapping);
                 if let Some(children) = object.children_mut() {
                     for child in children {
                         child.remap_ids(mapping);
@@ -472,25 +473,3 @@ impl ComponentChildren {
     }
 }
 
-fn replace_map_references(map: &mut Map<String, Value>, mapping: &BTreeMap<String, String>) {
-    for value in map.values_mut() {
-        replace_value_references(value, mapping);
-    }
-}
-
-fn replace_value_references(value: &mut Value, mapping: &BTreeMap<String, String>) {
-    match value {
-        Value::String(string) => {
-            if let Some(replacement) = mapping.get(string) {
-                *string = replacement.clone();
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                replace_value_references(value, mapping);
-            }
-        }
-        Value::Object(object) => replace_map_references(object, mapping),
-        Value::Null | Value::Bool(_) | Value::Number(_) => {}
-    }
-}

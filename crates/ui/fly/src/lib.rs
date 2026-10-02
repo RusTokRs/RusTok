@@ -3,6 +3,10 @@
 //! The crate is deliberately independent from UI frameworks, browser APIs, RusTok modules,
 //! persistence, and transports. Consumers own persistence and framework adapters.
 
+// The entire Fly stack is safe Rust. `forbid` (not `deny`) so it cannot be re-enabled
+// locally with an `allow` attribute.
+#![forbid(unsafe_code)]
+
 mod action;
 mod asset;
 mod audit;
@@ -10,6 +14,7 @@ mod binding;
 mod codec;
 mod command;
 mod component_visit;
+mod id_reference;
 mod context_contract;
 mod context_dependency;
 mod context_json_schema;

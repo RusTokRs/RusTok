@@ -54,6 +54,21 @@ impl ValidationReport {
     }
 }
 
+/// Default ceiling on components in one project.
+///
+/// Chosen as a resource bound, not a product limit: validation and rendering are linear in node
+/// count but every editor command re-walks the tree, so a project an order of magnitude larger
+/// than this degrades the editing experience long before it breaks correctness. Raise it via
+/// [`ValidationLimits`] rather than editing this constant.
+pub const DEFAULT_MAXIMUM_NODES: usize = 10_000;
+
+/// Default ceiling on component nesting depth.
+///
+/// Deliberately far below [`crate::MAXIMUM_DECODE_DEPTH`] (which guards the JSON parser against
+/// stack exhaustion). This one is a *document* limit: real layouts nest tens of levels at most,
+/// so anything deeper is a sign of a generated or hostile document.
+pub const DEFAULT_MAXIMUM_DEPTH: usize = 64;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ValidationLimits {
     pub maximum_nodes: usize,
@@ -63,8 +78,8 @@ pub struct ValidationLimits {
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
-            maximum_nodes: 10_000,
-            maximum_depth: 64,
+            maximum_nodes: DEFAULT_MAXIMUM_NODES,
+            maximum_depth: DEFAULT_MAXIMUM_DEPTH,
         }
     }
 }
