@@ -11,7 +11,7 @@ status: active
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `755cb57929760ad8cd42ef0bbc42ae275464b8ea`  
+**Current main SHA:** `9b5958cc5731bbe3e880a2735e84c4b133455c6e`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -4128,5 +4128,72 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Structural refactor:** duplicate checkout reserved-key logic was removed from `checkout_execution.rs`; crate-private service helpers are the canonical source, preventing future key-list drift.
 - **Tooling note:** local Cargo checks could not be executed because the repository is not mounted in the runtime and outbound GitHub DNS is unavailable. No compile/test/runtime evidence is claimed locally.
 - **Documentation:** Fulfillment README now records item-level checkout identity ownership and canonical `cart_line_item_id` validation.
-- **Status:** `FS-22.06.83` implementation complete on dedicated branch; integration pending final merge gate.
+- **Status:** `FS-22.06.83` reconciled as already present on refreshed `main` in commit `8c88d7d9ee5286ee11e1fd4381c4566aa6d29b84`; module iteration `.83` is closed.
 - **Next primary module iteration:** `FS-22.06.84 — same primary module, fulfillment-item audit/metadata projection after reserved checkout-key cleanup`.
+
+### FS-22.06.84 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Fulfillment-item audit/metadata projection ownership
+
+- **Base:** refreshed `main` at `2c8fe11533e33bd554bea5502edd74b371e51dea`; dedicated branch `audit/fs-22.06.84-fulfillment-item-audit`.
+- **Primary scope:** one production owner module — fulfillment-item metadata ownership at direct create and checkout projection boundaries after the typed checkout-key cleanup.
+- **Invariant map:** `metadata.audit` on fulfillment and fulfillment-item records is owner-generated lifecycle evidence; create inputs and checkout projections must not seed audit history; checkout identity sanitization must remain strict; unrelated item metadata and canonical `checkout.cart_line_item_id` must survive intact.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.84-01:** `strip_fulfillment_item_checkout_metadata` removed legacy checkout identity keys but did not remove the reserved `audit` namespace. Direct FulfillmentService item creation could therefore persist caller-supplied audit events, after which lifecycle `append_audit_event` would append owner events to untrusted history.
+- **Adjacent projection finding:** checkout execution reused the same incomplete item sanitizer, so checkout-created fulfillment items could receive the same caller-supplied audit history.
+- **Production remediation:** added owner-owned `strip_fulfillment_item_metadata`, which strips caller `audit` data before applying the strict checkout identity sanitizer. Direct item creation and checkout item projection now use this canonical helper; lifecycle append remains the only path that creates item audit evidence.
+- **Immediate re-audit:** re-read item create persistence, both sanitizer helpers, checkout metadata projection, lifecycle `append_audit_event`, cart-line identity extraction, and adjacent checkout typed execution. Legacy checkout keys remain stripped, malformed namespaces still fail closed, canonical `cart_line_item_id` remains preserved, and valid non-reserved metadata is retained.
+- **Adjacent-boundary review:** inspected every `fulfillment_item::ActiveModel` occurrence in the primary service. The first is the create path and now uses the owner sanitizer; the remaining occurrences are lifecycle updates that append owner-generated audit events and do not accept metadata replacement. `admin_create_command.rs` contains no alternate direct fulfillment-item insertion.
+- **Regression audit:** the first test insertion accidentally duplicated one `#[test]` attribute and also displaced the neighboring test attribute; immediate reread caught both before completion, and the branch was corrected. No runtime behavior was left with that regression.
+- **Fresh second pass:** independently re-read the changed service/checkout functions, all fulfillment-item model write sites, the owner README contract, and the branch diff. No remaining repository-owned item create/projection path can seed `metadata.audit` in the inspected surface.
+- **Documentation:** Fulfillment README now explicitly records that item create inputs and checkout projections strip caller-supplied `metadata.audit` before persistence.
+- **Verification:** repository source inspection, adjacent-boundary tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.84` complete and integrated via PR #4454, squash merge `1baac86b8cdcd10c839b48cfc9f63d199d56bfb9`.
+- **Post-merge reconciliation:** refreshed `main` at the merge SHA and re-read the changed Fulfillment service/checkout projection plus owner documentation; the expected production and documentation changes are present with no concurrent drift affecting this iteration.
+- **Next primary module iteration:** `FS-22.06.85` — same primary module, select the next fulfillment-item trust/metadata boundary only after refreshing integrated `main`.
+
+### FS-22.06.85 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Fulfillment-item lifecycle/metadata fresh pass
+
+- **Base:** refreshed `main` at `99377023b78b23fa93df420d51d43d31f1414c2d`; dedicated branch `audit/fs-22.06.85-fulfillment-item-lifecycle`.
+- **Primary scope:** one production owner module only — fulfillment-item lifecycle quantity/state transitions, parent-row serialization, audit append, metadata read/write projection, and checkout-item identity compatibility after the `.84` hardening.
+- **Invariant map:** every requested item adjustment must belong to the parent fulfillment and remain within the action-specific remaining quantity; concurrent lifecycle mutations must serialize on the parent row; item audit events must be owner-generated and append-only; malformed persisted item metadata must fail closed; checkout cart-line identity must remain an item-local projection rather than a competing fulfillment identity.
+- **Assessment:** no additional repository-owned owner-level defect was confirmed in the refreshed module. `resolve_item_adjustments` validates membership, duplicate input IDs, positive quantities, and action-specific remaining quantity before writes. Lifecycle mutations lock the parent fulfillment row before loading and updating items, and item writes remain inside the same transaction as the parent status/audit update.
+- **Audit/metadata review:** item lifecycle commands do not accept caller metadata for item rows; they append only the fixed owner-generated event through `append_audit_event`. The `.84` create sanitizer removes caller `audit` history and legacy checkout identity before persistence, while preserving canonical `checkout.cart_line_item_id` and unrelated metadata. Checkout execution consumes the same canonical sanitizer.
+- **State/timestamp review:** pending/shipped/delivered/cancelled/reopen/reship transitions preserve the existing state-machine semantics; timestamp clearing/setting is consistent with the current contract and no new contradiction was found after the prior metadata changes.
+- **Persistence/read review:** fulfillment-item reads remain tenant-scoped through the parent fulfillment lookup, item ordering is deterministic by `created_at,id`, and response mapping does not reconstruct checkout identity from an alternate root metadata source.
+- **Fresh second pass:** independently re-read the complete item adjustment helper, all five item `ActiveModel` lifecycle write sites, create-time sanitization, checkout item projection, item response mapping, and the current Fulfillment README/ledger contract. No new repository-owned defect justified another remediation unit.
+- **Decision:** close `.85` as a clean assessment. Do not broaden the module into Commerce or change the lifecycle timestamp model without a concrete owner-contract finding.
+- **Verification:** repository source inspection, caller/data-flow tracing, immediate reread, independent fresh second pass, and branch review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.85` complete as a clean assessment; integration pending.
+- **Next primary module iteration:** `FS-22.06.86` — same primary module, next concrete fulfillment-item owner boundary after refreshing integrated `main`.
+
+### FS-22.06.86 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Persisted fulfillment-item progress arithmetic boundary
+
+- **Base:** refreshed `main` at `1e2bb25e43318c673680660f3865ba3869d738e0`; dedicated branch `audit/fs-22.06.86-fulfillment-item-progress`.
+- **Primary scope:** one production owner module only — persisted fulfillment-item quantity/shipped/delivered counter validation immediately before lifecycle arithmetic.
+- **Invariant map:** `quantity > 0`, all progress counters are non-negative, `delivered_quantity <= shipped_quantity <= quantity`, and lifecycle arithmetic must never operate on a persisted snapshot that violates those invariants.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.86-01:** migration `000109` installs the PostgreSQL progress check as `NOT VALID`, which protects future writes but does not retroactively validate legacy rows. `resolve_item_adjustments` previously performed unchecked subtraction such as `quantity - shipped_quantity` and `shipped_quantity - delivered_quantity` before any service-level validation. A malformed legacy row could therefore trigger integer underflow/panic or produce invalid remaining-quantity semantics before the database update guard could reject the later write.
+- **Production remediation:** added `validate_item_progress_snapshot` and made `resolve_item_adjustments` validate every loaded item before any progress arithmetic. Valid snapshots retain the exact existing quantity semantics; inconsistent persisted counters now return a stable validation error and no lifecycle mutation is attempted.
+- **Arithmetic consequence:** after the snapshot invariant is established, existing `+ adjustment` and `- adjustment` operations are bounded by `0 <= adjustment <= remaining_quantity`, so results remain inside the validated `i32` quantity range without introducing a new conversion layer.
+- **Adjacent-boundary audit:** migration `000109` remains the persistence safety net; migration `000110` continues to serialize progress updates; all five item lifecycle write sites reach `resolve_item_adjustments` before modifying progress. No direct item-progress mutation path inside `FulfillmentService` bypasses the helper.
+- **Immediate re-audit:** re-read the validator, complete `resolve_item_adjustments`, and each ship/deliver/reopen/reship arithmetic site. The validator runs before both automatic and requested adjustment planning, and no requested-input path can bypass it.
+- **Fresh second pass:** independently re-read the item progress migration contracts, all `fulfillment_item::ActiveModel` writes, response mapping, and the new regression test. No remaining unchecked item progress arithmetic was found in the primary module.
+- **Regression coverage:** added pure coverage for invalid stored states including `shipped_quantity > quantity` and negative `delivered_quantity`.
+- **Documentation:** Fulfillment README now records the fail-closed persisted-counter invariant.
+- **Verification:** repository source inspection, migration/constraint tracing, immediate reread, fresh second pass, and branch diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer verification remains required.
+- **Status:** `FS-22.06.86` complete and integrated via PR #4456, squash merge `a1eebdd7379accebe1085043f2e54d8aca733c00`.
+- **Post-merge reconciliation:** refreshed `main` at `a1eebdd7379accebe1085043f2e54d8aca733c00` and re-read the guarded arithmetic, all five lifecycle item write sites, migration contracts, README invariant, and ledger entry; the expected changes are present with no concurrent drift.
+- **Next primary module iteration:** `FS-22.06.87` — same primary module, next fulfillment-item owner boundary after refreshing integrated `main`.
+
+### FS-22.06.87 Assessment — `crates/modules/rustok-fulfillment/src/services/fulfillment.rs` Lifecycle metadata patch shape
+
+- **Base:** refreshed `main` at `985dd0d513e07b15913309a26d5050bd55cf8214`; dedicated branch `audit/fs-22.06.87-fulfillment-metadata-patch`.
+- **Primary scope:** one production owner module only — `merge_fulfillment_metadata` and every fulfillment lifecycle call path that uses it immediately before owner audit append and persistence.
+- **Invariant map:** lifecycle metadata patches must remain object-shaped; accepted patches must merge without replacing unrelated persisted metadata; caller audit history must remain excluded; malformed input must fail closed before the lifecycle record is committed.
+- **Confirmed finding FULFILLMENTSERVICE-22.06.87-01:** `merge_fulfillment_metadata` validated only the persisted `current` metadata as an object. Its generic `merge_metadata` helper replaces the current value with any non-object patch. When current metadata already contained owner audit history, the subsequent audit-preservation step reconstructed an object containing only `audit`, so a scalar/array lifecycle metadata patch could silently discard every unrelated persisted metadata field while the lifecycle mutation still succeeded.
+- **Production remediation:** `merge_fulfillment_metadata` now requires the incoming patch to be a JSON object before stripping caller audit data or invoking the generic merge. Valid object patches retain the existing shallow-merge behavior and owner audit preservation; scalar/array/null patches now return validation failure before audit append or persistence.
+- **Regression coverage:** added focused pure coverage proving scalar and array lifecycle metadata patches are rejected.
+- **Immediate re-audit:** re-read `merge_fulfillment_metadata`, `validate_object_metadata`, `merge_metadata`, and all ship/deliver/reopen/reship/cancel callers. Every lifecycle mutation reaches the strengthened helper before `append_audit_event`; no direct lifecycle path can still accept a non-object patch.
+- **Fresh second pass:** independently re-read the complete lifecycle update blocks, provider-operation stripping, audit preservation, checkout metadata boundaries, and the new regression. No alternate fulfillment lifecycle metadata merge path was found in the primary module, and valid object-patch semantics remain unchanged.
+- **Documentation:** Fulfillment README now explicitly states that lifecycle metadata merge rejects both non-object persisted metadata and non-object patches before merging.
+- **Verification:** repository source inspection, lifecycle call-site tracing, immediate reread, fresh second pass, and exact branch-diff review only. No Cargo tests, clippy, build, gatekeeper, migration, or runtime commands were executed by the agent; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.87` complete and integrated via PR #4458, squash merge `f972b9419bb067a7ac07a5bd64125c1bd20099e4`.
+- **Post-merge reconciliation:** refreshed `main` at `f972b9419bb067a7ac07a5bd64125c1bd20099e4` and re-read the strengthened metadata merge boundary, all lifecycle callers, Fulfillment README invariant, and the ledger entry. The expected production/documentation changes are present with no concurrent drift affecting this iteration.
+- **Next primary module iteration:** `FS-22.06.88` — same primary module, next fulfillment metadata/lifecycle owner boundary after refreshing integrated `main`.

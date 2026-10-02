@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::services::fulfillment::{
     CheckoutFulfillmentRecord, normalize_checkout_plan_hash, strip_fulfillment_identity_metadata,
-    strip_fulfillment_item_checkout_metadata,
+    strip_fulfillment_item_metadata,
 };
 use crate::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, FulfillmentError, FulfillmentResponse,
@@ -704,8 +704,7 @@ fn fulfillment_metadata(base: Value) -> Result<Value, PortError> {
 }
 
 fn fulfillment_item_metadata(base: Value, cart_line_item_id: Uuid) -> Result<Value, PortError> {
-    let value =
-        strip_fulfillment_item_checkout_metadata(base).map_err(|_| metadata_projection_error())?;
+    let value = strip_fulfillment_item_metadata(base).map_err(|_| metadata_projection_error())?;
     let mut root = match value {
         Value::Object(object) => object,
         _ => return Err(metadata_projection_error()),
@@ -1244,6 +1243,21 @@ mod tests {
         });
 
         assert!(fulfillment_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn checkout_item_metadata_drops_caller_supplied_audit_history() {
+        let metadata = serde_json::json!({
+            "audit": {
+                "events": [{"type": "forged", "quantity": 999}]
+            },
+            "note": "keep"
+        });
+
+        let projected = fulfillment_item_metadata(metadata, Uuid::new_v4())
+            .expect("checkout item metadata should sanitize");
+        assert!(projected.get("audit").is_none());
+        assert_eq!(projected.get("note").and_then(Value::as_str), Some("keep"));
     }
 
     #[test]

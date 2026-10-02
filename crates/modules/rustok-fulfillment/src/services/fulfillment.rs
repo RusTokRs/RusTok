@@ -481,7 +481,7 @@ impl FulfillmentService {
                     quantity: Set(item.quantity),
                     shipped_quantity: Set(0),
                     delivered_quantity: Set(0),
-                    metadata: Set(strip_fulfillment_item_checkout_metadata(item.metadata)?),
+                    metadata: Set(strip_fulfillment_item_metadata(item.metadata)?),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
@@ -1324,6 +1324,7 @@ fn merge_fulfillment_metadata(
         .as_object()
         .and_then(|object| object.get("audit"))
         .cloned();
+    validate_object_metadata(&patch, "fulfillment metadata patch")?;
     let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
 
     if let Some(audit) = current_audit {
@@ -1559,6 +1560,13 @@ pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> Fulfillm
     Ok(Value::Object(root))
 }
 
+pub(crate) fn strip_fulfillment_item_metadata(value: Value) -> FulfillmentResult<Value> {
+    // Item audit history is owner-generated lifecycle evidence and cannot be seeded by
+    // create callers. Checkout identity sanitization remains separate and strict.
+    let value = strip_fulfillment_audit_metadata(value);
+    strip_fulfillment_item_checkout_metadata(value)
+}
+
 fn validate_object_metadata(metadata: &Value, resource: &str) -> FulfillmentResult<()> {
     if !metadata.is_object() {
         return Err(FulfillmentError::Validation(format!(
@@ -1621,11 +1629,31 @@ enum FulfillmentItemAction {
     Cancel,
 }
 
+fn validate_item_progress_snapshot(
+    item: &entities::fulfillment_item::Model,
+) -> FulfillmentResult<()> {
+    if item.quantity <= 0
+        || item.shipped_quantity < 0
+        || item.delivered_quantity < 0
+        || item.delivered_quantity > item.shipped_quantity
+        || item.shipped_quantity > item.quantity
+    {
+        return Err(FulfillmentError::Validation(
+            "fulfillment item progress counters are inconsistent".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn resolve_item_adjustments(
     items: &[entities::fulfillment_item::Model],
     requested: Option<&[FulfillmentItemQuantityInput]>,
     action: FulfillmentItemAction,
 ) -> FulfillmentResult<Vec<(Uuid, i32)>> {
+    for item in items {
+        validate_item_progress_snapshot(item)?;
+    }
+
     let planned = if let Some(requested) = requested {
         requested
             .iter()
@@ -2233,6 +2261,62 @@ mod tests {
     }
 
     #[test]
+    fn item_progress_validation_rejects_inconsistent_persisted_counters() {
+        let now = Utc::now().into();
+        let item = entities::fulfillment_item::Model {
+            id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            order_line_item_id: Uuid::new_v4(),
+            quantity: 1,
+            shipped_quantity: 2,
+            delivered_quantity: 0,
+            metadata: serde_json::json!({}),
+            created_at: now,
+            updated_at: now,
+        };
+
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
+
+        let item = entities::fulfillment_item::Model {
+            shipped_quantity: 0,
+            delivered_quantity: -1,
+            ..item
+        };
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
+    }
+
+    #[test]
+    fn item_metadata_drops_caller_supplied_audit_history() {
+        let metadata = serde_json::json!({
+            "audit": {
+                "events": [
+                    {
+                        "type": "ship",
+                        "at": "2000-01-01T00:00:00Z",
+                        "quantity": 999
+                    }
+                ]
+            },
+            "checkout": {
+                "cart_line_item_id": Uuid::new_v4().to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_item_metadata(metadata)
+            .expect("item metadata should sanitize");
+        assert!(sanitized.get("audit").is_none());
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str)
+                .is_some()
+        );
+    }
+
+    #[test]
     fn item_checkout_metadata_removes_legacy_identity_keys() {
         let cart_line_item_id = Uuid::new_v4();
         let metadata = serde_json::json!({
@@ -2304,6 +2388,34 @@ mod tests {
             super::merge_fulfillment_metadata(
                 serde_json::json!("legacy scalar"),
                 serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_patch() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profile": "express",
+            "audit": {
+                "events": [{"type": "ship"}]
+            }
+        });
+
+        assert!(
+            super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err()
+        );
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!({
+                    "customer_note": "keep",
+                    "shipping_profile": "express",
+                    "audit": {
+                        "events": [{"type": "ship"}]
+                    }
+                }),
+                serde_json::json!(["legacy", "array"]),
             )
             .is_err()
         );
