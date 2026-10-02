@@ -1,6 +1,12 @@
 use crate::{FlyError, FlyResult, GrapesProject, ProjectDocument};
 use serde_json::Value;
 
+/// Hard ceiling on JSON nesting accepted by the codec.
+///
+/// Far above anything a real page produces (`ValidationLimits::maximum_depth` defaults to 64) and
+/// far below what would exhaust the stack.
+pub const MAXIMUM_DECODE_DEPTH: usize = 512;
+
 pub struct GrapesJsCodec;
 
 impl GrapesJsCodec {
@@ -18,32 +24,59 @@ impl GrapesJsCodec {
         if !value.is_object() {
             return Err(FlyError::InvalidProjectRoot);
         }
+        // Checked iteratively, before anything recursive touches the payload. Model construction,
+        // traversal, rendering and `Value`'s own `Drop` are all recursive, so a deeply nested
+        // document would abort the process on stack exhaustion rather than return an error.
+        ensure_depth_within_limit(&value, MAXIMUM_DECODE_DEPTH)?;
         let project: GrapesProject =
             serde_json::from_value(value).map_err(|error| FlyError::Decode(error.to_string()))?;
         Ok(ProjectDocument::new(project))
     }
 
     pub fn encode_value(document: &ProjectDocument) -> FlyResult<Value> {
-        serde_json::to_value(canonical_project(document)?)
+        serde_json::to_value(canonical_project(document))
             .map_err(|error| FlyError::Encode(error.to_string()))
     }
 
     pub fn encode_vec(document: &ProjectDocument) -> FlyResult<Vec<u8>> {
-        serde_json::to_vec(&canonical_project(document)?)
+        serde_json::to_vec(canonical_project(document))
             .map_err(|error| FlyError::Encode(error.to_string()))
     }
 
     pub fn encode_pretty(document: &ProjectDocument) -> FlyResult<String> {
-        serde_json::to_string_pretty(&canonical_project(document)?)
+        serde_json::to_string_pretty(canonical_project(document))
             .map_err(|error| FlyError::Encode(error.to_string()))
     }
 }
 
-fn canonical_project(document: &ProjectDocument) -> FlyResult<GrapesProject> {
-    // Fly's canonical editable tree is `pages[].component`. GrapesJS frame payloads are opaque
-    // compatibility data: decode preserves them, but never imports from them; encode preserves
-    // them, but never rewrites them as a second component-tree authority.
-    Ok(document.project.clone())
+/// Reject a JSON value nested deeper than `maximum`, without recursing.
+fn ensure_depth_within_limit(value: &Value, maximum: usize) -> FlyResult<()> {
+    let mut pending = vec![(value, 1usize)];
+    while let Some((value, depth)) = pending.pop() {
+        if depth > maximum {
+            return Err(FlyError::MaximumDepthExceeded { maximum });
+        }
+        match value {
+            Value::Array(values) => pending.extend(values.iter().map(|value| (value, depth + 1))),
+            Value::Object(entries) => {
+                pending.extend(entries.values().map(|value| (value, depth + 1)));
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// Borrow the canonical, encodable view of a document.
+///
+/// Fly's canonical editable tree is `pages[].component`. GrapesJS frame payloads are opaque
+/// compatibility data: decode preserves them, but never imports from them; encode preserves them,
+/// but never rewrites them as a second component-tree authority.
+///
+/// This used to deep-clone the entire project on every encode — and encode runs on every hash,
+/// every snapshot and every save.
+fn canonical_project(document: &ProjectDocument) -> &GrapesProject {
+    &document.project
 }
 
 #[cfg(test)]
@@ -192,5 +225,34 @@ mod tests {
             editor.revision().project_hash,
             crate::ProjectHash::from_bytes(&bytes)
         );
+    }
+
+    #[test]
+    fn decode_rejects_pathologically_nested_payloads_without_recursing() {
+        let mut value = json!({ "type": "text" });
+        for _ in 0..(MAXIMUM_DECODE_DEPTH + 50) {
+            value = json!({ "type": "wrapper", "components": [value] });
+        }
+        let project = json!({ "pages": [{ "component": value }] });
+
+        assert!(matches!(
+            GrapesJsCodec::decode_value(project),
+            Err(FlyError::MaximumDepthExceeded { .. })
+        ));
+    }
+
+    #[test]
+    fn decode_accepts_documents_within_the_depth_limit() {
+        let mut value = json!({ "id": "leaf", "type": "text" });
+        for index in 0..32 {
+            value = json!({
+                "id": format!("node-{index}"),
+                "type": "wrapper",
+                "components": [value]
+            });
+        }
+        let project = json!({ "pages": [{ "id": "home", "component": value }] });
+
+        assert!(GrapesJsCodec::decode_value(project).is_ok());
     }
 }

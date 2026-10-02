@@ -14,6 +14,8 @@ const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
+const UNSAFE_NAVIGATION_CODE = "UNSAFE_NAVIGATION_TARGET";
+const UNSAFE_INTENT_ENDPOINT_CODE = "UNSAFE_INTENT_ENDPOINT";
 const INTENT_ABORT_KIND = Object.freeze({
   EXTERNAL: "external",
   TIMEOUT: "timeout",
@@ -59,6 +61,48 @@ function normalizedTransportOptions(value) {
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+/**
+ * Resolve `value` against the current document, returning it only when it stays on this origin.
+ *
+ * Two call sites need this and neither can trust its input:
+ *  - the intent endpoint comes from a DOM data attribute and receives the admin access token, so
+ *    a foreign URL there is credential exfiltration;
+ *  - the post-intent navigation target comes from a server response body, so a `javascript:` or
+ *    `data:` URL there is script execution and an absolute URL is an open redirect.
+ *
+ * Returns `null` for anything that is not a same-origin http(s) URL, including protocol-relative
+ * URLs, which look relative but resolve to a foreign host.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+function sameOriginUrl(value) {
+  const candidate = nonEmptyString(value);
+  if (!candidate) return null;
+  const trimmed = candidate.trim();
+  if (trimmed.startsWith("//")) return null;
+
+  let base = null;
+  try {
+    base = globalThis.location?.href || null;
+  } catch (_) {
+    base = null;
+  }
+  if (!base) {
+    // No document to resolve against: accept only unambiguous root-relative paths.
+    return trimmed.startsWith("/") ? trimmed : null;
+  }
+
+  try {
+    const resolved = new URL(trimmed, base);
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return null;
+    if (resolved.origin !== new URL(base).origin) return null;
+    return resolved.href;
+  } catch (_) {
+    return null;
+  }
 }
 
 function abortError(abort, signal, error) {
@@ -455,8 +499,13 @@ export class FlyBrowserAdapter {
     this.pageId = root.dataset.flyPageId || null;
     this.expectedOrigin =
       options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
-    this.intentEndpoint =
-      options.intentEndpoint || root.dataset.flyIntentEndpoint || null;
+    // Validated before any credential is attached: this URL is read from the DOM.
+    this.intentEndpoint = sameOriginUrl(
+      options.intentEndpoint || root.dataset.flyIntentEndpoint || null,
+    );
+    this.rejectedIntentEndpoint =
+      !this.intentEndpoint &&
+      Boolean(options.intentEndpoint || root.dataset.flyIntentEndpoint);
     this.csrfToken = options.csrfToken || root.dataset.flyCsrfToken || null;
     this.accessToken = options.accessToken || storedString(TOKEN_KEY);
     this.tenantSlug = options.tenantSlug || storedString(TENANT_KEY);
@@ -494,6 +543,22 @@ export class FlyBrowserAdapter {
       );
     }
     this.lifecycleState = ADAPTER_LIFECYCLE.STARTED;
+    if (this.rejectedIntentEndpoint) {
+      // Surfaced rather than silently ignored: an operator who misconfigured the endpoint needs
+      // to know that intents are disabled, and a cross-origin value is worth investigating.
+      reportBrowserProblem(
+        this,
+        {
+          status: 0,
+          result: {
+            code: UNSAFE_INTENT_ENDPOINT_CODE,
+            error:
+              "Editor actions are disabled: the configured intent endpoint is not a same-origin URL.",
+          },
+        },
+        UNSAFE_INTENT_ENDPOINT_CODE,
+      );
+    }
     const { signal } = this.abortController;
     window.addEventListener("message", (event) => this.onMessage(event), {
       signal,
@@ -1153,7 +1218,24 @@ export class FlyBrowserAdapter {
         if (result.reload === true) {
           globalThis.location.reload();
         } else if (typeof result.location === "string") {
-          globalThis.location.assign(result.location);
+          const target = sameOriginUrl(result.location);
+          if (target) {
+            globalThis.location.assign(target);
+          } else {
+            reportBrowserProblem(
+              this,
+              {
+                status: response.status,
+                result: {
+                  code: UNSAFE_NAVIGATION_CODE,
+                  error:
+                    "Refused to follow an editor navigation target that is not a same-origin http(s) URL.",
+                },
+                request,
+              },
+              UNSAFE_NAVIGATION_CODE,
+            );
+          }
         }
       }
       return result;
