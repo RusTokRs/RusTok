@@ -4270,6 +4270,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** PR #4468 was squash-merged as `6b9eca0fdf400c9b32db2bcc975c52ef5b85cbf4`. Refreshed `main` at that merge commit and re-read the changed production paths and documentation; the expected invariants are present with no concurrent drift.
 - **Verification:** repository source inspection, direct producer/caller tracing, immediate reread, fresh second pass, exact PR diff review, and post-merge source reconciliation. Local Cargo/tests/clippy/gatekeeper/migration/runtime commands were not executable in the current runtime; the commit workflow-run query returned no run records at reconciliation time, so no passing CI/runtime evidence is claimed.
 - **Status:** `FS-22.06.92` complete and integrated on `main`.
-- **Next primary module iteration:** `FS-22.06.93` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
+### FS-22.06.93 Assessment — `crates/modules/rustok-fulfillment/src/dto/fulfillment.rs`, `services/fulfillment.rs`, and `admin_command.rs` lifecycle text boundaries
+
+- **Base:** `38481892f9fec95f3e8ff06958bbe807d03bff31`; dedicated branch `audit/fs-22.06.93-lifecycle-text-boundaries` was created from refreshed `main`.
+- **Primary scope:** one Fulfillment owner module only — typed lifecycle text fields and their ordering relative to local persistence and provider side effects.
+- **Confirmed finding FULFILLMENT-22.06.93-01:** the persisted `fulfillments.delivered_note` and `fulfillments.cancellation_reason` columns are bounded to 255 and 500 characters respectively, but the corresponding `DeliverFulfillmentInput` and `CancelFulfillmentInput` DTOs had no length validation and the owner service did not invoke DTO validation. This created a cross-database contract gap, especially on SQLite where length constraints are not enforced like varchar columns.
+- **Provider-ordering impact:** the admin cancellation command performs provider execution before calling `FulfillmentService::cancel_fulfillment`. Without early DTO validation, an over-limit cancellation reason could cross the external provider boundary and only fail later during local persistence, leaving the operation in reconciliation territory.
+- **Production remediation:** `DeliverFulfillmentInput` now validates `delivered_note <= 255`; `CancelFulfillmentInput` now validates `reason <= 500`. `FulfillmentService::deliver_fulfillment` and `cancel_fulfillment` revalidate these DTOs at the owner-service boundary. The admin `deliver` and `cancel` commands validate before service/provider work, with cancellation therefore failing before any external side effect.
+- **Compatibility reconciliation:** the limits exactly match the existing persisted schema; no field semantics were otherwise changed, and optional empty values remain allowed as before.
+- **Regression coverage:** added boundary tests proving 255/500-character values are accepted and 256/501-character values are rejected.
+- **Immediate re-audit:** re-read the lifecycle DTOs, database migration/entity, all modified service methods, and admin command ordering. The provider-backed cancellation path now validates its text payload before journaling/provider execution.
+- **Fresh second pass:** re-read the complete ship/deliver/reopen/reship/cancel lifecycle blocks and database integrity contract. No second lifecycle text field in the inspected production surface has a schema limit without a corresponding owner-side validation requirement; no bypass for the changed cancel/deliver fields was found.
+- **Post-merge reconciliation:** PR #4469 was squash-merged as `e7a32cb89576546453d545828c8c2916db2b5cf9`. Refreshed `main) at that merge commit and re-read the DTO, owner service, and admin cancellation path; expected changes are present with no concurrent drift.
+- **Verification:** repository source inspection, schema/DTO comparison, provider-ordering analysis, immediate reread, fresh second pass, exact PR diff review, and post-merge source reconciliation. Local Cargo/tests/clippy/gatekeeper/migration/runtime commands were not executable in the current runtime; no passing CI/runtime evidence is claimed.
+- **Status:** `FS-22.06.93` complete and integrated on `main`.
+- **Next primary module iteration:** `FS-22.06.94` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
+
 
 
