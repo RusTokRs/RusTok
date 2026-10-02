@@ -1471,6 +1471,15 @@ fn apply_allowed_shipping_profiles_to_metadata(
     allowed_shipping_profile_slugs: Option<Vec<String>>,
 ) -> FulfillmentResult<Value> {
     let Some(allowed_shipping_profile_slugs) = allowed_shipping_profile_slugs else {
+        if let Value::Object(object) = &metadata
+            && let Some(shipping_profiles) = object.get("shipping_profiles")
+            && !shipping_profiles.is_object()
+        {
+            return Err(FulfillmentError::Validation(
+                "shipping option shipping_profiles metadata namespace must be a JSON object"
+                    .to_string(),
+            ));
+        }
         return Ok(metadata);
     };
 
@@ -2480,6 +2489,38 @@ mod tests {
             .and_then(Value::as_array)
             .map(Vec::len),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn shipping_profile_namespace_is_validated_without_typed_restriction() {
+        for malformed in [
+            serde_json::json!({"shipping_profiles": "legacy scalar"}),
+            serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
+            serde_json::json!({"shipping_profiles": null}),
+        ] {
+            assert!(
+                super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err()
+            );
+        }
+
+        let untouched = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profiles": {
+                "legacy_flag": true
+            }
+        });
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(untouched.clone(), None)
+                .expect("valid namespace should be preserved"),
+            untouched
+        );
+
+        let scalar_root = serde_json::json!("legacy scalar");
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(scalar_root.clone(), None)
+                .expect("unrelated scalar metadata remains supported"),
+            scalar_root
         );
     }
 
