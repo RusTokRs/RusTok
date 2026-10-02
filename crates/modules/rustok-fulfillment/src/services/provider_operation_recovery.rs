@@ -173,6 +173,7 @@ impl FulfillmentProviderOperationRecovery {
                 typed_result.provider_id, existing.provider_id
             )));
         }
+        validate_provider_result_metadata(&typed_result.metadata)?;
         validate_optional_boundary_text(
             "external_reference",
             typed_result.external_reference.as_deref(),
@@ -257,6 +258,15 @@ impl FulfillmentProviderOperationRecovery {
     }
 }
 
+fn validate_provider_result_metadata(metadata: &Value) -> FulfillmentResult<()> {
+    if !metadata.is_object() {
+        return Err(FulfillmentError::Validation(
+            "provider_result metadata must be a JSON object".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_optional_boundary_text(
     field: &str,
     value: Option<&str>,
@@ -284,5 +294,23 @@ fn normalize_error(value: String) -> String {
         value.to_string()
     } else {
         value.chars().take(2000).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn provider_result_metadata_requires_object_shape() {
+        assert!(
+            validate_provider_result_metadata(&Value::Null).is_err(),
+            "non-object provider metadata must be rejected"
+        );
+        assert!(
+            validate_provider_result_metadata(&json!({"provider": "carrier"})).is_ok(),
+            "object provider metadata should be accepted"
+        );
     }
 }
