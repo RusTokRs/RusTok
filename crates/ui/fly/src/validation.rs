@@ -129,7 +129,16 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
                 format!("{path}.id"),
                 format!("page id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_page_id",
+                        format!("{path}.id"),
+                        format!("page id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_page_id",
@@ -203,6 +212,35 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
     }
 }
 
+/// Longest identifier Fly will accept for a page or component.
+pub const MAXIMUM_IDENTIFIER_LENGTH: usize = 128;
+
+/// Check that an authored identifier is inert everywhere Fly interpolates it.
+///
+/// Page and component ids are not just map keys: they are emitted into HTML attributes, into CSS
+/// attribute selectors inside a raw `<style>` element, and into diagnostic paths. Escaping at each
+/// of those sinks is the primary defence, but an allow-listed charset is what keeps a single
+/// missed sink from becoming an injection. The charset matches what GrapesJS itself produces.
+pub fn validate_identifier(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("identifier is empty".to_string());
+    }
+    if id.len() > MAXIMUM_IDENTIFIER_LENGTH {
+        return Err(format!(
+            "identifier is {} bytes, exceeding the maximum of {MAXIMUM_IDENTIFIER_LENGTH}",
+            id.len()
+        ));
+    }
+    if let Some(character) = id.chars().find(|character| {
+        !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':'))
+    }) {
+        return Err(format!(
+            "character `{character}` is not allowed; use ASCII letters, digits, `-`, `_`, `.` or `:`"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_components(
     document: &ProjectDocument,
     registries: &RegistrySet,
@@ -221,7 +259,16 @@ fn validate_components(
                 path,
                 format!("component id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_component_id",
+                        format!("{path}.id"),
+                        format!("component id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_component_id",
@@ -741,4 +788,90 @@ mod tests {
             3
         );
     }
+
+    #[test]
+    fn identifier_rule_allows_grapesjs_shapes_and_rejects_injection_payloads() {
+        for id in ["hero", "i3kj", "hero--rep-0", "fly-section-12", "ns:block.v2", "a_b"] {
+            assert!(validate_identifier(id).is_ok(), "rejected `{id}`");
+        }
+        for id in [
+            "",
+            "x\"]{}</style><script>alert(1)</script>",
+            "has space",
+            "quote\"inside",
+            "angle<bracket",
+            "emoji\u{1f600}",
+            &"x".repeat(MAXIMUM_IDENTIFIER_LENGTH + 1),
+        ] {
+            assert!(validate_identifier(id).is_err(), "accepted `{id}`");
+        }
+    }
+
+    #[test]
+    fn hostile_component_and_page_ids_are_validation_errors() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home</style>",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero\"><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        let codes = report
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(codes.contains(&"invalid_page_id"), "{codes:?}");
+        assert!(codes.contains(&"invalid_component_id"), "{codes:?}");
+    }
+
+    #[test]
+    fn the_editor_heals_invalid_ids_instead_of_deadlocking_on_them() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero</style><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        // `FlyEditor::new` runs `ensure_stable_ids`, which must replace the hostile id; otherwise
+        // validation would reject every subsequent command and the document could never be fixed.
+        let mut editor = crate::FlyEditor::new(document, RegistrySet::with_builtins());
+        let report = editor.validate();
+
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "invalid_component_id"),
+            "{:?}",
+            report.diagnostics
+        );
+
+        // The document stays editable, which is the property that matters: validation errors abort
+        // `apply`, so an unhealed id would make every further command fail.
+        editor
+            .apply(crate::EditorCommand::Patch {
+                component_id: "root".to_string(),
+                patch: crate::ComponentPatch::default(),
+            })
+            .expect("document remains editable");
+    }
 }
+

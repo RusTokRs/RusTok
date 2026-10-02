@@ -145,9 +145,23 @@ pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> Str
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<style>{}</style></head><body>{}</body></html>",
         head.render_html(),
-        css,
+        escape_style_element_text(css),
         body_html,
     )
+}
+
+/// Make a stylesheet safe to embed inside a raw `<style>` element.
+///
+/// The HTML tokenizer leaves "raw text" mode at the first literal `</` regardless of CSS syntax,
+/// so any `</style>` reaching this point would end the element and let the remainder of the
+/// stylesheet be parsed as markup. CSS string/identifier escapes are invisible to the HTML
+/// tokenizer but fully understood by the CSS parser, so escaping the `<` keeps the stylesheet
+/// semantically identical while removing the breakout. `<!--` is neutralised for the same reason.
+fn escape_style_element_text(css: &str) -> String {
+    if !css.contains('<') {
+        return css.to_string();
+    }
+    css.replace('<', "\\00003c ")
 }
 
 pub fn render_page(
@@ -301,7 +315,7 @@ fn render_component(
     }
 
     if let Some(content) = component.extensions.get("content").and_then(Value::as_str) {
-        output.push_str(&escape_html(&strip_tags(content)));
+        push_escaped_html(output, content);
     }
     for (child_index, child) in component.children().iter().enumerate() {
         render_node(child, component_id, child_index, policy, output);
@@ -670,52 +684,80 @@ fn write_attribute(output: &mut String, name: &str, value: &str) {
     output.push(' ');
     output.push_str(name);
     output.push_str("=\"");
-    output.push_str(&escape_attribute(value));
+    push_escaped_attribute(output, value);
     output.push('"');
 }
 
 fn render_opaque(value: &Value, output: &mut String) {
     match value {
-        Value::String(value) => output.push_str(&escape_html(&strip_tags(value))),
+        Value::String(value) => push_escaped_html(output, value),
         Value::Number(value) => output.push_str(&value.to_string()),
         Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
         _ => {}
     }
 }
 
-fn strip_tags(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut inside_tag = false;
+/// Append `value` to `output` as HTML text content.
+///
+/// Escaping alone is the whole defence here. The renderer previously also ran a hand-rolled
+/// `strip_tags` pass first, which was both redundant (the escape already neutralises markup) and
+/// lossy: authored text such as `5 < 10 and 3 > 2` silently lost everything between the angle
+/// brackets.
+fn push_escaped_html(output: &mut String, value: &str) {
+    output.reserve(value.len());
     for character in value.chars() {
         match character {
-            '<' => inside_tag = true,
-            '>' => inside_tag = false,
-            _ if !inside_tag => result.push(character),
-            _ => {}
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
         }
     }
-    result
+}
+
+/// Append `value` to `output` as a double-quoted attribute value.
+fn push_escaped_attribute(output: &mut String, value: &str) {
+    output.reserve(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(character),
+        }
+    }
 }
 
 fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    let mut output = String::with_capacity(value.len());
+    push_escaped_html(&mut output, value);
+    output
 }
 
 fn escape_attribute(value: &str) -> String {
-    escape_html(value)
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    let mut output = String::with_capacity(value.len());
+    push_escaped_attribute(&mut output, value);
+    output
 }
 
+/// Escape a value for use inside a double-quoted CSS attribute-selector string.
+///
+/// Allow-list based on purpose: anything that is not an unambiguously inert identifier character
+/// is emitted as a CSS numeric escape (`\\XX `). A deny-list here is not sufficient, because the
+/// result is embedded in a `<style>` element and therefore has to survive both the CSS grammar
+/// and the HTML tokenizer.
 fn escape_css_attribute(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\a ")
-        .replace('\r', "\\d ")
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':') {
+            escaped.push(character);
+        } else {
+            escaped.push_str(&format!("\\{:x} ", character as u32));
+        }
+    }
+    escaped
 }
 
 #[cfg(test)]
@@ -1012,4 +1054,84 @@ mod tests {
         assert!(!head.contains("canonical"));
         assert!(!head.contains("og:image"));
     }
+
+    #[test]
+    fn component_id_cannot_break_out_of_the_style_element() {
+        let hostile_id = "x\"]{}</style><script>alert(1)</script><style>{a:b";
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": hostile_id,
+                        "type": "section",
+                        "style": { "margin-top": "12px" }
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
+        let html = rendered.document_html();
+
+        // Exactly one `</style>`: the real closing tag. A second one would mean the stylesheet
+        // ended the element early and the rest of it is being parsed as markup.
+        assert_eq!(
+            html.matches("</style>").count(),
+            1,
+            "stylesheet terminated the style element: {html}"
+        );
+        assert!(
+            !html.contains("<script>"),
+            "stylesheet injected markup: {html}"
+        );
+        assert!(
+            !rendered.css.contains('<'),
+            "raw `<` survived CSS escaping: {}",
+            rendered.css
+        );
+        assert!(
+            rendered.css.contains("margin-top:12px"),
+            "escaping dropped the declaration: {}",
+            rendered.css
+        );
+    }
+
+    #[test]
+    fn text_content_keeps_angle_brackets_as_literal_text() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "note",
+                        "type": "text",
+                        "content": "5 < 10 and 3 > 2 & true"
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
+
+        assert!(
+            rendered.html.contains("5 &lt; 10 and 3 &gt; 2 &amp; true"),
+            "authored text was mangled: {}",
+            rendered.html
+        );
+    }
+
+    #[test]
+    fn style_element_escaping_preserves_ordinary_css() {
+        let css = "[data-fly-style-id=\"hero\"]{margin-top:12px}";
+        assert_eq!(escape_style_element_text(css), css);
+    }
 }
+

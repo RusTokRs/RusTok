@@ -1,4 +1,4 @@
-use crate::{FlyError, FlyResult, IdGenerator, ProjectHash};
+use crate::{FlyError, FlyResult, IdGenerator, ProjectHash, validate_identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,11 +29,18 @@ impl ProjectDocument {
         self.component(id).is_some()
     }
 
+    /// Give every component a unique, syntactically valid id, minting new ones where needed.
+    ///
+    /// Ids that fail [`validate_identifier`] are replaced rather than preserved. An id is
+    /// interpolated into HTML attributes and into CSS selectors inside a raw `<style>` element, so
+    /// a malformed one is a liability; keeping it would also deadlock the editor, because
+    /// validation rejects it and every command runs validation. Self-healing here mirrors how
+    /// duplicate ids have always been handled.
     pub fn ensure_stable_ids(&mut self, generator: &mut impl IdGenerator) {
         let mut reserved = BTreeSet::new();
         self.project.visit_components(|component, _, _| {
             if let Some(id) = component.id()
-                && !id.is_empty()
+                && validate_identifier(id).is_ok()
             {
                 reserved.insert(id.to_string());
             }
@@ -235,7 +242,10 @@ impl ComponentNode {
         let Some(object) = self.as_object_mut() else {
             return;
         };
-        let current_id = object.id.as_deref().filter(|id| !id.is_empty());
+        let current_id = object
+            .id
+            .as_deref()
+            .filter(|id| validate_identifier(id).is_ok());
         let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
         if needs_new_id {
             let hint = object.component_type.as_deref().unwrap_or("node");

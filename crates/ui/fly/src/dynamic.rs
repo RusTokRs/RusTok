@@ -12,7 +12,7 @@ pub const FLY_RUNTIME_REPEATERS_FIELD: &str = "flyRuntimeRepeaters";
 pub const DEFAULT_REPEATER_LIMIT: usize = 100;
 pub const MAX_REPEATER_LIMIT: usize = 1_000;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ConditionOperator {
     Exists,
@@ -37,7 +37,7 @@ pub struct RuntimeCondition {
     pub extensions: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EmptyRepeaterBehavior {
     #[default]

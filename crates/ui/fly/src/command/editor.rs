@@ -39,6 +39,16 @@ impl FlyEditor {
         self
     }
 
+    /// Cap how many bytes of retained document state undo history may hold.
+    ///
+    /// An entry count alone does not bound memory: each entry keeps a full before/after document
+    /// pair, so a large project multiplies the limit by its own size.
+    pub fn with_history_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
+        self.history = std::mem::replace(&mut self.history, History::new(1))
+            .with_memory_budget(memory_budget_bytes);
+        self
+    }
+
     pub fn with_validation_limits(mut self, limits: ValidationLimits) -> Self {
         self.validation_limits = limits;
         self
@@ -124,7 +134,7 @@ impl FlyEditor {
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_undo()?;
         self.document = entry.before.clone();
-        self.history.redo.push(entry);
+        self.history.push_redo(entry);
         self.selection = self
             .selection
             .take()
@@ -136,7 +146,7 @@ impl FlyEditor {
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_redo()?;
         self.document = entry.after.clone();
-        self.history.undo.push(entry);
+        self.history.push_undo(entry);
         self.selection = self
             .selection
             .take()

@@ -15,6 +15,7 @@ mod context_dependency;
 mod context_json_schema;
 mod context_scenario;
 mod context_schema;
+mod digest;
 mod dynamic;
 mod error;
 mod fragment;
@@ -63,6 +64,7 @@ pub use context_dependency::*;
 pub use context_json_schema::*;
 pub use context_scenario::*;
 pub use context_schema::*;
+pub use digest::*;
 pub use dynamic::*;
 pub use error::*;
 pub use fragment::*;
@@ -96,9 +98,6 @@ pub use style_rule::*;
 pub use trait_model::*;
 pub use translation::*;
 pub use validation::*;
-
-impl Copy for ConditionOperator {}
-impl Copy for EmptyRepeaterBehavior {}
 
 pub const GRAPESJS_FORMAT: &str = "grapesjs";
 pub const FLY_FRAGMENT_FORMAT: &str = "fly_fragment";
