@@ -100,11 +100,17 @@ fn allowed_shipping_profile_slugs_from_option(
     option
         .allowed_shipping_profile_slugs
         .as_ref()
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| normalize_shipping_profile_slug(value))
-                .collect()
+        .and_then(|values| {
+            if values.is_empty() {
+                None
+            } else {
+                Some(
+                    values
+                        .iter()
+                        .filter_map(|value| normalize_shipping_profile_slug(value))
+                        .collect(),
+                )
+            }
         })
         .or_else(|| extract_allowed_shipping_profile_slugs_from_metadata(&option.metadata))
 }
@@ -431,6 +437,13 @@ mod tests {
         };
         let required_profiles = BTreeSet::from([String::from("default")]);
 
+        assert!(is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+
+        option.allowed_shipping_profile_slugs = Some(Vec::new());
+        option.metadata = serde_json::json!({});
         assert!(is_shipping_option_compatible_with_profiles(
             &option,
             &required_profiles,
