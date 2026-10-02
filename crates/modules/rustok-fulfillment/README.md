@@ -57,7 +57,7 @@
 - `metadata.provider_operation` is write-reserved: fulfillment creation and public lifecycle service entrypoints strip caller-supplied receipt data; only crate-internal provider-result lifecycle paths attach the journal-owned receipt after the provider operation has been journaled.
 - Shipping-option `provider_id` values use the canonical Fulfillment provider-registry identifier grammar at the owner boundary, so persisted options cannot contain provider IDs that the registry would later reject.
 - The broad `fulfillment/fulfillment_copy` readiness row is an aggregate classification only and must not be registered as a second Translation provider.
-- `carrier` and `tracking_number` are identifiers; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
+- `carrier` and `tracking_number` are identifiers and must be non-blank on ship/reship owner commands; provider IDs, shipping-profile slugs, metadata, amounts, currencies, routing and lifecycle state are operational facts rather than translatable copy.
 - `delivered_note` and `cancellation_reason` belong to fulfillment history and preserve their original operational context. Translation must not retroactively rewrite those facts.
 - Any future mutable Fulfillment presentation surface must be introduced as its own typed owner resource with exact locale storage, CAS/idempotency and change evidence instead of widening the aggregate row or scanning metadata.
 
