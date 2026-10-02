@@ -67,6 +67,10 @@ Engineering audit remediation — see
 - `safe_style` rejected every `url(`, which made `background-image` unusable. Safe references are
   allowed, validated against the same resource policy as `src`; `behavior`, `-moz-binding`,
   `-ms-behavior` and `expression` are rejected by property name.
+- An empty `EditorCommand::Batch` computed an empty capability requirement, and the state
+  machine skips its entire guarded branch when nothing is required — so the batch bypassed the
+  read-only check and still reached `FlyEditor::apply`, which records history and marks the
+  revision changed. An empty batch now requires `Edit`, failing closed.
 - Four separate copies of id-reference substitution consolidated into `id_reference`, which
   rewrites only declared reference positions instead of any string that happens to match an id.
 
