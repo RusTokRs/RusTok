@@ -100,11 +100,17 @@ fn allowed_shipping_profile_slugs_from_option(
     option
         .allowed_shipping_profile_slugs
         .as_ref()
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| normalize_shipping_profile_slug(value))
-                .collect()
+        .and_then(|values| {
+            if values.is_empty() {
+                None
+            } else {
+                Some(
+                    values
+                        .iter()
+                        .filter_map(|value| normalize_shipping_profile_slug(value))
+                        .collect(),
+                )
+            }
         })
         .or_else(|| extract_allowed_shipping_profile_slugs_from_metadata(&option.metadata))
 }
@@ -301,17 +307,32 @@ fn log_cart_delivery_group_enrichment_error(
 fn extract_allowed_shipping_profile_slugs_from_metadata(
     metadata: &Value,
 ) -> Option<BTreeSet<String>> {
-    metadata
-        .get("shipping_profiles")
-        .and_then(|profiles| profiles.get("allowed_slugs"))
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .filter_map(normalize_shipping_profile_slug)
-                .collect()
-        })
+    let profiles = metadata.get("shipping_profiles")?;
+    let Some(profiles) = profiles.as_object() else {
+        return Some(BTreeSet::new());
+    };
+    let Some(values) = profiles.get("allowed_slugs") else {
+        return Some(BTreeSet::new());
+    };
+    let Some(values) = values.as_array() else {
+        return Some(BTreeSet::new());
+    };
+    if values.is_empty() {
+        return None;
+    }
+
+    let mut normalized = BTreeSet::new();
+    for value in values {
+        let Some(value) = value.as_str() else {
+            return Some(BTreeSet::new());
+        };
+        let Some(value) = normalize_shipping_profile_slug(value) else {
+            return Some(BTreeSet::new());
+        };
+        normalized.insert(value);
+    }
+
+    Some(normalized)
 }
 
 #[cfg(test)]
@@ -348,6 +369,81 @@ mod tests {
         };
         let required_profiles = BTreeSet::from([String::from("bulky")]);
 
+        assert!(is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+    }
+
+    #[test]
+    fn malformed_shipping_profile_metadata_fails_closed() {
+        let option = ShippingOptionResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Standard".to_string(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(999, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            allowed_shipping_profile_slugs: None,
+            metadata: serde_json::json!({
+                "shipping_profiles": "legacy scalar"
+            }),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            requested_locale: Some("en".to_string()),
+            effective_locale: Some("en".to_string()),
+            available_locales: vec!["en".to_string()],
+            translation_revision: "rev-1".to_string(),
+            translations: vec![crate::dto::ShippingOptionTranslationResponse {
+                locale: "en".to_string(),
+                name: "Standard".to_string(),
+            }],
+        };
+        let required_profiles = BTreeSet::from([String::from("default")]);
+
+        assert!(!is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+    }
+
+    #[test]
+    fn empty_shipping_profile_allow_list_is_unrestricted() {
+        let option = ShippingOptionResponse {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Standard".to_string(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(999, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            allowed_shipping_profile_slugs: None,
+            metadata: serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": []
+                }
+            }),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            requested_locale: Some("en".to_string()),
+            effective_locale: Some("en".to_string()),
+            available_locales: vec!["en".to_string()],
+            translation_revision: "rev-1".to_string(),
+            translations: vec![crate::dto::ShippingOptionTranslationResponse {
+                locale: "en".to_string(),
+                name: "Standard".to_string(),
+            }],
+        };
+        let required_profiles = BTreeSet::from([String::from("default")]);
+
+        assert!(is_shipping_option_compatible_with_profiles(
+            &option,
+            &required_profiles,
+        ));
+
+        option.allowed_shipping_profile_slugs = Some(Vec::new());
+        option.metadata = serde_json::json!({});
         assert!(is_shipping_option_compatible_with_profiles(
             &option,
             &required_profiles,
