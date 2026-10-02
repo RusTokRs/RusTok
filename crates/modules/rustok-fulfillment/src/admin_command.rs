@@ -200,7 +200,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         "items": items
                     }
                 }),
-            ),
+            )?,
         )?;
         let journaled = self
             .execute_provider_operation(
@@ -217,7 +217,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .ship_fulfillment(
+            .ship_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
                 ShipFulfillmentInput {
@@ -228,13 +228,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         .clone()
                         .unwrap_or(tracking_number),
                     items,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "ship",
-                    ),
+                    metadata,
                 },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -271,6 +268,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "deliver_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        request.input.validate().map_err(|_| {
+            PortError::validation(
+                "fulfillment.validation",
+                "fulfillment delivery request is invalid",
+            )
+        })?;
         self.service
             .deliver_fulfillment(tenant_id, request.fulfillment_id, request.input)
             .await
@@ -355,7 +358,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         "items": items
                     }
                 }),
-            ),
+            )?,
         )?;
         let journaled = self
             .execute_provider_operation(
@@ -372,7 +375,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .reship_fulfillment(
+            .reship_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
                 ReshipFulfillmentInput {
@@ -383,13 +386,10 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         .clone()
                         .unwrap_or(tracking_number),
                     items,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "reship",
-                    ),
+                    metadata,
                 },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -426,6 +426,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         const OPERATION: &str = "cancel_admin_fulfillment";
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        request.input.validate().map_err(|_| {
+            PortError::validation(
+                "fulfillment.validation",
+                "fulfillment cancellation request is invalid",
+            )
+        })?;
         let current = self
             .service
             .get_fulfillment(tenant_id, request.fulfillment_id)
@@ -461,7 +467,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                         "reason": reason
                     }
                 }),
-            ),
+            )?,
         )?;
         let journaled = self
             .execute_provider_operation(
@@ -478,18 +484,12 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
 
         let updated = self
             .service
-            .cancel_fulfillment(
+            .cancel_fulfillment_with_provider_result(
                 tenant_id,
                 request.fulfillment_id,
-                CancelFulfillmentInput {
-                    reason,
-                    metadata: local_commit_metadata(
-                        metadata,
-                        journaled.result.metadata.clone(),
-                        journaled.operation_id,
-                        "cancel",
-                    ),
-                },
+                CancelFulfillmentInput { reason, metadata },
+                journaled.result.metadata.clone(),
+                journaled.operation_id,
             )
             .await;
         match updated {
@@ -910,6 +910,8 @@ fn operation_request(
     fulfillment_id: Uuid,
     metadata: Value,
 ) -> Result<FulfillmentProviderOperationRequest, PortError> {
+    validate_provider_operation_metadata(&metadata)?;
+
     let idempotency_key = context
         .idempotency_key
         .as_deref()
@@ -954,32 +956,28 @@ fn deserialize_provider_result(
     })
 }
 
-fn local_commit_metadata(
-    input_metadata: Value,
-    provider_metadata: Value,
-    operation_id: Uuid,
-    operation: &'static str,
-) -> Value {
-    merge_metadata(
-        merge_metadata(input_metadata, provider_metadata),
-        serde_json::json!({
-            "provider_operation": {
-                "id": operation_id,
-                "operation": operation
-            }
-        }),
-    )
+fn validate_provider_operation_metadata(metadata: &Value) -> Result<(), PortError> {
+    if !metadata.is_object() {
+        return Err(PortError::validation(
+            "fulfillment.provider_metadata_invalid",
+            "fulfillment provider metadata must be a JSON object",
+        ));
+    }
+    Ok(())
 }
 
-fn merge_metadata(current: Value, patch: Value) -> Value {
+fn merge_metadata(current: Value, patch: Value) -> Result<Value, PortError> {
+    validate_provider_operation_metadata(&current)?;
+    validate_provider_operation_metadata(&patch)?;
+
     match (current, patch) {
         (Value::Object(mut current), Value::Object(patch)) => {
             for (key, value) in patch {
                 current.insert(key, value);
             }
-            Value::Object(current)
+            Ok(Value::Object(current))
         }
-        (_, patch) => patch,
+        _ => unreachable!("provider metadata was validated as object"),
     }
 }
 
@@ -1019,10 +1017,53 @@ mod tests {
             "commerce-admin-fulfillment:ship:test",
         );
 
-        let error = operation_request(&context, Uuid::new_v4(), Uuid::new_v4(), Value::Null)
-            .expect_err("missing caller-owned key must fail closed");
+        let error = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            serde_json::json!({"example": "value"}),
+        )
+        .expect_err("missing caller-owned key must fail closed");
 
         assert!(matches!(error.kind, PortErrorKind::Validation));
         assert_eq!(error.code, "fulfillment.provider_idempotency_key_missing");
+    }
+
+    #[test]
+    fn provider_operation_rejects_non_object_metadata_before_execution() {
+        let context = PortContext::new(
+            "tenant-1",
+            PortActor::user("actor-1"),
+            "en",
+            "commerce-admin-fulfillment:ship:test",
+        )
+        .with_idempotency_key("caller-owned-key");
+
+        let error = operation_request(
+            &context,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Value::Null,
+        )
+        .expect_err("provider metadata must be structured before execution");
+
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.provider_metadata_invalid");
+    }
+
+    #[test]
+    fn merge_metadata_rejects_scalar_inputs_instead_of_replacing_them() {
+        let error = merge_metadata(
+            serde_json::json!("legacy scalar"),
+            serde_json::json!({
+                "commerce_orchestration": {
+                    "operation": "ship"
+                }
+            }),
+        )
+        .expect_err("scalar metadata must not be silently replaced");
+
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.provider_metadata_invalid");
     }
 }
