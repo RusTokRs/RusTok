@@ -91,7 +91,7 @@ impl FulfillmentService {
         }
         let provider_id = normalize_provider_id(provider_id)?;
         let allowed_shipping_profile_slugs =
-            normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs);
+            normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs)?;
         let metadata =
             apply_allowed_shipping_profiles_to_metadata(metadata, allowed_shipping_profile_slugs)?;
 
@@ -269,7 +269,7 @@ impl FulfillmentService {
             };
             active.metadata = Set(apply_allowed_shipping_profiles_to_metadata(
                 metadata,
-                normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs),
+                normalize_allowed_shipping_profile_slugs(allowed_shipping_profile_slugs)?,
             )?);
         }
 
@@ -1582,15 +1582,34 @@ fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     }
 }
 
-fn normalize_allowed_shipping_profile_slugs(values: Option<Vec<String>>) -> Option<Vec<String>> {
-    values.map(|values| {
-        values
-            .into_iter()
-            .filter_map(|value| normalize_shipping_profile_slug(&value))
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
-    })
+fn normalize_allowed_shipping_profile_slugs(
+    values: Option<Vec<String>>,
+) -> FulfillmentResult<Option<Vec<String>>> {
+    values
+        .map(|values| {
+            let mut normalized = BTreeSet::new();
+            for value in values {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(FulfillmentError::Validation(
+                        "shipping profile slug must not be empty".to_string(),
+                    ));
+                }
+                if trimmed.chars().count() > 64 {
+                    return Err(FulfillmentError::Validation(
+                        "shipping profile slug must be at most 64 characters".to_string(),
+                    ));
+                }
+                let value = normalize_shipping_profile_slug(trimmed).ok_or_else(|| {
+                    FulfillmentError::Validation(
+                        "shipping profile slug must not be empty".to_string(),
+                    )
+                })?;
+                normalized.insert(value);
+            }
+            Ok(normalized.into_iter().collect())
+        })
+        .transpose()
 }
 
 fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String>> {
@@ -2789,6 +2808,43 @@ mod tests {
         assert_eq!(
             super::extract_allowed_shipping_profile_slugs(&serde_json::json!({})),
             None
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_rejects_blank_entries() {
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec![
+                "bulky".to_string(),
+                "   ".to_string(),
+            ]))
+            .is_err()
+        );
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()])).is_err()
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_reserves_empty_list_for_unrestricted() {
+        assert_eq!(
+            super::normalize_allowed_shipping_profile_slugs(Some(Vec::new()))
+                .expect("explicit empty allow-list is valid"),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_matches_profile_slug_limit() {
+        let valid = "x".repeat(64);
+        assert_eq!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec![valid.clone()]))
+                .expect("64-character profile slug is valid"),
+            Some(vec![valid])
+        );
+
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)])).is_err()
         );
     }
 
