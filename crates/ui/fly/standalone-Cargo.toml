@@ -23,6 +23,16 @@ members = [
     "dioxus",
 ]
 
+# Mirrors the host workspace's `[workspace.lints]`. Every Fly crate declares
+# `[lints] workspace = true`, which Cargo rejects if the workspace root does not define the
+# policy, so this section is required for the extracted repository to build at all.
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

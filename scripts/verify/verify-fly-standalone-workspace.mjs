@@ -101,6 +101,24 @@ const extractionBlockers = new Set(['rustok-ui-i18n']);
 
 // `[package]` fields also use `<key>.workspace = true`, but they are inherited from
 // `[workspace.package]`, which is covered by the checks above.
+
+/// Collect `[workspace.lints.<tool>]` entries as a `tool::lint -> level` map.
+function collectLintPolicy(source) {
+  const policy = new Map();
+  const text = withoutComments(source);
+  const sectionPattern = /^\s*\[workspace\.lints\.([A-Za-z0-9_-]+)\]\s*$/gm;
+  let match;
+  while ((match = sectionPattern.exec(text)) !== null) {
+    const tool = match[1];
+    const rest = text.slice(match.index + match[0].length);
+    const body = rest.split(/^\s*\[/m)[0];
+    for (const entry of body.matchAll(/^\s*([A-Za-z0-9_:-]+)\s*=\s*"([a-z]+)"\s*$/gm)) {
+      policy.set(`${tool}::${entry[1]}`, entry[2]);
+    }
+  }
+  return policy;
+}
+
 const packageFields = new Set([
   'version',
   'edition',
@@ -138,6 +156,43 @@ for (const path of manifests) {
       failures.push(
         `standalone-Cargo.toml pins ${dependency} = ${actual}, host workspace pins ${expected}`,
       );
+    }
+  }
+}
+
+// 3b. Lint policy must be mirrored.
+//
+// Every Fly crate declares `[lints] workspace = true`, which Cargo rejects outright if the
+// workspace root has no `[workspace.lints]`. The dependency regex above does not match that
+// spelling, so without this check the template could silently stop building when extracted.
+{
+  const hostLints = collectLintPolicy(workspace);
+  const standaloneLints = collectLintPolicy(standalone);
+
+  for (const path of manifests) {
+    const manifest = withoutComments(await read(path));
+    if (!/^\s*\[lints\]/m.test(manifest)) continue;
+    if (!/^\s*workspace\s*=\s*true/m.test(manifest)) continue;
+    if (standaloneLints.size === 0) {
+      failures.push(
+        `${path}: declares \`[lints] workspace = true\` but standalone-Cargo.toml has no [workspace.lints.*] section`,
+      );
+      break;
+    }
+  }
+
+  for (const [lint, level] of hostLints) {
+    if (!standaloneLints.has(lint)) {
+      failures.push(`standalone-Cargo.toml is missing lint \`${lint}\` enforced by the host workspace`);
+    } else if (standaloneLints.get(lint) !== level) {
+      failures.push(
+        `standalone-Cargo.toml sets ${lint} = "${standaloneLints.get(lint)}", host workspace sets "${level}"`,
+      );
+    }
+  }
+  for (const lint of standaloneLints.keys()) {
+    if (!hostLints.has(lint)) {
+      failures.push(`standalone-Cargo.toml enforces lint \`${lint}\` that the host workspace does not`);
     }
   }
 }

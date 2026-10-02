@@ -98,6 +98,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo check -p fly-leptos -p fly-dioxus --all-targets
 
+      # The adapters' non-default features built in no job before this. `fly-leptos` defaults to
+      # `ssr` and `fly-dioxus` to no renderer at all, so the combinations below — the ones actually
+      # shipped — were never compiled by CI.
+      - name: Check Fly adapter feature combinations
+        if: ${{ !cancelled() }}
+        run: |
+          cargo check -p fly-dioxus --features desktop
+          cargo check -p fly-leptos --no-default-features
+          rustup target add wasm32-unknown-unknown
+          cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web
+          cargo check --target wasm32-unknown-unknown -p fly-leptos --no-default-features --features wasm-client
+
       - name: Run Page Builder admin unit tests
         if: ${{ !cancelled() }}
         run: cargo test -p rustok-page-builder-admin --lib
@@ -223,3 +235,20 @@ jobs:
       - name: Verify capability denial response
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-fly-capability-denial-response.mjs
+
+  advisories:
+    name: Dependency advisories (advisory only)
+    runs-on: ubuntu-latest
+    # Non-blocking on purpose: the repository already carries a backlog of advisories on the
+    # default branch, so gating here would turn every Fly change red for unrelated reasons. The
+    # job exists so that a *newly introduced* advisory is visible in the PR instead of invisible.
+    # Flip `continue-on-error` to false once `cargo audit` is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
