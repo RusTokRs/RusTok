@@ -1,3 +1,5 @@
+use crate::{ComponentChildren, ComponentIndex, ComponentNode};
+use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
 use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
@@ -30,6 +32,11 @@ pub struct ValidationReport {
     pub page_count: usize,
     pub asset_count: usize,
     pub style_rule_count: usize,
+    /// Components that could not be parsed into the typed model.
+    ///
+    /// Additive field: `#[serde(default)]` so older serialized reports still deserialize.
+    #[serde(default)]
+    pub opaque_component_count: usize,
 }
 
 impl ValidationReport {
@@ -53,6 +60,21 @@ impl ValidationReport {
     }
 }
 
+/// Default ceiling on components in one project.
+///
+/// Chosen as a resource bound, not a product limit: validation and rendering are linear in node
+/// count but every editor command re-walks the tree, so a project an order of magnitude larger
+/// than this degrades the editing experience long before it breaks correctness. Raise it via
+/// [`ValidationLimits`] rather than editing this constant.
+pub const DEFAULT_MAXIMUM_NODES: usize = 10_000;
+
+/// Default ceiling on component nesting depth.
+///
+/// Deliberately far below [`crate::MAXIMUM_DECODE_DEPTH`] (which guards the JSON parser against
+/// stack exhaustion). This one is a *document* limit: real layouts nest tens of levels at most,
+/// so anything deeper is a sign of a generated or hostile document.
+pub const DEFAULT_MAXIMUM_DEPTH: usize = 64;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ValidationLimits {
     pub maximum_nodes: usize,
@@ -62,8 +84,8 @@ pub struct ValidationLimits {
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
-            maximum_nodes: 10_000,
-            maximum_depth: 64,
+            maximum_nodes: DEFAULT_MAXIMUM_NODES,
+            maximum_depth: DEFAULT_MAXIMUM_DEPTH,
         }
     }
 }
@@ -74,13 +96,16 @@ pub fn validate_project(
     limits: ValidationLimits,
 ) -> ValidationReport {
     let mut report = ValidationReport::default();
+    // Built once and shared by the passes that need id lookups, instead of each of them walking
+    // the whole document per query.
+    let index = ComponentIndex::build(document);
     validate_pages(document, &mut report);
     validate_components(document, registries, limits, &mut report);
     report
         .diagnostics
         .extend(validate_component_public_urls(document));
     validate_assets(document, &mut report);
-    validate_style_rules(document, &mut report);
+    validate_style_rules(document, &index, &mut report);
 
     if report.node_count > limits.maximum_nodes {
         report.diagnostics.push(ValidationDiagnostic {
@@ -129,7 +154,16 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
                 format!("{path}.id"),
                 format!("page id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_page_id",
+                        format!("{path}.id"),
+                        format!("page id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_page_id",
@@ -203,6 +237,201 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
     }
 }
 
+/// Longest identifier Fly will accept for a page or component.
+pub const MAXIMUM_IDENTIFIER_LENGTH: usize = 128;
+
+/// Check that an authored identifier is inert everywhere Fly interpolates it.
+///
+/// Page and component ids are not just map keys: they are emitted into HTML attributes, into CSS
+/// attribute selectors inside a raw `<style>` element, and into diagnostic paths. Escaping at each
+/// of those sinks is the primary defence, but an allow-listed charset is what keeps a single
+/// missed sink from becoming an injection. The charset matches what GrapesJS itself produces.
+pub fn validate_identifier(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("identifier is empty".to_string());
+    }
+    if id.len() > MAXIMUM_IDENTIFIER_LENGTH {
+        return Err(format!(
+            "identifier is {} bytes, exceeding the maximum of {MAXIMUM_IDENTIFIER_LENGTH}",
+            id.len()
+        ));
+    }
+    if let Some(character) = id.chars().find(|character| {
+        !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':'))
+    }) {
+        return Err(format!(
+            "character `{character}` is not allowed; use ASCII letters, digits, `-`, `_`, `.` or `:`"
+        ));
+    }
+    Ok(())
+}
+
+/// Apply node, depth and identifier checks to components that degraded into
+/// [`ComponentNode::Opaque`].
+///
+/// `ComponentNode` is `#[serde(untagged)]`, so anything that does not fit the typed model becomes
+/// raw JSON, and `ProjectGraph::visit_components` skips it together with its whole subtree. That
+/// was a validation *bypass*, not just a reporting gap: an opaque subtree counted toward neither
+/// `maximum_nodes` nor `maximum_depth`, and the ids inside it were checked neither for duplication
+/// nor for a valid character set — so a document deliberately shaped to not parse evaded the
+/// resource limits entirely.
+///
+/// `Opaque` itself is kept on purpose: lossless round-tripping of components from providers Fly
+/// does not know about is the point of the codec. The fix is to make *validation* total, not the
+/// model.
+fn validate_opaque_components(
+    document: &ProjectDocument,
+    limits: ValidationLimits,
+    ids: &mut BTreeSet<String>,
+    report: &mut ValidationReport,
+) {
+    for (page_index, page) in document.project.pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            walk_for_opaque(
+                root,
+                0,
+                &format!("pages[{page_index}].component"),
+                limits,
+                ids,
+                report,
+            );
+        }
+    }
+}
+
+/// Descend the typed tree looking for opaque nodes; hand each one to the raw-JSON walker.
+fn walk_for_opaque(
+    node: &ComponentNode,
+    depth: usize,
+    path: &str,
+    limits: ValidationLimits,
+    ids: &mut BTreeSet<String>,
+    report: &mut ValidationReport,
+) {
+    match node {
+        ComponentNode::Object(object) => {
+            // A *child list* can be opaque too (`ComponentChildren::Opaque`), and `children()`
+            // reports it as empty — a second blind spot of the same kind.
+            if let ComponentChildren::Opaque(value) = &object.components {
+                report.opaque_component_count += 1;
+                report.diagnostics.push(diagnostic(
+                    ValidationSeverity::Warning,
+                    "opaque_component_children",
+                    format!("{path}.components"),
+                    "child list does not match the typed model and is preserved verbatim; it is \
+                     checked for ids, depth and node count but not for child rules",
+                ));
+                if let Some(children) = value.as_array() {
+                    for (index, child) in children.iter().enumerate() {
+                        walk_opaque_value(
+                            child,
+                            depth + 1,
+                            &format!("{path}.components[{index}]"),
+                            limits,
+                            ids,
+                            report,
+                        );
+                    }
+                } else {
+                    walk_opaque_value(
+                        value,
+                        depth + 1,
+                        &format!("{path}.components"),
+                        limits,
+                        ids,
+                        report,
+                    );
+                }
+            }
+            for (index, child) in object.children().iter().enumerate() {
+                walk_for_opaque(
+                    child,
+                    depth + 1,
+                    &format!("{path}.components[{index}]"),
+                    limits,
+                    ids,
+                    report,
+                );
+            }
+        }
+        ComponentNode::Opaque(value) => {
+            report.opaque_component_count += 1;
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Warning,
+                "opaque_component",
+                path,
+                "component does not match the typed model and is preserved verbatim; it is \
+                 checked for ids, depth and node count but not for provider or child rules",
+            ));
+            walk_opaque_value(value, depth, path, limits, ids, report);
+        }
+    }
+}
+
+/// Count and check an opaque component and anything nested under it.
+///
+/// Recursion is bounded: [`crate::MAXIMUM_DECODE_DEPTH`] already rejected deeper payloads at
+/// decode time, so this cannot be driven into a stack overflow by input.
+fn walk_opaque_value(
+    value: &Value,
+    depth: usize,
+    path: &str,
+    limits: ValidationLimits,
+    ids: &mut BTreeSet<String>,
+    report: &mut ValidationReport,
+) {
+    // Whatever shape it has, an opaque component occupies a node and must count toward the budget.
+    report.node_count += 1;
+    report.maximum_depth = report.maximum_depth.max(depth);
+
+    if depth > limits.maximum_depth {
+        report.diagnostics.push(diagnostic(
+            ValidationSeverity::Error,
+            "maximum_depth_exceeded",
+            path,
+            format!(
+                "component depth {depth} exceeds configured maximum {}",
+                limits.maximum_depth
+            ),
+        ));
+    }
+
+    let Some(object) = value.as_object() else {
+        return;
+    };
+
+    if let Some(id) = object.get("id").and_then(Value::as_str) {
+        if !ids.insert(id.to_string()) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "duplicate_component_id",
+                path,
+                format!("component id `{id}` is duplicated"),
+            ));
+        } else if let Err(reason) = validate_identifier(id) {
+            report.diagnostics.push(diagnostic(
+                ValidationSeverity::Error,
+                "invalid_component_id",
+                format!("{path}.id"),
+                format!("component id `{id}` is not a valid identifier: {reason}"),
+            ));
+        }
+    }
+
+    if let Some(children) = object.get("components").and_then(Value::as_array) {
+        for (index, child) in children.iter().enumerate() {
+            walk_opaque_value(
+                child,
+                depth + 1,
+                &format!("{path}.components[{index}]"),
+                limits,
+                ids,
+                report,
+            );
+        }
+    }
+}
+
 fn validate_components(
     document: &ProjectDocument,
     registries: &RegistrySet,
@@ -221,7 +450,16 @@ fn validate_components(
                 path,
                 format!("component id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_component_id",
+                        format!("{path}.id"),
+                        format!("component id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_component_id",
@@ -274,6 +512,10 @@ fn validate_components(
             }
         }
     });
+
+    // The typed walker above stops at every `Opaque` node, so the opaque pass has to run here,
+    // sharing `ids`, for duplicate detection to span both representations.
+    validate_opaque_components(document, limits, &mut ids, report);
 }
 
 pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<ValidationDiagnostic> {
@@ -281,7 +523,7 @@ pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<Validat
     document.project.visit_components(|component, _, path| {
         for (name, value) in &component.attributes {
             let normalized_name = name.to_ascii_lowercase();
-            let Some(kind) = PublicUrlAttributeKind::for_attribute(&normalized_name) else {
+            let Some(kind) = UrlAttributeKind::for_attribute(&normalized_name) else {
                 continue;
             };
             let Some(value) = scalar_attribute_value(value) else {
@@ -306,110 +548,12 @@ pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<Validat
     diagnostics
 }
 
-#[derive(Debug, Clone, Copy)]
-enum PublicUrlAttributeKind {
-    Navigation,
-    Resource,
-    FormAction,
-}
-
-impl PublicUrlAttributeKind {
-    fn for_attribute(name: &str) -> Option<Self> {
-        match name {
-            "href" => Some(Self::Navigation),
-            "src" | "poster" => Some(Self::Resource),
-            "action" | "formaction" => Some(Self::FormAction),
-            _ => None,
-        }
-    }
-}
-
-fn scalar_attribute_value(value: &Value) -> Option<String> {
-    match value {
-        Value::String(value) => Some(value.clone()),
-        Value::Number(value) => Some(value.to_string()),
-        Value::Bool(value) => Some(value.to_string()),
-        Value::Null | Value::Array(_) | Value::Object(_) => None,
-    }
-}
-
-fn public_url_allowed(value: &str, kind: PublicUrlAttributeKind) -> bool {
-    let Some(value) = normalized_public_url_candidate(value) else {
-        return false;
-    };
-    let normalized = value.to_ascii_lowercase();
-    match kind {
-        PublicUrlAttributeKind::Navigation => {
-            normalized.starts_with('#')
-                || relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-                || scheme_target_is_not_empty(value, "mailto:")
-                || scheme_target_is_not_empty(value, "tel:")
-        }
-        PublicUrlAttributeKind::Resource => {
-            relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-                || safe_public_data_image(&normalized)
-        }
-        PublicUrlAttributeKind::FormAction => {
-            relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-        }
-    }
-}
-
-fn normalized_public_url_candidate(value: &str) -> Option<&str> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > 2048
-        || value.starts_with("//")
-        || value.contains('\\')
-        || value.chars().any(char::is_control)
-        || value.chars().any(char::is_whitespace)
-    {
-        return None;
-    }
-    Some(value)
-}
-
-fn relative_public_url_allowed(value: &str) -> bool {
-    if value.starts_with('#') {
-        return false;
-    }
-    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
-    !value[..scheme_boundary].contains(':')
-}
-
-fn absolute_public_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = value[scheme.len()..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
-
-fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
-}
-
-fn safe_public_data_image(normalized: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| normalized.starts_with(prefix))
+/// Validation accepts every URL form the renderer could legitimately emit under *some* policy.
+///
+/// This used to be a byte-for-byte copy of the renderer's logic under `*_public_*` names, so the
+/// two could silently diverge. Both now share `safe_url`.
+fn public_url_allowed(value: &str, kind: UrlAttributeKind) -> bool {
+    safe_url::url_allowed(value, kind, &UrlPolicy::permissive())
 }
 
 fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
@@ -444,14 +588,19 @@ fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
     }
 }
 
-fn validate_style_rules(document: &ProjectDocument, report: &mut ValidationReport) {
+fn validate_style_rules(
+    document: &ProjectDocument,
+    index: &ComponentIndex,
+    report: &mut ValidationReport,
+) {
     let catalog = StyleRuleCatalog::from_document(document);
     report.style_rule_count = catalog.rules.len() + catalog.unknown_entries.len();
     let mut identities = BTreeSet::new();
-    for (index, rule) in catalog.rules.iter().enumerate() {
-        let path = format!("styles[{index}]");
+    for (rule_index, rule) in catalog.rules.iter().enumerate() {
+        let path = format!("styles[{rule_index}]");
         if let Some(component_id) = rule.component_id.as_deref() {
-            if !document.contains_component(component_id) {
+            // Was `document.contains_component(...)`, i.e. a full walk of every page per rule.
+            if !index.contains(component_id) {
                 report.diagnostics.push(diagnostic(
                     ValidationSeverity::Warning,
                     "orphan_component_style_rule",
@@ -741,4 +890,241 @@ mod tests {
             3
         );
     }
+
+    #[test]
+    fn identifier_rule_allows_grapesjs_shapes_and_rejects_injection_payloads() {
+        for id in ["hero", "i3kj", "hero--rep-0", "fly-section-12", "ns:block.v2", "a_b"] {
+            assert!(validate_identifier(id).is_ok(), "rejected `{id}`");
+        }
+        for id in [
+            "",
+            "x\"]{}</style><script>alert(1)</script>",
+            "has space",
+            "quote\"inside",
+            "angle<bracket",
+            "emoji\u{1f600}",
+            &"x".repeat(MAXIMUM_IDENTIFIER_LENGTH + 1),
+        ] {
+            assert!(validate_identifier(id).is_err(), "accepted `{id}`");
+        }
+    }
+
+    #[test]
+    fn hostile_component_and_page_ids_are_validation_errors() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home</style>",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero\"><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        let codes = report
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(codes.contains(&"invalid_page_id"), "{codes:?}");
+        assert!(codes.contains(&"invalid_component_id"), "{codes:?}");
+    }
+
+    #[test]
+    fn the_editor_heals_invalid_ids_instead_of_deadlocking_on_them() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero</style><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        // `FlyEditor::new` runs `ensure_stable_ids`, which must replace the hostile id; otherwise
+        // validation would reject every subsequent command and the document could never be fixed.
+        let mut editor = crate::FlyEditor::new(document, RegistrySet::with_builtins());
+        let report = editor.validate();
+
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "invalid_component_id"),
+            "{:?}",
+            report.diagnostics
+        );
+
+        // The document stays editable, which is the property that matters: validation errors abort
+        // `apply`, so an unhealed id would make every further command fail.
+        editor
+            .apply(crate::EditorCommand::Patch {
+                component_id: "root".to_string(),
+                patch: crate::ComponentPatch::default(),
+            })
+            .expect("document remains editable");
+    }
+
+    #[test]
+    fn opaque_components_are_reported_and_still_counted() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "ok", "type": "section" },
+                        ["this is not a component object"]
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert_eq!(report.opaque_component_count, 1);
+        let opaque = report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "opaque_component")
+            .expect("opaque diagnostic");
+        assert_eq!(opaque.path, "pages[0].component.components[1]");
+
+        // root + ok + the opaque node. It used to be 2: the opaque node was invisible.
+        assert_eq!(report.node_count, 3);
+    }
+
+    #[test]
+    fn opaque_subtrees_cannot_be_used_to_evade_the_node_budget() {
+        // The bypass: wrap a large subtree in a shape the typed model rejects and it stopped
+        // counting toward `maximum_nodes` entirely.
+        let mut nested = json!({ "id": "deep-leaf", "components": [] });
+        for index in 0..40 {
+            nested = json!({
+                "id": format!("deep-{index}"),
+                "components": [nested],
+                "providerOnly": true
+            });
+        }
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    // A numeric `id` cannot deserialize into `Option<String>`, so the whole
+                    // object falls through the untagged enum into `Opaque`.
+                    "components": [{ "id": 0, "components": [nested] }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits {
+                maximum_nodes: 10,
+                maximum_depth: 64,
+            },
+        );
+
+        assert!(
+            report.node_count > 40,
+            "opaque subtree was not counted: {}",
+            report.node_count
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "maximum_nodes_exceeded"),
+            "node budget was evaded via an opaque subtree"
+        );
+    }
+
+    #[test]
+    fn hostile_ids_inside_opaque_subtrees_are_still_rejected() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": 0,
+                        "components": [{ "id": "evil</style><script>" }]
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "invalid_component_id"),
+            "{:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn duplicate_ids_are_detected_across_typed_and_opaque_components() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        { "id": "hero", "type": "section" },
+                        { "id": 0, "components": [{ "id": "hero" }] }
+                    ]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_component_id"),
+            "{:?}",
+            report.diagnostics
+        );
+    }
+
 }
+

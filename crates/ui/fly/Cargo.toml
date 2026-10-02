@@ -5,8 +5,18 @@ edition.workspace = true
 license.workspace = true
 description = "Framework-neutral visual editor engine and lossless GrapesJS compatibility core"
 
+[features]
+default = ["platform-i18n"]
+# CLDR-backed locale identity via `rustok-ui-i18n`.
+#
+# On by default so host builds are unchanged. Turning it off replaces the resolver with Fly's own
+# structural BCP-47 implementation, which is self-contained but cannot infer likely subtags
+# (`zh-TW` no longer reaches a `zh-Hant` catalog). This is the switch that makes extracting Fly
+# into a standalone repository possible; see `src/locale_resolver.rs`.
+platform-i18n = ["dep:rustok-ui-i18n"]
+
 [dependencies]
-rustok-ui-i18n.workspace = true
+rustok-ui-i18n = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -14,3 +24,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+
+[lints]
+workspace = true
