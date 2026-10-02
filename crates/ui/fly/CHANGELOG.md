@@ -73,15 +73,18 @@ Engineering audit remediation — see
 
 ### Changed
 
-- `FlyEditor::apply` performs two deep document copies per command instead of three.
+- `FlyEditor::apply` performs one deep document copy per command instead of three, and `undo`/
+  `redo` perform none, by sharing documents between the editor and adjacent history entries via
+  `Arc`. History memory roughly halves. The public API is unchanged.
 - `maximum_nodes` / `maximum_depth` defaults named and justified (`DEFAULT_MAXIMUM_NODES`,
   `DEFAULT_MAXIMUM_DEPTH`).
 - Command history uses `VecDeque`.
 
 ### Known gaps
 
-- `HistoryEntry` stores whole documents; two copies per command is the floor until history moves
-  to inverse commands.
+- `HistoryEntry` still stores whole documents rather than inverse commands, so
+  `approximate_bytes` must serialize to measure, and it over-estimates by ~2x now that adjacent
+  entries share allocations (which keeps the budget conservative).
 - A standalone build (`--no-default-features`) loses CLDR likely-subtag inference: `zh-TW` falls
   back to `zh` rather than `zh-Hant`, and `iw` is not canonicalized to `he`.
 - The admin access token is still read from `localStorage`; moving it to an httpOnly cookie

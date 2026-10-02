@@ -1,4 +1,5 @@
 use super::patch::ComponentPatch;
+use std::sync::Arc;
 use crate::{
     BindingCommand, ComponentNode, ContextCommand, DynamicCommand, FlyError, FlyResult,
     GrapesJsCodec, PageCommand, ProjectDocument, ProjectSnapshot, StyleRuleCommand,
@@ -84,12 +85,18 @@ impl EditorCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HistoryEntry {
     pub command: EditorCommand,
-    pub before: ProjectDocument,
-    pub after: ProjectDocument,
+    pub before: Arc<ProjectDocument>,
+    pub after: Arc<ProjectDocument>,
 }
 
 impl HistoryEntry {
     /// Approximate retained size, measured as the serialized JSON length of both documents.
+    ///
+    /// Deliberately counts both halves even though consecutive entries now share an allocation
+    /// (`entry[i].after` and `entry[i + 1].before` are the same `Arc`). The measure therefore
+    /// over-estimates real memory by roughly 2x, which keeps the budget conservative: the same
+    /// number of entries is retained as before, at about half the actual memory. Teaching it to
+    /// count distinct allocations would need bookkeeping across the whole deque.
     ///
     /// Serializing to measure is not free, which is itself an argument for moving history to
     /// inverse commands; it is still far cheaper than the clones the entry already paid for.
@@ -180,6 +187,14 @@ impl History {
 
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
+    }
+
+    /// Undo entries, oldest first.
+    ///
+    /// Exposed so callers can inspect history without the editor having to mirror it, and so the
+    /// sharing between adjacent entries can be asserted rather than assumed.
+    pub fn undo_entries(&self) -> impl Iterator<Item = &HistoryEntry> {
+        self.undo.iter()
     }
 
     pub fn undo_len(&self) -> usize {

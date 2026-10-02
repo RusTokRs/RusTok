@@ -17,7 +17,10 @@ platform-i18n = ["dep:rustok-ui-i18n"]
 
 [dependencies]
 rustok-ui-i18n = { workspace = true, optional = true }
-serde.workspace = true
+# `rc` is required because `HistoryEntry` holds `Arc<ProjectDocument>` so that consecutive undo
+# entries share one allocation. Note that serde does not preserve sharing across a round trip: a
+# deserialized history is correct but unshared until the next command rebuilds it.
+serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

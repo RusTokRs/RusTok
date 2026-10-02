@@ -6,10 +6,18 @@ use crate::{
     apply_translation_command, extend_with_runtime_validation, validate_project,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FlyEditor {
-    document: ProjectDocument,
+    /// Shared with history entries rather than copied into them.
+    ///
+    /// Every applied command produced three deep copies of the whole project; the document that
+    /// becomes `self.document` is byte-identical to the entry's `after`, and the one it displaces
+    /// is byte-identical to the next entry's `before`. Behind an `Arc` those are the same
+    /// allocation, which leaves exactly one deep copy per command — the speculative one a command
+    /// has to mutate — and none at all for undo and redo.
+    document: Arc<ProjectDocument>,
     registries: RegistrySet,
     selection: Option<String>,
     history: History,
@@ -24,7 +32,7 @@ impl FlyEditor {
         document.ensure_stable_ids(&mut id_generator);
         let revision = RevisionState::new(&document);
         Self {
-            document,
+            document: Arc::new(document),
             registries,
             selection: None,
             history: History::new(100),
@@ -105,8 +113,9 @@ impl FlyEditor {
         }
 
         // One speculative copy to mutate. A command must not leave a partially applied document
-        // behind when validation rejects it, so the working copy is unavoidable.
-        let mut after = self.document.clone();
+        // behind when validation rejects it, so the working copy is unavoidable — but it is now
+        // the only deep copy on this path.
+        let mut after = (*self.document).clone();
         self.apply_to_document(&mut after, &command)?;
         after.ensure_stable_ids(&mut self.id_generator);
         let report = extend_with_runtime_validation(
@@ -118,11 +127,11 @@ impl FlyEditor {
             return Err(FlyError::Validation(errors));
         }
 
-        // Install the new document by moving it, then take the displaced one as the history
-        // `before`. This used to be three deep clones per command (`before`, `after`, and a third
-        // to install); two is the floor while `HistoryEntry` stores whole documents rather than
-        // inverse commands.
-        let history_after = after.clone();
+        // Install the new document and reuse the same allocation for the history entry. The
+        // displaced document becomes the entry's `before`, which the previous entry already
+        // holds as its `after` — so consecutive entries share, and history memory roughly halves.
+        let after = Arc::new(after);
+        let history_after = Arc::clone(&after);
         let before = std::mem::replace(&mut self.document, after);
         self.selection = self
             .selection
@@ -139,7 +148,7 @@ impl FlyEditor {
 
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_undo()?;
-        self.document = entry.before.clone();
+        self.document = Arc::clone(&entry.before);
         self.history.push_redo(entry);
         self.selection = self
             .selection
@@ -151,7 +160,7 @@ impl FlyEditor {
 
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
         let entry = self.history.pop_redo()?;
-        self.document = entry.after.clone();
+        self.document = Arc::clone(&entry.after);
         self.history.push_undo(entry);
         self.selection = self
             .selection

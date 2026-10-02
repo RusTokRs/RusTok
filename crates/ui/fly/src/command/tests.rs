@@ -7,6 +7,7 @@ use crate::{
     TranslationEntry,
 };
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 fn editor() -> FlyEditor {
     let document = GrapesJsCodec::decode_value(json!({
@@ -408,3 +409,73 @@ fn retained_bytes_returns_to_zero_after_undoing_everything() {
     assert_eq!(editor.history().undo_len(), 0);
 }
 
+#[test]
+fn adjacent_history_entries_share_one_document_allocation() {
+    // The point of holding `Arc<ProjectDocument>`: the document an entry records as `after` is
+    // the very same allocation the next entry records as `before`. If this regresses to
+    // independent clones, history memory doubles and every command pays an extra deep copy —
+    // silently, because every behavioural test still passes.
+    let mut editor = editor();
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "width": "320px" })),
+        })
+        .expect("first command");
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "height": "64px" })),
+        })
+        .expect("second command");
+
+    let entries = editor.history().undo_entries().collect::<Vec<_>>();
+    assert_eq!(entries.len(), 2);
+    assert!(
+        Arc::ptr_eq(&entries[0].after, &entries[1].before),
+        "adjacent entries hold separate copies of the same document"
+    );
+}
+
+#[test]
+fn undo_and_redo_rebind_instead_of_copying() {
+    let mut editor = editor();
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "width": "320px" })),
+        })
+        .expect("command");
+
+    let entry_before = Arc::clone(
+        &editor
+            .history()
+            .undo_entries()
+            .next()
+            .expect("entry")
+            .before,
+    );
+
+    editor.undo().expect("undo");
+    assert_eq!(editor.document(), &*entry_before, "undo restored the wrong state");
+    assert!(
+        editor
+            .document()
+            .component("hero")
+            .and_then(|component| component.style.as_ref())
+            .and_then(|style| style.get("width"))
+            .is_none(),
+        "undo left the applied style behind"
+    );
+
+    editor.redo().expect("redo");
+    assert_eq!(
+        editor
+            .document()
+            .component("hero")
+            .and_then(|component| component.style.as_ref())
+            .map(|style| style["width"].clone()),
+        Some(json!("320px")),
+        "redo did not reapply the command"
+    );
+}
