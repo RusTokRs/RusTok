@@ -2674,9 +2674,7 @@ mod tests {
             serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
             serde_json::json!({"shipping_profiles": null}),
         ] {
-            assert!(
-                super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err()
-            );
+            assert!(super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err());
         }
 
         let untouched = serde_json::json!({
@@ -2821,10 +2819,7 @@ mod tests {
             ]))
             .is_err()
         );
-        assert!(
-            super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()]))
-                .is_err()
-        );
+        assert!(super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()])).is_err());
     }
 
     #[test]
@@ -2845,10 +2840,7 @@ mod tests {
             Some(vec![valid])
         );
 
-        assert!(
-            super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)]))
-                .is_err()
-        );
+        assert!(super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)])).is_err());
     }
 
     fn normalize_provider_id_uses_registry_identifier_rules() {
