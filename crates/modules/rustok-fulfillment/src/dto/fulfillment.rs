@@ -109,8 +109,9 @@ pub struct ShipFulfillmentInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct DeliverFulfillmentInput {
+    #[validate(length(max = 255))]
     pub delivered_note: Option<String>,
     pub items: Option<Vec<FulfillmentItemQuantityInput>>,
     pub metadata: Value,
@@ -132,8 +133,9 @@ pub struct ReshipFulfillmentInput {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CancelFulfillmentInput {
+    #[validate(length(max = 500))]
     pub reason: Option<String>,
     pub metadata: Value,
 }
@@ -232,6 +234,35 @@ mod tests {
         };
 
         assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn delivery_and_cancellation_text_respect_persisted_column_limits() {
+        let oversized_note = DeliverFulfillmentInput {
+            delivered_note: Some("x".repeat(256)),
+            items: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(oversized_note.validate().is_err());
+
+        let oversized_reason = CancelFulfillmentInput {
+            reason: Some("x".repeat(501)),
+            metadata: serde_json::json!({}),
+        };
+        assert!(oversized_reason.validate().is_err());
+
+        let boundary_note = DeliverFulfillmentInput {
+            delivered_note: Some("x".repeat(255)),
+            items: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(boundary_note.validate().is_ok());
+
+        let boundary_reason = CancelFulfillmentInput {
+            reason: Some("x".repeat(500)),
+            metadata: serde_json::json!({}),
+        };
+        assert!(boundary_reason.validate().is_ok());
     }
 
     #[test]
