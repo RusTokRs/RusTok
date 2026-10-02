@@ -1,3 +1,4 @@
+use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
 use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
@@ -129,7 +130,16 @@ fn validate_pages(document: &ProjectDocument, report: &mut ValidationReport) {
                 format!("{path}.id"),
                 format!("page id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_page_id",
+                        format!("{path}.id"),
+                        format!("page id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_page_id",
@@ -203,6 +213,35 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
     }
 }
 
+/// Longest identifier Fly will accept for a page or component.
+pub const MAXIMUM_IDENTIFIER_LENGTH: usize = 128;
+
+/// Check that an authored identifier is inert everywhere Fly interpolates it.
+///
+/// Page and component ids are not just map keys: they are emitted into HTML attributes, into CSS
+/// attribute selectors inside a raw `<style>` element, and into diagnostic paths. Escaping at each
+/// of those sinks is the primary defence, but an allow-listed charset is what keeps a single
+/// missed sink from becoming an injection. The charset matches what GrapesJS itself produces.
+pub fn validate_identifier(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("identifier is empty".to_string());
+    }
+    if id.len() > MAXIMUM_IDENTIFIER_LENGTH {
+        return Err(format!(
+            "identifier is {} bytes, exceeding the maximum of {MAXIMUM_IDENTIFIER_LENGTH}",
+            id.len()
+        ));
+    }
+    if let Some(character) = id.chars().find(|character| {
+        !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':'))
+    }) {
+        return Err(format!(
+            "character `{character}` is not allowed; use ASCII letters, digits, `-`, `_`, `.` or `:`"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_components(
     document: &ProjectDocument,
     registries: &RegistrySet,
@@ -221,7 +260,16 @@ fn validate_components(
                 path,
                 format!("component id `{id}` is duplicated"),
             )),
-            Some(_) => {}
+            Some(id) => {
+                if let Err(reason) = validate_identifier(id) {
+                    report.diagnostics.push(diagnostic(
+                        ValidationSeverity::Error,
+                        "invalid_component_id",
+                        format!("{path}.id"),
+                        format!("component id `{id}` is not a valid identifier: {reason}"),
+                    ));
+                }
+            }
             None => report.diagnostics.push(diagnostic(
                 ValidationSeverity::Warning,
                 "missing_component_id",
@@ -281,7 +329,7 @@ pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<Validat
     document.project.visit_components(|component, _, path| {
         for (name, value) in &component.attributes {
             let normalized_name = name.to_ascii_lowercase();
-            let Some(kind) = PublicUrlAttributeKind::for_attribute(&normalized_name) else {
+            let Some(kind) = UrlAttributeKind::for_attribute(&normalized_name) else {
                 continue;
             };
             let Some(value) = scalar_attribute_value(value) else {
@@ -306,110 +354,12 @@ pub fn validate_component_public_urls(document: &ProjectDocument) -> Vec<Validat
     diagnostics
 }
 
-#[derive(Debug, Clone, Copy)]
-enum PublicUrlAttributeKind {
-    Navigation,
-    Resource,
-    FormAction,
-}
-
-impl PublicUrlAttributeKind {
-    fn for_attribute(name: &str) -> Option<Self> {
-        match name {
-            "href" => Some(Self::Navigation),
-            "src" | "poster" => Some(Self::Resource),
-            "action" | "formaction" => Some(Self::FormAction),
-            _ => None,
-        }
-    }
-}
-
-fn scalar_attribute_value(value: &Value) -> Option<String> {
-    match value {
-        Value::String(value) => Some(value.clone()),
-        Value::Number(value) => Some(value.to_string()),
-        Value::Bool(value) => Some(value.to_string()),
-        Value::Null | Value::Array(_) | Value::Object(_) => None,
-    }
-}
-
-fn public_url_allowed(value: &str, kind: PublicUrlAttributeKind) -> bool {
-    let Some(value) = normalized_public_url_candidate(value) else {
-        return false;
-    };
-    let normalized = value.to_ascii_lowercase();
-    match kind {
-        PublicUrlAttributeKind::Navigation => {
-            normalized.starts_with('#')
-                || relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-                || scheme_target_is_not_empty(value, "mailto:")
-                || scheme_target_is_not_empty(value, "tel:")
-        }
-        PublicUrlAttributeKind::Resource => {
-            relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-                || safe_public_data_image(&normalized)
-        }
-        PublicUrlAttributeKind::FormAction => {
-            relative_public_url_allowed(value)
-                || absolute_public_url_has_authority(value, "http://")
-                || absolute_public_url_has_authority(value, "https://")
-        }
-    }
-}
-
-fn normalized_public_url_candidate(value: &str) -> Option<&str> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > 2048
-        || value.starts_with("//")
-        || value.contains('\\')
-        || value.chars().any(char::is_control)
-        || value.chars().any(char::is_whitespace)
-    {
-        return None;
-    }
-    Some(value)
-}
-
-fn relative_public_url_allowed(value: &str) -> bool {
-    if value.starts_with('#') {
-        return false;
-    }
-    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
-    !value[..scheme_boundary].contains(':')
-}
-
-fn absolute_public_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = value[scheme.len()..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
-
-fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
-}
-
-fn safe_public_data_image(normalized: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| normalized.starts_with(prefix))
+/// Validation accepts every URL form the renderer could legitimately emit under *some* policy.
+///
+/// This used to be a byte-for-byte copy of the renderer's logic under `*_public_*` names, so the
+/// two could silently diverge. Both now share `safe_url`.
+fn public_url_allowed(value: &str, kind: UrlAttributeKind) -> bool {
+    safe_url::url_allowed(value, kind, &UrlPolicy::permissive())
 }
 
 fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
@@ -741,4 +691,90 @@ mod tests {
             3
         );
     }
+
+    #[test]
+    fn identifier_rule_allows_grapesjs_shapes_and_rejects_injection_payloads() {
+        for id in ["hero", "i3kj", "hero--rep-0", "fly-section-12", "ns:block.v2", "a_b"] {
+            assert!(validate_identifier(id).is_ok(), "rejected `{id}`");
+        }
+        for id in [
+            "",
+            "x\"]{}</style><script>alert(1)</script>",
+            "has space",
+            "quote\"inside",
+            "angle<bracket",
+            "emoji\u{1f600}",
+            &"x".repeat(MAXIMUM_IDENTIFIER_LENGTH + 1),
+        ] {
+            assert!(validate_identifier(id).is_err(), "accepted `{id}`");
+        }
+    }
+
+    #[test]
+    fn hostile_component_and_page_ids_are_validation_errors() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home</style>",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero\"><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let report = validate_project(
+            &document,
+            &RegistrySet::with_builtins(),
+            ValidationLimits::default(),
+        );
+        let codes = report
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(codes.contains(&"invalid_page_id"), "{codes:?}");
+        assert!(codes.contains(&"invalid_component_id"), "{codes:?}");
+    }
+
+    #[test]
+    fn the_editor_heals_invalid_ids_instead_of_deadlocking_on_them() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero</style><script>", "type": "section" }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        // `FlyEditor::new` runs `ensure_stable_ids`, which must replace the hostile id; otherwise
+        // validation would reject every subsequent command and the document could never be fixed.
+        let mut editor = crate::FlyEditor::new(document, RegistrySet::with_builtins());
+        let report = editor.validate();
+
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "invalid_component_id"),
+            "{:?}",
+            report.diagnostics
+        );
+
+        // The document stays editable, which is the property that matters: validation errors abort
+        // `apply`, so an unhealed id would make every further command fail.
+        editor
+            .apply(crate::EditorCommand::Patch {
+                component_id: "root".to_string(),
+                patch: crate::ComponentPatch::default(),
+            })
+            .expect("document remains editable");
+    }
 }
+

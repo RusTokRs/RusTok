@@ -1,6 +1,6 @@
 use super::diff::compare_projects;
 use super::model::{ProjectDiffSummary, ProjectSnapshot};
-use crate::{FlyError, FlyResult, GrapesJsCodec, ProjectDocument};
+use crate::{ContentDigest, FlyError, FlyResult, GrapesJsCodec, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::VecDeque;
@@ -37,6 +37,8 @@ impl SnapshotCatalog {
         let hash = document.hash().hex();
         let id = format!("snapshot-{}-{hash}", self.next_sequence);
         self.next_sequence = self.next_sequence.saturating_add(1);
+        let project_data = GrapesJsCodec::encode_value(document)?;
+        let content_digest = ContentDigest::from_json(&project_data)?;
         self.snapshots.push_back(ProjectSnapshot {
             id,
             label: if label.trim().is_empty() {
@@ -45,7 +47,8 @@ impl SnapshotCatalog {
                 label.trim().to_string()
             },
             project_hash: hash,
-            project_data: GrapesJsCodec::encode_value(document)?,
+            content_digest: Some(content_digest),
+            project_data,
             metadata,
         });
         while self.snapshots.len() > self.maximum_snapshots {
