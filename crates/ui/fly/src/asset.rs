@@ -1,3 +1,4 @@
+use crate::safe_url::{absolute_url_has_authority, safe_data_image};
 use crate::{ComponentPatch, FlyError, FlyResult, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -203,7 +204,7 @@ pub fn source_allowed(source: &str, kind: AssetKind, policy: &AssetPolicy) -> bo
     if absolute_url_has_authority(source, "http://") {
         return policy.allow_http;
     }
-    if safe_data_image_source(&normalized) {
+    if safe_data_image(&normalized) {
         return policy.allow_data_images && kind == AssetKind::Image;
     }
     if normalized.starts_with("data:image/") {
@@ -213,31 +214,6 @@ pub fn source_allowed(source: &str, kind: AssetKind, policy: &AssetPolicy) -> bo
         return policy.allow_relative;
     }
     false
-}
-
-fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = &value[scheme.len()..];
-    let authority = authority
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
-
-fn safe_data_image_source(normalized: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| normalized.starts_with(prefix))
 }
 
 fn string_field(object: &Map<String, Value>, keys: &[&str]) -> Option<String> {

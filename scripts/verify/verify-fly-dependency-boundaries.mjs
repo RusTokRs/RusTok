@@ -65,7 +65,19 @@ for (const rule of rules) {
     continue;
   }
 
-  let normalized = manifest.toLowerCase();
+  // Strip comments before scanning. A forbidden crate named in a `#` comment is documentation,
+  // not a dependency, and flagging it punishes manifests for explaining themselves. The required
+  // checks below still read the raw text, which is harmless: a required dependency mentioned only
+  // in a comment would be caught by the build itself.
+  const code = manifest
+    .split('\n')
+    .map((line) => {
+      const hash = line.indexOf('#');
+      return hash === -1 ? line : line.slice(0, hash);
+    })
+    .join('\n');
+
+  let normalized = code.toLowerCase();
   for (const allowed of rule.stripAllowed ?? []) {
     normalized = normalized.replaceAll(allowed.toLowerCase(), '');
   }

@@ -272,7 +272,10 @@ for (const [localeName, locale] of [['en', en], ['ru', ru]]) {
 
 requireMarkers('workflow', [
   source.workflow.includes('-p rustok-page-builder-admin') && source.workflow.includes('cargo fmt') ? 'cargo fmt' : 'cargo fmt -p fly -p fly-browser -p rustok-page-builder-admin -- --check',
-  'cargo test -p fly-browser --lib',
+  // `--lib` was deliberately dropped: it skipped every integration test under
+  // `crates/ui/fly/browser/tests/`. Assert that the browser crate is tested at all, without
+  // pinning the exact flag.
+  'cargo test -p fly-browser',
   source.workflow.includes('-p rustok-page-builder-admin') && source.workflow.includes('cargo clippy') ? 'cargo clippy' : 'cargo clippy -p fly-browser -p rustok-page-builder-admin --lib -- -D warnings',
   'node scripts/verify/verify-fly-actions-forms.mjs',
 ], 'focused Fly workflow');

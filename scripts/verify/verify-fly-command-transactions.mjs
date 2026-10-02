@@ -50,7 +50,6 @@ requireMarkers('commandPatch', [
   'pub fn clear_component_type',
   'pub fn set_tag_name',
   'pub fn set_provider',
-  'pub fn set_schema_version',
   'pub fn set_field',
   'pub fn remove_field',
   'pub fn set_attribute',

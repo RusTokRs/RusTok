@@ -1,4 +1,4 @@
-use crate::{FlyError, FlyResult, GrapesJsCodec};
+use crate::{ContentDigest, FlyError, FlyResult, GrapesJsCodec};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -6,14 +6,37 @@ use serde_json::{Map, Value};
 pub struct ProjectSnapshot {
     pub id: String,
     pub label: String,
+    /// Cheap change-detection fingerprint. Not an integrity guarantee — see `content_digest`.
     pub project_hash: String,
+    /// Collision-resistant digest of `project_data`.
+    ///
+    /// Optional only so that snapshots captured before digests existed stay readable. Everything
+    /// Fly captures today populates it, and [`ProjectSnapshot::restore`] refuses to restore a
+    /// snapshot whose digest is present and wrong.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_digest: Option<ContentDigest>,
     pub project_data: Value,
     #[serde(default)]
     pub metadata: Map<String, Value>,
 }
 
 impl ProjectSnapshot {
+    /// Digest of the payload as it is stored right now.
+    pub fn compute_content_digest(&self) -> FlyResult<ContentDigest> {
+        ContentDigest::from_json(&self.project_data)
+    }
+
+    /// True when this snapshot carries a collision-resistant integrity digest.
+    pub fn has_content_digest(&self) -> bool {
+        self.content_digest.is_some()
+    }
+
+    /// Verify the integrity digest, then the cheap fingerprint, then decode.
+    ///
+    /// The digest is checked first and in constant time: it is the only check that actually
+    /// resists a crafted payload.
     pub fn restore(&self) -> FlyResult<crate::ProjectDocument> {
+        self.verify_content_digest()?;
         let document = GrapesJsCodec::decode_value(self.project_data.clone())?;
         let actual = document.hash().hex();
         if actual != self.project_hash {
@@ -24,6 +47,30 @@ impl ProjectSnapshot {
             });
         }
         Ok(document)
+    }
+
+    /// Restore while requiring a digest to be present, for callers that must not accept
+    /// pre-digest snapshots (publishing, rollback, cross-tenant import).
+    pub fn restore_verified(&self) -> FlyResult<crate::ProjectDocument> {
+        if self.content_digest.is_none() {
+            return Err(FlyError::SnapshotDigestMissing(self.id.clone()));
+        }
+        self.restore()
+    }
+
+    fn verify_content_digest(&self) -> FlyResult<()> {
+        let Some(declared) = self.content_digest.as_ref() else {
+            return Ok(());
+        };
+        let actual = self.compute_content_digest()?;
+        if declared.matches(&actual) {
+            return Ok(());
+        }
+        Err(FlyError::SnapshotDigestMismatch {
+            snapshot_id: self.id.clone(),
+            declared: declared.to_string(),
+            actual: actual.to_string(),
+        })
     }
 }
 

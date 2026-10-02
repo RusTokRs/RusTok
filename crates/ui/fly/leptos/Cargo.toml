@@ -47,3 +47,6 @@ web-sys = { version = "0.3", optional = true, features = [
   "ResizeObserverEntry",
   "Window",
 ] }
+
+[lints]
+workspace = true
