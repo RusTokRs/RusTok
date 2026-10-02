@@ -1454,16 +1454,22 @@ fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String
     let Some(values) = values.as_array() else {
         return Some(Vec::new());
     };
+    if values.is_empty() {
+        return None;
+    }
 
-    Some(
-        values
-            .iter()
-            .filter_map(Value::as_str)
-            .filter_map(normalize_shipping_profile_slug)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect(),
-    )
+    let mut normalized = BTreeSet::new();
+    for value in values {
+        let Some(value) = value.as_str() else {
+            return Some(Vec::new());
+        };
+        let Some(value) = normalize_shipping_profile_slug(value) else {
+            return Some(Vec::new());
+        };
+        normalized.insert(value);
+    }
+
+    Some(normalized.into_iter().collect())
 }
 
 fn apply_allowed_shipping_profiles_to_metadata(
@@ -2573,6 +2579,38 @@ mod tests {
                 .and_then(Value::as_array)
                 .map(Vec::len),
             Some(2)
+        );
+    }
+
+    #[test]
+    fn empty_allowed_shipping_profiles_mean_unrestricted() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": []
+                }
+            })),
+            None
+        );
+    }
+
+    #[test]
+    fn malformed_allowed_shipping_profile_entries_fail_closed() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": [""]
+                }
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": [123]
+                }
+            })),
+            Some(Vec::new())
         );
     }
 
