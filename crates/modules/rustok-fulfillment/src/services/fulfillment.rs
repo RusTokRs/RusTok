@@ -663,10 +663,51 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        self.ship_fulfillment_internal(tenant_id, fulfillment_id, input, None)
+            .await
+    }
+
+    /// Apply a provider-backed ship result after the provider operation has been journaled.
+    ///
+    /// The public service entrypoint strips caller-supplied provider receipts; only this
+    /// crate-internal path can attach the journal-owned receipt to the lifecycle write.
+    pub(crate) async fn ship_fulfillment_with_provider_result(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ShipFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.ship_fulfillment_internal(
+            tenant_id,
+            fulfillment_id,
+            input,
+            Some((provider_metadata, operation_id)),
+        )
+        .await
+    }
+
+    async fn ship_fulfillment_internal(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        mut input: ShipFulfillmentInput,
+        provider_result: Option<(Value, Uuid)>,
+    ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        input.metadata = match provider_result {
+            Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
+                input.metadata,
+                provider_metadata,
+                operation_id,
+                "ship",
+            )?,
+            None => strip_provider_operation_metadata(input.metadata),
+        };
 
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -1010,10 +1051,48 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        self.reship_fulfillment_internal(tenant_id, fulfillment_id, input, None)
+            .await
+    }
+
+    /// Apply a provider-backed reship result after the provider operation has been journaled.
+    pub(crate) async fn reship_fulfillment_with_provider_result(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ReshipFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.reship_fulfillment_internal(
+            tenant_id,
+            fulfillment_id,
+            input,
+            Some((provider_metadata, operation_id)),
+        )
+        .await
+    }
+
+    async fn reship_fulfillment_internal(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        mut input: ReshipFulfillmentInput,
+        provider_result: Option<(Value, Uuid)>,
+    ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        input.metadata = match provider_result {
+            Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
+                input.metadata,
+                provider_metadata,
+                operation_id,
+                "reship",
+            )?,
+            None => strip_provider_operation_metadata(input.metadata),
+        };
 
         let txn = self.db.begin().await?;
         let fulfillment = self
@@ -1110,10 +1189,48 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        self.cancel_fulfillment_internal(tenant_id, fulfillment_id, input, None)
+            .await
+    }
+
+    /// Apply a provider-backed cancellation result after the provider operation has been journaled.
+    pub(crate) async fn cancel_fulfillment_with_provider_result(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CancelFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.cancel_fulfillment_internal(
+            tenant_id,
+            fulfillment_id,
+            input,
+            Some((provider_metadata, operation_id)),
+        )
+        .await
+    }
+
+    async fn cancel_fulfillment_internal(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        mut input: CancelFulfillmentInput,
+        provider_result: Option<(Value, Uuid)>,
+    ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        input.metadata = match provider_result {
+            Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
+                input.metadata,
+                provider_metadata,
+                operation_id,
+                "cancel",
+            )?,
+            None => strip_provider_operation_metadata(input.metadata),
+        };
         let txn = self.db.begin().await?;
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
@@ -1381,6 +1498,33 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
         }
         other => other,
     }
+}
+
+fn prepare_provider_lifecycle_metadata(
+    input_metadata: Value,
+    provider_metadata: Value,
+    operation_id: Uuid,
+    operation: &'static str,
+) -> FulfillmentResult<Value> {
+    if operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "fulfillment provider operation id must not be nil".to_string(),
+        ));
+    }
+    let input_metadata = strip_provider_operation_metadata(input_metadata);
+    let merged = merge_fulfillment_metadata(input_metadata, provider_metadata)?;
+    let mut object = match merged {
+        Value::Object(object) => object,
+        _ => unreachable!("fulfillment metadata merge returns an object"),
+    };
+    object.insert(
+        "provider_operation".to_string(),
+        serde_json::json!({
+            "id": operation_id,
+            "operation": operation,
+        }),
+    );
+    Ok(Value::Object(object))
 }
 
 pub(crate) fn strip_fulfillment_identity_metadata(
@@ -2735,6 +2879,75 @@ mod tests {
                 .and_then(Value::as_str),
             Some("ship")
         );
+    }
+
+    #[test]
+    fn provider_backed_lifecycle_metadata_replaces_caller_receipt_with_journal_receipt() {
+        let caller_operation_id = Uuid::new_v4();
+        let journal_operation_id = Uuid::new_v4();
+        let journal_operation_id_string = journal_operation_id.to_string();
+        let metadata = super::prepare_provider_lifecycle_metadata(
+            serde_json::json!({
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "cancel"
+                },
+                "customer_note": "keep",
+                "audit": {
+                    "events": [{"type": "fabricated"}]
+                }
+            }),
+            serde_json::json!({
+                "provider_field": "keep",
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "ship"
+                }
+            }),
+            journal_operation_id,
+            "ship",
+        )
+        .expect("provider-backed metadata should be normalized");
+
+        assert_eq!(
+            metadata
+                .get("customer_note")
+                .and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            metadata
+                .get("provider_field")
+                .and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("id"))
+                .and_then(Value::as_str),
+            Some(journal_operation_id_string.as_str())
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("operation"))
+                .and_then(Value::as_str),
+            Some("ship")
+        );
+        assert!(metadata.get("audit").is_none());
+    }
+
+    #[test]
+    fn provider_backed_lifecycle_metadata_rejects_nil_journal_identity() {
+        let result = super::prepare_provider_lifecycle_metadata(
+            serde_json::json!({}),
+            serde_json::json!({}),
+            Uuid::nil(),
+            "ship",
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
