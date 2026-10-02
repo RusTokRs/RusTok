@@ -2820,7 +2820,9 @@ mod tests {
             ]))
             .is_err()
         );
-        assert!(super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()])).is_err());
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()])).is_err()
+        );
     }
 
     #[test]
@@ -2841,7 +2843,9 @@ mod tests {
             Some(vec![valid])
         );
 
-        assert!(super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)])).is_err());
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)])).is_err()
+        );
     }
 
     #[test]
