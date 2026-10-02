@@ -30,8 +30,24 @@ const requireMarkers = (key, markers, label) => {
 requireMarkers('flyLib', [
   'mod snapshot;',
   'pub use snapshot::*;',
-  'pub use component_visit::{visit_project_components, ComponentVisit};',
 ], 'Fly snapshot module wiring');
+
+// Assert the re-exported symbols rather than a literal `pub use` line: the previous marker pinned
+// one particular name ordering inside the braces and broke the moment rustfmt reordered it, even
+// though both symbols were still exported.
+{
+  const reexport = source.flyLib.match(/pub use component_visit::\{([^}]*)\}/);
+  if (!reexport) {
+    failures.push('Fly lib does not re-export anything from component_visit');
+  } else {
+    const exported = reexport[1].split(',').map((entry) => entry.trim()).filter(Boolean);
+    for (const symbol of ['ComponentVisit', 'visit_project_components']) {
+      if (!exported.includes(symbol)) {
+        failures.push(`Fly lib does not re-export component_visit::${symbol}`);
+      }
+    }
+  }
+}
 requireMarkers('flyError', [
   'SnapshotNotFound(String)',
   'SnapshotHashMismatch',
