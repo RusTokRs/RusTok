@@ -15,7 +15,7 @@
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
-- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer.
+- Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer. An explicitly empty shipping-option `allowed_slugs` compatibility list represents an unrestricted option; malformed present compatibility metadata remains fail-closed.
 - Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts.
 - Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, `fulfillments[]`, and typed `fulfillment.items[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
 - Treat nullable `seller_id` as the canonical marketplace identity key across product, cart, order, checkout, and fulfillment contracts; `seller_scope` is not used as a runtime grouping or selection fallback.
