@@ -2451,6 +2451,70 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn checkout_identity_anchor_reuses_same_identity_and_rejects_conflicts() {
+        use rustok_test_utils::db::setup_test_db;
+        use sea_orm::{ConnectionTrait, Schema, TransactionTrait};
+
+        let db = setup_test_db().await;
+        let builder = db.get_database_backend();
+        let schema = Schema::new(builder);
+        let statement = schema
+            .create_table_from_entity(entities::checkout_identity::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(builder.build(&statement))
+            .await
+            .expect("checkout identity anchor table should be created");
+
+        let service = FulfillmentService::new(db.clone());
+        let txn = db.begin().await.expect("transaction should start");
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let customer_id = Some(Uuid::new_v4());
+        let identity = CheckoutFulfillmentIdentity {
+            operation_id,
+            index: 0,
+            plan_hash: "a".repeat(64),
+        };
+
+        service
+            .ensure_checkout_identity_anchor(&txn, Uuid::new_v4(), order_id, customer_id, &identity)
+            .await
+            .expect("first checkout identity should bind");
+
+        service
+            .ensure_checkout_identity_anchor(&txn, Uuid::new_v4(), order_id, customer_id, &identity)
+            .await
+            .expect("identical checkout identity should be idempotent");
+
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                identity_operation_tenant(&txn).await,
+                Uuid::new_v4(),
+                customer_id,
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different order"
+        );
+
+        txn.rollback().await.expect("transaction should roll back");
+    }
+
+    async fn identity_operation_tenant(txn: &DatabaseTransaction) -> Uuid {
+        entities::checkout_identity::Entity::find()
+            .order_by_asc(entities::checkout_identity::Column::CreatedAt)
+            .one(txn)
+            .await
+            .expect("anchor lookup should succeed")
+            .expect("first anchor should exist")
+            .tenant_id
+    }
+
     #[test]
     fn storage_only_und_is_not_used_as_runtime_shipping_option_locale() {
         let option_id = Uuid::new_v4();
