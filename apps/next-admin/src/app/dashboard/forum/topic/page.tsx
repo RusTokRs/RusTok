@@ -13,7 +13,7 @@ import {
   getForumTopic,
   listForumCategories,
   listForumTopics
-} from '../../../../../packages/forum/src';
+} from '@rustok/forum-admin';
 
 export const metadata = {
   title: 'Dashboard: Forum Topic Composer'

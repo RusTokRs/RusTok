@@ -256,7 +256,8 @@ fn log_cart_delivery_group_enrichment_error(
             ("fulfillment.fulfillment_not_found", "not_found", false)
         }
         FulfillmentError::InvalidTransition { .. }
-        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_)
+        | FulfillmentError::ProviderResultInvalid(_) => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
         FulfillmentError::Database(_) => ("fulfillment.database_unavailable", "unavailable", true),
@@ -410,7 +411,7 @@ mod tests {
 
     #[test]
     fn empty_shipping_profile_allow_list_is_unrestricted() {
-        let option = ShippingOptionResponse {
+        let mut option = ShippingOptionResponse {
             id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
             name: "Standard".to_string(),

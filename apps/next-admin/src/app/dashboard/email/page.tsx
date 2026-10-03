@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { EmailSettingsPage } from '../../../../packages/email/src';
+import { EmailSettingsPage } from '@rustok/email-admin';
 import { Suspense } from 'react';
 
 export const metadata = {

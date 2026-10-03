@@ -39,6 +39,7 @@ const baseConfig = {
     '@rustok/commerce-admin',
     '@rustok/email-admin',
     '@rustok/events-admin',
+    '@rustok/forum-admin',
     '@rustok/iggy-connector-admin',
     '@rustok/mcp-admin',
     '@rustok/product-admin',

@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
-import { getProduct } from '../../../../../packages/rustok-product/src';
+import { getProduct } from '@rustok/product-admin';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
 import {
@@ -16,7 +16,7 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/widgets/data-table';
+} from '@/widgets/data-table/table';
 import { PageContainer } from '@/widgets/app-shell';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';

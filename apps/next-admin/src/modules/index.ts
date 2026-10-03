@@ -1,16 +1,16 @@
 // Admin modules register their nav through module-owned package entrypoints.
 // Host shell code should not import business UI feature folders directly.
-import '../../packages/blog/src';
+import '@rustok/blog-admin';
 import '@rustok/cache-admin/register';
-import '../../packages/commerce/src';
-import '../../packages/email/src';
+import '@rustok/commerce-admin';
+import '@rustok/email-admin';
 import '@rustok/events-admin/register';
-import '../../packages/forum/src';
+import '@rustok/forum-admin';
 import '@rustok/iggy-connector-admin';
-import '../../packages/rbac/src';
-import '../../packages/rustok-product/src';
-import '../../packages/translation/src';
-import '../../packages/workflow/src';
+import '@rustok/rbac-admin';
+import '@rustok/product-admin';
+import '@rustok/translation-admin';
+import '@rustok/workflow-admin';
 
 export type { AdminModule } from './types';
 export {

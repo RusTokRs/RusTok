@@ -432,6 +432,7 @@ fn bounded_identifier_for_error(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::settings::TenantSettings;
 
     fn request(path: &str) -> Request<Body> {
         Request::builder()

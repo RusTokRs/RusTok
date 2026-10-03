@@ -7,7 +7,7 @@ import {
   ForumReplyEditor,
   getForumTopic,
   listForumTopics
-} from '../../../../../packages/forum/src';
+} from '@rustok/forum-admin';
 import {
   listRouteQueryEntries,
   readRouteSelection

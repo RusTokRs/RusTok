@@ -310,6 +310,9 @@ fn shipping_option_owner_error_facts(error: &FulfillmentError) -> ShippingOption
             0,
             false,
         ),
+        FulfillmentError::ProviderResultInvalid(value) => {
+            ("provider_result_invalid", 1, value.chars().count(), 0, 0, false)
+        }
         FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     ShippingOptionOwnerErrorFacts {

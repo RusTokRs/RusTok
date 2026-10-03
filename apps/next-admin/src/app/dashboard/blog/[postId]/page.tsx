@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { PostDetailPage } from '../../../../../packages/blog/src';
+import { PostDetailPage } from '@rustok/blog-admin';
 import { Suspense } from 'react';
 
 export const metadata = {

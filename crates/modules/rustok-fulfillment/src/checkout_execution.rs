@@ -1189,6 +1189,40 @@ fn fulfillment_error_to_port_error(
                 "shipping option translation revision conflicts with the current state",
             )
         }
+        FulfillmentError::ProviderResultInvalid(cause) => {
+            let provider_result_invalid_cause_present = !cause.trim().is_empty();
+            let provider_result_invalid_cause_length = cause.chars().count();
+            tracing::warn!(
+                owner = CHECKOUT_FULFILLMENT_OWNER,
+                operation = owner_operation,
+                owner_error_kind = "provider_result_invalid",
+                correlation_id = %context.correlation_id,
+                tenant_id_length,
+                actor_kind,
+                actor_id_length,
+                claim_count,
+                role_count,
+                channel_present,
+                channel_length = ?channel_length,
+                locale_length,
+                causation_id_present,
+                causation_id_length = ?causation_id_length,
+                traceparent_present,
+                traceparent_length = ?traceparent_length,
+                idempotency_key_present,
+                idempotency_key_length = ?idempotency_key_length,
+                deadline_ms = ?context.deadline_ms,
+                provider_result_invalid_cause_present,
+                provider_result_invalid_cause_length,
+                code = "fulfillment.reconciliation_required",
+                boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
+                "fulfillment provider result requires reconciliation"
+            );
+            PortError::conflict(
+                "fulfillment.reconciliation_required",
+                "fulfillment provider result requires reconciliation",
+            )
+        }
         FulfillmentError::Database(error) => {
             let database_error_type = std::any::type_name_of_val(&error);
             tracing::error!(

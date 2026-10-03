@@ -3,7 +3,7 @@ import { PageContainer } from '@/widgets/app-shell';
 import {
   WorkflowFormPage,
   getWorkflow
-} from '../../../../../../packages/workflow/src';
+} from '@rustok/workflow-admin';
 import { Suspense } from 'react';
 
 export const metadata = {

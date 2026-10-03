@@ -121,7 +121,8 @@ fn fulfillment_error_envelope(error: &FulfillmentError) -> (&'static str, &'stat
             false,
         ),
         FulfillmentError::InvalidTransition { .. }
-        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_)
+        | FulfillmentError::ProviderResultInvalid(_) => (
             "Fulfillment operation conflicts with the current state",
             "FULFILLMENT_STATE_CONFLICT",
             false,

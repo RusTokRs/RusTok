@@ -2,7 +2,7 @@ import { auth } from '@/auth';
 import {
   ForumTopicMerge,
   listForumTopics
-} from '../../../../../packages/forum/src';
+} from '@rustok/forum-admin';
 import { PageContainer } from '@/widgets/app-shell';
 
 export const metadata = {

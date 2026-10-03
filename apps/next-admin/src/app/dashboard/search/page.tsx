@@ -8,7 +8,7 @@ import { PageContainer } from '@/widgets/app-shell';
 import {
   listCatalogAttributeSearchOptions,
   listCatalogCategorySearchOptions
-} from '../../../../packages/rustok-product/src';
+} from '@rustok/product-admin';
 
 export const metadata = {
   title: 'Dashboard: Search'

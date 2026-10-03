@@ -243,6 +243,9 @@ fn fulfillment_owner_error_facts(error: &crate::FulfillmentError) -> Fulfillment
             0,
             false,
         ),
+        crate::FulfillmentError::ProviderResultInvalid(value) => {
+            ("provider_result_invalid", 1, value.chars().count(), 0, 0, false)
+        }
         crate::FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     FulfillmentOwnerErrorFacts {
@@ -331,6 +334,13 @@ fn fulfillment_error_to_port_error(
             PortErrorKind::Conflict,
             "fulfillment.shipping_option_translation_revision_conflict",
             "shipping option translation revision conflicts with the current state",
+            false,
+            false,
+        ),
+        crate::FulfillmentError::ProviderResultInvalid(_) => (
+            PortErrorKind::Conflict,
+            "fulfillment.reconciliation_required",
+            "fulfillment provider result requires reconciliation",
             false,
             false,
         ),

@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { WorkflowDetailPage } from '../../../../../packages/workflow/src';
+import { WorkflowDetailPage } from '@rustok/workflow-admin';
 import { Suspense } from 'react';
 
 export const metadata = {

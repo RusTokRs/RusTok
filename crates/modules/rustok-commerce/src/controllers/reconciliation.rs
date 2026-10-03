@@ -411,7 +411,8 @@ fn map_reconciliation_fulfillment_error(
             "not_found",
         ),
         FulfillmentError::InvalidTransition { .. }
-        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => (
+        | FulfillmentError::ShippingOptionTranslationRevisionConflict(_)
+        | FulfillmentError::ProviderResultInvalid(_) => (
             axum::http::StatusCode::CONFLICT,
             "commerce_admin_fulfillment_state_conflict",
             "Fulfillment operation conflicts with the current state",

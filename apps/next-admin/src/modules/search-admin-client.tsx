@@ -3,7 +3,7 @@
 import {
   SearchAdminPage,
   type SearchAdminPageProps
-} from '../../packages/search/src';
+} from '@rustok/search-admin';
 import { graphqlRequest } from '@/shared/api/graphql';
 
 type SearchAdminClientProps = Omit<SearchAdminPageProps, 'graphql'>;
