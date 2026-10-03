@@ -8,6 +8,26 @@ const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+
+// Dir-aware file reader: when a Rust module file (e.g. data.rs, governance.rs)
+// is split into a directory of submodules, reading the directory returns the
+// concatenation of all .rs files beneath it so marker/regex checks keep their
+// meaning across the split. Files are read as before.
+function readTree(target) {
+  if (fs.statSync(target).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        const full = path.join(dir, entry);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith(".rs")) parts.push(fs.readFileSync(full, "utf8"));
+      }
+    };
+    walk(target);
+    return parts.join("\n");
+  }
+  return fs.readFileSync(target, "utf8");
+}
 const nonOwnerRoots = [
   "apps/server/src",
   "crates/utils/rustok-installer-persistence/src",
@@ -55,7 +75,7 @@ const artifactAdmissionReverificationMigrationPath = path.join(
 );
 const artifactDataOwnerPath = path.join(
   root,
-  "crates/modules/rustok-modules/src/data.rs",
+  "crates/modules/rustok-modules/src/data",
 );
 const artifactDataPurgeMigrationPath = path.join(
   root,
@@ -194,7 +214,7 @@ const effectivePolicyTransitionOwnerPath = path.join(
   "policy_transition_event.rs",
 );
 const staticLifecycleJournalPath = path.join(ownerRoot, "operation_store.rs");
-const alloyOwnerSourcePath = path.join(ownerRoot, "governance.rs");
+const alloyOwnerSourcePath = path.join(ownerRoot, "governance");
 const registryPublicationEvidenceMigrationPath = path.join(
   root,
   "crates/utils/rustok-migrations/src/m20260717_000001_create_registry_publication_evidence.rs",
@@ -300,7 +320,7 @@ const ownerBoundaries = [
       /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_[a-z_]+\b/i,
   },
   {
-    path: "crates/modules/rustok-modules/src/data.rs",
+    path: "crates/modules/rustok-modules/src/data",
     pattern:
       /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
   },
@@ -315,7 +335,7 @@ const ownerBoundaries = [
       /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_build_requests\b/i,
   },
   {
-    path: "crates/modules/rustok-modules/src/governance.rs",
+    path: "crates/modules/rustok-modules/src/governance",
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+registry_[a-z_]+\b/i,
   },
   {
@@ -360,7 +380,7 @@ function relative(filePath) {
 }
 
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), "utf8");
+  return readTree(path.join(root, relativePath), "utf8");
 }
 
 function writesControlPlane(source) {
@@ -381,109 +401,109 @@ function isProductionSource(filePath) {
 }
 
 try {
-  const ownerManifest = fs.readFileSync(ownerManifestPath, "utf8");
-  const ownerContracts = fs.readFileSync(ownerContractsPath, "utf8");
-  const lifecycleOwner = fs.readFileSync(lifecycleOwnerPath, "utf8");
-  const transitionOwner = fs.readFileSync(transitionOwnerPath, "utf8");
-  const transitionStore = fs.readFileSync(transitionStorePath, "utf8");
-  const controlPlane = fs.readFileSync(controlPlanePath, "utf8");
-  const artifactAdmissionReverificationMigration = fs.readFileSync(
+  const ownerManifest = readTree(ownerManifestPath, "utf8");
+  const ownerContracts = readTree(ownerContractsPath, "utf8");
+  const lifecycleOwner = readTree(lifecycleOwnerPath, "utf8");
+  const transitionOwner = readTree(transitionOwnerPath, "utf8");
+  const transitionStore = readTree(transitionStorePath, "utf8");
+  const controlPlane = readTree(controlPlanePath, "utf8");
+  const artifactAdmissionReverificationMigration = readTree(
     artifactAdmissionReverificationMigrationPath,
     "utf8",
   );
-  const artifactDataOwner = fs.readFileSync(artifactDataOwnerPath, "utf8");
-  const artifactDataPurgeMigration = fs.readFileSync(
+  const artifactDataOwner = readTree(artifactDataOwnerPath, "utf8");
+  const artifactDataPurgeMigration = readTree(
     artifactDataPurgeMigrationPath,
     "utf8",
   );
-  const moduleBuildOwner = fs.readFileSync(moduleBuildOwnerPath, "utf8");
-  const artifactDataExportMigration = fs.readFileSync(
+  const moduleBuildOwner = readTree(moduleBuildOwnerPath, "utf8");
+  const artifactDataExportMigration = readTree(
     artifactDataExportMigrationPath,
     "utf8",
   );
-  const artifactBindingIdempotencyOwner = fs.readFileSync(
+  const artifactBindingIdempotencyOwner = readTree(
     artifactBindingIdempotencyOwnerPath,
     "utf8",
   );
-  const artifactBindingIdempotencyMigration = fs.readFileSync(
+  const artifactBindingIdempotencyMigration = readTree(
     artifactBindingIdempotencyMigrationPath,
     "utf8",
   );
-  const serverArtifactBinding = fs.readFileSync(
+  const serverArtifactBinding = readTree(
     serverArtifactBindingPath,
     "utf8",
   );
-  const artifactSettingsRecoveryOwner = fs.readFileSync(
+  const artifactSettingsRecoveryOwner = readTree(
     artifactSettingsRecoveryOwnerPath,
     "utf8",
   );
-  const serverGraphqlQueries = fs.readFileSync(serverGraphqlQueriesPath, "utf8");
-  const artifactDataSnapshotOwner = fs.readFileSync(
+  const serverGraphqlQueries = readTree(serverGraphqlQueriesPath, "utf8");
+  const artifactDataSnapshotOwner = readTree(
     artifactDataSnapshotOwnerPath,
     "utf8",
   );
-  const postPurgeRecoveryOwner = fs.readFileSync(
+  const postPurgeRecoveryOwner = readTree(
     postPurgeRecoveryOwnerPath,
     "utf8",
   );
-  const postPurgeRecoveryMigration = fs.readFileSync(
+  const postPurgeRecoveryMigration = readTree(
     postPurgeRecoveryMigrationPath,
     "utf8",
   );
-  const artifactSecretOwner = fs.readFileSync(artifactSecretOwnerPath, "utf8");
-  const artifactSecurityStateOwner = fs.readFileSync(
+  const artifactSecretOwner = readTree(artifactSecretOwnerPath, "utf8");
+  const artifactSecurityStateOwner = readTree(
     artifactSecurityStateOwnerPath,
     "utf8",
   );
-  const staticPromotionOwner = fs.readFileSync(
+  const staticPromotionOwner = readTree(
     staticPromotionOwnerPath,
     "utf8",
   );
-  const staticDistributionBootstrapOwner = fs.readFileSync(
+  const staticDistributionBootstrapOwner = readTree(
     staticDistributionBootstrapOwnerPath,
     "utf8",
   );
-  const staticDistributionReleaseOwner = fs.readFileSync(
+  const staticDistributionReleaseOwner = readTree(
     staticDistributionReleaseOwnerPath,
     "utf8",
   );
-  const staticDistributionRolloutOwner = fs.readFileSync(
+  const staticDistributionRolloutOwner = readTree(
     staticDistributionRolloutOwnerPath,
     "utf8",
   );
-  const staticDistributionOwner = fs.readFileSync(
+  const staticDistributionOwner = readTree(
     staticDistributionOwnerPath,
     "utf8",
   );
-  const artifactNodeReconciliationOwner = fs.readFileSync(
+  const artifactNodeReconciliationOwner = readTree(
     artifactNodeReconciliationOwnerPath,
     "utf8",
   );
-  const operationsToolOwner = fs.readFileSync(operationsToolOwnerPath, "utf8");
-  const operationsToolMigration = fs.readFileSync(
+  const operationsToolOwner = readTree(operationsToolOwnerPath, "utf8");
+  const operationsToolMigration = readTree(
     operationsToolMigrationPath,
     "utf8",
   );
-  const ociAdmissionOwner = fs.readFileSync(ociAdmissionOwnerPath, "utf8");
-  const externalPrebuiltIngressOwner = fs.readFileSync(
+  const ociAdmissionOwner = readTree(ociAdmissionOwnerPath, "utf8");
+  const externalPrebuiltIngressOwner = readTree(
     externalPrebuiltIngressOwnerPath,
     "utf8",
   );
-  const admittedOciReleasesMigration = fs.readFileSync(
+  const admittedOciReleasesMigration = readTree(
     admittedOciReleasesMigrationPath,
     "utf8",
   );
-  const lifecycleExecutor = fs.readFileSync(lifecycleExecutorPath, "utf8");
-  const effectivePolicyTransitionOwner = fs.readFileSync(
+  const lifecycleExecutor = readTree(lifecycleExecutorPath, "utf8");
+  const effectivePolicyTransitionOwner = readTree(
     effectivePolicyTransitionOwnerPath,
     "utf8",
   );
-  const staticLifecycleWriter = fs.readFileSync(
+  const staticLifecycleWriter = readTree(
     staticLifecycleWriterPath,
     "utf8",
   );
-  const recoverySource = fs.readFileSync(recoveryPath, "utf8");
-  const runtimeManifest = fs.readFileSync(runtimeManifestPath, "utf8");
+  const recoverySource = readTree(recoveryPath, "utf8");
+  const runtimeManifest = readTree(runtimeManifestPath, "utf8");
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter(
     (dependency) =>
       new RegExp(`^${dependency.replaceAll("-", "\\-")}\\s*=`, "m").test(
@@ -493,7 +513,7 @@ try {
   const forbiddenImportViolations = rustFiles(ownerRoot)
     .filter(isProductionSource)
     .filter((filePath) =>
-      forbiddenOwnerImportPattern.test(fs.readFileSync(filePath, "utf8")),
+      forbiddenOwnerImportPattern.test(readTree(filePath, "utf8")),
     )
     .map(relative);
   const productionSources = nonOwnerRoots
@@ -503,11 +523,11 @@ try {
     )
     .filter(isProductionSource);
   const writeViolations = productionSources
-    .filter((filePath) => writesControlPlane(fs.readFileSync(filePath, "utf8")))
+    .filter((filePath) => writesControlPlane(readTree(filePath, "utf8")))
     .map(relative);
   const constructionViolations = productionSources
     .filter((filePath) =>
-      constructsOwnerService(fs.readFileSync(filePath, "utf8")),
+      constructsOwnerService(readTree(filePath, "utf8")),
     )
     .map(relative);
   const directEventEnvelopeViolations = rustFiles(ownerRoot)
@@ -519,13 +539,13 @@ try {
         "crates/modules/rustok-modules/src/infrastructure.rs",
     )
     .filter((filePath) =>
-      directEventEnvelopePattern.test(fs.readFileSync(filePath, "utf8")),
+      directEventEnvelopePattern.test(readTree(filePath, "utf8")),
     )
     .map(relative);
   const adminBackendLogicViolations = rustFiles(adminModuleTransportRoot)
     .filter(isProductionSource)
     .filter((filePath) =>
-      adminBackendLogicPattern.test(fs.readFileSync(filePath, "utf8")),
+      adminBackendLogicPattern.test(readTree(filePath, "utf8")),
     )
     .map(relative);
 
@@ -872,7 +892,7 @@ try {
     );
   }
 
-  const serverDataPurgeHost = fs.readFileSync(
+  const serverDataPurgeHost = readTree(
     path.join(root, "apps/server/src/services/artifact_purge_recovery_host.rs"), "utf8",
   );
   const purgeBodyStart = artifactDataOwner.indexOf("impl<A> SeaOrmArtifactDataPurgeService");
@@ -1084,7 +1104,7 @@ try {
 
   // Supplemental source boundaries; stateless/owner-isolation behavior needs
   // the owner's runtime tests, and these checks do not attest host fences.
-  const secretBindingMigration = fs.readFileSync(path.join(ownerRoot,
+  const secretBindingMigration = readTree(path.join(ownerRoot,
     "migrations/m20260716_000014_artifact_secret_bindings.rs"), "utf8");
   const compactSecretOwner = artifactSecretOwner.replace(/\s+/g, "");
   if (/\bArtifactDataScope\b|\bartifact_data_scope_for_execution\b|\bdata_contract_revision\b/.test(artifactSecretOwner)
@@ -1138,19 +1158,19 @@ try {
     );
   }
 
-  const registryValidationWorkerManifest = fs.readFileSync(
+  const registryValidationWorkerManifest = readTree(
     registryValidationWorkerManifestPath,
     "utf8",
   );
-  const registryValidationWorkerMain = fs.readFileSync(
+  const registryValidationWorkerMain = readTree(
     registryValidationWorkerMainPath,
     "utf8",
   );
-  const registryValidationWorkerLibrary = fs.readFileSync(
+  const registryValidationWorkerLibrary = readTree(
     registryValidationWorkerLibraryPath,
     "utf8",
   );
-  const staticDistributionWorkerManifest = fs.readFileSync(
+  const staticDistributionWorkerManifest = readTree(
     staticDistributionWorkerManifestPath,
     "utf8",
   );
@@ -1160,12 +1180,12 @@ try {
     .filter(isProductionSource)
     .filter((filePath) =>
       staticDistributionWorkerOwnerTypePattern.test(
-        fs.readFileSync(filePath, "utf8"),
+        readTree(filePath, "utf8"),
       ),
     )
     .map(relative);
-  const publicationEvidence = fs.readFileSync(publicationEvidencePath, "utf8");
-  const serverLifecycleSource = fs.readFileSync(serverLifecyclePath, "utf8");
+  const publicationEvidence = readTree(publicationEvidencePath, "utf8");
+  const serverLifecycleSource = readTree(serverLifecyclePath, "utf8");
   if (
     serverLifecycleSource.includes("TransitionCheckpointStore") ||
     !serverLifecycleSource.includes(".active_checkpoint_for_module(") ||
@@ -1580,7 +1600,7 @@ try {
     "apps/server/src/services/registry_governance/publishing.rs",
   );
   const registryGovernanceOwnerSource = read(
-    "crates/modules/rustok-modules/src/governance.rs",
+    "crates/modules/rustok-modules/src/governance",
   );
   const registryValidationWorkerSource = read(
     "crates/workers/rustok-registry-validation-worker/src/lib.rs",
@@ -1869,42 +1889,42 @@ try {
       "effective module availability must use the owner-issued redacted policy view with one co-requisite-aware GraphQL/native decision path and no Admin-local enabled-set inference",
     );
   }
-  const staticLifecycleJournal = fs.readFileSync(
+  const staticLifecycleJournal = readTree(
     staticLifecycleJournalPath,
     "utf8",
   );
-  const alloyOwnerSource = fs.readFileSync(alloyOwnerSourcePath, "utf8");
-  const registryPublicationEvidenceMigration = fs.readFileSync(
+  const alloyOwnerSource = readTree(alloyOwnerSourcePath, "utf8");
+  const registryPublicationEvidenceMigration = readTree(
     registryPublicationEvidenceMigrationPath,
     "utf8",
   );
-  const registryPublicationMigration = fs.readFileSync(
+  const registryPublicationMigration = readTree(
     registryPublicationMigrationPath,
     "utf8",
   );
-  const registryHttpController = fs.readFileSync(
+  const registryHttpController = readTree(
     registryHttpControllerPath,
     "utf8",
   );
-  const alloyServerImport = fs.readFileSync(alloyServerImportPath, "utf8");
-  const alloyHttpController = fs.readFileSync(alloyHttpControllerPath, "utf8");
-  const alloyGraphqlMutation = fs.readFileSync(
+  const alloyServerImport = readTree(alloyServerImportPath, "utf8");
+  const alloyHttpController = readTree(alloyHttpControllerPath, "utf8");
+  const alloyGraphqlMutation = readTree(
     alloyGraphqlMutationPath,
     "utf8",
   );
-  const alloyMcpImport = fs.readFileSync(alloyMcpImportPath, "utf8");
-  const alloyMcpAccess = fs.readFileSync(alloyMcpAccessPath, "utf8");
-  const alloyMcpStdioServer = fs.readFileSync(alloyMcpStdioServerPath, "utf8");
+  const alloyMcpImport = readTree(alloyMcpImportPath, "utf8");
+  const alloyMcpAccess = readTree(alloyMcpAccessPath, "utf8");
+  const alloyMcpStdioServer = readTree(alloyMcpStdioServerPath, "utf8");
   const alloyMcpScaffold = read(
     "crates/modules/rustok-mcp/src/alloy_scaffold.rs",
   );
-  const serverMcpController = fs.readFileSync(serverMcpControllerPath, "utf8");
-  const alloySandboxRuntime = fs.readFileSync(alloySandboxRuntimePath, "utf8");
-  const alloyTestRunner = fs.readFileSync(alloyTestRunnerPath, "utf8");
-  const alloyReleaseStager = fs.readFileSync(alloyReleaseStagerPath, "utf8");
-  const alloyImportModel = fs.readFileSync(alloyImportModelPath, "utf8");
-  const serverAppRuntime = fs.readFileSync(serverAppRuntimePath, "utf8");
-  const alloyPublicationMigration = fs.readFileSync(
+  const serverMcpController = readTree(serverMcpControllerPath, "utf8");
+  const alloySandboxRuntime = readTree(alloySandboxRuntimePath, "utf8");
+  const alloyTestRunner = readTree(alloyTestRunnerPath, "utf8");
+  const alloyReleaseStager = readTree(alloyReleaseStagerPath, "utf8");
+  const alloyImportModel = readTree(alloyImportModelPath, "utf8");
+  const serverAppRuntime = readTree(serverAppRuntimePath, "utf8");
+  const alloyPublicationMigration = readTree(
     alloyPublicationMigrationPath,
     "utf8",
   );
@@ -2567,17 +2587,17 @@ try {
   }
 
   for (const owner of ownerBoundaries) {
-    const source = fs.readFileSync(path.join(root, owner.path), "utf8");
+    const source = readTree(path.join(root, owner.path), "utf8");
     if (!owner.pattern.test(source)) {
       fail(`owner write implementation is missing: ${owner.path}`);
     }
   }
 
-  const bindingStore = fs.readFileSync(
+  const bindingStore = readTree(
     path.join(root, "crates/modules/rustok-modules/src/binding_idempotency.rs"),
     "utf8",
   );
-  const bindingRlsMigration = fs.readFileSync(
+  const bindingRlsMigration = readTree(
     path.join(
       root,
       "crates/modules/rustok-modules/src/migrations/m20260720_000032_artifact_binding_operation_rls.rs",
@@ -2601,13 +2621,13 @@ try {
   }
 
   // Supplemental source guard only; runtime and fleet gates remain separate.
-  const objectMigration = fs.readFileSync(
+  const objectMigration = readTree(
     path.join(ownerRoot, "data_object_migration.rs"), "utf8",
   );
-  const objectMigrationSchema = fs.readFileSync(
+  const objectMigrationSchema = readTree(
     path.join(ownerRoot, "migrations/m20260903_000048_artifact_data_object_copy_operations.rs"), "utf8",
   );
-  const recoveryOwner = fs.readFileSync(
+  const recoveryOwner = readTree(
     path.join(ownerRoot, "data_post_purge_recovery.rs"), "utf8",
   );
   for (const fragment of [
@@ -2641,14 +2661,14 @@ try {
       fail(`object migration must retain durable reservation/hold schema: ${fragment}`);
     }
   }
-  if (!fs.readFileSync(artifactDataOwnerPath, "utf8").includes("ensure_namespace_not_migration_held_on")
+  if (!readTree(artifactDataOwnerPath, "utf8").includes("ensure_namespace_not_migration_held_on")
       || !recoveryOwner.includes("ensure_namespace_not_migration_held_on")) {
     fail("purge and recovery serving CAS must reject shared maintenance namespace holds");
   }
 
   // Supplemental contract guard; these markers do not prove runtime/fleet safety.
-  const recordCopier = fs.readFileSync(path.join(ownerRoot, "data_copier.rs"), "utf8");
-  const recordCopySchema = fs.readFileSync(
+  const recordCopier = readTree(path.join(ownerRoot, "data_copier.rs"), "utf8");
+  const recordCopySchema = readTree(
     path.join(ownerRoot, "migrations/m20260903_000047_artifact_data_copy_operations.rs"), "utf8",
   );
   for (const fragment of [
@@ -2682,7 +2702,7 @@ try {
     fail("record copier must not retain the superseded API or stale-intent failure sweep");
   }
   if (!objectMigrationSchema.includes("record_copy_hold")
-      || !fs.readFileSync(artifactDataOwnerPath, "utf8").includes("record_copy_hold")) {
+      || !readTree(artifactDataOwnerPath, "utf8").includes("record_copy_hold")) {
     fail("record and object maintenance must share source/target namespace holds");
   }
 

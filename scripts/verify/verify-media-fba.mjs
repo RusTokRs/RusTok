@@ -35,7 +35,7 @@ if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== 
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
 const writePort = registry.ports?.find((candidate) => candidate.name === 'MediaAssetWritePort');
 if (!writePort || writePort.contract_version !== 'media.asset_write.v1') fail('write port identity/version drift');
-sameSet(writePort.operations, ['prepare_upload', 'complete_upload', 'delete_asset', 'upsert_translation', 'reconcile_storage'], 'write port operations');
+sameSet(writePort.operations, ['prepare_upload', 'complete_upload', 'delete_asset', 'retain_asset_reference', 'release_asset_reference', 'upsert_translation', 'reconcile_storage'], 'write port operations');
 sameSet(writePort.write_operations, writePort.operations, 'write operations');
 if ((writePort.read_operations ?? []).length !== 0 || writePort.idempotency_required !== true || writePort.deadline_required !== true) fail('media write port policy drift');
 sameSet(writePort.upload_body_transport, ['media_owned_streaming_rest', 'presigned_object_store'], 'upload body transport');

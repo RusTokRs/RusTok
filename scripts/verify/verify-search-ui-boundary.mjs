@@ -271,7 +271,7 @@ function assertSearchUiCatalogTransportContract() {
   const nextAdminPath = "apps/next-admin/packages/search/src/index.tsx";
   const nextStorefrontPath = "apps/next-frontend/packages/search/src/index.tsx";
   const nextProductPath = "apps/next-admin/packages/rustok-product/src/index.ts";
-  const nextStorefrontProductPath = "apps/next-frontend/packages/rustok-product/src/index.ts";
+  const nextStorefrontProductPath = "apps/next-frontend/packages/rustok-product/src/index.tsx";
   const nextSearchPagePath = "apps/next-admin/src/app/dashboard/search/page.tsx";
   const nextStorefrontSearchFeaturePath = "apps/next-frontend/src/features/search/components/search-section.tsx";
   const nextStorefrontModulesPath = "apps/next-frontend/src/modules/index.ts";
@@ -341,7 +341,13 @@ function assertSearchUiCatalogTransportContract() {
   const nextAdmin = readRepo(nextAdminPath);
   const nextStorefront = readRepo(nextStorefrontPath);
   const nextProduct = readRepo(nextProductPath);
-  const nextStorefrontProduct = readRepo(nextStorefrontProductPath);
+  // The storefront product package split its transport/type surface into
+  // src/api/{products,types}.ts; verify the package aggregate.
+  const nextStorefrontProduct = [
+    readRepo(nextStorefrontProductPath),
+    readRepo("apps/next-frontend/packages/rustok-product/src/api/products.ts"),
+    readRepo("apps/next-frontend/packages/rustok-product/src/api/types.ts"),
+  ].join("\n");
   const nextSearchPage = readRepo(nextSearchPagePath);
   const nextStorefrontSearchFeature = readRepo(nextStorefrontSearchFeaturePath);
   const nextStorefrontModules = readRepo(nextStorefrontModulesPath);
@@ -545,8 +551,8 @@ function assertSearchUiCatalogTransportContract() {
     "storefrontCatalogSearchOptions(locale: $locale)",
     "categoryOptions { value label }",
     "attributeOptions { value label }",
-    "request.locale.trim()",
-    "tenant: request.tenantSlug",
+    "locale.trim()",
+    "tenant: tenantSlug ?? undefined",
   ]) {
     assertContains(nextStorefrontProduct, marker, `${nextStorefrontProductPath}: Next storefront product-owned metadata marker missing ${marker}`);
   }

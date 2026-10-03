@@ -169,7 +169,8 @@
           "context_deadline_preserved",
           "write_idempotency_required",
           "typed_richtext_input",
-          "server_selected_comment_profile"
+          "server_selected_comment_profile",
+          "idempotency_principal_bound"
         ],
         "runtime_evidence": "pending"
       },
@@ -207,7 +208,8 @@
           "context_deadline_preserved",
           "write_idempotency_required",
           "typed_richtext_input",
-          "server_selected_comment_profile"
+          "server_selected_comment_profile",
+          "idempotency_principal_bound"
         ],
         "runtime_evidence": "pending"
       },
@@ -216,7 +218,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "idempotency_principal_bound"
         ],
         "runtime_evidence": "pending"
       },
@@ -225,7 +228,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "idempotency_principal_bound"
         ],
         "runtime_evidence": "pending"
       }

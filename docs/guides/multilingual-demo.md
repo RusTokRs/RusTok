@@ -14,7 +14,7 @@ This document is the canonical reference for developers and AI agents on **multi
 ## 1. Core Platform Architecture: Non-Disableable Translation Module
 
 In RusToK, multilingual capability is supported through `rustok-translation`:
-- **`rustok-translation` Module**: Declared in [`modules.toml`](../../modules.toml) and [`modules.local.toml`](../../modules.local.toml).
+- **`rustok-translation` Module**: Declared in [`modules.toml`](../../modules.toml) (and optionally overridden by a local, git-ignored `modules.local.toml`).
 - **Policy and Lifecycle**: The kernel policy engine ([`crates/modules/rustok-modules/src/policy.rs`](../../crates/modules/rustok-modules/src/policy.rs)) and server lifecycle service ([`apps/server/src/services/module_lifecycle.rs`](../../apps/server/src/services/module_lifecycle.rs)) enforce module invariants and lifecycle state.
 - **System Boundaries**:
   - `rustok-translation` owns Translation Memory (TM), terminology glossaries, machine translation orchestration (`MachineTranslationPort`), translation review workflows (jobs, proposals, apply CAS), and exchange packages (XLIFF / JSON interchange).

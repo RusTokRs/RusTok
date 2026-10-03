@@ -1,6 +1,23 @@
 import fs from 'node:fs';
 
-function read(path) { return fs.readFileSync(path, 'utf8'); }
+// Dir-aware read: for a directory (a Rust module split into submodules),
+// returns the concatenation of all .rs files beneath it so marker checks
+// keep their meaning across file splits.
+function read(path) {
+  if (fs.statSync(path).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        const full = dir + '/' + entry;
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.rs')) parts.push(fs.readFileSync(full, 'utf8'));
+      }
+    };
+    walk(path);
+    return parts.join('\n');
+  }
+  return fs.readFileSync(path, 'utf8');
+}
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-ai-product-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const snippet of snippets) if (!text.includes(snippet)) fail(`${label} missing ${snippet}`); }
@@ -67,7 +84,7 @@ hasAll(aiAgentCatalog, [
   'with_stage_validators',
   'owner: "rustok-ai-product"'
 ], 'AI owner catalog composition');
-const aiService = read('crates/modules/rustok-ai/src/service.rs');
+const aiService = read('crates/modules/rustok-ai/src/service.rs') + '\n' + read('crates/modules/rustok-ai/src/service');
 hasAll(aiService, [
   'catalog.validate_stage_execution(',
   'Self::run_task_job_with_authority(',
@@ -96,9 +113,13 @@ hasAll(runtimeTypes, [
   'with_product_catalog_read_port'
 ], 'AI product catalog runtime composition');
 const commerceRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
+// The server composes the AI read-only catalog port from the product-owned
+// runtime handle; the Arc<dyn ProductCatalogReadPort> lives inside the
+// SharedAiProductCatalogReadPort newtype (rustok-ai service/types.rs).
 hasAll(commerceRuntime, [
-  'Arc<dyn rustok_product::ProductCatalogReadPort>',
-  'SharedAiProductCatalogReadPort'
+  'rustok_product::ProductCatalogReadRuntime',
+  'SharedAiProductCatalogReadPort',
+  'runtime.read_port()'
 ], 'server product catalog runtime composition');
 const directTests = read('crates/modules/rustok-ai/src/direct.rs');
 hasAll(directTests, [

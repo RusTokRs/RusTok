@@ -280,7 +280,7 @@ fn validate_tax_result(
             context,
             owner_operation,
             "tax.negative_total",
-            format!("tax provider returned negative total {}", result.tax_total),
+            "tax provider returned a negative tax total",
         ));
     }
     if customer_tax_exempt && (result.tax_total != Decimal::ZERO || !result.lines.is_empty()) {
@@ -316,10 +316,7 @@ fn validate_tax_result(
             context,
             owner_operation,
             "tax.total_mismatch",
-            format!(
-                "tax provider total {} does not match line total {}",
-                result.tax_total, calculated_total
-            ),
+            "tax provider total does not match the calculated line total",
         ));
     }
 
@@ -338,10 +335,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.provider_id_invalid",
-            format!(
-                "tax provider returned invalid provider_id {:?}",
-                line.provider_id
-            ),
+            "tax provider returned an invalid provider id",
         ));
     }
     if line.rate < Decimal::ZERO || line.amount < Decimal::ZERO {
@@ -349,10 +343,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.negative_line",
-            format!(
-                "tax provider returned negative line rate {} or amount {}",
-                line.rate, line.amount
-            ),
+            "tax provider returned a negative line rate or amount",
         ));
     }
     let line_currency = normalize_currency_code(&line.currency_code).ok_or_else(|| {
@@ -360,10 +351,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.currency_code_invalid",
-            format!(
-                "tax provider returned invalid currency {:?}",
-                line.currency_code
-            ),
+            "tax provider returned an invalid currency code",
         )
     })?;
     if line_currency != expected_currency {
@@ -371,7 +359,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.currency_mismatch",
-            format!("tax provider returned currency {line_currency}, expected {expected_currency}"),
+            "tax provider returned a currency that does not match the request currency",
         ));
     }
     if !taxable_targets.contains(&(line.line_item_id, line.shipping_option_id)) {
@@ -379,10 +367,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.unknown_taxable_target",
-            format!(
-                "tax provider returned unknown line_item_id {:?} and shipping_option_id {:?}",
-                line.line_item_id, line.shipping_option_id
-            ),
+            "tax provider returned an unknown taxable target",
         ));
     }
     Ok(())
@@ -434,9 +419,8 @@ fn tax_result_error(
     context: &PortContext,
     owner_operation: &'static str,
     code: &'static str,
-    detail: impl std::fmt::Display,
+    detail: &'static str,
 ) -> PortError {
-    let detail = detail.to_string();
     let facts = tax_calculation_context_facts(context);
     tracing::error!(
         owner = "rustok_tax",

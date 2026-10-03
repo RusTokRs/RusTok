@@ -21,29 +21,80 @@
     "mcp"
   ],
   "storage_contract_mapping": {
-    "pages": ["pages_metadata", "pages_visual_documents"],
-    "navigation": ["navigation_menus"],
-    "media": ["media_copy"],
-    "forum": ["forum_categories", "forum_ugc"],
-    "groups": ["group_copy"],
-    "product_catalog": ["product_catalog"],
-    "content": ["content_nodes"],
-    "blog": ["blog_categories", "blog_posts"],
-    "taxonomy": ["taxonomy_terms"],
-    "comments": ["comments"],
-    "profiles": ["profile_copy"],
-    "commerce": ["commerce_collection_copy"],
-    "flex_localized_storage": ["flex_schema_copy", "flex_attached_values"],
-    "marketplace_seller_prose": ["marketplace_seller_copy"],
-    "oauth_apps": ["oauth_app_copy"],
-    "registry_locale_provenance": ["registry_artifact_copy"],
-    "alloy-script-display-copy": ["alloy_control_copy", "alloy_script_presentation"],
-    "rbac-role-permission-display-copy": ["rbac_control_copy"],
-    "channel-display-name": ["channel_control_copy"],
-    "workflow-display-copy": ["workflow_control_copy"],
-    "mcp-management-display-copy": ["mcp_control_copy"],
-    "ai-control-plane-display-copy": ["ai_control_copy"],
-    "order-change-prose-locale": ["order_transaction_snapshots"]
+    "pages": [
+      "pages_metadata",
+      "pages_visual_documents"
+    ],
+    "navigation": [
+      "navigation_menus"
+    ],
+    "media": [
+      "media_copy"
+    ],
+    "forum": [
+      "forum_categories",
+      "forum_ugc"
+    ],
+    "groups": [
+      "group_copy"
+    ],
+    "product_catalog": [
+      "product_catalog"
+    ],
+    "content": [
+      "content_nodes"
+    ],
+    "blog": [
+      "blog_categories",
+      "blog_posts"
+    ],
+    "taxonomy": [
+      "taxonomy_terms"
+    ],
+    "comments": [
+      "comments"
+    ],
+    "profiles": [
+      "profile_copy"
+    ],
+    "commerce": [
+      "commerce_collection_copy"
+    ],
+    "flex_localized_storage": [
+      "flex_schema_copy",
+      "flex_attached_values"
+    ],
+    "marketplace_seller_prose": [
+      "marketplace_seller_copy"
+    ],
+    "oauth_apps": [
+      "oauth_app_copy"
+    ],
+    "registry_locale_provenance": [
+      "registry_artifact_copy"
+    ],
+    "alloy-script-display-copy": [
+      "alloy_control_copy",
+      "alloy_script_presentation"
+    ],
+    "rbac-role-permission-display-copy": [
+      "rbac_control_copy"
+    ],
+    "channel-display-name": [
+      "channel_control_copy"
+    ],
+    "workflow-display-copy": [
+      "workflow_control_copy"
+    ],
+    "mcp-management-display-copy": [
+      "mcp_control_copy"
+    ],
+    "ai-control-plane-display-copy": [
+      "ai_control_copy"
+    ],
+    "order-change-prose-locale": [
+      "order_transaction_snapshots"
+    ]
   },
   "non_target_storage_contracts": {
     "foundation_locale_policy": "Runtime locale policy is an input to translation, not a translatable business resource.",
@@ -74,8 +125,13 @@
       "resource_kind": "term",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "slug"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-taxonomy/README.md",
@@ -83,7 +139,9 @@
         "crates/modules/rustok-taxonomy/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
+      "blockers": [
+        "Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."
+      ]
     },
     {
       "id": "media_copy",
@@ -91,14 +149,21 @@
       "resource_kind": "asset",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-media/README.md",
         "crates/modules/rustok-media/src/translation_target.rs"
       ],
-      "blockers": ["Run projection replay, cursor checkpoint recovery, and sustained multi-replica inventory evidence before enabling this pilot in production."]
+      "blockers": [
+        "Run projection replay, cursor checkpoint recovery, and sustained multi-replica inventory evidence before enabling this pilot in production."
+      ]
     },
     {
       "id": "blog_categories",
@@ -106,8 +171,13 @@
       "resource_kind": "category",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "slug"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-blog/docs/implementation-plan-current.md",
@@ -122,11 +192,22 @@
       "resource_kind": "node",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "slug", "richtext"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "slug",
+        "richtext"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-content/docs/README.md"],
-      "blockers": ["Finish canonical richtext ownership and add exact source/target revisions plus idempotent apply."]
+      "evidence_paths": [
+        "crates/modules/rustok-content/docs/README.md"
+      ],
+      "blockers": [
+        "Finish canonical richtext ownership and add exact source/target revisions plus idempotent apply."
+      ]
     },
     {
       "id": "blog_posts",
@@ -134,11 +215,23 @@
       "resource_kind": "post",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "seo_text", "slug", "richtext"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "seo_text",
+        "slug",
+        "richtext"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-blog/docs/implementation-plan.md"],
-      "blockers": ["Complete editorial revision/CAS and richtext segment materialization before provider registration."]
+      "evidence_paths": [
+        "crates/modules/rustok-blog/docs/implementation-plan.md"
+      ],
+      "blockers": [
+        "Complete editorial revision/CAS and richtext segment materialization before provider registration."
+      ]
     },
     {
       "id": "pages_metadata",
@@ -146,8 +239,14 @@
       "resource_kind": "page_metadata",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "seo_text", "slug"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text",
+        "seo_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-pages/README.md",
@@ -155,7 +254,9 @@
         "crates/modules/rustok-pages/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
+      "blockers": [
+        "Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."
+      ]
     },
     {
       "id": "pages_visual_documents",
@@ -163,11 +264,20 @@
       "resource_kind": "page_document",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["page_builder_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "page_builder_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-page-builder/docs/README.md"],
-      "blockers": ["Publish lossless stable component/property extraction and materialization with body-revision CAS."]
+      "evidence_paths": [
+        "crates/modules/rustok-page-builder/docs/README.md"
+      ],
+      "blockers": [
+        "Publish lossless stable component/property extraction and materialization with body-revision CAS."
+      ]
     },
     {
       "id": "navigation_menus",
@@ -175,8 +285,12 @@
       "resource_kind": "menu",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-navigation/README.md",
@@ -184,7 +298,9 @@
         "crates/modules/rustok-navigation/src/translation_target_tests.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["Collect retained production PostgreSQL migration, concurrent aggregate CAS, and change-cursor recovery evidence before enabling this pilot in production."]
+      "blockers": [
+        "Collect retained production PostgreSQL migration, concurrent aggregate CAS, and change-cursor recovery evidence before enabling this pilot in production."
+      ]
     },
     {
       "id": "forum_categories",
@@ -192,8 +308,13 @@
       "resource_kind": "category",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "slug"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-forum/docs/implementation-plan.md",
@@ -209,11 +330,21 @@
       "resource_kind": "user_content",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "richtext"],
-      "data_classification": ["personal", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "richtext"
+      ],
+      "data_classification": [
+        "personal",
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-forum/README.md"],
-      "blockers": ["Define tenant opt-in, author rights, moderation, privacy, and immutable-revision policy."]
+      "evidence_paths": [
+        "crates/modules/rustok-forum/README.md"
+      ],
+      "blockers": [
+        "Define tenant opt-in, author rights, moderation, privacy, and immutable-revision policy."
+      ]
     },
     {
       "id": "product_catalog",
@@ -221,8 +352,16 @@
       "resource_kind": "catalog_product",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "seo_text", "slug", "localized_scalar"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "seo_text",
+        "slug",
+        "localized_scalar"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-product/docs/implementation-plan.md",
@@ -238,8 +377,15 @@
       "resource_kind": "product",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "seo_text", "slug"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "seo_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/translation_target.rs",
@@ -247,7 +393,9 @@
         "apps/server/tests/product_product_translation_target_postgres.rs",
         ".github/workflows/product-product-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL migration/CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; broad product/catalog_product is intentionally excluded rather than registered as a duplicate aggregate target."]
+      "blockers": [
+        "Retained repository-hosted PostgreSQL migration/CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; broad product/catalog_product is intentionally excluded rather than registered as a duplicate aggregate target."
+      ]
     },
     {
       "id": "product_variant_copy",
@@ -255,8 +403,13 @@
       "resource_kind": "variant",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/variant_translation_target.rs",
@@ -265,25 +418,32 @@
         "apps/server/tests/product_variant_translation_target_postgres.rs",
         ".github/workflows/product-variant-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."
+      ]
     },
     {
       "id": "product_option_copy",
       "owner_slug": "product",
       "resource_kind": "option",
       "readiness": "blocked",
-      "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "provider_status": "not_registered",
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
-        "crates/modules/rustok-product/src/option_translation_target.rs",
-        "crates/modules/rustok-product/src/option_translation_progress_target.rs",
+        "crates/modules/rustok-product/src/migrations/m20260908_000024_add_product_option_translation_change_journal.rs",
         "apps/server/src/services/module_event_dispatcher.rs",
-        "apps/server/tests/product_option_translation_target_postgres.rs",
         ".github/workflows/product-option-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "The option translation target provider (option_translation_target.rs / option_translation_progress_target.rs) is absent from the codebase; only the change-journal migration, the dispatcher resource-kind guard and the CI workflow remain. Reimplement and register the provider, then re-run the focused exact-head PostgreSQL workflow green before pilot promotion."
+      ]
     },
     {
       "id": "product_image_copy",
@@ -291,8 +451,13 @@
       "resource_kind": "image",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/image_translation_target.rs",
@@ -301,7 +466,9 @@
         "apps/server/tests/product_image_translation_target_postgres.rs",
         ".github/workflows/product-image-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; keep image identity and other non-copy metadata outside Translation."]
+      "blockers": [
+        "Retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; keep image identity and other non-copy metadata outside Translation."
+      ]
     },
     {
       "id": "product_attribute_copy",
@@ -309,8 +476,14 @@
       "resource_kind": "attribute",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "seo_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "seo_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/attributes/translation.rs",
@@ -319,7 +492,9 @@
         "apps/server/tests/product_attribute_translation_target_postgres.rs",
         ".github/workflows/product-attribute-translation-target-postgres.yml"
       ],
-      "blockers": ["The product/attribute provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, and late canonical option invalidation. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; archive/delete lifecycle evidence must follow canonical mounted owner commands rather than test-only SQL if those commands are exposed later."]
+      "blockers": [
+        "The product/attribute provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, and late canonical option invalidation. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; archive/delete lifecycle evidence must follow canonical mounted owner commands rather than test-only SQL if those commands are exposed later."
+      ]
     },
     {
       "id": "product_attribute_schema_copy",
@@ -327,8 +502,13 @@
       "resource_kind": "attribute_schema",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public", "tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public",
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/schemas/translation.rs",
@@ -337,7 +517,9 @@
         "apps/server/tests/product_attribute_schema_translation_target_postgres.rs",
         ".github/workflows/product-attribute-schema-translation-target-postgres.yml"
       ],
-      "blockers": ["The product/attribute_schema provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical schema-group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "The product/attribute_schema provider is registered over the canonical ProductCatalogSchemaService and retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical schema-group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."
+      ]
     },
     {
       "id": "product_category_form_copy",
@@ -345,8 +527,12 @@
       "resource_kind": "category_form",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/categories/translation.rs",
@@ -355,7 +541,9 @@
         "apps/server/tests/product_category_form_translation_target_postgres.rs",
         ".github/workflows/product-category-form-translation-target-postgres.yml"
       ],
-      "blockers": ["The product/category_form provider is registered for Product-owned category-local form-group labels only; canonical Category name/slug/description remain Taxonomy-owned. Retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; any future group-removal lifecycle evidence must follow its canonical Product owner command rather than test-only SQL."]
+      "blockers": [
+        "The product/category_form provider is registered for Product-owned category-local form-group labels only; canonical Category name/slug/description remain Taxonomy-owned. Retained PostgreSQL source covers tenant isolation, durable replay, multi-replica CAS, progress, frozen ChangeCursor windows, late canonical group invalidation, and binding-only no-copy churn. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; any future group-removal lifecycle evidence must follow its canonical Product owner command rather than test-only SQL."
+      ]
     },
     {
       "id": "product_category_seo_copy",
@@ -363,8 +551,12 @@
       "resource_kind": "category_seo",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["seo_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "seo_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/categories/seo_translation.rs",
@@ -372,7 +564,9 @@
         "crates/modules/rustok-product/src/services/write_transaction.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["The product/category_seo provider is registered over Product-owned catalog_category_seo_translations only; canonical Category name/slug/description remain Taxonomy-owned and seo/seo_copy remains the separate SEO override plane. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, semantic lifecycle journal dedupe, and Category delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion."]
+      "blockers": [
+        "The product/category_seo provider is registered over Product-owned catalog_category_seo_translations only; canonical Category name/slug/description remain Taxonomy-owned and seo/seo_copy remains the separate SEO override plane. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, semantic lifecycle journal dedupe, and Category delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion."
+      ]
     },
     {
       "id": "product_attribute_value_copy",
@@ -380,8 +574,12 @@
       "resource_kind": "attribute_value",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/values/translation.rs",
@@ -390,7 +588,9 @@
         "apps/server/tests/product_attribute_value_translation_target_postgres.rs",
         ".github/workflows/product-attribute-value-translation-target-postgres.yml"
       ],
-      "blockers": ["The product/attribute_value provider is registered over canonical Product localized text EAV rows with row-owned identity and AI export disabled. Retained PostgreSQL source covers canonical locale normalization, tenant isolation, durable replay, multi-replica CAS, aggregate progress, frozen ChangeCursor windows, source mutation, and canonical hard-delete tombstones. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Product attribute facts remain outside Translation."]
+      "blockers": [
+        "The product/attribute_value provider is registered over canonical Product localized text EAV rows with row-owned identity and AI export disabled. Retained PostgreSQL source covers canonical locale normalization, tenant isolation, durable replay, multi-replica CAS, aggregate progress, frozen ChangeCursor windows, source mutation, and canonical hard-delete tombstones. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Product attribute facts remain outside Translation."
+      ]
     },
     {
       "id": "product_variant_attribute_value_copy",
@@ -398,8 +598,12 @@
       "resource_kind": "variant_attribute_value",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-product/src/services/catalog_schema_service/values/variant_translation.rs",
@@ -407,7 +611,9 @@
         "crates/modules/rustok-product/src/services/write_transaction.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["The product/variant_attribute_value provider is registered over canonical Product-owned localized Variant text EAV rows with row-owned identity and AI export disabled. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, canonical Variant owner freshness, semantic journal dedupe, and Variant/Product hard-delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Variant attribute facts remain outside Translation."]
+      "blockers": [
+        "The product/variant_attribute_value provider is registered over canonical Product-owned localized Variant text EAV rows with row-owned identity and AI export disabled. Source covers canonical locale normalization, exact-locale CAS, durable idempotent replay, aggregate progress, frozen ChangeCursor windows, canonical Variant owner freshness, semantic journal dedupe, and Variant/Product hard-delete tombstones. Retain focused maintainer-run PostgreSQL evidence before pilot promotion; numeric, select, multiselect, JSON, and other non-localized Variant attribute facts remain outside Translation."
+      ]
     },
     {
       "id": "commerce_collection_copy",
@@ -415,8 +621,13 @@
       "resource_kind": "collection_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "slug"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text",
+        "slug"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-commerce/src/services/collection_translation.rs",
@@ -429,7 +640,9 @@
         "apps/server/tests/commerce_collection_translation_target_postgres.rs",
         ".github/workflows/commerce-collection-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL migration/concurrent CAS/idempotent-replay/progress/change-cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "Retained repository-hosted PostgreSQL migration/concurrent CAS/idempotent-replay/progress/change-cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."
+      ]
     },
     {
       "id": "flex_schema_copy",
@@ -437,8 +650,13 @@
       "resource_kind": "schema_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "localized_scalar"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "localized_scalar"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/flex/src/schema_translation.rs",
@@ -453,7 +671,9 @@
         "apps/server/tests/flex_schema_translation_target_postgres.rs",
         ".github/workflows/flex-schema-copy-translation-target-postgres.yml"
       ],
-      "blockers": ["Retained repository-hosted PostgreSQL owner/apply/replay/progress/frozen-ChangeCursor/lifecycle evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "Retained repository-hosted PostgreSQL owner/apply/replay/progress/frozen-ChangeCursor/lifecycle evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."
+      ]
     },
     {
       "id": "flex_attached_values",
@@ -461,8 +681,14 @@
       "resource_kind": "attached_localized_value",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "localized_scalar"],
-      "data_classification": ["tenant_private", "personal"],
+      "field_profiles": [
+        "plain_text",
+        "localized_scalar"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "personal"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/flex/src/attached_translation.rs",
@@ -485,7 +711,9 @@
         ".github/workflows/flex-attached-translation-policy-rbac-postgres.yml",
         "apps/server/src/services/mod.rs"
       ],
-      "blockers": ["Production enablement remains an operator rollout decision. Retained repository-hosted exact-head PostgreSQL evidence covers concurrent CAS/idempotent replay, aggregate-progress stability, schema fan-out, hard-delete tombstones, ChangeCursor recovery, policy/RBAC/unknown-field validation, and policy-only changes without content revision/change evidence: lifecycle run 34594653702 and policy/RBAC run 34592656347. Standalone Flex localized-value Translation is registered separately but remains blocked until its focused retained PostgreSQL lifecycle and policy evidence is green."]
+      "blockers": [
+        "Production enablement remains an operator rollout decision. Retained repository-hosted exact-head PostgreSQL evidence covers concurrent CAS/idempotent replay, aggregate-progress stability, schema fan-out, hard-delete tombstones, ChangeCursor recovery, policy/RBAC/unknown-field validation, and policy-only changes without content revision/change evidence: lifecycle run 34594653702 and policy/RBAC run 34592656347. Standalone Flex localized-value Translation is registered separately but remains blocked until its focused retained PostgreSQL lifecycle and policy evidence is green."
+      ]
     },
     {
       "id": "flex_standalone_values",
@@ -493,8 +721,14 @@
       "resource_kind": "standalone_localized_value",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text", "localized_scalar"],
-      "data_classification": ["tenant_private", "personal"],
+      "field_profiles": [
+        "plain_text",
+        "localized_scalar"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "personal"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/flex/src/standalone_translation.rs",
@@ -505,7 +739,9 @@
         "crates/modules/flex/src/standalone_translation_policy_target.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["The standalone provider, durable revision/change path, progress/ChangeCursor contract, and fail-closed governance policy are registered, but the focused retained PostgreSQL lifecycle/policy evidence from the current readiness slice is not green. Repair and retain green exact-head and post-merge PostgreSQL evidence before pilot promotion."]
+      "blockers": [
+        "The standalone provider, durable revision/change path, progress/ChangeCursor contract, and fail-closed governance policy are registered, but the focused retained PostgreSQL lifecycle/policy evidence from the current readiness slice is not green. Repair and retain green exact-head and post-merge PostgreSQL evidence before pilot promotion."
+      ]
     },
     {
       "id": "seo_overrides",
@@ -513,8 +749,12 @@
       "resource_kind": "seo_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["seo_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "seo_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-seo/src/services/translation_target.rs",
@@ -522,7 +762,9 @@
         "apps/server/tests/seo_translation_target_postgres.rs",
         ".github/workflows/seo-translation-target-postgres.yml"
       ],
-      "blockers": ["Owner/override precedence is resolved and seo/seo_copy is registered with retained repository-hosted PostgreSQL CAS/replay/progress/ChangeCursor/reindex-event evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; canonical/robots/structured data and media identifiers remain outside this copy target."]
+      "blockers": [
+        "Owner/override precedence is resolved and seo/seo_copy is registered with retained repository-hosted PostgreSQL CAS/replay/progress/ChangeCursor/reindex-event evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; canonical/robots/structured data and media identifiers remain outside this copy target."
+      ]
     },
     {
       "id": "profile_copy",
@@ -530,11 +772,19 @@
       "resource_kind": "profile_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["personal"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "personal"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-profiles/README.md"],
-      "blockers": ["Define consent, privacy, name-preservation, and immutable-revision policy."]
+      "evidence_paths": [
+        "crates/modules/rustok-profiles/README.md"
+      ],
+      "blockers": [
+        "Define consent, privacy, name-preservation, and immutable-revision policy."
+      ]
     },
     {
       "id": "comments",
@@ -542,11 +792,20 @@
       "resource_kind": "comment_body",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["personal", "tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "personal",
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-comments/README.md"],
-      "blockers": ["Require tenant opt-in, author/moderator policy, and revision-preserving derived translations."]
+      "evidence_paths": [
+        "crates/modules/rustok-comments/README.md"
+      ],
+      "blockers": [
+        "Require tenant opt-in, author/moderator policy, and revision-preserving derived translations."
+      ]
     },
     {
       "id": "group_copy",
@@ -554,11 +813,20 @@
       "resource_kind": "group_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "richtext"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text",
+        "richtext"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-groups/README.md"],
-      "blockers": ["Add exact read/apply ports, revisions, idempotency, and permission floors."]
+      "evidence_paths": [
+        "crates/modules/rustok-groups/README.md"
+      ],
+      "blockers": [
+        "Add exact read/apply ports, revisions, idempotency, and permission floors."
+      ]
     },
     {
       "id": "region_copy",
@@ -566,8 +834,12 @@
       "resource_kind": "region_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-region/src/translation_target.rs",
@@ -577,7 +849,9 @@
         "apps/server/tests/region_translation_target_postgres.rs",
         ".github/workflows/region-translation-target-postgres.yml"
       ],
-      "blockers": ["The region/region_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."]
+      "blockers": [
+        "The region/region_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion."
+      ]
     },
     {
       "id": "inventory_stock_location_copy",
@@ -585,8 +859,12 @@
       "resource_kind": "stock_location_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-inventory/src/translation_target.rs",
@@ -596,7 +874,9 @@
         "apps/server/tests/inventory_stock_location_translation_target_postgres.rs",
         ".github/workflows/inventory-stock-location-translation-target-postgres.yml"
       ],
-      "blockers": ["The inventory/stock_location_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; inventory identities and quantitative facts remain outside Translation."]
+      "blockers": [
+        "The inventory/stock_location_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; inventory identities and quantitative facts remain outside Translation."
+      ]
     },
     {
       "id": "pricing_price_list_copy",
@@ -604,8 +884,12 @@
       "resource_kind": "price_list_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-pricing/src/translation_target.rs",
@@ -614,7 +898,9 @@
         "apps/server/tests/pricing_price_list_translation_target_postgres.rs",
         ".github/workflows/pricing-price-list-translation-target-postgres.yml"
       ],
-      "blockers": ["The pricing/price_list_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; prices, currencies, rules, and calculations remain non-translatable facts."]
+      "blockers": [
+        "The pricing/price_list_copy provider is registered and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/progress/ChangeCursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; prices, currencies, rules, and calculations remain non-translatable facts."
+      ]
     },
     {
       "id": "fulfillment_copy",
@@ -622,8 +908,13 @@
       "resource_kind": "fulfillment_copy",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private", "immutable_transaction"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "immutable_transaction"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-fulfillment/README.md",
@@ -641,8 +932,12 @@
       "resource_kind": "shipping_option_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
       "evidence_paths": [
         "crates/modules/rustok-fulfillment/src/translation_target.rs",
@@ -652,7 +947,9 @@
         "apps/server/tests/fulfillment_shipping_option_translation_target_postgres.rs",
         ".github/workflows/fulfillment-shipping-option-translation-target-postgres.yml"
       ],
-      "blockers": ["The fulfillment/shipping_option_copy provider is registered with atomic owner create/update/apply, copy-only revisions, stable aggregate high-water progress, a durable bounded ChangeCursor, and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/lifecycle/progress/cursor evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; operational shipping facts remain outside Translation."]
+      "blockers": [
+        "The fulfillment/shipping_option_copy provider is registered with atomic owner create/update/apply, copy-only revisions, stable aggregate high-water progress, a durable bounded ChangeCursor, and retained repository-hosted PostgreSQL concurrent CAS/idempotent-replay/lifecycle/progress/cursor evidence source. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; operational shipping facts remain outside Translation."
+      ]
     },
     {
       "id": "marketplace_seller_copy",
@@ -660,8 +957,12 @@
       "resource_kind": "seller_presentation",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "allowed",
       "evidence_paths": [
         "crates/modules/rustok-marketplace-seller/README.md",
@@ -674,7 +975,9 @@
         "apps/server/tests/marketplace_seller_translation_target_postgres.rs",
         ".github/workflows/marketplace-seller-translation-target-postgres.yml"
       ],
-      "blockers": ["The marketplace_seller/seller_presentation provider is registered for public display_name only, with exact resource/source/target CAS, durable idempotent apply, canonical owner-event parity, aggregate progress, and a frozen durable ChangeCursor. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, multi-replica CAS, durable replay, semantic-dedupe, progress, and cursor-recovery evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; Archived lifecycle evidence must follow a future canonical Seller close/delete command rather than test-only SQL. Legal identity, handle, metadata, onboarding/suspension prose, memberships, verification facts, and other operational seller state remain outside Translation."]
+      "blockers": [
+        "The marketplace_seller/seller_presentation provider is registered for public display_name only, with exact resource/source/target CAS, durable idempotent apply, canonical owner-event parity, aggregate progress, and a frozen durable ChangeCursor. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, multi-replica CAS, durable replay, semantic-dedupe, progress, and cursor-recovery evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; Archived lifecycle evidence must follow a future canonical Seller close/delete command rather than test-only SQL. Legal identity, handle, metadata, onboarding/suspension prose, memberships, verification facts, and other operational seller state remain outside Translation."
+      ]
     },
     {
       "id": "marketplace_listing_copy",
@@ -682,8 +985,12 @@
       "resource_kind": "listing_presentation",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["identifier"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "identifier"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-marketplace-listing/README.md",
@@ -699,8 +1006,12 @@
       "resource_kind": "static_settings",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["localized_scalar"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "localized_scalar"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-modules/README.md",
@@ -710,7 +1021,9 @@
         "apps/server/tests/static_settings_translation_target_postgres.rs",
         ".github/workflows/settings-translation-target-postgres.yml"
       ],
-      "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL multi-replica apply/replay and change-cursor recovery are retained by the focused Settings evidence test/workflow, including post-merge main run 34032610739 on c6d591dc9a9e9e633e7e83c0999c02f727c694f8."]
+      "blockers": [
+        "Production enablement remains an operator rollout decision; repository-hosted PostgreSQL multi-replica apply/replay and change-cursor recovery are retained by the focused Settings evidence test/workflow, including post-merge main run 34032610739 on c6d591dc9a9e9e633e7e83c0999c02f727c694f8."
+      ]
     },
     {
       "id": "oauth_app_copy",
@@ -718,8 +1031,13 @@
       "resource_kind": "oauth_application_copy",
       "readiness": "blocked",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-auth/README.md",
@@ -731,7 +1049,9 @@
         "apps/server/tests/oauth_app_translation_target_postgres.rs",
         ".github/workflows/oauth-app-translation-target-postgres.yml"
       ],
-      "blockers": ["The auth/oauth_application_copy provider is registered over localized name plus optional description only, with settings:manage read/apply floors, sensitive classification, AI export forbidden, copy-only revisions, aggregate progress, durable idempotent apply, frozen ChangeCursor, and canonical Active/Archived lifecycle. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical create/update/secret-rotation/revoke, multi-replica CAS, replay, progress, and cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; client identity, slug, credentials, redirect URIs, scopes/grants, consent/token state, provenance, and other operational OAuth facts remain outside Translation."]
+      "blockers": [
+        "The auth/oauth_application_copy provider is registered over localized name plus optional description only, with settings:manage read/apply floors, sensitive classification, AI export forbidden, copy-only revisions, aggregate progress, durable idempotent apply, frozen ChangeCursor, and canonical Active/Archived lifecycle. Retained repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical create/update/secret-rotation/revoke, multi-replica CAS, replay, progress, and cursor evidence source is present. Run the focused exact-head workflow green and retain reviewed post-merge evidence before pilot promotion; client identity, slug, credentials, redirect URIs, scopes/grants, consent/token state, provenance, and other operational OAuth facts remain outside Translation."
+      ]
     },
     {
       "id": "registry_artifact_copy",
@@ -739,12 +1059,16 @@
       "resource_kind": "registry_artifact_copy",
       "readiness": "separate_track",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-modules/README.md",
-        "crates/modules/rustok-modules/src/governance.rs",
+        "crates/modules/rustok-modules/src/governance/mod.rs",
         "crates/libs/rustok-api/src/ports.rs",
         "DECISIONS/2026-07-26-translation-control-plane-boundary.md"
       ],
@@ -756,8 +1080,14 @@
       "resource_kind": "control_plane_copy",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "field_profiles": [
+        "plain_text",
+        "template_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/alloy/README.md",
@@ -774,8 +1104,12 @@
       "resource_kind": "script_presentation",
       "readiness": "pilot_candidate",
       "provider_status": "registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/alloy/docs/translation-plan.md",
@@ -790,7 +1124,9 @@
         "apps/server/tests/alloy_script_presentation_translation_target_postgres.rs",
         ".github/workflows/alloy-script-presentation-translation-target-postgres.yml"
       ],
-      "blockers": ["Production enablement remains an operator rollout decision; repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical authoring, multi-replica CAS, replay-after-later-change, hard-delete lifecycle, aggregate progress and frozen ChangeCursor evidence is retained by the focused Alloy Script Presentation test/workflow, including exact post-merge main run 34841105202 on 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7 (1 passed, 0 failed). Operational Script.name and executable/configuration/security-sensitive state remain outside Translation."]
+      "blockers": [
+        "Production enablement remains an operator rollout decision; repository-hosted PostgreSQL migration/backfill, tenant-isolation, canonical authoring, multi-replica CAS, replay-after-later-change, hard-delete lifecycle, aggregate progress and frozen ChangeCursor evidence is retained by the focused Alloy Script Presentation test/workflow, including exact post-merge main run 34841105202 on 60e3463e7ff0e88eedb988ecfa2ccc70a3a266f7 (1 passed, 0 failed). Operational Script.name and executable/configuration/security-sensitive state remain outside Translation."
+      ]
     },
     {
       "id": "rbac_control_copy",
@@ -798,8 +1134,13 @@
       "resource_kind": "control_plane_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-rbac/README.md",
@@ -810,7 +1151,9 @@
         "crates/libs/rustok-core/src/types.rs",
         "docs/architecture/database-multilingual-audit.md"
       ],
-      "blockers": ["RBAC role slugs, permission keys/resource-action identity, relation state, grants, scopes and authorization evidence are immutable policy identity and must never be translated. Built-in role/permission presentation and future tenant-authored presentation still need owner-local exact-locale storage plus locale-aware canonical writes with truthful legacy provenance; existing artifact-permission label/description translations remain a separate immutable release-governance localization plane and must not gain a competing tenant Translation writer. Keep the provider unregistered until the owner storage/write cutover and retained PostgreSQL evidence are complete."]
+      "blockers": [
+        "RBAC role slugs, permission keys/resource-action identity, relation state, grants, scopes and authorization evidence are immutable policy identity and must never be translated. Built-in role/permission presentation and future tenant-authored presentation still need owner-local exact-locale storage plus locale-aware canonical writes with truthful legacy provenance; existing artifact-permission label/description translations remain a separate immutable release-governance localization plane and must not gain a competing tenant Translation writer. Keep the provider unregistered until the owner storage/write cutover and retained PostgreSQL evidence are complete."
+      ]
     },
     {
       "id": "channel_control_copy",
@@ -818,11 +1161,19 @@
       "resource_kind": "control_plane_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/modules/rustok-channel/README.md"],
-      "blockers": ["Separate technical channel identity from localizable operator display copy."]
+      "evidence_paths": [
+        "crates/modules/rustok-channel/README.md"
+      ],
+      "blockers": [
+        "Separate technical channel identity from localizable operator display copy."
+      ]
     },
     {
       "id": "workflow_control_copy",
@@ -830,11 +1181,21 @@
       "resource_kind": "control_plane_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "field_profiles": [
+        "plain_text",
+        "template_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-workflow/README.md"],
-      "blockers": ["Classify workflow labels versus executable/template content and add localized storage."]
+      "evidence_paths": [
+        "crates/modules/rustok-workflow/README.md"
+      ],
+      "blockers": [
+        "Classify workflow labels versus executable/template content and add localized storage."
+      ]
     },
     {
       "id": "mcp_control_copy",
@@ -842,11 +1203,21 @@
       "resource_kind": "control_plane_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private", "sensitive"],
+      "field_profiles": [
+        "plain_text",
+        "template_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-mcp/README.md"],
-      "blockers": ["Separate operator display copy from prompts, tool schemas, secrets, and executable configuration."]
+      "evidence_paths": [
+        "crates/modules/rustok-mcp/README.md"
+      ],
+      "blockers": [
+        "Separate operator display copy from prompts, tool schemas, secrets, and executable configuration."
+      ]
     },
     {
       "id": "ai_control_copy",
@@ -854,11 +1225,21 @@
       "resource_kind": "control_plane_copy",
       "readiness": "blocked",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text", "template_text"],
-      "data_classification": ["tenant_private", "secret"],
+      "field_profiles": [
+        "plain_text",
+        "template_text"
+      ],
+      "data_classification": [
+        "tenant_private",
+        "secret"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-ai/README.md"],
-      "blockers": ["Separate display copy from prompts, credentials, deployment configuration, and run evidence."]
+      "evidence_paths": [
+        "crates/modules/rustok-ai/README.md"
+      ],
+      "blockers": [
+        "Separate display copy from prompts, credentials, deployment configuration, and run evidence."
+      ]
     },
     {
       "id": "order_transaction_snapshots",
@@ -866,10 +1247,17 @@
       "resource_kind": "transaction_snapshot",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["immutable_transaction_snapshot"],
-      "data_classification": ["immutable_transaction", "personal"],
+      "field_profiles": [
+        "immutable_transaction_snapshot"
+      ],
+      "data_classification": [
+        "immutable_transaction",
+        "personal"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-order/README.md"],
+      "evidence_paths": [
+        "crates/modules/rustok-order/README.md"
+      ],
       "exclusion_reason": "Immutable transaction facts retain original locale attribution and are never retroactively translated."
     },
     {
@@ -878,10 +1266,17 @@
       "resource_kind": "transaction_snapshot",
       "readiness": "excluded",
       "provider_status": "not_registered",
-      "field_profiles": ["immutable_transaction_snapshot"],
-      "data_classification": ["immutable_transaction", "sensitive"],
+      "field_profiles": [
+        "immutable_transaction_snapshot"
+      ],
+      "data_classification": [
+        "immutable_transaction",
+        "sensitive"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-payment/README.md"],
+      "evidence_paths": [
+        "crates/modules/rustok-payment/README.md"
+      ],
       "exclusion_reason": "Payment facts and provider evidence are immutable and must not enter translation workflow."
     },
     {
@@ -890,10 +1285,16 @@
       "resource_kind": "linguistic_dictionary",
       "readiness": "separate_track",
       "provider_status": "not_registered",
-      "field_profiles": ["plain_text"],
-      "data_classification": ["tenant_private"],
+      "field_profiles": [
+        "plain_text"
+      ],
+      "data_classification": [
+        "tenant_private"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["crates/modules/rustok-search/README.md"],
+      "evidence_paths": [
+        "crates/modules/rustok-search/README.md"
+      ],
       "exclusion_reason": "Synonyms, stop words, and query rules remain explicit locale-aware search configuration, not translation memory."
     },
     {
@@ -902,10 +1303,17 @@
       "resource_kind": "static_ui_catalog",
       "readiness": "separate_track",
       "provider_status": "not_registered",
-      "field_profiles": ["template_text", "plain_text"],
-      "data_classification": ["public"],
+      "field_profiles": [
+        "template_text",
+        "plain_text"
+      ],
+      "data_classification": [
+        "public"
+      ],
       "ai_export": "forbidden",
-      "evidence_paths": ["docs/architecture/i18n.md"],
+      "evidence_paths": [
+        "docs/architecture/i18n.md"
+      ],
       "exclusion_reason": "Compiled host/module catalogs require a signed versioned artifact delivery plane, not tenant data writes."
     }
   ]

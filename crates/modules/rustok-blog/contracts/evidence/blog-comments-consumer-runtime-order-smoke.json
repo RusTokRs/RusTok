@@ -23,13 +23,13 @@
   "runtime_order": [
     {
       "operation": "create_comment",
-      "function": "create_comment",
+      "function": "create_comment_internal",
       "markers": [
         "ensure_post_exists",
         "comments_thread_port",
         "create_comment",
         "comments_write_port_context",
-        "DomainCreateCommentInput",
+        "ApiCreateCommentInput",
         "body: input.content",
         "map_comment_record"
       ]
@@ -49,7 +49,7 @@
       "operation": "update_comment",
       "function": "update_comment",
       "markers": [
-        "DomainUpdateCommentInput",
+        "ApiUpdateCommentInput",
         "body: input.content",
         "comments_thread_port",
         "update_comment",

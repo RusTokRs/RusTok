@@ -248,11 +248,11 @@ hasAll(
   ['<span lang={option.lang} dir={option.dir}>'],
   'Shared form select bidi boundary'
 );
-hasAll(modulesIndex, ["import '../../packages/blog/src';", "import '../../packages/forum/src';"], 'Host module registration');
+hasAll(modulesIndex, ["import '@rustok/blog-admin';", "import '@rustok/forum-admin';"], 'Host module registration');
 hasAll(
   forumPage,
   [
-    "../../../../../packages/forum/src",
+    "@rustok/forum-admin",
     'ForumReplyEditor',
     'listForumTopics',
     'getForumTopic',
@@ -267,7 +267,7 @@ hasNone(forumPage, ['packages/blog/src', 'selectedTopic.title'], 'Forum route');
 hasAll(
   forumTopicPage,
   [
-    "../../../../../packages/forum/src",
+    "@rustok/forum-admin",
     'ForumTopicEditor',
     'listForumCategories',
     'listForumTopics',

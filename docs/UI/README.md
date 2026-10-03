@@ -74,7 +74,7 @@ Current Leptos host-level FFA slices are enforced by the fast gate
   import `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `normalize_ui_text`,
   `parse_ui_csv` and `ui_busy_key*` helpers from this crate, not from `rustok-api`.
 - Framework-agnostic UI i18n resolution lives in `rustok-ui-i18n` (providing `UiMessages`
-  with Fluent and JSON catalog support). Module packages consume the
+  with Project Fluent `.ftl` catalog support). Module packages consume the
   host-provided effective locale and never use `leptos_i18n` macros for module UI.
 - Framework-agnostic UI transport path/error/result evidence lives in `rustok-ui-transport`.
   Module packages keep owner-specific native/GraphQL facades locally and use this crate only

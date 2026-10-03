@@ -110,7 +110,7 @@ const docs = [
   "apps/next-frontend/docs/implementation-plan.md",
   "apps/next-frontend/packages/rustok-blog/src/index.tsx",
   "apps/next-frontend/packages/rustok-blog/src/api/posts.ts",
-  "apps/next-frontend/packages/rustok-product/src/index.ts",
+  "apps/next-frontend/packages/rustok-product/src/index.tsx",
   "apps/next-frontend/packages/search/src/index.tsx",
   "apps/next-frontend/src/modules/index.ts",
   "apps/next-frontend/src/modules/registry.ts",
@@ -251,7 +251,7 @@ const nextFrontendBlogPosts = readRepo(
   "apps/next-frontend/packages/rustok-blog/src/api/posts.ts",
 );
 const nextFrontendProductPackage = readRepo(
-  "apps/next-frontend/packages/rustok-product/src/index.ts",
+  "apps/next-frontend/packages/rustok-product/src/index.tsx",
 );
 const nextFrontendSearchPackage = readRepo(
   "apps/next-frontend/packages/search/src/index.tsx",
@@ -356,16 +356,21 @@ assertContains(
   "apps/next-admin/src/shared/api/index.ts: OAuth app API must be exported from shared API",
 );
 
+// Module registration goes through the module-owned npm package entrypoints
+// (`file:`-linked `@rustok/*-admin` packages), not through relative
+// `../../packages/*/src` paths into package internals.
 for (const packageImport of [
-  "../../packages/blog/src",
+  "@rustok/blog-admin",
   "@rustok/cache-admin",
-  "../../packages/commerce/src",
-  "../../packages/email/src",
+  "@rustok/commerce-admin",
+  "@rustok/email-admin",
   "@rustok/events-admin",
-  "../../packages/rbac/src",
-  "../../packages/rustok-product/src",
-  "../../packages/translation/src",
-  "../../packages/workflow/src",
+  "@rustok/forum-admin",
+  "@rustok/iggy-connector-admin",
+  "@rustok/rbac-admin",
+  "@rustok/product-admin",
+  "@rustok/translation-admin",
+  "@rustok/workflow-admin",
 ]) {
   assertContains(
     nextAdminModulesIndex,
@@ -373,6 +378,12 @@ for (const packageImport of [
     `apps/next-admin/src/modules/index.ts: missing package registry import ${packageImport}`,
   );
 }
+
+assertNotContains(
+  nextAdminModulesIndex,
+  "../../packages/",
+  "apps/next-admin/src/modules/index.ts: module registry must import @rustok/*-admin package entrypoints, not relative packages/*/src paths",
+);
 
 for (const [label, text] of [
   ["apps/next-frontend docs/README.md", nextFrontendDocs],
@@ -417,8 +428,8 @@ for (const [relativePath, source] of [
     nextFrontendBlogPosts,
   ],
   [
-    "apps/next-frontend/packages/rustok-product/src/index.ts",
-    nextFrontendProductPackage,
+    "apps/next-frontend/packages/rustok-product/src/api/products.ts",
+    readRepo("apps/next-frontend/packages/rustok-product/src/api/products.ts"),
   ],
   [
     "apps/next-frontend/packages/search/src/index.tsx",

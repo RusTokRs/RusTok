@@ -177,20 +177,35 @@ expectNotContains(
   "fn parse_accept_language(",
   "a duplicate Page Builder Accept-Language parser",
 );
+// Fly inverts the platform i18n dependency behind the `LocaleResolver` trait
+// (`platform-i18n` feature, on by default) so the crate stays extractable.
+// Host builds must still delegate locale identity to rustok-ui-i18n through
+// the platform resolver, and runtime materialization must route every
+// normalization/fallback decision through that resolver.
+expectContains(
+  "crates/ui/fly/src/locale_resolver.rs",
+  "rustok_ui_i18n::normalize_locale_tag(locale)",
+  "fly platform locale resolver to delegate canonicalization to rustok-ui-i18n",
+);
+expectContains(
+  "crates/ui/fly/src/locale_resolver.rs",
+  "rustok_ui_i18n::locale_fallback_chain(locale)",
+  "fly platform locale resolver to share the platform fallback chain",
+);
 expectContains(
   "crates/ui/fly/src/runtime_locale.rs",
-  "rustok_ui_i18n::normalize_locale_tag(locale)",
-  "fly runtime locale canonicalization to delegate to rustok-ui-i18n",
+  "default_locale_resolver().normalize_tag(locale)",
+  "fly runtime locale canonicalization to go through the configured LocaleResolver",
+);
+expectContains(
+  "crates/ui/fly/src/runtime_locale.rs",
+  "default_locale_resolver().fallback_chain(locale)",
+  "fly localized-value selection to go through the configured LocaleResolver",
 );
 expectNotContains(
   "crates/ui/fly/src/runtime_locale.rs",
   "to_ascii_lowercase()",
   "the lowercasing locale normalizer that produced non-canonical tags like 'ru-ru'",
-);
-expectContains(
-  "crates/ui/fly/src/runtime_locale.rs",
-  "rustok_ui_i18n::locale_fallback_chain(locale)",
-  "fly localized-value selection to share the platform fallback chain",
 );
 expectContains(
   "crates/libs/rustok-api/src/locale.rs",

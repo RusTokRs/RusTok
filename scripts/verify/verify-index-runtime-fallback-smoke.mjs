@@ -21,7 +21,7 @@ for (const marker of ['rewrite_status', 'current_milestone']) {
     fail(`rewrite admin bootstrap missing ${marker}`);
   }
 }
-if (!core.includes('info_cards')) fail('admin core must expose generic status cards');
+if (!core.includes('stat_cards')) fail('admin core must expose generic status cards');
 if (!nativeAdapter.includes('#[server')) fail('native admin bootstrap must remain available');
 
 console.log('[verify-index-runtime-fallback-smoke] Index admin is detached from legacy tables and exposes rewrite state');

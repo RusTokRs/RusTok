@@ -17,7 +17,15 @@
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
-      "deadline_required": true
+      "deadline_required": true,
+      "read_operations": [
+        "read_checkout_result",
+        "read_checkout_result_by_operation",
+        "read_order_status"
+      ],
+      "write_operations": [
+        "complete_checkout"
+      ]
     },
     {
       "name": "CheckoutOrderIdentityPort",
@@ -25,13 +33,19 @@
       "operations": [
         "read_by_operation",
         "read_by_cart",
-        "bind",
-        "adopt_legacy"
+        "bind"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
-      "deadline_required": true
+      "deadline_required": true,
+      "read_operations": [
+        "read_by_operation",
+        "read_by_cart"
+      ],
+      "write_operations": [
+        "bind"
+      ]
     }
   ],
   "consumers": [
@@ -152,18 +166,6 @@
           "context_deadline_preserved",
           "write_idempotency_required"
         ]
-      },
-      {
-        "operation": "adopt_legacy",
-        "profiles": [
-          "in_process",
-          "remote_adapter_placeholder"
-        ],
-        "assertions": [
-          "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "write_idempotency_required"
-        ]
       }
     ],
     "fallback_smoke": {
@@ -200,7 +202,6 @@
       "typed reads use order-owned order_checkout_identities persistence",
       "bind requires write idempotency and rejects conflicting operation/order/cart facts",
       "nullable cart, hash, payment, and shipping facts may be populated once and never replaced or cleared",
-      "adopt_legacy keeps temporary metadata lookup inside the owner compatibility adapter",
       "commerce consumers no longer query orders or inspect checkout identity metadata directly"
     ]
   },

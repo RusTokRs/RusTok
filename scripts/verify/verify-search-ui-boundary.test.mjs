@@ -312,7 +312,7 @@ export async function listCatalogAttributeSearchOptions() {
   return items.filter((attribute) => attribute.isFilterable || attribute.isSortable);
 }
 `);
-  writeFixtureFile(root, "apps/next-frontend/packages/rustok-product/src/index.ts", `
+  writeFixtureFile(root, "apps/next-frontend/packages/rustok-product/src/index.tsx", `
 export type ProductCatalogSearchOption = { value: string; label: string };
 export type ProductCatalogSearchOptions = {
   categoryOptions: ProductCatalogSearchOption[];

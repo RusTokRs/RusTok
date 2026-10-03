@@ -29,10 +29,10 @@ if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('region read projection must be read-only with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/region-fba-registry.json"') || !manifest.includes('contract_version = "region.read_projection.v1"') || !manifest.includes('context = "rustok_api::ports::PortContext"') || !manifest.includes('error = "rustok_api::ports::PortError"')) fail('manifest metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'context.require_policy(PortCallPolicy::read())?', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortContext', 'PortError']) {
+for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'require_region_read_policy(', '.require_policy(PortCallPolicy::read())', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
-if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError};')) fail('region port must import shared rustok-api primitives');
+if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};')) fail('region port must import shared rustok-api primitives');
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');

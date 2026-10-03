@@ -1,6 +1,23 @@
 import fs from 'node:fs';
 
-function read(path) { return fs.readFileSync(path, 'utf8'); }
+// Dir-aware read: for a directory (a Rust module split into submodules),
+// returns the concatenation of all .rs files beneath it so marker checks
+// keep their meaning across file splits.
+function read(path) {
+  if (fs.statSync(path).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        const full = dir + '/' + entry;
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.rs')) parts.push(fs.readFileSync(full, 'utf8'));
+      }
+    };
+    walk(path);
+    return parts.join('\n');
+  }
+  return fs.readFileSync(path, 'utf8');
+}
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-ai-fba-baseline] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const snippet of snippets) if (!text.includes(snippet)) fail(`${label} missing ${snippet}`); }
@@ -162,7 +179,7 @@ const tenantRbacProvider = read('crates/modules/rustok-rbac/src/catalog.rs');
 hasAll(tenantRbacProvider, ['impl TenantRbacCatalog for BuiltinTenantRbacCatalog', 'validate_assignment'], 'tenant RBAC catalog provider');
 const rbacModule = read('crates/modules/rustok-rbac/src/lib.rs');
 hasAll(rbacModule, ['SharedTenantRbacCatalog(Arc::new(BuiltinTenantRbacCatalog))'], 'tenant RBAC runtime registration');
-const aiService = read('crates/modules/rustok-ai/src/service.rs');
+const aiService = read('crates/modules/rustok-ai/src/service.rs') + '\n' + read('crates/modules/rustok-ai/src/service');
 hasAll(aiService, ['fn resolve_agent_principal_rbac(', '.validate_assignment(tenant_id, &role_slugs, &[])', 'selected agent roles do not grant every permission required', 'role_slugs: principal.role_slugs.iter().cloned().collect()'], 'ai agent role assignment service');
 const createPrincipalInput = aiGraphqlTypes.match(/pub struct CreateAiAgentPrincipalInputGql \{([\s\S]*?)\n\}/);
 const updatePrincipalInput = aiGraphqlTypes.match(/pub struct UpdateAiAgentPrincipalInputGql \{([\s\S]*?)\n\}/);

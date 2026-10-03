@@ -385,7 +385,7 @@ If you see these patterns duplicated across modules, extract them:
 
 - **Unicode locale / `Accept-Language` parsing** -> `rustok-ui-i18n`; host precedence and request policy -> `rustok-api::locale`
 - **Route query parsing** -> Already in `rustok-ui-core` (`UiRouteQueryUpdate`)
-- **i18n message resolution** -> Already in `rustok-ui-i18n` (`LeptosUiMessages`)
+- **i18n message resolution** -> Already in `rustok-ui-i18n` (`UiMessages` / `LazyUiMessages`)
 - **GraphQL error mapping** -> Already in `rustok-graphql`
 - **Native/GraphQL transport evidence and build-profile transport selection** -> Already in `rustok-ui-transport`
 - **Form submission/validation-result state** -> Already in `rustok-forms` (components in `rustok-forms-leptos`)

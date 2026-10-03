@@ -154,7 +154,10 @@ try {
     fail('module build dispatcher must use the mTLS remote worker with readiness verification');
   }
   const dispatcherDelivery = fs.readFileSync(path.join(dispatcherRoot, 'src/lib.rs'), 'utf8');
-  if (!dispatcherDelivery.includes('validate_delivery_envelope(&consumed.envelope)?')) {
+  if (
+    !dispatcherDelivery.includes('parse_build_delivery(&consumed.envelope)?') ||
+    !dispatcherDelivery.includes('validate_delivery_envelope(envelope)?')
+  ) {
     fail('module build dispatcher must validate broker envelope and queued-event identity before owner delivery');
   }
   if (!dispatcherHost.includes('required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")')) {
@@ -318,9 +321,17 @@ try {
   ) {
     fail('worker must bind the source-local scenario and its grants to the immutable request and manifest');
   }
+  // Publication-target and credential-lease validation is centralized in the
+  // shared rustok-build-publication crate; the worker delegates to it.
+  const sharedPublication = fs.readFileSync(
+    path.join(root, 'crates/utils/rustok-build-publication/src/publication.rs'),
+    'utf8',
+  );
   if (
     !jobLauncher.includes('publication_target\n            .validate()') ||
-    !jobLauncher.includes('credentials.ensure_valid()')
+    !jobLauncher.includes('publish_signed_oci_artifact(') ||
+    !sharedPublication.includes('target\n        .validate()') ||
+    !sharedPublication.includes('.ensure_valid()')
   ) {
     fail('worker must validate its fixed publication target and credential lease before OCI publication');
   }

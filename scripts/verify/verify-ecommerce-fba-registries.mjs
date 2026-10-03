@@ -92,10 +92,18 @@ const findFunctionBody = (source, functionName) => {
 const assertOperationContextSemantics = ({ module, operation, port, portSource }) => {
   const body = findFunctionBody(portSource, operation);
   if (!body) fail(`${module}.${operation} source body not found`);
-  const writeOperation = !isReadOnlyOperation(operation) && port.idempotency_required === true;
-  if (writeOperation) {
-    if (!body.includes('require_write_semantics()?')) {
-      fail(`${module}.${operation} write operation must enforce require_write_semantics`);
+  const readOperation =
+    isReadOnlyOperation(operation) || (port.read_operations ?? []).includes(operation);
+  if (!readOperation) {
+    if (port.idempotency_required === true) {
+      // Idempotent write: context must carry write semantics (write policy +
+      // idempotency key binding).
+      if (!body.includes('require_write_semantics()?')) {
+        fail(`${module}.${operation} write operation must enforce require_write_semantics`);
+      }
+    } else if (!body.includes('require_policy(PortCallPolicy::write())?')) {
+      // Non-idempotent write: must still be admitted under a write policy.
+      fail(`${module}.${operation} write operation must enforce PortCallPolicy::write()`);
     }
     return;
   }
@@ -225,7 +233,15 @@ export function verifyEcommerceFbaRegistries({
         if (isReadOnlyOperation(operation) && testCase.assertions.includes('write_idempotency_required')) {
           fail(`${module}.${operation} read-only contract test case must not require write idempotency`);
         }
-        if (isReadOnlyOperation(operation) && port.idempotency_required === true) {
+        // A mixed port may keep idempotency_required=true for its write
+        // operations as long as the read-only operation is explicitly declared
+        // in port.read_operations (source-level read semantics are verified by
+        // assertOperationContextSemantics above).
+        if (
+          isReadOnlyOperation(operation) &&
+          port.idempotency_required === true &&
+          !(port.read_operations ?? []).includes(operation)
+        ) {
           fail(`${module}.${operation} read-only operation must not declare write idempotency requirement`);
         }
 

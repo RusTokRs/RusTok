@@ -141,7 +141,7 @@ if (evidence) {
 }
 
 if (registry) {
-  if (registry.schema_version !== 4) failures.push(`${registryPath}: schema_version drift`);
+  if (registry.schema_version !== 5) failures.push(`${registryPath}: schema_version drift`);
   if (
     registry.module !== "comments" ||
     registry.role !== "provider" ||
@@ -230,7 +230,7 @@ for (const marker of [
   "CommentsError::EventPublication(message)",
   "struct CommentsIdempotencyRequest<'a, T>",
   "actor: &'a PortActor",
-  "fn bind_idempotency_actor(",
+  "fn bind_idempotency_actor",
   "PortErrorKind::NotFound",
   "PortErrorKind::Conflict",
   "PortErrorKind::Forbidden",

@@ -6,6 +6,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+// Dir-aware reader for Rust modules split into directories (see governance/).
+function readTree(target) {
+  if (fs.statSync(target).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        const full = path.join(dir, entry);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.rs')) parts.push(fs.readFileSync(full, 'utf8'));
+      }
+    };
+    walk(target);
+    return parts.join('\n');
+  }
+  return fs.readFileSync(target, 'utf8');
+}
 const cliRoot = path.join(root, 'crates/modules/rustok-modules/cli');
 const manifest = fs.readFileSync(path.join(cliRoot, 'Cargo.toml'), 'utf8');
 const source = fs.readFileSync(path.join(cliRoot, 'src/lib.rs'), 'utf8');
@@ -17,9 +34,8 @@ const authoringOwner = fs.readFileSync(
   path.join(root, 'crates/modules/rustok-modules/src/authoring.rs'),
   'utf8',
 );
-const governanceOwner = fs.readFileSync(
-  path.join(root, 'crates/modules/rustok-modules/src/governance.rs'),
-  'utf8',
+const governanceOwner = readTree(
+  path.join(root, 'crates/modules/rustok-modules/src/governance'),
 );
 const publishValidation = fs.readFileSync(
   path.join(root, 'crates/modules/rustok-modules/src/publish_validation.rs'),
