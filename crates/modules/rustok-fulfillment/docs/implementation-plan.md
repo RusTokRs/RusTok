@@ -22,12 +22,12 @@ the immutable checkout plan and receives normalized owner projections. The owner
 uses `FulfillmentService::list_by_order` and `create_fulfillment`; mounted Commerce
 checkout no longer queries fulfillment persistence or constructs the service.
 
-Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract remains owned by the later `m20260925_000119_type_checkout_fulfillment_identity` migration.
+Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract is owned by `m20260925_000119_type_checkout_fulfillment_identity`, with `m20261003_000120_create_checkout_identity_anchor` adding one owner-owned operation anchor that binds the typed fulfillment set to a single order, customer, and normalized plan hash.
 
 The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
-fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and a concurrency-safe uniqueness constraint are source-complete;
+fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and the operation-level anchor plus concurrency-safe uniqueness constraint are source-complete;
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
 The typed identity cutover also treats migration rollback as a compatibility boundary: current legacy SQLite/MySQL identity guards are restored exactly, MySQL legacy INSERT protection is removed during cutover, and PostgreSQL numeric legacy indices are bounded before BIGINT conversion.
 Migration sources are registry-complete: executable migrations are declared once in `src/migrations/mod.rs`. The historical unregistered `m20260713_000111_enforce_order_line_allocation` prototype is not part of the current target architecture and has been removed; allocation read-before-write concurrency remains a separate owner-path concern and is tracked independently.
@@ -201,8 +201,9 @@ disable/reconciliation matrix in
 - [x] Guard mounted Commerce against direct construction of the legacy execution
   adapter.
 - [x] Guard typed checkout identity against metadata fallback and schema drift.
-- [ ] Replace metadata identity with owner-owned typed persistence and a
-  concurrency-safe uniqueness constraint.
+- [x] Replace metadata identity with owner-owned typed persistence and a
+  concurrency-safe uniqueness constraint, including an operation-level anchor
+  for immutable order, customer, and plan-hash coherence.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
   process-exit, restart, contention, and remote-profile evidence.
 
