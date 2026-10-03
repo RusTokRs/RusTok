@@ -1,12 +1,11 @@
 {
-  "name": "@rustok/product-frontend",
+  "name": "@rustok/cart-frontend",
   "version": "0.1.0",
   "private": true,
   "main": "./src/index.tsx",
   "types": "./src/index.tsx",
   "license": "BUSL-1.1",
   "dependencies": {
-    "@rustok/cart-frontend": "file:../rustok-cart",
     "lucide-react": "^1.48.0"
   },
   "peerDependencies": {

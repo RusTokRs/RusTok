@@ -17,6 +17,7 @@ import {
   Boxes,
   Check,
   CheckCircle2,
+  Loader2,
   Minus,
   Package,
   Plus,
@@ -25,6 +26,7 @@ import {
   Sparkles,
   Truck,
 } from "lucide-react";
+import { useCart } from "@rustok/cart-frontend";
 import type {
   StorefrontProductDetail,
   StorefrontProductVariant,
@@ -58,11 +60,14 @@ export function ProductDetailView({
     });
   }, [product.variants, pricingVariants]);
 
+  const { addItem, openCart } = useCart();
+
   // Selected variant state
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
     variants[0]?.id || ""
   );
   const [quantity, setQuantity] = useState<number>(1);
+  const [isAdding, setIsAdding] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
   const selectedVariant = useMemo(() => {
@@ -103,9 +108,19 @@ export function ProductDetailView({
     return null;
   }, [selectedVariant]);
 
-  const handleAddToCart = () => {
-    setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 2200);
+  const handleAddToCart = async () => {
+    if (!selectedVariant) return;
+    setIsAdding(true);
+    try {
+      const ok = await addItem(selectedVariant.id, quantity);
+      if (ok) {
+        setIsAdded(true);
+        setTimeout(() => setIsAdded(false), 2000);
+        openCart();
+      }
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   const inStock = selectedVariant ? selectedVariant.inStock : false;
@@ -282,8 +297,8 @@ export function ProductDetailView({
 
             <button
               type="button"
-              onClick={handleAddToCart}
-              disabled={!inStock}
+              onClick={() => void handleAddToCart()}
+              disabled={!inStock || isAdding}
               className={`flex-1 h-11 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold transition shadow-xs ${
                 isAdded
                   ? "bg-emerald-600 text-white"
@@ -292,7 +307,12 @@ export function ProductDetailView({
                   : "bg-muted text-muted-foreground cursor-not-allowed"
               }`}
             >
-              {isAdded ? (
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {isRu ? "Добавление..." : "Adding..."}
+                </>
+              ) : isAdded ? (
                 <>
                   <Check className="h-4 w-4" />
                   {isRu ? "Добавлено в корзину!" : "Added to cart!"}

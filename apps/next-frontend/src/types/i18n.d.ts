@@ -18,6 +18,40 @@ export type AppMessageKey =
   | 'Blog.latest.subtitle'
   | 'Blog-latest-title'
   | 'Blog.latest.title'
+  | 'Cart-browseCatalog'
+  | 'Cart.browseCatalog'
+  | 'Cart-calculatedAtCheckout'
+  | 'Cart.calculatedAtCheckout'
+  | 'Cart-continueShopping'
+  | 'Cart.continueShopping'
+  | 'Cart-currentlyEmpty'
+  | 'Cart.currentlyEmpty'
+  | 'Cart-discount'
+  | 'Cart.discount'
+  | 'Cart-empty'
+  | 'Cart.empty'
+  | 'Cart-emptySubtitle'
+  | 'Cart.emptySubtitle'
+  | 'Cart-itemsCount'
+  | 'Cart.itemsCount'
+  | 'Cart-loading'
+  | 'Cart.loading'
+  | 'Cart-open'
+  | 'Cart.open'
+  | 'Cart-proceedToCheckout'
+  | 'Cart.proceedToCheckout'
+  | 'Cart-remove'
+  | 'Cart.remove'
+  | 'Cart-shipping'
+  | 'Cart.shipping'
+  | 'Cart-subtotal'
+  | 'Cart.subtotal'
+  | 'Cart-title'
+  | 'Cart.title'
+  | 'Cart-total'
+  | 'Cart.total'
+  | 'Cart-unitPrice'
+  | 'Cart.unitPrice'
   | 'Catalog-allCategories'
   | 'Catalog.allCategories'
   | 'Catalog-bundleBadge'
@@ -172,6 +206,40 @@ export interface AppMessageArgs {
   'Blog-latest-subtitle'?: Record<string, never>;
   'Blog.latest.title'?: Record<string, never>;
   'Blog-latest-title'?: Record<string, never>;
+  'Cart.browseCatalog'?: Record<string, never>;
+  'Cart-browseCatalog'?: Record<string, never>;
+  'Cart.calculatedAtCheckout'?: Record<string, never>;
+  'Cart-calculatedAtCheckout'?: Record<string, never>;
+  'Cart.continueShopping'?: Record<string, never>;
+  'Cart-continueShopping'?: Record<string, never>;
+  'Cart.currentlyEmpty'?: Record<string, never>;
+  'Cart-currentlyEmpty'?: Record<string, never>;
+  'Cart.discount'?: Record<string, never>;
+  'Cart-discount'?: Record<string, never>;
+  'Cart.empty'?: Record<string, never>;
+  'Cart-empty'?: Record<string, never>;
+  'Cart.emptySubtitle'?: Record<string, never>;
+  'Cart-emptySubtitle'?: Record<string, never>;
+  'Cart.itemsCount': { 'count': string | number | Date };
+  'Cart-itemsCount': { 'count': string | number | Date };
+  'Cart.loading'?: Record<string, never>;
+  'Cart-loading'?: Record<string, never>;
+  'Cart.open'?: Record<string, never>;
+  'Cart-open'?: Record<string, never>;
+  'Cart.proceedToCheckout'?: Record<string, never>;
+  'Cart-proceedToCheckout'?: Record<string, never>;
+  'Cart.remove'?: Record<string, never>;
+  'Cart-remove'?: Record<string, never>;
+  'Cart.shipping'?: Record<string, never>;
+  'Cart-shipping'?: Record<string, never>;
+  'Cart.subtotal'?: Record<string, never>;
+  'Cart-subtotal'?: Record<string, never>;
+  'Cart.title'?: Record<string, never>;
+  'Cart-title'?: Record<string, never>;
+  'Cart.total'?: Record<string, never>;
+  'Cart-total'?: Record<string, never>;
+  'Cart.unitPrice'?: Record<string, never>;
+  'Cart-unitPrice'?: Record<string, never>;
   'Catalog.allCategories'?: Record<string, never>;
   'Catalog-allCategories'?: Record<string, never>;
   'Catalog.bundleBadge'?: Record<string, never>;

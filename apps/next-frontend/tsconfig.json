@@ -56,6 +56,12 @@
       ],
       "@/lib/*": [
         "./src/lib/*"
+      ],
+      "@rustok/cart-frontend": [
+        "./packages/rustok-cart/src/index.tsx"
+      ],
+      "@rustok/product-frontend": [
+        "./packages/rustok-product/src/index.tsx"
       ]
     }
   },

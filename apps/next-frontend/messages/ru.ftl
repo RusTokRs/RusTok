@@ -85,3 +85,26 @@ Product-details = Характеристики
 Product-shipping = Доставка и возврат
 Product-bundleIncludes = Состав этого комплекта
 Product-backToCatalog = Назад в каталог
+
+Cart-title = Корзина покупок
+Cart-empty = Ваша корзина пуста
+Cart-emptySubtitle = Выберите интересующие вас товары или наборы в каталоге
+Cart-browseCatalog = Перейти в каталог
+Cart-subtotal = Подитог
+Cart-discount = Скидка
+Cart-shipping = Доставка
+Cart-calculatedAtCheckout = Рассчитывается при оформлении
+Cart-total = Итого к оплате
+Cart-proceedToCheckout = Оформить заказ
+Cart-continueShopping = Продолжить покупки
+Cart-itemsCount =
+    { $count ->
+        [one] { $count } товар в заказе
+        [few] { $count } товара в заказе
+       *[other] { $count } товаров в заказе
+    }
+Cart-currentlyEmpty = Пока пусто
+Cart-loading = Загрузка корзины...
+Cart-remove = Удалить
+Cart-unitPrice = Цена за ед.
+Cart-open = Открыть корзину покупок

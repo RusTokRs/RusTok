@@ -15,7 +15,9 @@ const nextConfig = {
   },
   transpilePackages: [
     "@rustok/blog-frontend",
+    "@rustok/cart-frontend",
     "@rustok/comments-frontend",
+    "@rustok/product-frontend",
     "@rustok/richtext",
   ],
   async rewrites() {

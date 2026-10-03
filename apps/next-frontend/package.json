@@ -18,8 +18,10 @@
   "dependencies": {
     "@apollo/client": "^4.3.1",
     "@radix-ui/react-slot": "^1.3.3",
+    "@rustok/cart-frontend": "file:./packages/rustok-cart",
     "@rustok/comments-frontend": "file:./packages/rustok-comments",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
+    "@rustok/product-frontend": "file:./packages/rustok-product",
     "@rustok/richtext": "file:../../packages/richtext",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

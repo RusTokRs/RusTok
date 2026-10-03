@@ -85,3 +85,25 @@ Product-details = Details & Specifications
 Product-shipping = Delivery & Returns
 Product-bundleIncludes = Items included in this bundle
 Product-backToCatalog = Back to catalog
+
+Cart-title = Shopping Cart
+Cart-empty = Your cart is empty
+Cart-emptySubtitle = Explore our catalog to find products and curated bundles
+Cart-browseCatalog = Browse Catalog
+Cart-subtotal = Subtotal
+Cart-discount = Discount
+Cart-shipping = Shipping
+Cart-calculatedAtCheckout = Calculated at checkout
+Cart-total = Total
+Cart-proceedToCheckout = Proceed to Checkout
+Cart-continueShopping = Continue Shopping
+Cart-itemsCount =
+    { $count ->
+        [one] 1 item in order
+       *[other] { $count } items in order
+    }
+Cart-currentlyEmpty = Currently empty
+Cart-loading = Loading cart...
+Cart-remove = Remove
+Cart-unitPrice = Price per unit
+Cart-open = Open shopping cart
