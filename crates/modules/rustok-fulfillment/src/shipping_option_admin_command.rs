@@ -190,6 +190,10 @@ fn map_fulfillment_error(
             "fulfillment.validation",
             "shipping option request is invalid",
         ),
+        FulfillmentError::ProviderResultInvalid(_) => PortError::conflict(
+            "fulfillment.reconciliation_required",
+            "fulfillment provider result requires reconciliation",
+        ),
         FulfillmentError::ShippingOptionNotFound(_) => PortError::not_found(
             "fulfillment.shipping_option_not_found",
             "shipping option was not found",
@@ -232,6 +236,7 @@ fn map_fulfillment_error(
 fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
     match error {
         FulfillmentError::Validation(_) => "validation",
+        FulfillmentError::ProviderResultInvalid(_) => "provider_result_invalid",
         FulfillmentError::ShippingOptionNotFound(_) => "shipping_option_not_found",
         FulfillmentError::FulfillmentNotFound(_) => "fulfillment_not_found",
         FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => {
