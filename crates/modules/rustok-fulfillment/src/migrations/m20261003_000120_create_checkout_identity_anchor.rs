@@ -26,6 +26,7 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
+                    .col(ColumnDef::new(FulfillmentCheckoutIdentities::CustomerId).uuid())
                     .col(
                         ColumnDef::new(FulfillmentCheckoutIdentities::PlanHash)
                             .string_len(64)
@@ -60,6 +61,7 @@ impl MigrationTrait for Migration {
                     tenant_id,
                     checkout_operation_id,
                     order_id,
+                    customer_id,
                     plan_hash,
                     created_at,
                     updated_at
@@ -67,15 +69,16 @@ impl MigrationTrait for Migration {
                 SELECT
                     tenant_id,
                     checkout_operation_id,
-                    MIN(order_id) AS order_id,
-                    MIN(checkout_plan_hash) AS plan_hash,
+                    order_id,
+                    customer_id,
+                    LOWER(checkout_plan_hash) AS plan_hash,
                     MIN(created_at) AS created_at,
                     MIN(updated_at) AS updated_at
                 FROM fulfillments
                 WHERE checkout_operation_id IS NOT NULL
                   AND checkout_fulfillment_index IS NOT NULL
                   AND checkout_plan_hash IS NOT NULL
-                GROUP BY tenant_id, checkout_operation_id, order_id, checkout_plan_hash;
+                GROUP BY tenant_id, checkout_operation_id, order_id, customer_id, LOWER(checkout_plan_hash);
                 "#,
             )
             .await?;
@@ -101,6 +104,7 @@ enum FulfillmentCheckoutIdentities {
     TenantId,
     CheckoutOperationId,
     OrderId,
+    CustomerId,
     PlanHash,
     CreatedAt,
     UpdatedAt,
