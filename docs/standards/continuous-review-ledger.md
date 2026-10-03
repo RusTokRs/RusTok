@@ -4320,5 +4320,24 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.95` complete and integrated on `main`.
 - **Next primary module iteration:** `FS-22.06.96` — same primary module, next concrete fulfillment owner boundary after refreshing integrated `main`.
 
+### FS-22.06.96 Assessment — `crates/modules/rustok-fulfillment/src/dto/fulfillment.rs` required shipment identifier validation
+
+- **Base:** refreshed `main` at `c3c6e35ecd6f93a343d37aa8c49fc4e0aef0f2ef`; dedicated branch `audit/fs-22.06.96-fulfillment-required-identifiers-v2`.
+- **Primary scope:** one Fulfillment owner boundary — validation of required `carrier` and `tracking_number` identifiers on ship/reship commands.
+- **Confirmed finding FULFILLMENT-22.06.96-01:** `ShipFulfillmentInput` and `ReshipFulfillmentInput` enforced only length 1..=100, so whitespace-only strings passed DTO validation even though the persisted lifecycle contract rejects blank identifiers. In the provider-backed admin path, request validation occurs immediately before provider execution; the gap could therefore allow an external provider side effect before local persistence rejects the identifier, producing a reconciliation case.
+- **Production remediation:** added one shared `validate_non_blank_text` validator and applied it to both `carrier` and `tracking_number` fields on both ship/reship inputs. Existing 1..=100 length bounds and representation are unchanged; whitespace-only values are now rejected at the owner boundary.
+- **Call-site audit:** `FulfillmentService` ship/reship internal implementations revalidate the typed inputs before their transactions, and the admin provider-backed ship/reship paths validate before `execute_provider_operation`.
+- **Regression coverage:** added `shipment_identifiers_reject_whitespace_only_values`, covering whitespace-only carrier/tracking inputs for both ship and reship commands.
+- **Documentation:** Fulfillment README now records that `carrier` and `tracking_number` are identifiers and must be non-blank on ship/reship owner commands.
+- **Pre-existing formatting cleanup:** the same owner file contained three pre-existing rustfmt drifts that blocked the focused gate; only those formatting-only lines were normalized, with no business-logic change.
+- **Immediate re-audit:** after implementation, re-read the complete DTO definitions, validator uses, regression test, service revalidation paths, admin provider execution order, README invariant, and final branch diff. Verified one shared validator, four intended field annotations, one focused regression test, no duplicate test annotations, and exactly three changed files.
+- **Fresh branch reconciliation:** the initial FS-22.06.96 branch was superseded after concurrent `main` advancement; the final branch was recreated from the refreshed `main` and compared at exactly 3 commits ahead / 0 behind with only the intended Fulfillment files changed.
+- **CI verification:** required `Migration harness approval` and `Repository ruleset contract` checks both completed successfully on the final head. Other repository-wide checks were red concurrently, but their logged failures were outside this change surface (for example module-manifest documentation drift, existing formatting/typo drift, unrelated `rustok-server` compile errors including `seo_worker_finished`, unrelated public error-contract verification, and migration smoke failure on missing `product_option_values`). The Fulfillment-specific PostgreSQL evidence job reached compilation but failed in unrelated `rustok-server` code before its test step. No passing focused runtime/Cargo evidence for this exact DTO change is claimed.
+- **Local verification limitation:** the current agent runtime has no repository checkout, so local Cargo/check/test/clippy commands were not executable; no local passing runtime/test evidence is claimed.
+- **Post-merge reconciliation:** PR #4474 was squash-merged as `f6bb3a5d794724057254c671f31e9949a3e08424`. Refreshed `main` at that SHA and re-read the changed DTO, service formatting-only lines, README invariant, and merge diff; all expected changes are present with no accidental files.
+- **Status:** `FS-22.06.96` complete and integrated on `main`.
+- **Next primary module iteration:** `FS-22.06.97` — Fulfillment provider-result boundary; first verify the provider result tracking-number length contract against the persisted 100-character Fulfillment column before broadening scope.
+
+
 
 
