@@ -687,7 +687,7 @@ fn validate_operation_result(
         result.external_reference.as_deref(),
         191,
     )
-    .map_err(|error| ProviderResultInvalid(error.to_string()))?;
+    .map_err(provider_result_invalid)?;
     validate_optional_boundary_text(
         "tracking_number",
         result.tracking_number.as_deref(),
@@ -862,7 +862,10 @@ mod boundary_tests {
             tracking_number: Some("t".repeat(101)),
             metadata: serde_json::json!({"provider": "carrier"}),
         };
-        assert!(validate_operation_result("carrier", "ship", &result).is_err());
+        assert!(matches!(
+            validate_operation_result("carrier", "ship", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
     }
 
     #[test]
