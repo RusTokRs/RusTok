@@ -98,14 +98,25 @@ impl StyleRuleCatalog {
     }
 }
 
-impl StyleRuleDescriptor {
-    pub fn from_value(raw: Value) -> Option<Self> {
+/// The identity fields of a style rule, read without copying the rule itself.
+///
+/// `StyleRuleDescriptor::from_value` clones the rule's declaration map *and* stores the whole raw
+/// `Value`. That is right when the descriptor is kept, but most call sites are predicates —
+/// `retain`, `position`, `is_some_and` — that look at the id, component and scope and throw the
+/// descriptor away immediately. For those, building a full descriptor deep-copies every
+/// declaration of every rule in the project on every call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StyleRuleIdentity {
+    pub id: String,
+    pub component_id: Option<String>,
+    pub selector_names: Vec<String>,
+    pub scope: StyleRuleScope,
+}
+
+impl StyleRuleIdentity {
+    /// Read a rule's identity by reference. Returns `None` for values that are not rule objects.
+    pub fn from_value(raw: &Value) -> Option<Self> {
         let object = raw.as_object()?;
-        let declarations = object
-            .get("style")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
         let selector_names = selector_names(object.get("selectors"));
         let component_id = object
             .get(FLY_COMPONENT_RULE_FIELD)
@@ -137,8 +148,31 @@ impl StyleRuleDescriptor {
             id,
             component_id,
             selector_names,
-            declarations,
             scope,
+        })
+    }
+
+    /// Whether this rule targets `component_id` in `scope`.
+    pub fn targets(&self, component_id: &str, scope_key: &str) -> bool {
+        self.component_id.as_deref() == Some(component_id) && self.scope.stable_key() == scope_key
+    }
+}
+
+impl StyleRuleDescriptor {
+    pub fn from_value(raw: Value) -> Option<Self> {
+        let identity = StyleRuleIdentity::from_value(&raw)?;
+        let declarations = raw
+            .as_object()
+            .and_then(|object| object.get("style"))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        Some(Self {
+            id: identity.id,
+            component_id: identity.component_id,
+            selector_names: identity.selector_names,
+            declarations,
+            scope: identity.scope,
             raw,
         })
     }
@@ -197,10 +231,8 @@ pub fn apply_style_rule_command(
             let before = document.project.styles.len();
             let scope_key = scope.stable_key();
             document.project.styles.retain(|raw| {
-                StyleRuleDescriptor::from_value(raw.clone()).is_none_or(|rule| {
-                    rule.component_id.as_deref() != Some(component_id)
-                        || rule.scope.stable_key() != scope_key.as_str()
-                })
+                StyleRuleIdentity::from_value(raw)
+                    .is_none_or(|rule| !rule.targets(component_id, scope_key.as_str()))
             });
             if document.project.styles.len() == before {
                 return Err(FlyError::StyleRuleNotFound(format!(
@@ -223,10 +255,13 @@ fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResu
     {
         return Err(FlyError::ComponentNotFound(component_id.to_string()));
     }
+    let descriptor_scope_key = descriptor.scope.stable_key();
     if let Some(index) = document.project.styles.iter().position(|raw| {
-        StyleRuleDescriptor::from_value(raw.clone()).is_some_and(|candidate| {
+        StyleRuleIdentity::from_value(raw).is_some_and(|candidate| {
             candidate.id == descriptor.id.as_str()
-                || same_component_rule_identity(&candidate, &descriptor)
+                || candidate.component_id.is_some()
+                    && candidate.component_id.as_deref() == descriptor.component_id.as_deref()
+                    && candidate.scope.stable_key() == descriptor_scope_key
         })
     }) {
         document.project.styles[index] = rule;
@@ -291,23 +326,20 @@ fn find_component_rule_index(
 ) -> Option<usize> {
     let scope_key = scope.stable_key();
     document.project.styles.iter().position(|raw| {
-        StyleRuleDescriptor::from_value(raw.clone()).is_some_and(|rule| {
-            rule.component_id.as_deref() == Some(component_id)
-                && rule.scope.stable_key() == scope_key.as_str()
-        })
+        StyleRuleIdentity::from_value(raw)
+            .is_some_and(|rule| rule.targets(component_id, scope_key.as_str()))
     })
 }
 
-fn same_component_rule_identity(left: &StyleRuleDescriptor, right: &StyleRuleDescriptor) -> bool {
-    left.component_id.as_deref().is_some()
-        && left.component_id.as_deref() == right.component_id.as_deref()
-        && left.scope.stable_key() == right.scope.stable_key()
-}
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
     document.project.styles.retain(|raw| {
-        StyleRuleDescriptor::from_value(raw.clone())
-            .is_none_or(|rule| rule.component_id.is_none() || !rule.declarations.is_empty())
+        let has_declarations = raw
+            .get("style")
+            .and_then(Value::as_object)
+            .is_some_and(|declarations| !declarations.is_empty());
+        StyleRuleIdentity::from_value(raw)
+            .is_none_or(|rule| rule.component_id.is_none() || has_declarations)
     });
 }
 
@@ -487,4 +519,56 @@ mod tests {
         assert_eq!(document.project.styles[0]["style"]["color"], "red");
         assert_eq!(document.project.styles[0]["style"]["padding"], "24px");
     }
+
+    #[test]
+    fn identity_agrees_with_the_full_descriptor() {
+        // The identity view duplicates the descriptor's id/component/scope derivation. If the two
+        // ever drift, rules stop matching themselves and edits silently append duplicates instead
+        // of updating in place.
+        let cases = [
+            json!({ "selectors": [{ "name": "hero", "type": 2 }], "style": { "color": "red" } }),
+            json!({
+                "flyComponentId": "hero",
+                "flyRuleId": "explicit",
+                "selectors": ["whatever"],
+                "style": {}
+            }),
+            json!({
+                "selectors": [{ "name": "card", "type": 2 }],
+                "atRuleType": "MEDIA",
+                "mediaText": "  (max-width:  600px)  ",
+                "style": { "padding": "0" }
+            }),
+            json!({ "selectors": ["#anchored"], "style": { "color": "blue" } }),
+            json!({ "selectors": [".plain"], "style": { "color": "blue" } }),
+            json!({ "id": "from-id-field", "selectors": [], "style": {} }),
+        ];
+
+        for raw in cases {
+            let identity = StyleRuleIdentity::from_value(&raw).expect("identity");
+            let descriptor = StyleRuleDescriptor::from_value(raw.clone()).expect("descriptor");
+            assert_eq!(identity.id, descriptor.id, "id drift for {raw}");
+            assert_eq!(
+                identity.component_id, descriptor.component_id,
+                "component drift for {raw}"
+            );
+            assert_eq!(identity.scope, descriptor.scope, "scope drift for {raw}");
+            assert_eq!(
+                identity.selector_names, descriptor.selector_names,
+                "selector drift for {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn identity_rejects_non_objects_exactly_like_the_descriptor() {
+        for raw in [json!([]), json!("rule"), json!(7), Value::Null] {
+            assert_eq!(
+                StyleRuleIdentity::from_value(&raw).is_none(),
+                StyleRuleDescriptor::from_value(raw.clone()).is_none(),
+                "disagreement for {raw}"
+            );
+        }
+    }
 }
+

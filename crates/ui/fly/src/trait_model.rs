@@ -1,3 +1,7 @@
+use crate::safe_url::{
+    absolute_url_has_authority, relative_url_allowed, safe_data_image,
+    scheme_target_is_not_empty,
+};
 use crate::{ComponentObject, ComponentPatch, FlyError, FlyResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -599,43 +603,8 @@ fn trait_url_allowed(value: &str) -> bool {
         || absolute_url_has_authority(value, "https://")
         || scheme_target_is_not_empty(value, "mailto:")
         || scheme_target_is_not_empty(value, "tel:")
-        || safe_trait_data_image(&lower)
-        || relative_url_without_scheme(value)
-}
-
-fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = &value[scheme.len()..];
-    let authority = authority
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
-
-fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
-}
-
-fn relative_url_without_scheme(value: &str) -> bool {
-    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
-    !value[..scheme_boundary].contains(':')
-}
-
-fn safe_trait_data_image(lower: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| lower.starts_with(prefix))
+        || safe_data_image(&lower)
+        || relative_url_allowed(value)
 }
 
 #[cfg(test)]

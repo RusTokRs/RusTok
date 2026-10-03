@@ -1,5 +1,5 @@
 use super::*;
-use crate::{FlyError, GrapesJsCodec, ProjectDocument};
+use crate::{ContentDigest, FlyError, GrapesJsCodec, ProjectDocument};
 use serde_json::{Map, json};
 
 fn document(content: &str) -> ProjectDocument {
@@ -117,5 +117,57 @@ fn missing_snapshot_is_explicit() {
     assert!(matches!(
         catalog.compare_with_current("missing", &document("Current")),
         Err(FlyError::SnapshotNotFound(id)) if id == "missing"
+    ));
+}
+
+#[test]
+fn captured_snapshots_carry_a_verifiable_content_digest() {
+    let mut catalog = SnapshotCatalog::default();
+    let snapshot = catalog
+        .capture("baseline", &document("Original"), Map::new())
+        .expect("capture")
+        .clone();
+
+    assert!(snapshot.has_content_digest());
+    assert_eq!(
+        snapshot
+            .content_digest
+            .as_ref()
+            .map(ContentDigest::algorithm),
+        Some("sha256")
+    );
+    snapshot.restore_verified().expect("verified restore");
+}
+
+#[test]
+fn tampered_snapshot_payload_is_rejected_by_the_digest() {
+    let mut catalog = SnapshotCatalog::default();
+    let mut snapshot = catalog
+        .capture("baseline", &document("Original"), Map::new())
+        .expect("capture")
+        .clone();
+
+    snapshot.project_data["pages"][0]["id"] = json!("tampered");
+
+    assert!(matches!(
+        snapshot.restore(),
+        Err(FlyError::SnapshotDigestMismatch { .. })
+    ));
+}
+
+#[test]
+fn digestless_snapshots_remain_readable_but_not_verifiable() {
+    let mut catalog = SnapshotCatalog::default();
+    let mut snapshot = catalog
+        .capture("baseline", &document("Original"), Map::new())
+        .expect("capture")
+        .clone();
+
+    snapshot.content_digest = None;
+
+    assert!(snapshot.restore().is_ok());
+    assert!(matches!(
+        snapshot.restore_verified(),
+        Err(FlyError::SnapshotDigestMissing(_))
     ));
 }

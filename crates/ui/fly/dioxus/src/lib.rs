@@ -4,6 +4,11 @@
 //! Canonical project state, drop legality, commands, history, and editor policy remain in `fly` and `fly-ui`.
 //! Browser geometry, hit-testing, and iframe bridge contracts are provided by `fly-web`.
 
+// No hand-written unsafe in this crate. `deny` rather than `forbid` because framework
+// proc-macros (`#[component]`, wasm-bindgen glue) may expand to generated unsafe guarded by their
+// own `#[allow(unsafe_code)]`, which `forbid` would reject.
+#![deny(unsafe_code)]
+
 pub use fly_web::*;
 use dioxus::prelude::*;
 
