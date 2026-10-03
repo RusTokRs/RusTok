@@ -295,8 +295,28 @@ fn SelectedProductCard(
         pricing_route_base.as_str(),
     );
 
+    let is_bundle = product
+        .product_type
+        .as_deref()
+        .unwrap_or("")
+        .eq_ignore_ascii_case("bundle")
+        || product
+            .tags
+            .iter()
+            .any(|t| t.eq_ignore_ascii_case("bundle"));
+
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
+            {if is_bundle {
+                view! {
+                    <div class="mb-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-semibold text-primary">
+                        <span>"✨ "</span>
+                        <span>{if locale.as_deref() == Some("ru") { "Комплект товаров" } else { "Curated Bundle" }}</span>
+                    </div>
+                }.into_any()
+            } else {
+                view! { <span class="hidden" /> }.into_any()
+            }}
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 {view_model.metadata_items.into_iter().map(|item| view! {
                     <span>{item}</span>
@@ -352,6 +372,7 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
     }
 
     let open_label = view_model.open_label.clone();
+    let is_ru = locale.as_deref() == Some("ru");
 
     view! {
         <div class="space-y-4">
@@ -364,9 +385,21 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
             <div class="space-y-3">
                 {view_model.items.into_iter().map(|product| {
                     let open_label = open_label.clone();
+                    let is_item_bundle = product.product_type.eq_ignore_ascii_case("bundle");
                     view! {
-                        <article class="rounded-2xl border border-border bg-background p-5">
-                            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type}</div>
+                        <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type}</div>
+                                {if is_item_bundle {
+                                    view! {
+                                        <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                            {if is_ru { "Комплект" } else { "Bundle" }}
+                                        </span>
+                                    }.into_any()
+                                } else {
+                                    view! { <span class="hidden" /> }.into_any()
+                                }}
+                            </div>
                             <h4 class="mt-2 text-base font-semibold text-card-foreground">{product.title}</h4>
                             <p class="mt-2 text-sm text-muted-foreground">{product.vendor}</p>
                             <p class="mt-1 text-xs text-muted-foreground">{product.seller_boundary}</p>
