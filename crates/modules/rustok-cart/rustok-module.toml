@@ -15,6 +15,12 @@ slot = "home_after_catalog"
 route_segment = "cart"
 page_title = "Cart"
 
+[[provides.storefront_ui.components]]
+id = "cart-header-trigger"
+component = "CartHeaderTrigger"
+slot = "header_actions"
+order = 20
+
 [provides.storefront_ui.i18n]
 default_locale = "en"
 supported_locales = ["en", "ru"]

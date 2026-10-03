@@ -475,3 +475,533 @@ pub fn CartCheckoutHandoffCard(
         </div>
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct CartDrawerState {
+    pub is_open: RwSignal<bool>,
+    pub selected_cart_id: RwSignal<Option<String>>,
+    pub refresh_nonce: RwSignal<u64>,
+}
+
+impl Default for CartDrawerState {
+    fn default() -> Self {
+        Self {
+            is_open: RwSignal::new(false),
+            selected_cart_id: RwSignal::new(None),
+            refresh_nonce: RwSignal::new(0),
+        }
+    }
+}
+
+impl CartDrawerState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn open(&self) {
+        self.is_open.set(true);
+    }
+
+    pub fn close(&self) {
+        self.is_open.set(false);
+    }
+
+    pub fn toggle(&self) {
+        self.is_open.update(|v| *v = !*v);
+    }
+
+    pub fn set_cart_id(&self, cart_id: impl Into<String>) {
+        self.selected_cart_id.set(Some(cart_id.into()));
+    }
+
+    pub fn refresh(&self) {
+        self.refresh_nonce.update(|n| *n += 1);
+    }
+}
+
+pub fn use_cart_drawer() -> CartDrawerState {
+    use_context::<CartDrawerState>().unwrap_or_else(|| {
+        let state = CartDrawerState::new();
+        provide_context(state);
+        state
+    })
+}
+
+#[component]
+pub fn CartDrawer() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let route_cart_id = read_route_query_value(&route_context, "cart_id");
+    let locale = route_context.locale.clone();
+    let state = use_cart_drawer();
+
+    if let Some(id) = route_cart_id.filter(|s| !s.trim().is_empty())
+        && state.selected_cart_id.get_untracked().is_none()
+    {
+        state.selected_cart_id.set(Some(id));
+    }
+
+    let (mutation_busy, set_mutation_busy) = signal(false);
+    let (mutation_error, set_mutation_error) = signal(Option::<String>::None);
+
+    let res_locale = locale.clone();
+    let cart_resource = Resource::new_blocking(
+        move || {
+            (
+                state.selected_cart_id.get(),
+                res_locale.clone(),
+                state.refresh_nonce.get(),
+            )
+        },
+        move |(cart_id, locale, _)| async move {
+            transport::fetch_cart(build_cart_fetch_request(cart_id, locale)).await
+        },
+    );
+
+    let on_decrement = Callback::new(
+        move |(cart_id, line_item_id, quantity): (String, String, i32)| {
+            set_mutation_busy.set(true);
+            set_mutation_error.set(None);
+            spawn_local(async move {
+                let request =
+                    build_decrement_line_item_request(cart_id, line_item_id, quantity);
+                match transport::decrement_line_item(request).await {
+                    Ok(()) => state.refresh(),
+                    Err(err) => set_mutation_error.set(Some(err.to_string())),
+                }
+                set_mutation_busy.set(false);
+            });
+        },
+    );
+
+    let on_remove = Callback::new(move |(cart_id, line_item_id): (String, String)| {
+        set_mutation_busy.set(true);
+        set_mutation_error.set(None);
+        spawn_local(async move {
+            let request = build_remove_line_item_request(cart_id, line_item_id);
+            match transport::remove_line_item(request).await {
+                Ok(()) => state.refresh(),
+                Err(err) => set_mutation_error.set(Some(err.to_string())),
+            }
+            set_mutation_busy.set(false);
+        });
+    });
+
+    let title = t(locale.as_deref(), "cart-drawer-title", "Shopping Cart");
+    let empty_title = t(locale.as_deref(), "cart-drawer-empty", "Your cart is empty");
+    let empty_sub = t(
+        locale.as_deref(),
+        "cart-drawer-emptySubtitle",
+        "Explore our catalog to find products and curated bundles",
+    );
+    let browse_catalog = t(
+        locale.as_deref(),
+        "cart-drawer-browseCatalog",
+        "Browse Catalog",
+    );
+    let checkout_label = t(
+        locale.as_deref(),
+        "cart-drawer-checkout",
+        "Proceed to Checkout",
+    );
+    let continue_shopping = t(
+        locale.as_deref(),
+        "cart-drawer-continueShopping",
+        "Continue Shopping",
+    );
+    let subtotal_label = t(locale.as_deref(), "cart-drawer-subtotal", "Subtotal");
+    let shipping_label = t(locale.as_deref(), "cart-drawer-shipping", "Shipping");
+    let shipping_calc = t(
+        locale.as_deref(),
+        "cart-drawer-shippingCalculated",
+        "Calculated at checkout",
+    );
+    let total_label = t(locale.as_deref(), "cart-drawer-total", "Total");
+    let badge_label = t(locale.as_deref(), "cart-badge", "cart");
+
+    view! {
+        {move || {
+            if !state.is_open.get() {
+                return None;
+            }
+
+            let title = title.clone();
+            let badge_label = badge_label.clone();
+            let empty_title = empty_title.clone();
+            let empty_sub = empty_sub.clone();
+            let browse_catalog = browse_catalog.clone();
+            let subtotal_label = subtotal_label.clone();
+            let shipping_label = shipping_label.clone();
+            let shipping_calc = shipping_calc.clone();
+            let total_label = total_label.clone();
+            let checkout_label = checkout_label.clone();
+            let continue_shopping = continue_shopping.clone();
+
+            Some(view! {
+                <div class="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true">
+                    // Backdrop
+                    <div
+                        class="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-300 cursor-pointer"
+                        on:click=move |_| state.close()
+                    />
+
+                    // Drawer Panel
+                    <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                        <div class="w-screen max-w-md bg-card border-l border-border shadow-2xl flex flex-col h-full transform transition duration-300">
+                            // Header
+                            <div class="flex items-center justify-between border-b border-border px-6 py-4.5 bg-muted/20">
+                                <div class="flex items-center gap-2.5">
+                                    <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+                                            <path d="M3 6h18"/>
+                                            <path d="M16 10a4 4 0 0 1-8 0"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-base font-bold text-foreground">{title}</h2>
+                                        <p class="text-xs text-muted-foreground">{badge_label}</p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition cursor-pointer"
+                                    aria-label="Close cart"
+                                    on:click=move |_| state.close()
+                                >
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M18 6 6 18"/>
+                                        <path d="m6 6 12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            // Error banner
+                            {move || mutation_error.get().map(|err| view! {
+                                <div class="mx-6 mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2 text-xs text-destructive">
+                                    {err}
+                                </div>
+                            })}
+
+                            // Body
+                            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                                <Suspense fallback=move || view! {
+                                    <div class="space-y-3 py-4">
+                                        <div class="h-20 animate-pulse rounded-2xl bg-muted"></div>
+                                        <div class="h-20 animate-pulse rounded-2xl bg-muted"></div>
+                                    </div>
+                                }>
+                                    {
+                                        let empty_title = empty_title.clone();
+                                        let empty_sub = empty_sub.clone();
+                                        let browse_catalog = browse_catalog.clone();
+                                        let subtotal_label = subtotal_label.clone();
+                                        let shipping_label = shipping_label.clone();
+                                        let shipping_calc = shipping_calc.clone();
+                                        let total_label = total_label.clone();
+                                        let checkout_label = checkout_label.clone();
+                                        let continue_shopping = continue_shopping.clone();
+
+                                        move || {
+                                            let empty_title = empty_title.clone();
+                                            let empty_sub = empty_sub.clone();
+                                            let browse_catalog = browse_catalog.clone();
+                                            let subtotal_label = subtotal_label.clone();
+                                            let shipping_label = shipping_label.clone();
+                                            let shipping_calc = shipping_calc.clone();
+                                            let total_label = total_label.clone();
+                                            let checkout_label = checkout_label.clone();
+                                            let continue_shopping = continue_shopping.clone();
+
+                                            cart_resource.get().map(move |result| {
+                                                match result {
+                                                    Ok(data) => {
+                                                        let cart = data.cart;
+                                                        let items = cart.as_ref().map(|c| c.line_items.clone()).unwrap_or_default();
+
+                                                        if items.is_empty() {
+                                                            view! {
+                                                                <div class="flex h-full flex-col items-center justify-center text-center space-y-4 py-16">
+                                                                    <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
+                                                                        <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+                                                                            <path d="M3 6h18"/>
+                                                                            <path d="M16 10a4 4 0 0 1-8 0"/>
+                                                                        </svg>
+                                                                    </div>
+                                                                    <div class="space-y-1">
+                                                                        <h3 class="text-base font-semibold text-foreground">{empty_title}</h3>
+                                                                        <p class="text-xs text-muted-foreground max-w-[240px]">{empty_sub}</p>
+                                                                    </div>
+                                                                    <a
+                                                                        href="#catalog"
+                                                                        on:click=move |_| state.close()
+                                                                        class="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs"
+                                                                    >
+                                                                        {browse_catalog}
+                                                                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                                            <path d="M5 12h14"/>
+                                                                            <path d="m12 5 7 7-7 7"/>
+                                                                        </svg>
+                                                                    </a>
+                                                                </div>
+                                                            }.into_any()
+                                                        } else {
+                                                            let cart_ref = cart.unwrap();
+                                                            let cart_id = cart_ref.id.clone();
+                                                            let subtotal = cart_ref.subtotal_amount.clone();
+                                                            let total = cart_ref.total_amount.clone();
+                                                            let currency = cart_ref.currency_code.clone();
+
+                                                            view! {
+                                                                <div class="space-y-3">
+                                                                    {items.into_iter().map(|item| {
+                                                                        let item_id = item.id.clone();
+                                                                        let cid_dec = cart_id.clone();
+                                                                        let cid_rem = cart_id.clone();
+                                                                        let iid_dec = item_id.clone();
+                                                                        let iid_rem = item_id.clone();
+                                                                        let qty = item.quantity;
+                                                                        let curr = item.currency_code.clone();
+
+                                                                        view! {
+                                                                            <div class="group relative flex gap-3.5 rounded-2xl border border-border bg-background/50 p-3.5 shadow-xs transition hover:border-border/80">
+                                                                                <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
+                                                                                    <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                                                                        <path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                                                                        <polyline points="3.29 7 12 12 20.71 7"/>
+                                                                                        <line x1="12" y1="22" x2="12" y2="12"/>
+                                                                                    </svg>
+                                                                                </div>
+                                                                                <div class="flex flex-1 flex-col justify-between">
+                                                                                    <div class="pr-6">
+                                                                                        <h4 class="text-xs font-semibold text-foreground line-clamp-2">{item.title}</h4>
+                                                                                        {item.sku.map(|sku| view! {
+                                                                                            <p class="mt-0.5 text-[10px] text-muted-foreground font-mono">"SKU: " {sku}</p>
+                                                                                        })}
+                                                                                        <p class="mt-1 text-xs font-medium text-muted-foreground">
+                                                                                            {item.unit_price} " " {curr.clone()}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    <div class="mt-2 flex items-center justify-between">
+                                                                                        <div class="inline-flex h-7 items-center rounded-lg border border-border bg-card px-1">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled=move || mutation_busy.get()
+                                                                                                on:click=move |_| on_decrement.run((cid_dec.clone(), iid_dec.clone(), qty))
+                                                                                                class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition disabled:opacity-50 cursor-pointer"
+                                                                                                aria-label="Decrease quantity"
+                                                                                            >
+                                                                                                "-"
+                                                                                            </button>
+                                                                                            <span class="w-7 text-center text-xs font-semibold text-foreground">
+                                                                                                {item.quantity.to_string()}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <span class="text-xs font-bold text-foreground">
+                                                                                            {item.total_price} " " {curr}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    disabled=move || mutation_busy.get()
+                                                                                    on:click=move |_| on_remove.run((cid_rem.clone(), iid_rem.clone()))
+                                                                                    class="absolute top-3 right-3 text-muted-foreground hover:text-destructive transition disabled:opacity-50 cursor-pointer"
+                                                                                    title="Remove"
+                                                                                >
+                                                                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                                                        <path d="M3 6h18"/>
+                                                                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                                                                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                                                                    </svg>
+                                                                                </button>
+                                                                            </div>
+                                                                        }
+                                                                    }).collect_view()}
+
+                                                                    // Totals
+                                                                    <div class="mt-6 border-t border-border pt-4 space-y-2 text-xs">
+                                                                        <div class="flex justify-between text-muted-foreground">
+                                                                            <span>{subtotal_label}</span>
+                                                                            <span class="font-medium text-foreground">{subtotal} " " {currency.clone()}</span>
+                                                                        </div>
+                                                                        <div class="flex justify-between text-muted-foreground">
+                                                                            <span>{shipping_label}</span>
+                                                                            <span class="italic">{shipping_calc}</span>
+                                                                        </div>
+                                                                        <div class="flex justify-between border-t border-border pt-2 text-sm font-bold text-foreground">
+                                                                            <span>{total_label}</span>
+                                                                            <span class="text-base text-primary">{total} " " {currency}</span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    // CTAs
+                                                                    <div class="space-y-2 pt-3">
+                                                                        <a
+                                                                            href=format!("/cart?cart_id={}", cart_id)
+                                                                            on:click=move |_| state.close()
+                                                                            class="w-full inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs"
+                                                                        >
+                                                                            {checkout_label}
+                                                                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                                                <path d="M5 12h14"/>
+                                                                                <path d="m12 5 7 7-7 7"/>
+                                                                            </svg>
+                                                                        </a>
+                                                                        <button
+                                                                            type="button"
+                                                                            on:click=move |_| state.close()
+                                                                            class="w-full h-9 inline-flex items-center justify-center rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition cursor-pointer"
+                                                                        >
+                                                                            {continue_shopping}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            }.into_any()
+                                                        }
+                                                    }
+                                                    Err(err) => view! {
+                                                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive">
+                                                            {err.to_string()}
+                                                        </div>
+                                                    }.into_any(),
+                                                }
+                                            })
+                                        }
+                                    }
+                                </Suspense>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            })
+        }}
+    }
+}
+
+#[component]
+pub fn CartFloatingTrigger() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
+    let state = use_cart_drawer();
+
+    let res_locale = locale.clone();
+    let cart_resource = Resource::new_blocking(
+        move || {
+            (
+                state.selected_cart_id.get(),
+                res_locale.clone(),
+                state.refresh_nonce.get(),
+            )
+        },
+        move |(cart_id, locale, _)| async move {
+            transport::fetch_cart(build_cart_fetch_request(cart_id, locale)).await
+        },
+    );
+
+    let cart_label = t(locale.as_deref(), "cart-trigger-label", "Cart");
+
+    view! {
+        <div class="fixed bottom-6 right-6 z-40">
+            <button
+                type="button"
+                on:click=move |_| state.toggle()
+                class="group relative flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xl transition-all duration-300 hover:scale-105 hover:bg-primary/95 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
+                aria-label=cart_label
+            >
+                <svg class="h-6 w-6 transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+                    <path d="M3 6h18"/>
+                    <path d="M16 10a4 4 0 0 1-8 0"/>
+                </svg>
+                {move || {
+                    let count = cart_resource.get().and_then(|res| res.ok()).and_then(|data| data.cart).map(|c| {
+                        c.line_items.iter().map(|item| item.quantity).sum::<i32>()
+                    }).unwrap_or(0);
+
+                    if count > 0 {
+                        view! {
+                            <span class="absolute -top-1.5 -right-1.5 flex h-6 min-w-[24px] items-center justify-center rounded-full border-2 border-background bg-destructive px-1.5 text-xs font-extrabold text-destructive-foreground shadow-md">
+                                {if count > 99 { "99+".to_string() } else { count.to_string() }}
+                            </span>
+                        }.into_any()
+                    } else {
+                        view! { <span class="hidden" /> }.into_any()
+                    }
+                }}
+            </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn CartHeaderTrigger() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let route_cart_id = read_route_query_value(&route_context, "cart_id");
+    let locale = route_context.locale.clone();
+    let state = use_cart_drawer();
+
+    if let Some(id) = route_cart_id.filter(|s| !s.trim().is_empty())
+        && state.selected_cart_id.get_untracked().is_none()
+    {
+        state.selected_cart_id.set(Some(id));
+    }
+
+    let res_locale = locale.clone();
+    let cart_resource = Resource::new_blocking(
+        move || {
+            (
+                state.selected_cart_id.get(),
+                res_locale.clone(),
+                state.refresh_nonce.get(),
+            )
+        },
+        move |(cart_id, locale, _)| async move {
+            transport::fetch_cart(build_cart_fetch_request(cart_id, locale)).await
+        },
+    );
+
+    let cart_label = t(locale.as_deref(), "cart-trigger-label", "Cart");
+    let cart_aria_label = cart_label.clone();
+
+    view! {
+        <div class="relative inline-flex items-center">
+            // Header button
+            <button
+                type="button"
+                on:click=move |_| state.toggle()
+                class="relative inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-border/80 bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary hover:border-primary/40 transition cursor-pointer shadow-xs"
+                aria-label=cart_aria_label
+            >
+                <svg class="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+                    <path d="M3 6h18"/>
+                    <path d="M16 10a4 4 0 0 1-8 0"/>
+                </svg>
+                <span class="hidden sm:inline">{cart_label}</span>
+                {move || {
+                    let count = cart_resource.get().and_then(|res| res.ok()).and_then(|data| data.cart).map(|c| {
+                        c.line_items.iter().map(|item| item.quantity).sum::<i32>()
+                    }).unwrap_or(0);
+
+                    if count > 0 {
+                        view! {
+                            <span class="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                                {count.to_string()}
+                            </span>
+                        }.into_any()
+                    } else {
+                        view! { <span class="hidden" /> }.into_any()
+                    }
+                }}
+            </button>
+
+            // Floating trigger
+            <CartFloatingTrigger />
+
+            // Drawer
+            <CartDrawer />
+        </div>
+    }
+}
