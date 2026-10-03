@@ -86,7 +86,6 @@ async fn typed_checkout_identity_rollback_restores_current_legacy_sqlite_guards(
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
 
-    let migrations = rustok_fulfillment::migrations::migrations();
     let manager = SchemaManager::new(&db);
     db.execute_unprepared(
         "ALTER TABLE fulfillments DROP COLUMN checkout_plan_hash;\
@@ -305,6 +304,7 @@ async fn checkout_identity_anchor_migration_collapses_consistent_operation_bindi
     let order_id = Uuid::new_v4();
     let customer_id = Some(Uuid::new_v4());
 
+    let plan_hash = "A".repeat(64);
     for index in [0, 1] {
         insert_typed_fulfillment(
             &db,
@@ -313,7 +313,7 @@ async fn checkout_identity_anchor_migration_collapses_consistent_operation_bindi
             index,
             order_id,
             customer_id,
-            "A".repeat(64).as_str(),
+            &plan_hash,
         )
         .await;
     }
