@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::OnConflict,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -448,6 +449,17 @@ impl FulfillmentService {
         let checkout_fulfillment_index = identity.as_ref().map(|value| i64::from(value.index));
         let checkout_plan_hash = identity.as_ref().map(|value| value.plan_hash.clone());
 
+        if let Some(identity) = identity.as_ref() {
+            self.ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                customer_id,
+                identity,
+            )
+            .await?;
+        }
+
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
             tenant_id: Set(tenant_id),
@@ -503,6 +515,67 @@ impl FulfillmentService {
         validate_tenant_id(tenant_id)?;
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
         self.build_fulfillment_response(fulfillment).await
+    }
+
+    async fn ensure_checkout_identity_anchor(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        customer_id: Option<Uuid>,
+        identity: &CheckoutFulfillmentIdentity,
+    ) -> FulfillmentResult<()> {
+        let now = Utc::now();
+        let _ = entities::checkout_identity::Entity::insert(
+            entities::checkout_identity::ActiveModel {
+                tenant_id: Set(tenant_id),
+                checkout_operation_id: Set(identity.operation_id),
+                order_id: Set(order_id),
+                customer_id: Set(customer_id),
+                plan_hash: Set(identity.plan_hash.clone()),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            },
+        )
+        .on_conflict(
+            OnConflict::columns([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
+            .do_nothing_on([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
+            .to_owned(),
+        )
+        .try_insert()
+        .exec(txn)
+        .await?;
+
+        let existing = entities::checkout_identity::Entity::find()
+            .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::checkout_identity::Column::CheckoutOperationId.eq(identity.operation_id),
+            )
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "checkout operation identity anchor could not be established".to_string(),
+                )
+            })?;
+
+        if existing.order_id == order_id
+            && existing.customer_id == customer_id
+            && existing.plan_hash == identity.plan_hash
+        {
+            Ok(())
+        } else {
+            Err(FulfillmentError::Validation(
+                "checkout operation identity is already bound to a different order, customer, or plan"
+                    .to_string(),
+            ))
+        }
     }
 
     pub(crate) async fn find_checkout_fulfillment(
@@ -2380,6 +2453,91 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn checkout_identity_anchor_reuses_same_identity_and_rejects_conflicts() {
+        use rustok_test_utils::db::setup_test_db;
+        use sea_orm::{ConnectionTrait, Schema, TransactionTrait};
+
+        let db = setup_test_db().await;
+        let builder = db.get_database_backend();
+        let schema = Schema::new(builder);
+        let statement = schema
+            .create_table_from_entity(entities::checkout_identity::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(builder.build(&statement))
+            .await
+            .expect("checkout identity anchor table should be created");
+
+        let service = FulfillmentService::new(db.clone());
+        let txn = db.begin().await.expect("transaction should start");
+        let tenant_id = Uuid::new_v4();
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let customer_id = Some(Uuid::new_v4());
+        let identity = CheckoutFulfillmentIdentity {
+            operation_id,
+            index: 0,
+            plan_hash: "a".repeat(64),
+        };
+
+        service
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
+            .await
+            .expect("first checkout identity should bind");
+
+        service
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
+            .await
+            .expect("identical checkout identity should be idempotent");
+
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                Uuid::new_v4(),
+                customer_id,
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different order"
+        );
+
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                Some(Uuid::new_v4()),
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different customer"
+        );
+
+        let mut different_plan = identity.clone();
+        different_plan.plan_hash = "b".repeat(64);
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                customer_id,
+                &different_plan,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different plan"
+        );
+
+        txn.rollback().await.expect("transaction should roll back");
     }
 
     #[test]
