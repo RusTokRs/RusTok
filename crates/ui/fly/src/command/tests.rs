@@ -329,7 +329,7 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
 fn tampered_snapshot_does_not_change_document_or_history() {
     let mut editor = editor();
     let mut snapshots = SnapshotCatalog::default();
-    let mut snapshot = snapshots
+    let snapshot = snapshots
         .capture("Initial", editor.document(), Map::new())
         .expect("snapshot")
         .clone();

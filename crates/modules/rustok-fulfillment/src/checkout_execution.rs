@@ -659,13 +659,13 @@ fn validate_request(
             }
         }
     }
-    if let Some(max_index) = indexes.iter().copied().max().map(u64::from) {
-        if max_index + 1 != indexes.len() as u64 {
-            return Err(PortError::validation(
-                "fulfillment.checkout_plan_invalid",
-                "checkout fulfillment plan indexes must form a dense zero-based set",
-            ));
-        }
+    if let Some(max_index) = indexes.iter().copied().max().map(u64::from)
+        && max_index + 1 != indexes.len() as u64
+    {
+        return Err(PortError::validation(
+            "fulfillment.checkout_plan_invalid",
+            "checkout fulfillment plan indexes must form a dense zero-based set",
+        ));
     }
     Ok(plan_hash)
 }

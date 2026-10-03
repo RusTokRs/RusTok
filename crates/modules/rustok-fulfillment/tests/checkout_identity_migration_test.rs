@@ -2,7 +2,8 @@ use chrono::Utc;
 use rustok_fulfillment::entities::{checkout_identity, fulfillment};
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set,
+    Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;

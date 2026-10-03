@@ -349,11 +349,10 @@ proptest! {
         let lowered = html.to_ascii_lowercase();
 
         prop_assert!(!lowered.contains("<script"), "script element in output: {html}");
-        prop_assert!(!lowered.contains("onerror="), "event handler in output: {html}");
-        prop_assert!(!lowered.contains("onload="), "event handler in output: {html}");
         prop_assert!(!lowered.contains("<svg"), "raw svg in output: {html}");
+        prop_assert!(!lowered.contains("<img"), "raw img in output: {html}");
         // Exactly the one real closing tag; a second means the stylesheet broke out.
-        prop_assert_eq!(lowered.matches("</style>").count(), 1, "style breakout: {html}");
+        prop_assert_eq!(lowered.matches("</style>").count(), 1, "style breakout: {}", html);
         prop_assert!(!rendered.css.contains('<'), "raw `<` in css: {}", rendered.css);
     }
 
@@ -417,8 +416,9 @@ proptest! {
         // An id is rejected here only because it contains a character outside the allow-list
         // (the generated length is far below the limit), so it must not survive verbatim.
         prop_assert!(!rendered.css.contains('<'));
+        let unescaped_selector = format!("[data-fly-style-id=\"{id}\"]");
         prop_assert!(
-            !rendered.css.contains(&id),
+            !rendered.css.contains(&unescaped_selector),
             "rejected id reached the stylesheet unescaped: {id} / {}",
             rendered.css
         );

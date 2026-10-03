@@ -705,7 +705,7 @@ fn conflicting_field_paths(catalog: &ContextSchemaCatalog) -> Vec<ValidationDiag
     let mut diagnostics = Vec::new();
     for (field, tokens) in parsed {
         for depth in 1..tokens.len() {
-            let Some(ancestor) = declared.get(&tokens[..depth].to_vec()) else {
+            let Some(ancestor) = declared.get(&tokens[..depth]) else {
                 continue;
             };
             diagnostics.push(context_diagnostic(

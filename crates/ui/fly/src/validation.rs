@@ -556,6 +556,15 @@ fn public_url_allowed(value: &str, kind: UrlAttributeKind) -> bool {
     safe_url::url_allowed(value, kind, &UrlPolicy::permissive())
 }
 
+fn scalar_attribute_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
 fn validate_assets(document: &ProjectDocument, report: &mut ValidationReport) {
     let catalog = AssetCatalog::from_document(document);
     report.asset_count = catalog.assets.len() + catalog.unknown_entries.len();

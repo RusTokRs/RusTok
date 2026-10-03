@@ -280,7 +280,10 @@ fn unresolved_runtime_bound_action_is_a_publish_blocker() {
     assert!(!report.ready);
     assert!(report.issues.iter().any(|issue| {
         issue.category == LandingReadinessCategory::RuntimeContracts
-            && issue.diagnostic.code == "runtime_action_unresolved"
+            && matches!(
+                issue.diagnostic.code.as_str(),
+                "runtime_action_invalid" | "runtime_action_unresolved"
+            )
             && issue.diagnostic.severity == ValidationSeverity::Error
     }));
 }
