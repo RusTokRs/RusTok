@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::OnConflict,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -525,45 +526,51 @@ impl FulfillmentService {
         identity: &CheckoutFulfillmentIdentity,
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
-        let insert = entities::checkout_identity::ActiveModel {
-            tenant_id: Set(tenant_id),
-            checkout_operation_id: Set(identity.operation_id),
-            order_id: Set(order_id),
-            customer_id: Set(customer_id),
-            plan_hash: Set(identity.plan_hash.clone()),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        }
-        .insert(txn)
-        .await;
+        entities::checkout_identity::Entity::insert(
+            entities::checkout_identity::ActiveModel {
+                tenant_id: Set(tenant_id),
+                checkout_operation_id: Set(identity.operation_id),
+                order_id: Set(order_id),
+                customer_id: Set(customer_id),
+                plan_hash: Set(identity.plan_hash.clone()),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            },
+        )
+        .on_conflict(
+            OnConflict::columns([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec(txn)
+        .await?;
 
-        match insert {
-            Ok(_) => Ok(()),
-            Err(insert_error) => {
-                let existing = entities::checkout_identity::Entity::find()
-                    .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
-                    .filter(
-                        entities::checkout_identity::Column::CheckoutOperationId
-                            .eq(identity.operation_id),
-                    )
-                    .one(txn)
-                    .await?;
+        let existing = entities::checkout_identity::Entity::find()
+            .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::checkout_identity::Column::CheckoutOperationId.eq(identity.operation_id),
+            )
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "checkout operation identity anchor could not be established".to_string(),
+                )
+            })?;
 
-                match existing {
-                    Some(existing)
-                        if existing.order_id == order_id
-                            && existing.customer_id == customer_id
-                            && existing.plan_hash == identity.plan_hash =>
-                    {
-                        Ok(())
-                    }
-                    Some(_) => Err(FulfillmentError::Validation(
-                        "checkout operation identity is already bound to a different order, customer, or plan"
-                            .to_string(),
-                    )),
-                    None => Err(insert_error.into()),
-                }
-            }
+        if existing.order_id == order_id
+            && existing.customer_id == customer_id
+            && existing.plan_hash == identity.plan_hash
+        {
+            Ok(())
+        } else {
+            Err(FulfillmentError::Validation(
+                "checkout operation identity is already bound to a different order, customer, or plan"
+                    .to_string(),
+            ))
         }
     }
 
