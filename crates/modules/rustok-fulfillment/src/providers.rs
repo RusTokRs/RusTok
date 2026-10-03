@@ -523,7 +523,7 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-pub(crate) pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
+pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
 
 fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
@@ -677,7 +677,7 @@ fn validate_operation_result(
     result: &FulfillmentProviderOperationResult,
 ) -> FulfillmentResult<()> {
     if result.provider_id != provider_id {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider `{provider_id}` returned {operation} result for `{}`",
             result.provider_id
         )));
@@ -686,18 +686,27 @@ fn validate_operation_result(
         "external_reference",
         result.external_reference.as_deref(),
         191,
-    )?;
+    )
+    .map_err(provider_result_invalid)?;
     validate_optional_boundary_text(
         "tracking_number",
         result.tracking_number.as_deref(),
         FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
-    )?;
+    )
+    .map_err(provider_result_invalid)?;
     if !result.metadata.is_object() {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
         )));
     }
     Ok(())
+}
+
+fn provider_result_invalid(error: FulfillmentError) -> FulfillmentError {
+    match error {
+        FulfillmentError::Validation(message) => FulfillmentError::ProviderResultInvalid(message),
+        other => other,
+    }
 }
 
 fn validate_webhook_request(
@@ -853,7 +862,10 @@ mod boundary_tests {
             tracking_number: Some("t".repeat(101)),
             metadata: serde_json::json!({"provider": "carrier"}),
         };
-        assert!(validate_operation_result("carrier", "ship", &result).is_err());
+        assert!(matches!(
+            validate_operation_result("carrier", "ship", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
     }
 
     #[test]

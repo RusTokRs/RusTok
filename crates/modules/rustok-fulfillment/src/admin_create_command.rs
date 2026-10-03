@@ -427,6 +427,34 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             .await
         {
             Ok(result) => result,
+            Err(FulfillmentError::ProviderResultInvalid(reason)) => {
+                if let Err(checkpoint_error) = self
+                    .operation_journal
+                    .mark_execution_reconciliation_required(
+                        operation.tenant_id,
+                        operation.id,
+                        None,
+                        None,
+                        format!(
+                            "create_label provider returned an invalid result after execution: {reason}"
+                        ),
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        boundary = ADMIN_CREATE_BOUNDARY,
+                        owner_operation,
+                        provider_operation_id_non_nil = !operation.id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "create-label invalid-result reconciliation could not be checkpointed"
+                    );
+                }
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "create-label provider returned an invalid result and requires reconciliation",
+                ));
+            }
             Err(error) => {
                 if let Err(checkpoint_error) = self
                     .operation_journal
@@ -576,6 +604,10 @@ fn map_fulfillment_error_without_context(error: FulfillmentError) -> PortError {
         FulfillmentError::Validation(_) => {
             PortError::validation("fulfillment.validation", "fulfillment request is invalid")
         }
+        FulfillmentError::ProviderResultInvalid(_) => PortError::conflict(
+            "fulfillment.reconciliation_required",
+            "fulfillment provider result requires reconciliation",
+        ),
         FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => {
             PortError::not_found(
                 "fulfillment.not_found",
@@ -621,6 +653,13 @@ fn map_fulfillment_error(
         FulfillmentError::Validation(_) => (
             "validation",
             PortError::validation("fulfillment.validation", "fulfillment request is invalid"),
+        ),
+        FulfillmentError::ProviderResultInvalid(_) => (
+            "provider_result_invalid",
+            PortError::conflict(
+                "fulfillment.reconciliation_required",
+                "fulfillment provider result requires reconciliation",
+            ),
         ),
         FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             "not_found",
@@ -697,6 +736,19 @@ mod tests {
             provider_completed_at: None,
             committed_at: None,
         }
+    }
+
+    #[test]
+    fn invalid_provider_result_maps_to_reconciliation_conflict() {
+        let error = map_fulfillment_error_without_context(
+            FulfillmentError::ProviderResultInvalid(
+                "tracking number exceeds 100 characters".to_string(),
+            ),
+        );
+
+        assert!(matches!(error.kind, rustok_api::PortErrorKind::Conflict));
+        assert_eq!(error.code, "fulfillment.reconciliation_required");
+        assert!(!error.retryable);
     }
 
     #[test]
