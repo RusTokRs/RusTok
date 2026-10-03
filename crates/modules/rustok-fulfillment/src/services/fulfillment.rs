@@ -2469,6 +2469,7 @@ mod tests {
 
         let service = FulfillmentService::new(db.clone());
         let txn = db.begin().await.expect("transaction should start");
+        let tenant_id = Uuid::new_v4();
         let operation_id = Uuid::new_v4();
         let order_id = Uuid::new_v4();
         let customer_id = Some(Uuid::new_v4());
@@ -2479,19 +2480,19 @@ mod tests {
         };
 
         service
-            .ensure_checkout_identity_anchor(&txn, Uuid::new_v4(), order_id, customer_id, &identity)
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
             .await
             .expect("first checkout identity should bind");
 
         service
-            .ensure_checkout_identity_anchor(&txn, Uuid::new_v4(), order_id, customer_id, &identity)
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
             .await
             .expect("identical checkout identity should be idempotent");
 
         let conflict = service
             .ensure_checkout_identity_anchor(
                 &txn,
-                identity_operation_tenant(&txn).await,
+                tenant_id,
                 Uuid::new_v4(),
                 customer_id,
                 &identity,
@@ -2503,16 +2504,6 @@ mod tests {
         );
 
         txn.rollback().await.expect("transaction should roll back");
-    }
-
-    async fn identity_operation_tenant(txn: &DatabaseTransaction) -> Uuid {
-        entities::checkout_identity::Entity::find()
-            .order_by_asc(entities::checkout_identity::Column::CreatedAt)
-            .one(txn)
-            .await
-            .expect("anchor lookup should succeed")
-            .expect("first anchor should exist")
-            .tenant_id
     }
 
     #[test]
