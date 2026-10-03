@@ -902,6 +902,25 @@ async fn manual_success_reconciliation_validates_provider_identity() {
             .is_err()
     );
 
+    let oversized_tracking_number = serde_json::json!({
+        "provider_id": "carrier",
+        "external_reference": "label-1",
+        "tracking_number": "T".repeat(101),
+        "metadata": {}
+    });
+    assert!(
+        recovery
+            .resolve_unknown_as_succeeded(
+                tenant_id,
+                operation.id,
+                Some("label-1".to_string()),
+                oversized_tracking_number,
+            )
+            .await
+            .is_err(),
+        "manual reconciliation must reject tracking numbers that cannot fit Fulfillment persistence"
+    );
+
     let reconciled = recovery
         .resolve_unknown_as_succeeded(
             tenant_id,
