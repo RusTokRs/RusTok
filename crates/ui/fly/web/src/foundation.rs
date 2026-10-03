@@ -15,6 +15,15 @@ pub struct BrowserPoint {
 }
 
 impl BrowserPoint {
+    /// Whether both coordinates are usable numbers.
+    ///
+    /// Geometry arrives from the iframe bridge as JSON, and an out-of-range literal deserializes
+    /// to an infinity rather than an error. `edge_px`, `maximum_delta_px` and `edge_ratio` in
+    /// this module already guard against that; points, rects and scores did not.
+    pub fn is_finite(self) -> bool {
+        self.x.is_finite() && self.y.is_finite()
+    }
+
     pub fn distance_squared(self, other: Self) -> f64 {
         let x = self.x - other.x;
         let y = self.y - other.y;
@@ -31,6 +40,14 @@ pub struct BrowserRect {
 }
 
 impl BrowserRect {
+    /// Whether every edge is a usable number. See [`BrowserPoint::is_finite`].
+    pub fn is_finite(self) -> bool {
+        self.left.is_finite()
+            && self.top.is_finite()
+            && self.width.is_finite()
+            && self.height.is_finite()
+    }
+
     pub fn contains(self, point: BrowserPoint) -> bool {
         point.x >= self.left
             && point.y >= self.top
@@ -85,6 +102,15 @@ impl Default for CoordinateTransform {
     }
 }
 
+/// Replace a non-finite offset with zero.
+///
+/// `normalized_zoom` already refuses to divide by a bad zoom; the offsets it is combined with
+/// were left unguarded, so a single bad value from the bridge turned every converted coordinate
+/// into NaN.
+fn finite_or_zero(value: f64) -> f64 {
+    if value.is_finite() { value } else { 0.0 }
+}
+
 impl CoordinateTransform {
     pub fn normalized_zoom(self) -> f64 {
         if self.zoom.is_finite() && self.zoom > 0.0 {
@@ -94,19 +120,31 @@ impl CoordinateTransform {
         }
     }
 
+    /// Combined translation along x, with non-finite components neutralized.
+    fn offset_x(self) -> f64 {
+        finite_or_zero(self.host_offset_x) + finite_or_zero(self.iframe_offset_x)
+            - finite_or_zero(self.scroll_x)
+    }
+
+    /// Combined translation along y, with non-finite components neutralized.
+    fn offset_y(self) -> f64 {
+        finite_or_zero(self.host_offset_y) + finite_or_zero(self.iframe_offset_y)
+            - finite_or_zero(self.scroll_y)
+    }
+
     pub fn browser_to_canvas(self, point: BrowserPoint) -> BrowserPoint {
         let zoom = self.normalized_zoom();
         BrowserPoint {
-            x: (point.x - self.host_offset_x - self.iframe_offset_x + self.scroll_x) / zoom,
-            y: (point.y - self.host_offset_y - self.iframe_offset_y + self.scroll_y) / zoom,
+            x: (point.x - self.offset_x()) / zoom,
+            y: (point.y - self.offset_y()) / zoom,
         }
     }
 
     pub fn canvas_to_browser(self, point: BrowserPoint) -> BrowserPoint {
         let zoom = self.normalized_zoom();
         BrowserPoint {
-            x: point.x * zoom + self.host_offset_x + self.iframe_offset_x - self.scroll_x,
-            y: point.y * zoom + self.host_offset_y + self.iframe_offset_y - self.scroll_y,
+            x: point.x * zoom + self.offset_x(),
+            y: point.y * zoom + self.offset_y(),
         }
     }
 }
@@ -167,6 +205,13 @@ pub fn resolve_drop_position(
     axis: DropAxis,
     policy: DropZonePolicy,
 ) -> Option<DropPosition> {
+    // Checked before `contains`, which cannot express the problem: an infinite rect contains
+    // every point and passes the size guard, and then `(pointer.y - rect.top) / rect.height`
+    // evaluates to NaN, so every comparison below is false and the function silently answers
+    // `After` for a rect that does not exist.
+    if !pointer.is_finite() || !rect.is_finite() {
+        return None;
+    }
     if !rect.contains(pointer) || rect.width <= 0.0 || rect.height <= 0.0 {
         return None;
     }
@@ -208,24 +253,39 @@ pub fn normalize_hit_targets(
 ) -> Vec<HitTestCandidate> {
     let mut candidates = targets
         .into_iter()
+        // A target whose rectangle is not a real rectangle cannot be hit; passing it through
+        // would only yield a garbage canvas rect downstream.
+        .filter(|target| target.rect.is_finite())
         .map(|target| HitTestCandidate {
             target_component_id: target.component_id,
             parent_component_id: target.parent_component_id,
             index: target.index,
             position: target.position,
             rect: target.rect.to_canvas_rect(transform),
-            score: target.score,
+            score: finite_score(target.score),
             legal: target.legal,
             reason: target.reason,
         })
         .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| {
-        right
-            .score
-            .partial_cmp(&left.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    sort_candidates_by_score(&mut candidates);
     candidates
+}
+
+/// Replace a non-finite score with the lowest ranking value.
+///
+/// A NaN score is not merely wrong, it is corrosive: it makes any `partial_cmp`-based comparator
+/// non-transitive, and `slice::sort_by` is entitled to panic when it detects that the ordering is
+/// not total.
+fn finite_score(score: f32) -> f32 {
+    if score.is_finite() { score } else { f32::MIN }
+}
+
+/// Rank candidates by descending score under a total order.
+///
+/// `partial_cmp(..).unwrap_or(Equal)` looks like a safe fallback but silently produces a
+/// comparator that is not a total order. `total_cmp` is one for every `f32`, including NaN.
+fn sort_candidates_by_score(candidates: &mut [HitTestCandidate]) {
+    candidates.sort_by(|left, right| right.score.total_cmp(&left.score));
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -267,19 +327,14 @@ pub fn hit_test_drop_targets(
                 index,
                 position,
                 rect: target.rect.to_canvas_rect(transform),
-                score: target.priority + proximity,
+                score: finite_score(finite_score(target.priority) + proximity),
                 legal: target.legal,
                 reason: target.reason,
             })
         })
         .collect::<Vec<_>>();
 
-    candidates.sort_by(|left, right| {
-        right
-            .score
-            .partial_cmp(&left.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    sort_candidates_by_score(&mut candidates);
     candidates
 }
 
@@ -620,4 +675,167 @@ mod tests {
         registry.cleanup();
         assert_eq!(order.get(), 2);
     }
+
+    fn rect(left: f64, top: f64, width: f64, height: f64) -> BrowserRect {
+        BrowserRect {
+            left,
+            top,
+            width,
+            height,
+        }
+    }
+
+    fn drop_target(priority: f32, rect: BrowserRect) -> BrowserDropTarget {
+        BrowserDropTarget {
+            component_id: format!("c{priority}"),
+            parent_component_id: None,
+            index: 0,
+            rect,
+            axis: DropAxis::Vertical,
+            policy: DropZonePolicy::default(),
+            legal: true,
+            reason: None,
+            priority,
+        }
+    }
+
+    #[test]
+    fn an_unreal_rectangle_produces_no_drop_position() {
+        // An infinite rect contains every point and passes the size guard, after which the
+        // position ratio is NaN, every comparison is false, and the old code answered `After`
+        // for a rectangle that does not exist.
+        let pointer = BrowserPoint { x: 10.0, y: 10.0 };
+        for bad in [
+            rect(0.0, f64::NEG_INFINITY, 100.0, f64::INFINITY),
+            rect(0.0, 0.0, f64::INFINITY, f64::INFINITY),
+            rect(f64::NAN, 0.0, 100.0, 100.0),
+            rect(0.0, 0.0, 100.0, f64::NAN),
+        ] {
+            assert_eq!(
+                resolve_drop_position(pointer, bad, DropAxis::Vertical, DropZonePolicy::default()),
+                None,
+                "accepted {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_finite_pointer_hits_nothing() {
+        let good = rect(0.0, 0.0, 100.0, 100.0);
+        for pointer in [
+            BrowserPoint {
+                x: f64::NAN,
+                y: 10.0,
+            },
+            BrowserPoint {
+                x: 10.0,
+                y: f64::INFINITY,
+            },
+        ] {
+            assert_eq!(
+                resolve_drop_position(pointer, good, DropAxis::Vertical, DropZonePolicy::default()),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn candidate_ranking_is_a_total_order_even_with_unusable_scores() {
+        // `partial_cmp(..).unwrap_or(Equal)` yields a non-transitive comparator, and `sort_by` is
+        // entitled to panic once it notices. Ranking must survive a hostile score and still put
+        // the real candidates in order.
+        let targets = vec![
+            BrowserHitTarget {
+                component_id: "low".to_string(),
+                parent_component_id: None,
+                index: 0,
+                rect: rect(0.0, 0.0, 10.0, 10.0),
+                position: DropPosition::Before,
+                legal: true,
+                reason: None,
+                score: 1.0,
+            },
+            BrowserHitTarget {
+                component_id: "nan".to_string(),
+                parent_component_id: None,
+                index: 1,
+                rect: rect(0.0, 0.0, 10.0, 10.0),
+                position: DropPosition::Before,
+                legal: true,
+                reason: None,
+                score: f32::NAN,
+            },
+            BrowserHitTarget {
+                component_id: "high".to_string(),
+                parent_component_id: None,
+                index: 2,
+                rect: rect(0.0, 0.0, 10.0, 10.0),
+                position: DropPosition::Before,
+                legal: true,
+                reason: None,
+                score: 9.0,
+            },
+        ];
+
+        let ranked = normalize_hit_targets(targets, CoordinateTransform::default());
+        let order = ranked
+            .iter()
+            .map(|candidate| candidate.target_component_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(order, vec!["high", "low", "nan"]);
+        assert!(ranked.iter().all(|candidate| candidate.score.is_finite()));
+    }
+
+    #[test]
+    fn hit_targets_with_unreal_rectangles_are_dropped() {
+        let targets = vec![BrowserHitTarget {
+            component_id: "bad".to_string(),
+            parent_component_id: None,
+            index: 0,
+            rect: rect(0.0, 0.0, f64::INFINITY, 10.0),
+            position: DropPosition::Before,
+            legal: true,
+            reason: None,
+            score: 1.0,
+        }];
+        assert!(normalize_hit_targets(targets, CoordinateTransform::default()).is_empty());
+    }
+
+    #[test]
+    fn a_hostile_priority_cannot_outrank_a_real_candidate() {
+        let pointer = BrowserPoint { x: 50.0, y: 50.0 };
+        let candidates = hit_test_drop_targets(
+            pointer,
+            vec![
+                drop_target(f32::NAN, rect(0.0, 0.0, 100.0, 100.0)),
+                drop_target(1.0, rect(0.0, 0.0, 100.0, 100.0)),
+            ],
+            CoordinateTransform::default(),
+        );
+        assert_eq!(candidates.len(), 2);
+        // Both share a rectangle, so proximity is equal and only the priority separates them.
+        assert_eq!(candidates[0].target_component_id, "c1");
+        assert!(candidates[0].score > candidates[1].score);
+        assert!(candidates.iter().all(|candidate| candidate.score.is_finite()));
+    }
+
+    #[test]
+    fn a_broken_transform_offset_does_not_poison_every_coordinate() {
+        // `normalized_zoom` already refused a bad zoom; a bad offset used to turn every converted
+        // coordinate into NaN instead.
+        let transform = CoordinateTransform {
+            host_offset_x: f64::NAN,
+            host_offset_y: 20.0,
+            iframe_offset_x: 30.0,
+            iframe_offset_y: f64::INFINITY,
+            scroll_x: 5.0,
+            scroll_y: 7.0,
+            zoom: 2.0,
+        };
+        let point = BrowserPoint { x: 140.0, y: 180.0 };
+        let canvas = transform.browser_to_canvas(point);
+        assert!(canvas.is_finite(), "{canvas:?}");
+        assert!(transform.canvas_to_browser(canvas).is_finite());
+    }
 }
+

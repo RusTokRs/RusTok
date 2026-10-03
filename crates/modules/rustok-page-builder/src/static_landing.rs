@@ -374,7 +374,7 @@ mod tests {
         let compiler = StaticLandingCompiler::default();
         let mut document = compiler.prepare_document(&project()).expect("prepared");
         document.component_mut("heading").expect("heading").style =
-            Some(json!({ "background-image": "url(https://evil.example/x.png)" }));
+            Some(json!({ "background-image": "url(javascript:alert(1))" }));
 
         let error = compiler
             .compile_prepared_document(&document)
