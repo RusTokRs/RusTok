@@ -29,10 +29,15 @@ import type {
 
 interface AttributeSchemasCardProps {
   schemas: ProductAttributeSchemaSummary[];
-  onCreateSchema: (payload: CreateProductAttributeSchemaPayload) => Promise<void>;
+  onCreateSchema: (
+    payload: CreateProductAttributeSchemaPayload
+  ) => Promise<void>;
 }
 
-export function AttributeSchemasCard({ schemas, onCreateSchema }: AttributeSchemasCardProps) {
+export function AttributeSchemasCard({
+  schemas,
+  onCreateSchema
+}: AttributeSchemasCardProps) {
   const [open, setOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState('');
@@ -46,7 +51,14 @@ export function AttributeSchemasCard({ schemas, onCreateSchema }: AttributeSchem
       .trim()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
-    if (!code || code === val.slice(0, -1).toLowerCase().replace(/[^a-z0-9]+/g, '_')) {
+    if (
+      !code ||
+      code ===
+        val
+          .slice(0, -1)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+    ) {
       setCode(generatedCode);
     }
   };
@@ -75,7 +87,9 @@ export function AttributeSchemasCard({ schemas, onCreateSchema }: AttributeSchem
       setCode('');
       setDescription('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create attribute schema');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create attribute schema'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +116,8 @@ export function AttributeSchemasCard({ schemas, onCreateSchema }: AttributeSchem
               <DialogHeader>
                 <DialogTitle>Create Attribute Schema</DialogTitle>
                 <DialogDescription>
-                  Define a schema template that groups attributes for catalog categories.
+                  Define a schema template that groups attributes for catalog
+                  categories.
                 </DialogDescription>
               </DialogHeader>
 
@@ -170,17 +185,22 @@ export function AttributeSchemasCard({ schemas, onCreateSchema }: AttributeSchem
       <CardContent>
         {schemas.length === 0 ? (
           <div className='text-muted-foreground flex flex-col items-center justify-center py-6 text-center text-sm'>
-            <Layers className='h-7 w-7 text-muted-foreground/50 mb-1' />
+            <Layers className='text-muted-foreground/50 mb-1 h-7 w-7' />
             <p>No attribute schemas defined yet.</p>
           </div>
         ) : (
           <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
             {schemas.map((s) => (
-              <div key={s.id} className='rounded-md border p-3 bg-muted/20 space-y-1'>
+              <div
+                key={s.id}
+                className='bg-muted/20 space-y-1 rounded-md border p-3'
+              >
                 <div className='flex items-center justify-between'>
-                  <p className='font-medium text-sm'>{s.name}</p>
+                  <p className='text-sm font-medium'>{s.name}</p>
                 </div>
-                <p className='text-xs text-muted-foreground font-mono'>{s.code}</p>
+                <p className='text-muted-foreground font-mono text-xs'>
+                  {s.code}
+                </p>
               </div>
             ))}
           </div>

@@ -178,10 +178,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
                   <TableBody>
                     {products.length === 0 ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={7}
-                          className='py-12 text-center'
-                        >
+                        <TableCell colSpan={7} className='py-12 text-center'>
                           <div className='flex flex-col items-center justify-center space-y-3'>
                             <PackageOpen className='text-muted-foreground/50 h-10 w-10' />
                             <p className='text-foreground text-sm font-medium'>

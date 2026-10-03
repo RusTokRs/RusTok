@@ -60,7 +60,7 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-3'>
-        <div className='relative flex-1 max-w-sm'>
+        <div className='relative max-w-sm flex-1'>
           <Search className='text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2' />
           <Input
             value={search}
@@ -69,8 +69,11 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
             className='pl-9'
           />
         </div>
-        <p className='text-muted-foreground text-xs ml-auto'>
-          Total categories: <span className='font-semibold text-foreground'>{categories.length}</span>
+        <p className='text-muted-foreground ml-auto text-xs'>
+          Total categories:{' '}
+          <span className='text-foreground font-semibold'>
+            {categories.length}
+          </span>
         </p>
       </div>
 
@@ -88,9 +91,12 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
           <TableBody>
             {filteredCategories.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className='text-muted-foreground py-8 text-center text-sm'>
+                <TableCell
+                  colSpan={5}
+                  className='text-muted-foreground py-8 text-center text-sm'
+                >
                   <div className='flex flex-col items-center justify-center gap-1.5'>
-                    <FolderTree className='h-8 w-8 text-muted-foreground/50' />
+                    <FolderTree className='text-muted-foreground/50 h-8 w-8' />
                     <p>No categories found.</p>
                   </div>
                 </TableCell>
@@ -98,7 +104,9 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
             ) : (
               filteredCategories.map((cat) => {
                 const depth = getDepth(cat);
-                const parentCat = cat.parentId ? categoryMap.get(cat.parentId) : undefined;
+                const parentCat = cat.parentId
+                  ? categoryMap.get(cat.parentId)
+                  : undefined;
 
                 return (
                   <TableRow key={cat.id}>
@@ -112,27 +120,32 @@ export function CategoriesTable({ categories }: CategoriesTableProps) {
                         ) : (
                           <FolderTree className='text-primary/70 h-4 w-4 flex-shrink-0' />
                         )}
-                        <span className='font-medium text-sm'>{cat.name || cat.code}</span>
+                        <span className='text-sm font-medium'>
+                          {cat.name || cat.code}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <code className='bg-muted rounded px-1.5 py-0.5 text-xs font-mono'>
+                      <code className='bg-muted rounded px-1.5 py-0.5 font-mono text-xs'>
                         {cat.code}
                       </code>
                     </TableCell>
-                    <TableCell className='text-muted-foreground text-sm font-mono'>
+                    <TableCell className='text-muted-foreground font-mono text-sm'>
                       {cat.slug}
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant={cat.kind === 'virtual' ? 'outline' : 'secondary'}
-                        className='capitalize text-xs'
+                        variant={
+                          cat.kind === 'virtual' ? 'outline' : 'secondary'
+                        }
+                        className='text-xs capitalize'
                       >
                         {cat.kind}
                       </Badge>
                     </TableCell>
                     <TableCell className='text-muted-foreground text-xs'>
-                      {cat.path || (parentCat ? parentCat.name || parentCat.code : 'Root')}
+                      {cat.path ||
+                        (parentCat ? parentCat.name || parentCat.code : 'Root')}
                     </TableCell>
                   </TableRow>
                 );

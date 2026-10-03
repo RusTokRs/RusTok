@@ -11,7 +11,13 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
@@ -45,7 +51,10 @@ import type { ProductVariant } from '../../api/types';
 interface ProductVariantsCardProps {
   variants: ProductVariant[];
   onAddVariant?: (variant: Omit<ProductVariant, 'id'>) => Promise<void>;
-  onUpdateVariant?: (id: string, variant: Partial<ProductVariant>) => Promise<void>;
+  onUpdateVariant?: (
+    id: string,
+    variant: Partial<ProductVariant>
+  ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
   isNew: boolean;
   onNewVariantDraftChange?: (draft: {
@@ -80,7 +89,8 @@ export function ProductVariantsCard({
   disabled = false
 }: ProductVariantsCardProps) {
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingVariant, setEditingVariant] = React.useState<ProductVariant | null>(null);
+  const [editingVariant, setEditingVariant] =
+    React.useState<ProductVariant | null>(null);
   const [isBusy, setIsBusy] = React.useState(false);
 
   // Dialog form fields
@@ -109,10 +119,14 @@ export function ProductVariantsCard({
     setFormSku(variant.sku || '');
     setFormBarcode(variant.barcode || '');
     const primaryPrice = variant.prices[0];
-    setFormPrice(primaryPrice ? (primaryPrice.amount / 100).toFixed(2) : '0.00');
+    setFormPrice(
+      primaryPrice ? (primaryPrice.amount / 100).toFixed(2) : '0.00'
+    );
     setFormCurrency(primaryPrice ? primaryPrice.currencyCode : 'USD');
     setFormCompareAt(
-      primaryPrice?.compareAtAmount ? (primaryPrice.compareAtAmount / 100).toFixed(2) : ''
+      primaryPrice?.compareAtAmount
+        ? (primaryPrice.compareAtAmount / 100).toFixed(2)
+        : ''
     );
     setFormStock(variant.inventoryQuantity.toString());
     setFormPolicy(variant.inventoryPolicy || 'deny');
@@ -121,10 +135,15 @@ export function ProductVariantsCard({
 
   const handleSaveDialog = async () => {
     const priceRaw = parseFloat(formPrice);
-    const amount = Number.isFinite(priceRaw) && priceRaw > 0 ? Math.round(priceRaw * 100) : 0;
+    const amount =
+      Number.isFinite(priceRaw) && priceRaw > 0
+        ? Math.round(priceRaw * 100)
+        : 0;
     const compareRaw = parseFloat(formCompareAt);
     const compareAtAmount =
-      Number.isFinite(compareRaw) && compareRaw > 0 ? Math.round(compareRaw * 100) : null;
+      Number.isFinite(compareRaw) && compareRaw > 0
+        ? Math.round(compareRaw * 100)
+        : null;
     const qty = parseInt(formStock, 10) || 0;
 
     setIsBusy(true);
@@ -176,15 +195,18 @@ export function ProductVariantsCard({
   };
 
   return (
-    <Card className='rounded-2xl border-border shadow-sm'>
-      <CardHeader className='pb-4 border-b border-border/60'>
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+    <Card className='border-border rounded-2xl shadow-sm'>
+      <CardHeader className='border-border/60 border-b pb-4'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex items-center gap-2'>
-            <Box className='h-4 w-4 text-primary' />
+            <Box className='text-primary h-4 w-4' />
             <div>
-              <CardTitle className='text-sm font-semibold'>Pricing & Variants</CardTitle>
+              <CardTitle className='text-sm font-semibold'>
+                Pricing & Variants
+              </CardTitle>
               <CardDescription className='text-xs'>
-                Manage SKUs, barcodes, multi-currency pricing, and inventory quantities.
+                Manage SKUs, barcodes, multi-currency pricing, and inventory
+                quantities.
               </CardDescription>
             </div>
           </div>
@@ -193,7 +215,7 @@ export function ProductVariantsCard({
               type='button'
               size='sm'
               onClick={openAddDialog}
-              className='h-8 px-3 rounded-xl text-xs gap-1.5 self-start sm:self-auto'
+              className='h-8 gap-1.5 self-start rounded-xl px-3 text-xs sm:self-auto'
               disabled={disabled}
             >
               <Plus className='h-3.5 w-3.5' />
@@ -202,16 +224,16 @@ export function ProductVariantsCard({
           )}
         </div>
       </CardHeader>
-      <CardContent className='pt-5 space-y-4'>
+      <CardContent className='space-y-4 pt-5'>
         {isNew ? (
           // Simple inline variant inputs for new products
-          <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4'>
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3'>
             <div className='space-y-1.5'>
               <Label htmlFor='new-price' className='text-xs font-medium'>
                 Price Amount <span className='text-destructive'>*</span>
               </Label>
-              <div className='flex rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring overflow-hidden bg-background'>
-                <span className='px-3 py-2 text-xs text-muted-foreground bg-muted/40 border-r border-border select-none'>
+              <div className='border-input focus-within:ring-ring bg-background flex overflow-hidden rounded-xl border focus-within:ring-1'>
+                <span className='text-muted-foreground bg-muted/40 border-border border-r px-3 py-2 text-xs select-none'>
                   {newVariantDraft?.currencyCode || 'USD'}
                 </span>
                 <input
@@ -225,7 +247,10 @@ export function ProductVariantsCard({
                   }
                   onChange={(e) => {
                     const parsed = parseFloat(e.target.value);
-                    const amount = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : 0;
+                    const amount =
+                      Number.isFinite(parsed) && parsed > 0
+                        ? Math.round(parsed * 100)
+                        : 0;
                     onNewVariantDraftChange?.({
                       ...(newVariantDraft || {
                         sku: '',
@@ -237,7 +262,7 @@ export function ProductVariantsCard({
                       priceAmount: amount
                     });
                   }}
-                  className='flex-1 px-3 py-2 text-xs font-mono bg-transparent outline-none'
+                  className='flex-1 bg-transparent px-3 py-2 font-mono text-xs outline-none'
                   disabled={disabled}
                 />
               </div>
@@ -263,7 +288,7 @@ export function ProductVariantsCard({
                   })
                 }
                 placeholder='e.g. PRD-001'
-                className='h-9 text-xs rounded-xl font-mono'
+                className='h-9 rounded-xl font-mono text-xs'
                 disabled={disabled}
               />
             </div>
@@ -289,17 +314,18 @@ export function ProductVariantsCard({
                     inventoryQuantity: qty
                   });
                 }}
-                className='h-9 text-xs rounded-xl font-mono'
+                className='h-9 rounded-xl font-mono text-xs'
                 disabled={disabled}
               />
             </div>
           </div>
         ) : variants.length === 0 ? (
-          <div className='py-8 text-center text-xs text-muted-foreground italic bg-muted/20 rounded-xl'>
-            No variants found for this product. Click "Add Variant" to create one.
+          <div className='text-muted-foreground bg-muted/20 rounded-xl py-8 text-center text-xs italic'>
+            No variants found for this product. Click "Add Variant" to create
+            one.
           </div>
         ) : (
-          <div className='rounded-xl border border-border overflow-hidden'>
+          <div className='border-border overflow-hidden rounded-xl border'>
             <Table>
               <TableHeader className='bg-muted/50'>
                 <TableRow className='text-[11px]'>
@@ -317,17 +343,26 @@ export function ProductVariantsCard({
                   return (
                     <TableRow key={v.id} className='hover:bg-accent/40'>
                       <TableCell className='font-mono'>
-                        <div className='font-medium text-foreground'>{v.sku || '—'}</div>
+                        <div className='text-foreground font-medium'>
+                          {v.sku || '—'}
+                        </div>
                         {v.barcode && (
-                          <div className='text-[10px] text-muted-foreground'>{v.barcode}</div>
+                          <div className='text-muted-foreground text-[10px]'>
+                            {v.barcode}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell className='font-semibold text-foreground'>
-                        {price ? formatPrice(price.amount, price.currencyCode) : '—'}
+                      <TableCell className='text-foreground font-semibold'>
+                        {price
+                          ? formatPrice(price.amount, price.currencyCode)
+                          : '—'}
                       </TableCell>
-                      <TableCell className='text-muted-foreground line-through text-[11px]'>
+                      <TableCell className='text-muted-foreground text-[11px] line-through'>
                         {price?.compareAtAmount
-                          ? formatPrice(price.compareAtAmount, price.currencyCode)
+                          ? formatPrice(
+                              price.compareAtAmount,
+                              price.currencyCode
+                            )
                           : '—'}
                       </TableCell>
                       <TableCell>
@@ -335,14 +370,14 @@ export function ProductVariantsCard({
                           variant={v.inStock ? 'secondary' : 'outline'}
                           className={`text-[10px] ${
                             v.inStock
-                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                              : 'text-rose-500 border-rose-500/30'
+                              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : 'border-rose-500/30 text-rose-500'
                           }`}
                         >
                           {v.inventoryQuantity} in stock
                         </Badge>
                       </TableCell>
-                      <TableCell className='text-muted-foreground uppercase text-[10px] font-mono'>
+                      <TableCell className='text-muted-foreground font-mono text-[10px] uppercase'>
                         {v.inventoryPolicy}
                       </TableCell>
                       <TableCell className='text-right'>
@@ -352,7 +387,7 @@ export function ProductVariantsCard({
                             variant='ghost'
                             size='icon'
                             onClick={() => openEditDialog(v)}
-                            className='h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground'
+                            className='text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg'
                             disabled={disabled}
                           >
                             <Edit2 className='h-3.5 w-3.5' />
@@ -363,7 +398,7 @@ export function ProductVariantsCard({
                               variant='ghost'
                               size='icon'
                               onClick={() => onDeleteVariant(v.id)}
-                              className='h-7 w-7 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                              className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
                               disabled={disabled}
                             >
                               <Trash2 className='h-3.5 w-3.5' />
@@ -382,7 +417,7 @@ export function ProductVariantsCard({
 
       {/* Add / Edit Variant Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className='sm:max-w-md rounded-2xl'>
+        <DialogContent className='rounded-2xl sm:max-w-md'>
           <DialogHeader>
             <DialogTitle className='text-sm font-semibold'>
               {editingVariant ? 'Edit Variant' : 'Add New Variant'}
@@ -401,7 +436,7 @@ export function ProductVariantsCard({
                   value={formSku}
                   onChange={(e) => setFormSku(e.target.value)}
                   placeholder='e.g. MOUSE-BLK'
-                  className='h-9 text-xs rounded-xl font-mono'
+                  className='h-9 rounded-xl font-mono text-xs'
                 />
               </div>
               <div className='space-y-1.5'>
@@ -411,7 +446,7 @@ export function ProductVariantsCard({
                   value={formBarcode}
                   onChange={(e) => setFormBarcode(e.target.value)}
                   placeholder='e.g. 123456789012'
-                  className='h-9 text-xs rounded-xl font-mono'
+                  className='h-9 rounded-xl font-mono text-xs'
                 />
               </div>
             </div>
@@ -420,7 +455,10 @@ export function ProductVariantsCard({
               <div className='space-y-1.5'>
                 <Label htmlFor='var-currency'>Currency</Label>
                 <Select value={formCurrency} onValueChange={setFormCurrency}>
-                  <SelectTrigger id='var-currency' className='h-9 text-xs rounded-xl font-mono'>
+                  <SelectTrigger
+                    id='var-currency'
+                    className='h-9 rounded-xl font-mono text-xs'
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -438,7 +476,7 @@ export function ProductVariantsCard({
                   step='0.01'
                   value={formPrice}
                   onChange={(e) => setFormPrice(e.target.value)}
-                  className='h-9 text-xs rounded-xl font-mono'
+                  className='h-9 rounded-xl font-mono text-xs'
                 />
               </div>
               <div className='space-y-1.5'>
@@ -450,7 +488,7 @@ export function ProductVariantsCard({
                   value={formCompareAt}
                   onChange={(e) => setFormCompareAt(e.target.value)}
                   placeholder='0.00'
-                  className='h-9 text-xs rounded-xl font-mono'
+                  className='h-9 rounded-xl font-mono text-xs'
                 />
               </div>
             </div>
@@ -463,18 +501,25 @@ export function ProductVariantsCard({
                   type='number'
                   value={formStock}
                   onChange={(e) => setFormStock(e.target.value)}
-                  className='h-9 text-xs rounded-xl font-mono'
+                  className='h-9 rounded-xl font-mono text-xs'
                 />
               </div>
               <div className='space-y-1.5'>
                 <Label htmlFor='var-policy'>Inventory Policy</Label>
                 <Select value={formPolicy} onValueChange={setFormPolicy}>
-                  <SelectTrigger id='var-policy' className='h-9 text-xs rounded-xl'>
+                  <SelectTrigger
+                    id='var-policy'
+                    className='h-9 rounded-xl text-xs'
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='deny' className='text-xs'>Deny on out of stock</SelectItem>
-                    <SelectItem value='continue' className='text-xs'>Continue selling</SelectItem>
+                    <SelectItem value='deny' className='text-xs'>
+                      Deny on out of stock
+                    </SelectItem>
+                    <SelectItem value='continue' className='text-xs'>
+                      Continue selling
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -486,7 +531,7 @@ export function ProductVariantsCard({
               type='button'
               variant='outline'
               onClick={() => setDialogOpen(false)}
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
             >
               Cancel
             </Button>
@@ -494,9 +539,13 @@ export function ProductVariantsCard({
               type='button'
               onClick={handleSaveDialog}
               disabled={isBusy}
-              className='h-9 text-xs rounded-xl font-semibold'
+              className='h-9 rounded-xl text-xs font-semibold'
             >
-              {isBusy ? 'Saving...' : editingVariant ? 'Update Variant' : 'Create Variant'}
+              {isBusy
+                ? 'Saving...'
+                : editingVariant
+                  ? 'Update Variant'
+                  : 'Create Variant'}
             </Button>
           </DialogFooter>
         </DialogContent>

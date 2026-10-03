@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { listCatalogCategories } from '../api/categories';
 import type {
   GqlOpts,
@@ -31,14 +37,17 @@ export async function CategoriesPage({
   try {
     categories = await listCatalogCategories(opts, locale);
   } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load catalog categories.';
+    error =
+      err instanceof Error ? err.message : 'Failed to load catalog categories.';
   }
 
   return (
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <div>
-          <h2 className='text-lg font-semibold tracking-tight'>Catalog Categories</h2>
+          <h2 className='text-lg font-semibold tracking-tight'>
+            Catalog Categories
+          </h2>
           <p className='text-muted-foreground text-sm'>
             Manage category hierarchies and taxonomy bindings for your products.
           </p>
@@ -51,7 +60,9 @@ export async function CategoriesPage({
 
       {error ? (
         <Card className='border-destructive/50'>
-          <CardContent className='text-destructive py-6 text-sm'>{error}</CardContent>
+          <CardContent className='text-destructive py-6 text-sm'>
+            {error}
+          </CardContent>
         </Card>
       ) : (
         <Card>

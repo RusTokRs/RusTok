@@ -14,6 +14,12 @@ import {
   type AdminGraphqlExecutor,
   type GqlOpts
 } from '@/lib/graphql';
+import type {
+  ProductListItem,
+  ProductDetail,
+  ProductAttributeSummary,
+  CatalogCategorySummary
+} from './api/types';
 import { productNavItems } from './nav';
 
 registerAdminModule({
@@ -42,7 +48,6 @@ export * from './components/products/product-seo-card';
 export * from './pages/categories-page';
 export * from './pages/attributes-page';
 export * from './pages/product-editor-page';
-
 
 export type ProductCatalogSearchOption = {
   value: string;

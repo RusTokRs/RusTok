@@ -1,6 +1,15 @@
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
-import { listProductAttributes, listProductAttributeSchemas } from '../api/attributes';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
+import {
+  listProductAttributes,
+  listProductAttributeSchemas
+} from '../api/attributes';
 import type {
   GqlOpts,
   CreateProductAttributePayload,
@@ -19,8 +28,12 @@ export interface AttributesPageProps {
   tenantId: string | null;
   locale?: string;
   onCreateAttribute: (payload: CreateProductAttributePayload) => Promise<void>;
-  onCreateOption: (payload: CreateProductAttributeOptionPayload) => Promise<void>;
-  onCreateSchema: (payload: CreateProductAttributeSchemaPayload) => Promise<void>;
+  onCreateOption: (
+    payload: CreateProductAttributeOptionPayload
+  ) => Promise<void>;
+  onCreateSchema: (
+    payload: CreateProductAttributeSchemaPayload
+  ) => Promise<void>;
 }
 
 export async function AttributesPage({
@@ -45,16 +58,20 @@ export async function AttributesPage({
     attributes = attrsRes;
     schemas = schemasRes;
   } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load product attributes.';
+    error =
+      err instanceof Error ? err.message : 'Failed to load product attributes.';
   }
 
   return (
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <div>
-          <h2 className='text-lg font-semibold tracking-tight'>Product Attributes & Schemas</h2>
+          <h2 className='text-lg font-semibold tracking-tight'>
+            Product Attributes & Schemas
+          </h2>
           <p className='text-muted-foreground text-sm'>
-            Define dynamic attributes, option dictionaries, and schema templates for catalog products.
+            Define dynamic attributes, option dictionaries, and schema templates
+            for catalog products.
           </p>
         </div>
         <AttributeCreateDialog onCreateAttribute={onCreateAttribute} />
@@ -62,7 +79,9 @@ export async function AttributesPage({
 
       {error ? (
         <Card className='border-destructive/50'>
-          <CardContent className='text-destructive py-6 text-sm'>{error}</CardContent>
+          <CardContent className='text-destructive py-6 text-sm'>
+            {error}
+          </CardContent>
         </Card>
       ) : (
         <div className='space-y-6'>
@@ -70,15 +89,22 @@ export async function AttributesPage({
             <CardHeader className='pb-3'>
               <CardTitle className='text-base'>Attributes Directory</CardTitle>
               <CardDescription>
-                Catalog-wide typed attributes with filtering, sorting, and localized values support.
+                Catalog-wide typed attributes with filtering, sorting, and
+                localized values support.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <AttributesTable attributes={attributes} onCreateOption={onCreateOption} />
+              <AttributesTable
+                attributes={attributes}
+                onCreateOption={onCreateOption}
+              />
             </CardContent>
           </Card>
 
-          <AttributeSchemasCard schemas={schemas} onCreateSchema={onCreateSchema} />
+          <AttributeSchemasCard
+            schemas={schemas}
+            onCreateSchema={onCreateSchema}
+          />
         </div>
       )}
     </div>

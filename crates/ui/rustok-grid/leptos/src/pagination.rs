@@ -77,10 +77,10 @@ pub fn GridPaginationBar(
                     <select
                         prop:value=move || page_size().to_string()
                         on:change=move |ev: Event| {
-                            if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-                                if size > 0 {
-                                    on_page_size_change.run(size);
-                                }
+                            if let Ok(size) = event_target_value(&ev).parse::<usize>()
+                                && size > 0
+                            {
+                                on_page_size_change.run(size);
                             }
                         }
                         class="text-xs rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:border-primary focus:outline-none"

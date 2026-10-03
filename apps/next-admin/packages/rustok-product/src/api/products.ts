@@ -8,10 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import {
-  graphqlRequest,
-  type GqlOpts
-} from '@/lib/graphql';
+import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
 import type {
   ProductDetail,
   ProductImage,
@@ -536,7 +533,11 @@ export async function saveProductAttributeValues(
 
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
-    { productId: string; locale: string; patches: ProductAttributeValuePatch[] },
+    {
+      productId: string;
+      locale: string;
+      patches: ProductAttributeValuePatch[];
+    },
     { saveProductAttributeValues: ProductAttributeValueItem[] }
   >(
     SAVE_ATTRIBUTE_VALUES_MUTATION,

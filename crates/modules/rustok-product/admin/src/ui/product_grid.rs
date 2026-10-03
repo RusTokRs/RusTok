@@ -592,7 +592,7 @@ pub fn ProductGridPage() -> impl IntoView {
                     </div>
                     {move || {
                         if confirm_bulk.get() {
-                            let bulk_del = on_bulk_delete.clone();
+                            let bulk_del = on_bulk_delete;
                             view! {
                                 <div class="flex items-center gap-2 animate-in fade-in duration-100">
                                     <span class="text-xs font-medium text-rose-600 dark:text-rose-400">
@@ -619,9 +619,9 @@ pub fn ProductGridPage() -> impl IntoView {
                             }
                             .into_any()
                         } else {
-                            let bulk_st_act = on_bulk_status.clone();
-                            let bulk_st_drf = on_bulk_status.clone();
-                            let bulk_st_arc = on_bulk_status.clone();
+                            let bulk_st_act = on_bulk_status;
+                            let bulk_st_drf = on_bulk_status;
+                            let bulk_st_arc = on_bulk_status;
                             view! {
                                 <div class="flex items-center gap-2">
                                     <button

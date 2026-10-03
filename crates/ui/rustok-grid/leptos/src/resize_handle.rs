@@ -43,12 +43,12 @@ pub fn ColumnResizeHandle(
         }
         ev.stop_propagation();
         ev.prevent_default();
-        if let Some(target) = ev.current_target() {
-            if let Ok(element) = target.dyn_into::<web_sys::Element>() {
-                // Pointer capture keeps move/up events coming to this element
-                // even when the cursor leaves it mid-drag.
-                let _ = element.set_pointer_capture(ev.pointer_id());
-            }
+        if let Some(target) = ev.current_target()
+            && let Ok(element) = target.dyn_into::<web_sys::Element>()
+        {
+            // Pointer capture keeps move/up events coming to this element
+            // even when the cursor leaves it mid-drag.
+            let _ = element.set_pointer_capture(ev.pointer_id());
         }
         set_start_x.set(ev.client_x() as f64);
         set_initial_width.set(current_width.get_untracked());
@@ -73,10 +73,10 @@ pub fn ColumnResizeHandle(
         if !is_dragging.get_untracked() {
             return;
         }
-        if let Some(target) = ev.current_target() {
-            if let Ok(element) = target.dyn_into::<web_sys::Element>() {
-                let _ = element.release_pointer_capture(ev.pointer_id());
-            }
+        if let Some(target) = ev.current_target()
+            && let Ok(element) = target.dyn_into::<web_sys::Element>()
+        {
+            let _ = element.release_pointer_capture(ev.pointer_id());
         }
         set_is_dragging.set(false);
     };

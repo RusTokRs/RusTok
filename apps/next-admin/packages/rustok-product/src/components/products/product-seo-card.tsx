@@ -11,7 +11,13 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
@@ -31,7 +37,8 @@ export function ProductSeoCard({
   onChange,
   disabled = false
 }: ProductSeoCardProps) {
-  const displayTitle = translation.metaTitle || translation.title || 'Product Title';
+  const displayTitle =
+    translation.metaTitle || translation.title || 'Product Title';
   const displayDesc =
     translation.metaDescription ||
     translation.description ||
@@ -39,29 +46,34 @@ export function ProductSeoCard({
   const displaySlug = translation.handle || 'product-handle';
 
   return (
-    <Card className='rounded-2xl border-border shadow-sm'>
-      <CardHeader className='pb-4 border-b border-border/60'>
+    <Card className='border-border rounded-2xl shadow-sm'>
+      <CardHeader className='border-border/60 border-b pb-4'>
         <div className='flex items-center gap-2'>
-          <Search className='h-4 w-4 text-primary' />
+          <Search className='text-primary h-4 w-4' />
           <div>
-            <CardTitle className='text-sm font-semibold'>Search Engine Optimization</CardTitle>
+            <CardTitle className='text-sm font-semibold'>
+              Search Engine Optimization
+            </CardTitle>
             <CardDescription className='text-xs'>
-              Explicit meta tags and SERP search snippet preview ({activeLocale.toUpperCase()}).
+              Explicit meta tags and SERP search snippet preview (
+              {activeLocale.toUpperCase()}).
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className='pt-5 space-y-5'>
+      <CardContent className='space-y-5 pt-5'>
         {/* SERP Preview Box */}
-        <div className='p-4 rounded-xl border border-border/80 bg-muted/20 space-y-1'>
-          <div className='flex items-center gap-1.5 text-[11px] text-muted-foreground'>
-            <Globe className='h-3 w-3 text-muted-foreground/70' />
-            <span className='truncate'>https://example.com › products › {displaySlug}</span>
+        <div className='border-border/80 bg-muted/20 space-y-1 rounded-xl border p-4'>
+          <div className='text-muted-foreground flex items-center gap-1.5 text-[11px]'>
+            <Globe className='text-muted-foreground/70 h-3 w-3' />
+            <span className='truncate'>
+              https://example.com › products › {displaySlug}
+            </span>
           </div>
-          <div className='text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer truncate'>
+          <div className='cursor-pointer truncate text-sm font-medium text-blue-600 hover:underline dark:text-blue-400'>
             {displayTitle}
           </div>
-          <p className='text-xs text-muted-foreground line-clamp-2 leading-relaxed'>
+          <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
             {displayDesc}
           </p>
         </div>
@@ -73,7 +85,7 @@ export function ProductSeoCard({
               <Label htmlFor='meta-title' className='text-xs font-medium'>
                 Meta Title
               </Label>
-              <span className='text-[10px] text-muted-foreground'>
+              <span className='text-muted-foreground text-[10px]'>
                 {(translation.metaTitle || '').length} / 60 chars
               </span>
             </div>
@@ -82,7 +94,7 @@ export function ProductSeoCard({
               value={translation.metaTitle || ''}
               onChange={(e) => onChange('metaTitle', e.target.value)}
               placeholder={translation.title || 'Defaults to product title'}
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
               disabled={disabled}
             />
           </div>
@@ -92,7 +104,7 @@ export function ProductSeoCard({
               <Label htmlFor='meta-desc' className='text-xs font-medium'>
                 Meta Description
               </Label>
-              <span className='text-[10px] text-muted-foreground'>
+              <span className='text-muted-foreground text-[10px]'>
                 {(translation.metaDescription || '').length} / 160 chars
               </span>
             </div>
@@ -106,7 +118,7 @@ export function ProductSeoCard({
                   ? translation.description.slice(0, 160)
                   : 'Defaults to product description snippet'
               }
-              className='text-xs rounded-xl resize-none'
+              className='resize-none rounded-xl text-xs'
               disabled={disabled}
             />
           </div>

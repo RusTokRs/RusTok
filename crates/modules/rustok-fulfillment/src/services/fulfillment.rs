@@ -2420,6 +2420,7 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
 mod tests {
     use super::{
         fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
+        CheckoutFulfillmentIdentity, FulfillmentService,
     };
     use crate::entities::{self, shipping_option, shipping_option_translation};
     use chrono::Utc;

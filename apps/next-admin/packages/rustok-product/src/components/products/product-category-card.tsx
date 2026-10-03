@@ -11,7 +11,13 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
@@ -38,7 +44,10 @@ interface ProductCategoryCardProps {
   effectiveForm: ProductEffectiveForm | null;
   isLoadingForm: boolean;
   attributeValues: Record<string, ProductAttributeValuePatch>;
-  onAttributeValueChange: (attributeId: string, patch: Partial<ProductAttributeValuePatch>) => void;
+  onAttributeValueChange: (
+    attributeId: string,
+    patch: Partial<ProductAttributeValuePatch>
+  ) => void;
   disabled?: boolean;
 }
 
@@ -64,7 +73,10 @@ export function ProductCategoryCard({
   // Group attributes by groupCode / groupLabel
   const groupedAttributes = React.useMemo(() => {
     if (!effectiveForm || !effectiveForm.attributes) return {};
-    const groups: Record<string, { label: string; attributes: typeof effectiveForm.attributes }> = {};
+    const groups: Record<
+      string,
+      { label: string; attributes: typeof effectiveForm.attributes }
+    > = {};
 
     for (const attr of effectiveForm.attributes) {
       const gCode = attr.groupCode || 'general';
@@ -78,19 +90,22 @@ export function ProductCategoryCard({
   }, [effectiveForm]);
 
   return (
-    <Card className='rounded-2xl border-border shadow-sm'>
-      <CardHeader className='pb-4 border-b border-border/60'>
+    <Card className='border-border rounded-2xl shadow-sm'>
+      <CardHeader className='border-border/60 border-b pb-4'>
         <div className='flex items-center gap-2'>
-          <FolderTree className='h-4 w-4 text-primary' />
+          <FolderTree className='text-primary h-4 w-4' />
           <div>
-            <CardTitle className='text-sm font-semibold'>Category & Specifications</CardTitle>
+            <CardTitle className='text-sm font-semibold'>
+              Category & Specifications
+            </CardTitle>
             <CardDescription className='text-xs'>
-              Select a primary category to inherit and edit schema-defined product attributes.
+              Select a primary category to inherit and edit schema-defined
+              product attributes.
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className='pt-5 space-y-6'>
+      <CardContent className='space-y-6 pt-5'>
         {/* Category Picker */}
         <div className='space-y-1.5'>
           <Label htmlFor='category-select' className='text-xs font-medium'>
@@ -101,17 +116,23 @@ export function ProductCategoryCard({
             onValueChange={(val) => onSelectCategory(val === 'none' ? '' : val)}
             disabled={disabled}
           >
-            <SelectTrigger id='category-select' className='h-9 text-xs rounded-xl'>
+            <SelectTrigger
+              id='category-select'
+              className='h-9 rounded-xl text-xs'
+            >
               <SelectValue placeholder='Select a category...' />
             </SelectTrigger>
             <SelectContent className='max-h-64'>
-              <SelectItem value='none' className='text-xs text-muted-foreground'>
+              <SelectItem
+                value='none'
+                className='text-muted-foreground text-xs'
+              >
                 No category assigned
               </SelectItem>
               {categoryOptions.map((opt) => (
                 <SelectItem key={opt.id} value={opt.id} className='text-xs'>
                   <span className='font-medium'>{opt.label}</span>
-                  <span className='text-[10px] text-muted-foreground ml-2'>
+                  <span className='text-muted-foreground ml-2 text-[10px]'>
                     ({opt.kind})
                   </span>
                 </SelectItem>
@@ -121,38 +142,41 @@ export function ProductCategoryCard({
         </div>
 
         {/* Dynamic Effective Form */}
-        <div className='pt-2 border-t border-border/40'>
+        <div className='border-border/40 border-t pt-2'>
           {isLoadingForm ? (
-            <div className='flex items-center justify-center py-8 gap-2 text-xs text-muted-foreground'>
-              <Loader2 className='h-4 w-4 animate-spin text-primary' />
+            <div className='text-muted-foreground flex items-center justify-center gap-2 py-8 text-xs'>
+              <Loader2 className='text-primary h-4 w-4 animate-spin' />
               <span>Loading category attribute form...</span>
             </div>
           ) : !selectedCategoryId ? (
-            <div className='flex flex-col items-center justify-center py-8 text-center text-muted-foreground gap-2 bg-muted/20 rounded-xl border border-dashed border-border/80'>
+            <div className='text-muted-foreground bg-muted/20 border-border/80 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-8 text-center'>
               <Layers className='h-6 w-6 opacity-40' />
-              <p className='text-xs font-medium'>No primary category selected</p>
-              <p className='text-[11px] max-w-xs opacity-75'>
-                Choose a category above to load typed attributes and facet specifications.
+              <p className='text-xs font-medium'>
+                No primary category selected
+              </p>
+              <p className='max-w-xs text-[11px] opacity-75'>
+                Choose a category above to load typed attributes and facet
+                specifications.
               </p>
             </div>
           ) : Object.keys(groupedAttributes).length === 0 ? (
-            <div className='py-6 text-center text-xs text-muted-foreground italic bg-muted/20 rounded-xl'>
+            <div className='text-muted-foreground bg-muted/20 rounded-xl py-6 text-center text-xs italic'>
               This category has no schema-assigned attributes yet.
             </div>
           ) : (
             <div className='space-y-6'>
               {Object.entries(groupedAttributes).map(([gCode, group]) => (
                 <div key={gCode} className='space-y-3.5'>
-                  <div className='flex items-center gap-2 border-b border-border/50 pb-1.5'>
-                    <h4 className='text-xs font-semibold text-foreground uppercase tracking-wider'>
+                  <div className='border-border/50 flex items-center gap-2 border-b pb-1.5'>
+                    <h4 className='text-foreground text-xs font-semibold tracking-wider uppercase'>
                       {group.label}
                     </h4>
-                    <span className='text-[10px] text-muted-foreground'>
+                    <span className='text-muted-foreground text-[10px]'>
                       ({group.attributes.length})
                     </span>
                   </div>
 
-                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                  <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
                     {group.attributes.map((attr) => {
                       const val = attributeValues[attr.attributeId] || {
                         attributeId: attr.attributeId,
@@ -164,14 +188,14 @@ export function ProductCategoryCard({
                           <div className='flex items-center justify-between'>
                             <Label
                               htmlFor={`attr-${attr.attributeId}`}
-                              className='text-xs font-medium flex items-center gap-1'
+                              className='flex items-center gap-1 text-xs font-medium'
                             >
                               <span>{attr.label}</span>
                               {attr.isRequired && (
                                 <span className='text-destructive'>*</span>
                               )}
                             </Label>
-                            <span className='text-[10px] font-mono text-muted-foreground/60'>
+                            <span className='text-muted-foreground/60 font-mono text-[10px]'>
                               {attr.code}
                             </span>
                           </div>
@@ -180,7 +204,8 @@ export function ProductCategoryCard({
                           {renderAttributeControl(
                             attr,
                             val,
-                            (patch) => onAttributeValueChange(attr.attributeId, patch),
+                            (patch) =>
+                              onAttributeValueChange(attr.attributeId, patch),
                             disabled
                           )}
                         </div>
@@ -208,7 +233,7 @@ function renderAttributeControl(
   switch (type) {
     case 'boolean':
       return (
-        <div className='flex items-center gap-2 h-9'>
+        <div className='flex h-9 items-center gap-2'>
           <Switch
             id={`attr-${attr.attributeId}`}
             checked={Boolean(val.boolean)}
@@ -217,7 +242,7 @@ function renderAttributeControl(
             }
             disabled={disabled}
           />
-          <span className='text-xs text-muted-foreground font-medium'>
+          <span className='text-muted-foreground text-xs font-medium'>
             {val.boolean ? 'Yes' : 'No'}
           </span>
         </div>
@@ -229,13 +254,19 @@ function renderAttributeControl(
           id={`attr-${attr.attributeId}`}
           type='number'
           step='1'
-          value={val.integer !== undefined && val.integer !== null ? val.integer : ''}
+          value={
+            val.integer !== undefined && val.integer !== null ? val.integer : ''
+          }
           onChange={(e) => {
-            const parsed = e.target.value === '' ? null : parseInt(e.target.value, 10);
-            onChange({ kind: 'INTEGER', integer: isNaN(parsed as number) ? null : parsed });
+            const parsed =
+              e.target.value === '' ? null : parseInt(e.target.value, 10);
+            onChange({
+              kind: 'INTEGER',
+              integer: isNaN(parsed as number) ? null : parsed
+            });
           }}
           placeholder='0'
-          className='h-9 text-xs rounded-xl font-mono'
+          className='h-9 rounded-xl font-mono text-xs'
           disabled={disabled}
         />
       );
@@ -251,7 +282,7 @@ function renderAttributeControl(
             onChange({ kind: 'DECIMAL', decimal: e.target.value || null })
           }
           placeholder='0.00'
-          className='h-9 text-xs rounded-xl font-mono'
+          className='h-9 rounded-xl font-mono text-xs'
           disabled={disabled}
         />
       );
@@ -265,7 +296,7 @@ function renderAttributeControl(
           onChange={(e) =>
             onChange({ kind: 'DATE', date: e.target.value || null })
           }
-          className='h-9 text-xs rounded-xl'
+          className='h-9 rounded-xl text-xs'
           disabled={disabled}
         />
       );
@@ -279,10 +310,12 @@ function renderAttributeControl(
           onChange={(e) =>
             onChange({
               kind: 'DATETIME',
-              datetime: e.target.value ? new Date(e.target.value).toISOString() : null
+              datetime: e.target.value
+                ? new Date(e.target.value).toISOString()
+                : null
             })
           }
-          className='h-9 text-xs rounded-xl'
+          className='h-9 rounded-xl text-xs'
           disabled={disabled}
         />
       );
@@ -299,11 +332,14 @@ function renderAttributeControl(
           }
           disabled={disabled}
         >
-          <SelectTrigger id={`attr-${attr.attributeId}`} className='h-9 text-xs rounded-xl'>
+          <SelectTrigger
+            id={`attr-${attr.attributeId}`}
+            className='h-9 rounded-xl text-xs'
+          >
             <SelectValue placeholder='Select option...' />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value='none' className='text-xs text-muted-foreground'>
+            <SelectItem value='none' className='text-muted-foreground text-xs'>
               Not selected
             </SelectItem>
             {attr.options.map((opt) => (
@@ -318,7 +354,7 @@ function renderAttributeControl(
     case 'multi_option':
       const currentSelected = val.optionIds || [];
       return (
-        <div className='flex flex-wrap gap-1.5 p-2 rounded-xl border border-input min-h-[42px] bg-background'>
+        <div className='border-input bg-background flex min-h-[42px] flex-wrap gap-1.5 rounded-xl border p-2'>
           {attr.options.map((opt) => {
             const isChecked = currentSelected.includes(opt.id);
             return (
@@ -332,7 +368,7 @@ function renderAttributeControl(
                     : [...currentSelected, opt.id];
                   onChange({ kind: 'MULTI_OPTION', optionIds: updated });
                 }}
-                className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                className={`rounded-lg border px-2.5 py-1 text-xs transition ${
                   isChecked
                     ? 'bg-primary text-primary-foreground border-primary font-semibold'
                     : 'bg-muted/40 text-foreground border-border hover:bg-muted'
@@ -355,7 +391,7 @@ function renderAttributeControl(
             onChange({ kind: 'JSON', json: e.target.value || null })
           }
           placeholder='{"key": "value"}'
-          className='text-xs rounded-xl font-mono'
+          className='rounded-xl font-mono text-xs'
           disabled={disabled}
         />
       );
@@ -370,7 +406,7 @@ function renderAttributeControl(
             onChange({ kind: 'TEXT', text: e.target.value || null })
           }
           placeholder='Enter formatted text...'
-          className='text-xs rounded-xl'
+          className='rounded-xl text-xs'
           disabled={disabled}
         />
       );
@@ -385,7 +421,7 @@ function renderAttributeControl(
             onChange({ kind: 'TEXT', text: e.target.value || null })
           }
           placeholder='Attribute value...'
-          className='h-9 text-xs rounded-xl'
+          className='h-9 rounded-xl text-xs'
           disabled={disabled}
         />
       );

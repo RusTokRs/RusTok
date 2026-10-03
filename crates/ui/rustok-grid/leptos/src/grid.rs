@@ -221,10 +221,10 @@ where
         }
         // Changing the page size sends the user back to page 1; a server-side
         // consumer has to learn about that too — but only when it happened.
-        if previous_page != current.page {
-            if let Some(cb) = on_page_change {
-                cb.run(current.page);
-            }
+        if previous_page != current.page
+            && let Some(cb) = on_page_change
+        {
+            cb.run(current.page);
         }
     });
 

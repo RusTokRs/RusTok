@@ -233,14 +233,20 @@ export async function deleteImageAction(productId: string, id: string) {
   return res;
 }
 
-export async function reorderImagesAction(productId: string, imageIds: string[]) {
+export async function reorderImagesAction(
+  productId: string,
+  imageIds: string[]
+) {
   const opts = await getAuthOpts();
   const res = await reorderProductImages(opts, productId, imageIds);
   revalidatePath(`/dashboard/product/${productId}`);
   return res;
 }
 
-export async function fetchEffectiveFormAction(categoryId: string, locale: string) {
+export async function fetchEffectiveFormAction(
+  categoryId: string,
+  locale: string
+) {
   const opts = await getAuthOpts();
   return getCategoryEffectiveForm(opts, categoryId, locale);
 }

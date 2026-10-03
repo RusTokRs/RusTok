@@ -120,7 +120,10 @@ export async function listProductAttributes(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const data = await executor<{ tenantId: string; locale: string }, AttributesResponse>(
+  const data = await executor<
+    { tenantId: string; locale: string },
+    AttributesResponse
+  >(
     PRODUCT_ATTRIBUTES_QUERY,
     { tenantId: opts.tenantId, locale },
     opts.token,
@@ -216,7 +219,10 @@ export async function listProductAttributeSchemas(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const data = await executor<{ tenantId: string; locale: string }, AttributeSchemasResponse>(
+  const data = await executor<
+    { tenantId: string; locale: string },
+    AttributeSchemasResponse
+  >(
     PRODUCT_ATTRIBUTE_SCHEMAS_QUERY,
     { tenantId: opts.tenantId, locale },
     opts.token,

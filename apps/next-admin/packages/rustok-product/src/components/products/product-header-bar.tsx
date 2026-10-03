@@ -58,7 +58,7 @@ export function ProductHeaderBar({
       case 'ACTIVE':
       case 'PUBLISHED':
         return (
-          <Badge className='bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-semibold'>
+          <Badge className='border-emerald-500/30 bg-emerald-500/15 font-semibold text-emerald-600 dark:text-emerald-400'>
             Active
           </Badge>
         );
@@ -70,7 +70,10 @@ export function ProductHeaderBar({
         );
       default:
         return (
-          <Badge variant='outline' className='text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10'>
+          <Badge
+            variant='outline'
+            className='border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          >
             Draft
           </Badge>
         );
@@ -78,21 +81,26 @@ export function ProductHeaderBar({
   };
 
   return (
-    <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-card rounded-2xl border border-border p-4 shadow-sm'>
+    <div className='bg-card border-border flex flex-col gap-4 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between'>
       <div className='flex items-center gap-3'>
-        <Button asChild variant='outline' size='icon' className='h-9 w-9 rounded-xl'>
+        <Button
+          asChild
+          variant='outline'
+          size='icon'
+          className='h-9 w-9 rounded-xl'
+        >
           <Link href='/dashboard/product' title='Back to Catalog'>
             <ArrowLeft className='h-4 w-4' />
           </Link>
         </Button>
         <div>
           <div className='flex items-center gap-2'>
-            <h1 className='text-lg font-bold tracking-tight text-foreground truncate max-w-md'>
+            <h1 className='text-foreground max-w-md truncate text-lg font-bold tracking-tight'>
               {title || (isNew ? 'New Product' : 'Untitled Product')}
             </h1>
             {!isNew && getStatusBadge()}
           </div>
-          <p className='text-xs text-muted-foreground mt-0.5'>
+          <p className='text-muted-foreground mt-0.5 text-xs'>
             {isNew
               ? 'Configure catalog entity, initial variant, and effective category attributes.'
               : 'Product catalog specification, variants matrix, localized media, and lifecycle.'}
@@ -104,7 +112,12 @@ export function ProductHeaderBar({
         {!isNew && onStatusChange && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant='outline' size='sm' className='h-9 rounded-xl text-xs gap-1.5' disabled={isSaving}>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-9 gap-1.5 rounded-xl text-xs'
+                disabled={isSaving}
+              >
                 <span>Status: {normStatus}</span>
                 <ChevronDown className='h-3.5 w-3.5 opacity-60' />
               </Button>
@@ -112,21 +125,21 @@ export function ProductHeaderBar({
             <DropdownMenuContent align='end' className='w-48'>
               <DropdownMenuItem
                 onClick={() => onStatusChange('ACTIVE')}
-                className='gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 cursor-pointer'
+                className='cursor-pointer gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400'
               >
                 <Globe className='h-3.5 w-3.5' />
                 <span>Publish (Active)</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onStatusChange('DRAFT')}
-                className='gap-2 text-xs font-medium cursor-pointer'
+                className='cursor-pointer gap-2 text-xs font-medium'
               >
                 <FileEdit className='h-3.5 w-3.5' />
                 <span>Move to Draft</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onStatusChange('ARCHIVED')}
-                className='gap-2 text-xs font-medium cursor-pointer'
+                className='cursor-pointer gap-2 text-xs font-medium'
               >
                 <Archive className='h-3.5 w-3.5' />
                 <span>Archive</span>
@@ -136,7 +149,7 @@ export function ProductHeaderBar({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={onDelete}
-                    className='gap-2 text-xs font-medium text-destructive cursor-pointer'
+                    className='text-destructive cursor-pointer gap-2 text-xs font-medium'
                   >
                     <Trash2 className='h-3.5 w-3.5' />
                     <span>Delete Product</span>
@@ -150,7 +163,7 @@ export function ProductHeaderBar({
         <Button
           onClick={onSave}
           disabled={isSaving}
-          className='h-9 px-4 rounded-xl text-xs font-semibold gap-1.5 shadow-sm'
+          className='h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-sm'
         >
           {isSaving ? (
             <>

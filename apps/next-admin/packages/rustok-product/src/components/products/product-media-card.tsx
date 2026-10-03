@@ -11,7 +11,13 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
@@ -23,7 +29,14 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/shared/ui/shadcn/dialog';
-import { ImageIcon, Plus, Trash2, ArrowLeft, ArrowRight, ExternalLink } from 'lucide-react';
+import {
+  ImageIcon,
+  Plus,
+  Trash2,
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink
+} from 'lucide-react';
 import type { ProductImage } from '../../api/types';
 
 interface ProductMediaCardProps {
@@ -79,13 +92,15 @@ export function ProductMediaCard({
   };
 
   return (
-    <Card className='rounded-2xl border-border shadow-sm'>
-      <CardHeader className='pb-4 border-b border-border/60'>
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+    <Card className='border-border rounded-2xl shadow-sm'>
+      <CardHeader className='border-border/60 border-b pb-4'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex items-center gap-2'>
-            <ImageIcon className='h-4 w-4 text-primary' />
+            <ImageIcon className='text-primary h-4 w-4' />
             <div>
-              <CardTitle className='text-sm font-semibold'>Media Gallery</CardTitle>
+              <CardTitle className='text-sm font-semibold'>
+                Media Gallery
+              </CardTitle>
               <CardDescription className='text-xs'>
                 Product photos, asset attachments, and localized alt texts.
               </CardDescription>
@@ -96,7 +111,7 @@ export function ProductMediaCard({
               type='button'
               size='sm'
               onClick={() => setDialogOpen(true)}
-              className='h-8 px-3 rounded-xl text-xs gap-1.5 self-start sm:self-auto'
+              className='h-8 gap-1.5 self-start rounded-xl px-3 text-xs sm:self-auto'
               disabled={disabled}
             >
               <Plus className='h-3.5 w-3.5' />
@@ -107,43 +122,46 @@ export function ProductMediaCard({
       </CardHeader>
       <CardContent className='pt-5'>
         {sortedImages.length === 0 ? (
-          <div className='flex flex-col items-center justify-center py-8 text-center text-muted-foreground gap-2 bg-muted/20 rounded-xl border border-dashed border-border/80'>
+          <div className='text-muted-foreground bg-muted/20 border-border/80 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-8 text-center'>
             <ImageIcon className='h-8 w-8 opacity-40' />
             <p className='text-xs font-medium'>No product images added yet</p>
-            <p className='text-[11px] max-w-xs opacity-75'>
-              Add media assets by ID or URL to showcase your product in the catalog.
+            <p className='max-w-xs text-[11px] opacity-75'>
+              Add media assets by ID or URL to showcase your product in the
+              catalog.
             </p>
           </div>
         ) : (
-          <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4'>
+          <div className='grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4'>
             {sortedImages.map((img, index) => (
               <div
                 key={img.id}
-                className='group relative rounded-xl border border-border bg-card overflow-hidden shadow-xs flex flex-col justify-between'
+                className='group border-border bg-card relative flex flex-col justify-between overflow-hidden rounded-xl border shadow-xs'
               >
                 {/* Image Display */}
-                <div className='aspect-square bg-muted/40 relative flex items-center justify-center overflow-hidden'>
+                <div className='bg-muted/40 relative flex aspect-square items-center justify-center overflow-hidden'>
                   {img.url ? (
                     <img
                       src={img.url}
                       alt={img.altText || 'Product image'}
-                      className='object-cover w-full h-full'
+                      className='h-full w-full object-cover'
                     />
                   ) : (
-                    <div className='flex flex-col items-center gap-1 text-muted-foreground/60'>
+                    <div className='text-muted-foreground/60 flex flex-col items-center gap-1'>
                       <ImageIcon className='h-6 w-6' />
-                      <span className='text-[10px] font-mono'>Media ID: {img.mediaId.slice(0, 8)}</span>
+                      <span className='font-mono text-[10px]'>
+                        Media ID: {img.mediaId.slice(0, 8)}
+                      </span>
                     </div>
                   )}
 
                   {/* Position badge */}
-                  <span className='absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-background/80 backdrop-blur-xs text-foreground border border-border/60'>
+                  <span className='bg-background/80 text-foreground border-border/60 absolute top-2 left-2 rounded border px-1.5 py-0.5 text-[10px] font-bold backdrop-blur-xs'>
                     #{index + 1}
                   </span>
                 </div>
 
                 {/* Footer Controls */}
-                <div className='p-2 flex items-center justify-between gap-1 border-t border-border bg-muted/10'>
+                <div className='border-border bg-muted/10 flex items-center justify-between gap-1 border-t p-2'>
                   <div className='flex items-center gap-0.5'>
                     <Button
                       type='button'
@@ -151,7 +169,7 @@ export function ProductMediaCard({
                       size='icon'
                       disabled={index === 0 || disabled}
                       onClick={() => handleMove(index, 'prev')}
-                      className='h-6 w-6 rounded text-muted-foreground hover:text-foreground'
+                      className='text-muted-foreground hover:text-foreground h-6 w-6 rounded'
                       title='Move left'
                     >
                       <ArrowLeft className='h-3 w-3' />
@@ -162,7 +180,7 @@ export function ProductMediaCard({
                       size='icon'
                       disabled={index === sortedImages.length - 1 || disabled}
                       onClick={() => handleMove(index, 'next')}
-                      className='h-6 w-6 rounded text-muted-foreground hover:text-foreground'
+                      className='text-muted-foreground hover:text-foreground h-6 w-6 rounded'
                       title='Move right'
                     >
                       <ArrowRight className='h-3 w-3' />
@@ -176,7 +194,7 @@ export function ProductMediaCard({
                       size='icon'
                       disabled={disabled}
                       onClick={() => onDeleteImage(img.id)}
-                      className='h-6 w-6 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                      className='h-6 w-6 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
                       title='Remove image'
                     >
                       <Trash2 className='h-3 w-3' />
@@ -191,9 +209,11 @@ export function ProductMediaCard({
 
       {/* Add Image Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className='sm:max-w-md rounded-2xl'>
+        <DialogContent className='rounded-2xl sm:max-w-md'>
           <DialogHeader>
-            <DialogTitle className='text-sm font-semibold'>Add Product Media</DialogTitle>
+            <DialogTitle className='text-sm font-semibold'>
+              Add Product Media
+            </DialogTitle>
             <DialogDescription className='text-xs'>
               Enter a Media module asset ID or direct image URL.
             </DialogDescription>
@@ -207,7 +227,7 @@ export function ProductMediaCard({
                 value={mediaIdInput}
                 onChange={(e) => setMediaIdInput(e.target.value)}
                 placeholder='e.g. 550e8400-e29b-41d4-a716-446655440000 or https://...'
-                className='h-9 text-xs rounded-xl font-mono'
+                className='h-9 rounded-xl font-mono text-xs'
               />
             </div>
             <div className='space-y-1.5'>
@@ -217,7 +237,7 @@ export function ProductMediaCard({
                 value={altTextInput}
                 onChange={(e) => setAltTextInput(e.target.value)}
                 placeholder='Front view of keyboard with RGB lighting'
-                className='h-9 text-xs rounded-xl'
+                className='h-9 rounded-xl text-xs'
               />
             </div>
           </div>
@@ -227,7 +247,7 @@ export function ProductMediaCard({
               type='button'
               variant='outline'
               onClick={() => setDialogOpen(false)}
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
             >
               Cancel
             </Button>
@@ -235,7 +255,7 @@ export function ProductMediaCard({
               type='button'
               onClick={handleAddImage}
               disabled={isBusy || !mediaIdInput.trim()}
-              className='h-9 text-xs rounded-xl font-semibold'
+              className='h-9 rounded-xl text-xs font-semibold'
             >
               {isBusy ? 'Adding...' : 'Attach Image'}
             </Button>

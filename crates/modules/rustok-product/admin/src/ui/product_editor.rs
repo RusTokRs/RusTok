@@ -9,7 +9,8 @@ use crate::core::{
     ProductKind,
 };
 use crate::model::{
-    CatalogCategorySummary, ProductDetail, ProductDraft, ProductImageDraft,
+    CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm,
+    ProductImageDraft,
 };
 use crate::transport;
 
@@ -123,6 +124,36 @@ pub fn ProductEditorPage(
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<crate::model::ShippingProfile>, String>(res.items)
+        }
+    });
+
+    // Effective Category Form resource
+    let form_locale = locale.clone();
+    let form_pid = product_id.clone();
+    let effective_form_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = form_locale.clone().unwrap_or_default();
+        let cat_id = primary_category_id.get();
+        let pid = form_pid.clone();
+        async move {
+            if cat_id.is_empty() {
+                return Ok(None);
+            }
+            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|e| e.to_string())?;
+            let form = transport::fetch_effective_product_form(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                pid,
+                Some(cat_id),
+                loc,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok::<Option<ProductEffectiveForm>, String>(form)
         }
     });
 
@@ -400,39 +431,39 @@ pub fn ProductEditorPage(
                 .await;
 
                 // Update default variant pricing, stock, SKU, and barcode
-                if let Some(detail) = loaded_product.get_untracked() {
-                    if let Some(variant) = detail.variants.first() {
-                        let cur_sku = sku.get_untracked();
-                        let cur_bc = barcode.get_untracked();
-                        let cur_qty = inventory_quantity.get_untracked();
-                        let cur_cur = currency_code.get_untracked();
-                        let cur_amt = amount.get_untracked();
-                        let cur_comp = compare_at_amount.get_untracked();
+                if let Some(detail) = loaded_product.get_untracked()
+                    && let Some(variant) = detail.variants.first()
+                {
+                    let cur_sku = sku.get_untracked();
+                    let cur_bc = barcode.get_untracked();
+                    let cur_qty = inventory_quantity.get_untracked();
+                    let cur_cur = currency_code.get_untracked();
+                    let cur_amt = amount.get_untracked();
+                    let cur_comp = compare_at_amount.get_untracked();
 
-                        let v_draft = crate::model::VariantDraft {
-                            sku: if cur_sku.trim().is_empty() { None } else { Some(cur_sku) },
-                            barcode: if cur_bc.trim().is_empty() { None } else { Some(cur_bc) },
-                            shipping_profile_slug: None,
-                            axis_values: Vec::new(),
-                            prices: vec![crate::model::VariantPriceDraft {
-                                currency_code: if cur_cur.trim().is_empty() { "USD".to_string() } else { cur_cur },
-                                amount: if cur_amt.trim().is_empty() { "0.00".to_string() } else { cur_amt },
-                                compare_at_amount: if cur_comp.trim().is_empty() { None } else { Some(cur_comp) },
-                            }],
-                            inventory_quantity: Some(cur_qty),
-                            inventory_policy: Some(inventory_policy.get_untracked()),
-                        };
+                    let v_draft = crate::model::VariantDraft {
+                        sku: if cur_sku.trim().is_empty() { None } else { Some(cur_sku) },
+                        barcode: if cur_bc.trim().is_empty() { None } else { Some(cur_bc) },
+                        shipping_profile_slug: None,
+                        axis_values: Vec::new(),
+                        prices: vec![crate::model::VariantPriceDraft {
+                            currency_code: if cur_cur.trim().is_empty() { "USD".to_string() } else { cur_cur },
+                            amount: if cur_amt.trim().is_empty() { "0.00".to_string() } else { cur_amt },
+                            compare_at_amount: if cur_comp.trim().is_empty() { None } else { Some(cur_comp) },
+                        }],
+                        inventory_quantity: Some(cur_qty),
+                        inventory_policy: Some(inventory_policy.get_untracked()),
+                    };
 
-                        let _ = transport::update_product_variant(
-                            tok,
-                            ten,
-                            bootstrap.current_tenant.id,
-                            bootstrap.me.id,
-                            variant.id.clone(),
-                            v_draft,
-                        )
-                        .await;
-                    }
+                    let _ = transport::update_product_variant(
+                        tok,
+                        ten,
+                        bootstrap.current_tenant.id,
+                        bootstrap.me.id,
+                        variant.id.clone(),
+                        v_draft,
+                    )
+                    .await;
                 }
 
                 set_is_busy.set(false);
@@ -1061,6 +1092,37 @@ pub fn ProductEditorPage(
                                     }).collect_view()
                                 }).unwrap_or_default()}
                             </select>
+                            {move || {
+                                match effective_form_resource.get() {
+                                    Some(Ok(Some(form))) if !form.attributes.is_empty() => {
+                                        view! {
+                                            <div class="mt-2 p-2.5 rounded-xl border border-border bg-muted/20 space-y-1.5">
+                                                <div class="flex items-center justify-between text-[11px] font-semibold text-foreground">
+                                                    <span>{if is_ru { "Характеристики категории" } else { "Category Attributes" }}</span>
+                                                    <span class="text-[10px] text-muted-foreground">{form.attributes.len()}</span>
+                                                </div>
+                                                <div class="flex flex-wrap gap-1">
+                                                    {form.attributes.into_iter().map(|attr| {
+                                                        let is_req = attr.is_required;
+                                                        view! {
+                                                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-background border border-border/70 text-foreground">
+                                                                <span>{attr.label}</span>
+                                                                <span class="text-[9px] font-mono text-muted-foreground">({attr.value_type})</span>
+                                                                {if is_req {
+                                                                    view! { <span class="text-rose-500 font-bold">"*"</span> }.into_any()
+                                                                } else {
+                                                                    ().into_any()
+                                                                }}
+                                                            </span>
+                                                        }
+                                                    }).collect_view()}
+                                                </div>
+                                            </div>
+                                        }.into_any()
+                                    }
+                                    _ => ().into_any()
+                                }
+                            }}
                         </div>
 
                         <div class="space-y-1.5">

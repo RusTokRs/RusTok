@@ -30,7 +30,9 @@ async function getSessionOpts() {
   };
 }
 
-export async function createAttributeAction(payload: CreateProductAttributePayload) {
+export async function createAttributeAction(
+  payload: CreateProductAttributePayload
+) {
   const opts = await getSessionOpts();
   await createProductAttribute(opts, payload);
   revalidatePath('/dashboard/product/attributes');

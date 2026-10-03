@@ -14,13 +14,18 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ProductAttributeSummary, CreateProductAttributeOptionPayload } from '../../api/types';
+import type {
+  ProductAttributeSummary,
+  CreateProductAttributeOptionPayload
+} from '../../api/types';
 
 interface AttributeOptionsDialogProps {
   attribute: ProductAttributeSummary | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateOption: (payload: CreateProductAttributeOptionPayload) => Promise<void>;
+  onCreateOption: (
+    payload: CreateProductAttributeOptionPayload
+  ) => Promise<void>;
 }
 
 export function AttributeOptionsDialog({
@@ -41,7 +46,14 @@ export function AttributeOptionsDialog({
       .trim()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
-    if (!code || code === val.slice(0, -1).toLowerCase().replace(/[^a-z0-9]+/g, '_')) {
+    if (
+      !code ||
+      code ===
+        val
+          .slice(0, -1)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+    ) {
       setCode(generatedCode);
     }
   };
@@ -88,7 +100,10 @@ export function AttributeOptionsDialog({
             <DialogTitle>Add Option to {attribute.label}</DialogTitle>
             <DialogDescription>
               Add a selectable dictionary option for attribute{' '}
-              <code className='bg-muted rounded px-1 text-xs'>{attribute.code}</code>.
+              <code className='bg-muted rounded px-1 text-xs'>
+                {attribute.code}
+              </code>
+              .
             </DialogDescription>
           </DialogHeader>
 

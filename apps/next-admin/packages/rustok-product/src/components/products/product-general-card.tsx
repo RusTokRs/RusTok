@@ -11,7 +11,13 @@
 'use client';
 
 import * as React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/shadcn/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/shared/ui/shadcn/card';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
@@ -32,7 +38,11 @@ interface ProductGeneralCardProps {
   translations: Record<string, ProductTranslation>;
   activeLocale: string;
   onActiveLocaleChange: (locale: string) => void;
-  onTranslationChange: (locale: string, field: keyof ProductTranslation, value: string) => void;
+  onTranslationChange: (
+    locale: string,
+    field: keyof ProductTranslation,
+    value: string
+  ) => void;
   vendor: string;
   onVendorChange: (val: string) => void;
   sellerId: string;
@@ -99,13 +109,16 @@ export function ProductGeneralCard({
   };
 
   return (
-    <Card className='rounded-2xl border-border shadow-sm'>
-      <CardHeader className='pb-4 border-b border-border/60'>
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+    <Card className='border-border rounded-2xl shadow-sm'>
+      <CardHeader className='border-border/60 border-b pb-4'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <CardTitle className='text-sm font-semibold'>General Information</CardTitle>
+            <CardTitle className='text-sm font-semibold'>
+              General Information
+            </CardTitle>
             <CardDescription className='text-xs'>
-              Title, URL handle, localized copy, product classification, and tagging.
+              Title, URL handle, localized copy, product classification, and
+              tagging.
             </CardDescription>
           </div>
           <Tabs
@@ -113,29 +126,38 @@ export function ProductGeneralCard({
             onValueChange={onActiveLocaleChange}
             className='w-auto'
           >
-            <TabsList className='h-8 bg-muted/60 p-0.5 rounded-lg'>
-              <TabsTrigger value='en' className='text-xs px-2.5 py-1 rounded-md'>
+            <TabsList className='bg-muted/60 h-8 rounded-lg p-0.5'>
+              <TabsTrigger
+                value='en'
+                className='rounded-md px-2.5 py-1 text-xs'
+              >
                 English (EN)
               </TabsTrigger>
-              <TabsTrigger value='ru' className='text-xs px-2.5 py-1 rounded-md'>
+              <TabsTrigger
+                value='ru'
+                className='rounded-md px-2.5 py-1 text-xs'
+              >
                 Русский (RU)
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
       </CardHeader>
-      <CardContent className='pt-5 space-y-4'>
+      <CardContent className='space-y-4 pt-5'>
         {/* Title */}
         <div className='space-y-1.5'>
           <Label htmlFor='product-title' className='text-xs font-medium'>
-            Title ({activeLocale.toUpperCase()}) <span className='text-destructive'>*</span>
+            Title ({activeLocale.toUpperCase()}){' '}
+            <span className='text-destructive'>*</span>
           </Label>
           <Input
             id='product-title'
             value={currentTranslation.title || ''}
-            onChange={(e) => onTranslationChange(activeLocale, 'title', e.target.value)}
+            onChange={(e) =>
+              onTranslationChange(activeLocale, 'title', e.target.value)
+            }
             placeholder='e.g. Ergonomic Wireless Mouse'
-            className='h-9 text-xs rounded-xl'
+            className='h-9 rounded-xl text-xs'
             disabled={disabled}
           />
         </div>
@@ -151,22 +173,24 @@ export function ProductGeneralCard({
               variant='ghost'
               size='sm'
               onClick={handleAutoSlug}
-              className='h-6 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground'
+              className='text-muted-foreground hover:text-foreground h-6 gap-1 px-2 text-[11px]'
             >
               <Sparkles className='h-3 w-3 text-amber-500' />
               <span>Generate slug</span>
             </Button>
           </div>
-          <div className='flex rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring overflow-hidden bg-background'>
-            <span className='px-3 py-2 text-xs text-muted-foreground bg-muted/40 border-r border-border select-none'>
+          <div className='border-input focus-within:ring-ring bg-background flex overflow-hidden rounded-xl border focus-within:ring-1'>
+            <span className='text-muted-foreground bg-muted/40 border-border border-r px-3 py-2 text-xs select-none'>
               /products/
             </span>
             <input
               id='product-handle'
               value={currentTranslation.handle || ''}
-              onChange={(e) => onTranslationChange(activeLocale, 'handle', e.target.value)}
+              onChange={(e) =>
+                onTranslationChange(activeLocale, 'handle', e.target.value)
+              }
               placeholder='ergonomic-wireless-mouse'
-              className='flex-1 px-3 py-2 text-xs bg-transparent outline-none text-foreground'
+              className='text-foreground flex-1 bg-transparent px-3 py-2 text-xs outline-none'
               disabled={disabled}
             />
           </div>
@@ -181,15 +205,17 @@ export function ProductGeneralCard({
             id='product-desc'
             rows={4}
             value={currentTranslation.description || ''}
-            onChange={(e) => onTranslationChange(activeLocale, 'description', e.target.value)}
+            onChange={(e) =>
+              onTranslationChange(activeLocale, 'description', e.target.value)
+            }
             placeholder='Detailed description, features, material specifications...'
-            className='text-xs rounded-xl resize-y'
+            className='resize-y rounded-xl text-xs'
             disabled={disabled}
           />
         </div>
 
         {/* Classification Grid */}
-        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2'>
+        <div className='grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2 md:grid-cols-4'>
           <div className='space-y-1.5'>
             <Label htmlFor='product-type' className='text-xs font-medium'>
               Product Type
@@ -199,14 +225,25 @@ export function ProductGeneralCard({
               onValueChange={onProductTypeChange}
               disabled={disabled}
             >
-              <SelectTrigger id='product-type' className='h-9 text-xs rounded-xl'>
+              <SelectTrigger
+                id='product-type'
+                className='h-9 rounded-xl text-xs'
+              >
                 <SelectValue placeholder='Select type' />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='simple' className='text-xs'>Simple Product</SelectItem>
-                <SelectItem value='variable' className='text-xs'>Variable (Matrix)</SelectItem>
-                <SelectItem value='bundle' className='text-xs'>Bundle</SelectItem>
-                <SelectItem value='digital' className='text-xs'>Digital Download</SelectItem>
+                <SelectItem value='simple' className='text-xs'>
+                  Simple Product
+                </SelectItem>
+                <SelectItem value='variable' className='text-xs'>
+                  Variable (Matrix)
+                </SelectItem>
+                <SelectItem value='bundle' className='text-xs'>
+                  Bundle
+                </SelectItem>
+                <SelectItem value='digital' className='text-xs'>
+                  Digital Download
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -220,7 +257,7 @@ export function ProductGeneralCard({
               value={vendor || ''}
               onChange={(e) => onVendorChange(e.target.value)}
               placeholder='e.g. Logitech, Apple'
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
               disabled={disabled}
             />
           </div>
@@ -234,7 +271,7 @@ export function ProductGeneralCard({
               value={sellerId || ''}
               onChange={(e) => onSellerIdChange(e.target.value)}
               placeholder='e.g. seller-default'
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
               disabled={disabled}
             />
           </div>
@@ -248,7 +285,7 @@ export function ProductGeneralCard({
               value={shippingProfileSlug || ''}
               onChange={(e) => onShippingProfileSlugChange(e.target.value)}
               placeholder='standard, fragile'
-              className='h-9 text-xs rounded-xl'
+              className='h-9 rounded-xl text-xs'
               disabled={disabled}
             />
           </div>
@@ -259,12 +296,12 @@ export function ProductGeneralCard({
           <Label htmlFor='product-tags' className='text-xs font-medium'>
             Tags (press Enter or comma to add)
           </Label>
-          <div className='flex flex-wrap gap-1.5 p-2 rounded-xl border border-input min-h-[42px] bg-background'>
+          <div className='border-input bg-background flex min-h-[42px] flex-wrap gap-1.5 rounded-xl border p-2'>
             {tags.map((tag) => (
               <Badge
                 key={tag}
                 variant='secondary'
-                className='text-xs gap-1 py-0.5 px-2 rounded-md bg-muted'
+                className='bg-muted gap-1 rounded-md px-2 py-0.5 text-xs'
               >
                 <span>{tag}</span>
                 <button
@@ -281,8 +318,10 @@ export function ProductGeneralCard({
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={handleAddTag}
-              placeholder={tags.length === 0 ? 'gaming, wireless, ergonomic...' : ''}
-              className='flex-1 text-xs bg-transparent outline-none min-w-[120px] px-1'
+              placeholder={
+                tags.length === 0 ? 'gaming, wireless, ergonomic...' : ''
+              }
+              className='min-w-[120px] flex-1 bg-transparent px-1 text-xs outline-none'
               disabled={disabled}
             />
           </div>

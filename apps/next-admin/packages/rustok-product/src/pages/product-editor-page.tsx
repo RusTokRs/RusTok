@@ -62,13 +62,25 @@ export interface ProductEditorPageProps {
     activeLocale: string;
   }) => Promise<{ id: string } | void>;
   onDeleteProduct?: (id: string) => Promise<void>;
-  onAddVariant?: (productId: string, variant: Omit<ProductVariant, 'id'>) => Promise<void>;
-  onUpdateVariant?: (id: string, variant: Partial<ProductVariant>) => Promise<void>;
+  onAddVariant?: (
+    productId: string,
+    variant: Omit<ProductVariant, 'id'>
+  ) => Promise<void>;
+  onUpdateVariant?: (
+    id: string,
+    variant: Partial<ProductVariant>
+  ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
-  onAddImage?: (productId: string, input: { mediaId: string; altText?: string }) => Promise<void>;
+  onAddImage?: (
+    productId: string,
+    input: { mediaId: string; altText?: string }
+  ) => Promise<void>;
   onDeleteImage?: (productId: string, id: string) => Promise<void>;
   onReorderImages?: (productId: string, imageIds: string[]) => Promise<void>;
-  fetchEffectiveForm?: (categoryId: string, locale: string) => Promise<ProductEffectiveForm | null>;
+  fetchEffectiveForm?: (
+    categoryId: string,
+    locale: string
+  ) => Promise<ProductEffectiveForm | null>;
 }
 
 export function ProductEditorPage({
@@ -91,10 +103,14 @@ export function ProductEditorPage({
   const [activeLocale, setActiveLocale] = React.useState('en');
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(
+    null
+  );
 
   // General fields
-  const [translations, setTranslations] = React.useState<Record<string, ProductTranslation>>(() => {
+  const [translations, setTranslations] = React.useState<
+    Record<string, ProductTranslation>
+  >(() => {
     const map: Record<string, ProductTranslation> = {
       en: {
         locale: 'en',
@@ -122,8 +138,12 @@ export function ProductEditorPage({
   });
 
   const [vendor, setVendor] = React.useState(initialProduct?.vendor || '');
-  const [sellerId, setSellerId] = React.useState(initialProduct?.sellerId || '');
-  const [productType, setProductType] = React.useState(initialProduct?.productType || 'simple');
+  const [sellerId, setSellerId] = React.useState(
+    initialProduct?.sellerId || ''
+  );
+  const [productType, setProductType] = React.useState(
+    initialProduct?.productType || 'simple'
+  );
   const [shippingProfileSlug, setShippingProfileSlug] = React.useState(
     initialProduct?.shippingProfileSlug || ''
   );
@@ -134,9 +154,8 @@ export function ProductEditorPage({
   const [selectedCategoryId, setSelectedCategoryId] = React.useState(
     initialProduct?.primaryCategoryId || ''
   );
-  const [effectiveForm, setEffectiveForm] = React.useState<ProductEffectiveForm | null>(
-    initialEffectiveForm
-  );
+  const [effectiveForm, setEffectiveForm] =
+    React.useState<ProductEffectiveForm | null>(initialEffectiveForm);
   const [isLoadingForm, setIsLoadingForm] = React.useState(false);
 
   // Attribute Values State
@@ -161,7 +180,9 @@ export function ProductEditorPage({
     }
     return map;
   });
-  const [dirtyAttributeIds, setDirtyAttributeIds] = React.useState<Set<string>>(new Set());
+  const [dirtyAttributeIds, setDirtyAttributeIds] = React.useState<Set<string>>(
+    new Set()
+  );
 
   // Variants & Media State
   const [variants, setVariants] = React.useState<ProductVariant[]>(
@@ -242,7 +263,9 @@ export function ProductEditorPage({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const primaryTitle = translations[activeLocale]?.title?.trim() || translations.en?.title?.trim();
+    const primaryTitle =
+      translations[activeLocale]?.title?.trim() ||
+      translations.en?.title?.trim();
     if (!primaryTitle) {
       setErrorMessage('Product title is required.');
       return;
@@ -250,10 +273,14 @@ export function ProductEditorPage({
 
     setIsSaving(true);
     try {
-      const translationList = Object.values(translations).filter((t) => t.title.trim().length > 0);
+      const translationList = Object.values(translations).filter(
+        (t) => t.title.trim().length > 0
+      );
 
       // Collect only dirty attribute patches
-      const patches: ProductAttributeValuePatch[] = Array.from(dirtyAttributeIds)
+      const patches: ProductAttributeValuePatch[] = Array.from(
+        dirtyAttributeIds
+      )
         .map((id) => attributeValues[id])
         .filter(Boolean);
 
@@ -274,13 +301,16 @@ export function ProductEditorPage({
       });
 
       setDirtyAttributeIds(new Set());
-      setSuccessMessage(isNew ? 'Product created successfully!' : 'Changes saved successfully.');
+      setSuccessMessage(
+        isNew ? 'Product created successfully!' : 'Changes saved successfully.'
+      );
 
       if (isNew && res && res.id) {
         router.push(`/dashboard/product/${res.id}`);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to save product.';
+      const msg =
+        err instanceof Error ? err.message : 'Failed to save product.';
       if (!msg.includes('NEXT_REDIRECT')) {
         setErrorMessage(msg);
       }
@@ -297,7 +327,9 @@ export function ProductEditorPage({
         await onSaveProduct({
           id: initialProduct.id,
           isNew: false,
-          translations: Object.values(translations).filter((t) => t.title.trim().length > 0),
+          translations: Object.values(translations).filter(
+            (t) => t.title.trim().length > 0
+          ),
           primaryCategoryId: selectedCategoryId || null,
           tags,
           status: newStatus,
@@ -306,7 +338,9 @@ export function ProductEditorPage({
         });
         setSuccessMessage(`Product status updated to ${newStatus}.`);
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'Failed to update status.');
+        setErrorMessage(
+          err instanceof Error ? err.message : 'Failed to update status.'
+        );
       } finally {
         setIsSaving(false);
       }
@@ -321,14 +355,16 @@ export function ProductEditorPage({
         await onDeleteProduct(initialProduct.id);
         router.push('/dashboard/product');
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'Failed to delete product.');
+        setErrorMessage(
+          err instanceof Error ? err.message : 'Failed to delete product.'
+        );
         setIsSaving(false);
       }
     }
   };
 
   return (
-    <div className='flex flex-col gap-6 max-w-6xl mx-auto pb-16 animate-in fade-in duration-150'>
+    <div className='animate-in fade-in mx-auto flex max-w-6xl flex-col gap-6 pb-16 duration-150'>
       {/* Top Header Bar with Save & Lifecycle */}
       <ProductHeaderBar
         title={translations[activeLocale]?.title || ''}
@@ -344,20 +380,24 @@ export function ProductEditorPage({
       {errorMessage && (
         <Alert variant='destructive' className='rounded-2xl'>
           <AlertCircle className='h-4 w-4' />
-          <AlertDescription className='text-xs'>{errorMessage}</AlertDescription>
+          <AlertDescription className='text-xs'>
+            {errorMessage}
+          </AlertDescription>
         </Alert>
       )}
       {successMessage && (
         <Alert className='rounded-2xl border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'>
           <CheckCircle2 className='h-4 w-4' />
-          <AlertDescription className='text-xs'>{successMessage}</AlertDescription>
+          <AlertDescription className='text-xs'>
+            {successMessage}
+          </AlertDescription>
         </Alert>
       )}
 
       {/* Two Column Layout */}
-      <div className='grid grid-cols-1 lg:grid-cols-3 gap-6 items-start'>
+      <div className='grid grid-cols-1 items-start gap-6 lg:grid-cols-3'>
         {/* Left (Main) Column - 2 Cols */}
-        <div className='lg:col-span-2 space-y-6'>
+        <div className='space-y-6 lg:col-span-2'>
           {/* General Information */}
           <ProductGeneralCard
             translations={translations}
@@ -394,7 +434,12 @@ export function ProductEditorPage({
             variants={variants}
             isNew={isNew}
             newVariantDraft={newVariantDraft}
-            onNewVariantDraftChange={setNewVariantDraft}
+            onNewVariantDraftChange={(draft) =>
+              setNewVariantDraft({
+                ...draft,
+                compareAtAmount: draft.compareAtAmount ?? null
+              })
+            }
             onAddVariant={
               initialProduct?.id && onAddVariant
                 ? async (v) => {
@@ -468,7 +513,9 @@ export function ProductEditorPage({
               }
             }
             activeLocale={activeLocale}
-            onChange={(field, val) => handleTranslationChange(activeLocale, field, val)}
+            onChange={(field, val) =>
+              handleTranslationChange(activeLocale, field, val)
+            }
             disabled={isSaving}
           />
         </div>

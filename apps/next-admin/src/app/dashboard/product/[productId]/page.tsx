@@ -88,10 +88,15 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   // Pre-load effective form and attribute values if category is assigned
   let effectiveForm = null;
-  let attributeValues = [];
+  let attributeValues: Awaited<ReturnType<typeof fetchProductAttributeValues>> =
+    [];
   if (product.primaryCategoryId) {
     try {
-      effectiveForm = await getCategoryEffectiveForm(opts, product.primaryCategoryId, 'en');
+      effectiveForm = await getCategoryEffectiveForm(
+        opts,
+        product.primaryCategoryId,
+        'en'
+      );
     } catch (err) {
       console.error('Failed to pre-load category effective form:', err);
     }
@@ -117,13 +122,27 @@ export default async function ProductDetailPage({ params }: PageProps) {
         initialEffectiveForm={effectiveForm}
         initialAttributeValues={attributeValues}
         onSaveProduct={saveProductAction}
-        onDeleteProduct={deleteProductAction}
-        onAddVariant={addVariantAction}
-        onUpdateVariant={updateVariantAction}
-        onDeleteVariant={deleteVariantAction}
-        onAddImage={addImageAction}
-        onDeleteImage={deleteImageAction}
-        onReorderImages={reorderImagesAction}
+        onDeleteProduct={async (id) => {
+          await deleteProductAction(id);
+        }}
+        onAddVariant={async (pid, v) => {
+          await addVariantAction(pid, v);
+        }}
+        onUpdateVariant={async (id, v) => {
+          await updateVariantAction(id, v);
+        }}
+        onDeleteVariant={async (id) => {
+          await deleteVariantAction(id);
+        }}
+        onAddImage={async (pid, img) => {
+          await addImageAction(pid, img);
+        }}
+        onDeleteImage={async (pid, id) => {
+          await deleteImageAction(pid, id);
+        }}
+        onReorderImages={async (pid, ids) => {
+          await reorderImagesAction(pid, ids);
+        }}
         fetchEffectiveForm={fetchEffectiveFormAction}
       />
     </PageContainer>

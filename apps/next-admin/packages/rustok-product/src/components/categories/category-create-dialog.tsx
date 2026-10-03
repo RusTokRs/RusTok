@@ -62,10 +62,24 @@ export function CategoryCreateDialog({
       .trim()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
-    if (!slug || slug === val.slice(0, -1).toLowerCase().replace(/[^a-z0-9]+/g, '-')) {
+    if (
+      !slug ||
+      slug ===
+        val
+          .slice(0, -1)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+    ) {
       setSlug(generatedSlug);
     }
-    if (!code || code === val.slice(0, -1).toLowerCase().replace(/[^a-z0-9]+/g, '_')) {
+    if (
+      !code ||
+      code ===
+        val
+          .slice(0, -1)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+    ) {
       setCode(generatedCode);
     }
   };
@@ -103,7 +117,9 @@ export function CategoryCreateDialog({
       setParentId('none');
       setDescription('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create category');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create category'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -122,7 +138,8 @@ export function CategoryCreateDialog({
           <DialogHeader>
             <DialogTitle>Create Catalog Category</DialogTitle>
             <DialogDescription>
-              Add a new category to the catalog hierarchy. Categories organize products and determine dynamic attribute schemas.
+              Add a new category to the catalog hierarchy. Categories organize
+              products and determine dynamic attribute schemas.
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-4 py-4'>
@@ -167,7 +184,11 @@ export function CategoryCreateDialog({
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-1.5'>
                 <Label>Parent Category</Label>
-                <Select value={parentId} onValueChange={setParentId} disabled={isSubmitting}>
+                <Select
+                  value={parentId}
+                  onValueChange={setParentId}
+                  disabled={isSubmitting}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder='Select parent...' />
                   </SelectTrigger>
@@ -184,13 +205,19 @@ export function CategoryCreateDialog({
 
               <div className='space-y-1.5'>
                 <Label>Kind</Label>
-                <Select value={kind} onValueChange={setKind} disabled={isSubmitting}>
+                <Select
+                  value={kind}
+                  onValueChange={setKind}
+                  disabled={isSubmitting}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='standard'>Standard</SelectItem>
-                    <SelectItem value='virtual'>Virtual (Rule-based)</SelectItem>
+                    <SelectItem value='virtual'>
+                      Virtual (Rule-based)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

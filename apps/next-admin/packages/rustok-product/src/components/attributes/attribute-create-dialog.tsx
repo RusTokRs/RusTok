@@ -42,7 +42,9 @@ const VALUE_TYPES = [
   { value: 'json', label: 'JSON (Raw structured)' }
 ];
 
-export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDialogProps) {
+export function AttributeCreateDialog({
+  onCreateAttribute
+}: AttributeCreateDialogProps) {
   const [open, setOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -63,7 +65,14 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
       .trim()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
-    if (!code || code === val.slice(0, -1).toLowerCase().replace(/[^a-z0-9]+/g, '_')) {
+    if (
+      !code ||
+      code ===
+        val
+          .slice(0, -1)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+    ) {
       setCode(generatedCode);
     }
   };
@@ -104,7 +113,9 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
       setIsSortable(false);
       setShowOnStorefront(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create attribute');
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create attribute'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -123,7 +134,8 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
           <DialogHeader>
             <DialogTitle>Create Product Attribute</DialogTitle>
             <DialogDescription>
-              Define a typed attribute for catalog products and category schemas.
+              Define a typed attribute for catalog products and category
+              schemas.
             </DialogDescription>
           </DialogHeader>
 
@@ -156,7 +168,11 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
 
             <div className='space-y-1.5'>
               <Label>Value Type</Label>
-              <Select value={valueType} onValueChange={setValueType} disabled={isSubmitting}>
+              <Select
+                value={valueType}
+                onValueChange={setValueType}
+                disabled={isSubmitting}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -181,13 +197,16 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
               />
             </div>
 
-            <div className='rounded-md border p-3 space-y-3 bg-muted/20'>
-              <p className='text-xs font-semibold text-muted-foreground uppercase tracking-wide'>
+            <div className='bg-muted/20 space-y-3 rounded-md border p-3'>
+              <p className='text-muted-foreground text-xs font-semibold tracking-wide uppercase'>
                 Behavior & Visibility
               </p>
               <div className='grid grid-cols-2 gap-3'>
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='is-localized' className='text-xs font-normal cursor-pointer'>
+                  <Label
+                    htmlFor='is-localized'
+                    className='cursor-pointer text-xs font-normal'
+                  >
                     Localized values
                   </Label>
                   <Switch
@@ -199,7 +218,10 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
                 </div>
 
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='is-filterable' className='text-xs font-normal cursor-pointer'>
+                  <Label
+                    htmlFor='is-filterable'
+                    className='cursor-pointer text-xs font-normal'
+                  >
                     Filterable (Facets)
                   </Label>
                   <Switch
@@ -211,7 +233,10 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
                 </div>
 
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='is-searchable' className='text-xs font-normal cursor-pointer'>
+                  <Label
+                    htmlFor='is-searchable'
+                    className='cursor-pointer text-xs font-normal'
+                  >
                     Searchable (Index)
                   </Label>
                   <Switch
@@ -223,7 +248,10 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
                 </div>
 
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='is-sortable' className='text-xs font-normal cursor-pointer'>
+                  <Label
+                    htmlFor='is-sortable'
+                    className='cursor-pointer text-xs font-normal'
+                  >
                     Sortable
                   </Label>
                   <Switch
@@ -234,8 +262,11 @@ export function AttributeCreateDialog({ onCreateAttribute }: AttributeCreateDial
                   />
                 </div>
 
-                <div className='flex items-center justify-between col-span-2 pt-1 border-t'>
-                  <Label htmlFor='show-storefront' className='text-xs font-normal cursor-pointer'>
+                <div className='col-span-2 flex items-center justify-between border-t pt-1'>
+                  <Label
+                    htmlFor='show-storefront'
+                    className='cursor-pointer text-xs font-normal'
+                  >
                     Show on Storefront specifications
                   </Label>
                   <Switch

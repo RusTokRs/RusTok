@@ -138,7 +138,10 @@ export async function listCatalogCategories(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
-  const data = await executor<{ tenantId: string; locale: string }, CategoriesResponse>(
+  const data = await executor<
+    { tenantId: string; locale: string },
+    CategoriesResponse
+  >(
     CATALOG_CATEGORIES_QUERY,
     { tenantId: opts.tenantId, locale },
     opts.token,

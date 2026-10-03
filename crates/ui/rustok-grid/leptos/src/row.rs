@@ -85,10 +85,10 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
                                     )
                                 }
                                 on:click=move |_| {
-                                    if interactive {
-                                        if let Some(on_click) = on_row_click {
-                                            on_click.run(item.get_value());
-                                        }
+                                    if interactive
+                                        && let Some(on_click) = on_row_click
+                                    {
+                                        on_click.run(item.get_value());
                                     }
                                 }
                             >

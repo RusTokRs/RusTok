@@ -8,7 +8,9 @@ import {
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
 
-export async function createCategoryAction(payload: CreateCatalogCategoryPayload) {
+export async function createCategoryAction(
+  payload: CreateCatalogCategoryPayload
+) {
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;

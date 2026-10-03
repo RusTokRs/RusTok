@@ -168,8 +168,8 @@ impl FilterValue {
                 clean_number(*min).is_none() && clean_number(*max).is_none()
             }
             Self::DateRange { from, to } => {
-                from.as_deref().map_or(true, |s| s.trim().is_empty())
-                    && to.as_deref().map_or(true, |s| s.trim().is_empty())
+                from.as_deref().is_none_or(|s| s.trim().is_empty())
+                    && to.as_deref().is_none_or(|s| s.trim().is_empty())
             }
             Self::Boolean(_) => false,
         }
@@ -186,11 +186,11 @@ impl FilterValue {
             Self::Select(s) => Self::Select(s.trim().to_string()),
             Self::NumberRange { min, max } => {
                 let (mut min, mut max) = (clean_number(min), clean_number(max));
-                if let (Some(lo), Some(hi)) = (min, max) {
-                    if lo > hi {
-                        min = Some(hi);
-                        max = Some(lo);
-                    }
+                if let (Some(lo), Some(hi)) = (min, max)
+                    && lo > hi
+                {
+                    min = Some(hi);
+                    max = Some(lo);
                 }
                 Self::NumberRange { min, max }
             }
@@ -198,12 +198,12 @@ impl FilterValue {
                 let (mut from, mut to) = (clean_opt_string(from), clean_opt_string(to));
                 // Dates are ISO-8601 (`YYYY-MM-DD`) so lexicographic ordering
                 // matches chronological ordering.
-                if let (Some(lo), Some(hi)) = (from.as_deref(), to.as_deref()) {
-                    if lo > hi {
-                        let swapped = (hi.to_string(), lo.to_string());
-                        from = Some(swapped.0);
-                        to = Some(swapped.1);
-                    }
+                if let (Some(lo), Some(hi)) = (from.as_deref(), to.as_deref())
+                    && lo > hi
+                {
+                    let swapped = (hi.to_string(), lo.to_string());
+                    from = Some(swapped.0);
+                    to = Some(swapped.1);
                 }
                 Self::DateRange { from, to }
             }
