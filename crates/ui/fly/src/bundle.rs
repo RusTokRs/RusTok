@@ -1,6 +1,6 @@
 use crate::{
-    FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash, RegistrySet,
-    ValidationLimits, ValidationReport, audit_page, validate_project,
+    ContentDigest, FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash,
+    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq, validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -25,7 +25,15 @@ pub struct BundleMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectBundle {
+    /// Cheap change-detection fingerprint. Not an integrity guarantee — see `content_digest`.
     pub project_hash: String,
+    /// Collision-resistant digest of `project_data`.
+    ///
+    /// Optional only so that bundles exported before digests existed stay importable. Everything
+    /// Fly exports today populates it, and import refuses a bundle whose digest is present and
+    /// wrong unless the caller explicitly opts out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_digest: Option<ContentDigest>,
     pub project_data: Value,
     #[serde(default)]
     pub metadata: BundleMetadata,
@@ -36,7 +44,13 @@ pub struct ProjectBundle {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BundleDecodePolicy {
     pub allow_raw_project: bool,
+    /// Tolerate a stale cheap fingerprint. Says nothing about integrity.
     pub allow_hash_mismatch: bool,
+    /// Tolerate a wrong collision-resistant digest. Only for forensic/recovery tooling.
+    pub allow_digest_mismatch: bool,
+    /// Reject bundles that carry no digest at all, for trust boundaries that must not accept
+    /// pre-digest or hand-written payloads.
+    pub require_content_digest: bool,
 }
 
 impl Default for BundleDecodePolicy {
@@ -44,6 +58,20 @@ impl Default for BundleDecodePolicy {
         Self {
             allow_raw_project: true,
             allow_hash_mismatch: false,
+            allow_digest_mismatch: false,
+            require_content_digest: false,
+        }
+    }
+}
+
+impl BundleDecodePolicy {
+    /// Strictest policy: a trusted, digest-carrying bundle or nothing.
+    pub fn verified() -> Self {
+        Self {
+            allow_raw_project: false,
+            allow_hash_mismatch: false,
+            allow_digest_mismatch: false,
+            require_content_digest: true,
         }
     }
 }
@@ -53,6 +81,9 @@ pub struct DecodedProjectBundle {
     pub bundle: ProjectBundle,
     pub document: ProjectDocument,
     pub hash_matches: bool,
+    /// `Some(true)` when a digest was present and verified, `Some(false)` when it was present and
+    /// wrong (only reachable with `allow_digest_mismatch`), `None` when the bundle carried none.
+    pub digest_matches: Option<bool>,
     pub imported_from_raw_project: bool,
 }
 
@@ -74,9 +105,11 @@ pub fn export_project_bundle(
     document: &ProjectDocument,
     metadata: BundleMetadata,
 ) -> FlyResult<ProjectBundle> {
+    let project_data = GrapesJsCodec::encode_value(document)?;
     Ok(ProjectBundle {
         project_hash: document.hash().hex(),
-        project_data: GrapesJsCodec::encode_value(document)?,
+        content_digest: Some(ContentDigest::from_json(&project_data)?),
+        project_data,
         metadata,
         extensions: Map::new(),
     })
@@ -115,6 +148,7 @@ pub fn decode_project_bundle_value(
         let document = GrapesJsCodec::decode_value(value.clone())?;
         ProjectBundle {
             project_hash: document.hash().hex(),
+            content_digest: Some(ContentDigest::from_json(&value)?),
             project_data: value,
             metadata: BundleMetadata::default(),
             extensions: Map::new(),
@@ -122,6 +156,28 @@ pub fn decode_project_bundle_value(
     } else {
         serde_json::from_value::<ProjectBundle>(value)
             .map_err(|error| FlyError::InvalidProjectBundle(error.to_string()))?
+    };
+
+    // Integrity first: the collision-resistant digest is the only check a crafted payload cannot
+    // walk around. The cheap fingerprint is verified afterwards, for drift reporting.
+    let digest_matches = match bundle.content_digest.as_ref() {
+        Some(declared) => {
+            let actual = ContentDigest::from_json(&bundle.project_data)?;
+            let matches = declared.matches(&actual);
+            if !matches && !policy.allow_digest_mismatch {
+                return Err(FlyError::ProjectBundleDigestMismatch {
+                    declared: declared.to_string(),
+                    actual: actual.to_string(),
+                });
+            }
+            Some(matches)
+        }
+        None => {
+            if policy.require_content_digest {
+                return Err(FlyError::ProjectBundleDigestMissing);
+            }
+            None
+        }
     };
 
     let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
@@ -138,6 +194,7 @@ pub fn decode_project_bundle_value(
         bundle,
         document,
         hash_matches,
+        digest_matches,
         imported_from_raw_project,
     })
 }
@@ -172,17 +229,6 @@ pub fn inspect_project_bundle(
 pub fn bundle_hash(bundle: &ProjectBundle) -> FlyResult<ProjectHash> {
     let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
     Ok(document.hash())
-}
-
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() {
-        return false;
-    }
-    let mut difference = 0u8;
-    for (left, right) in left.iter().zip(right) {
-        difference |= left ^ right;
-    }
-    difference == 0
 }
 
 #[cfg(test)]
@@ -251,19 +297,37 @@ mod tests {
             export_project_bundle(&document(), BundleMetadata::default()).expect("export");
         bundle.project_data["pages"][0]["id"] = json!("tampered");
         let value = serde_json::to_value(bundle).expect("bundle value");
+
+        // A tampered payload is caught by the collision-resistant digest before the cheap
+        // fingerprint is even consulted.
         assert!(matches!(
             decode_project_bundle_value(value.clone(), &BundleDecodePolicy::default()),
+            Err(FlyError::ProjectBundleDigestMismatch { .. })
+        ));
+
+        // Tolerating the digest alone still trips the fingerprint check.
+        assert!(matches!(
+            decode_project_bundle_value(
+                value.clone(),
+                &BundleDecodePolicy {
+                    allow_digest_mismatch: true,
+                    ..BundleDecodePolicy::default()
+                },
+            ),
             Err(FlyError::ProjectBundleHashMismatch { .. })
         ));
+
         let decoded = decode_project_bundle_value(
             value,
             &BundleDecodePolicy {
                 allow_hash_mismatch: true,
+                allow_digest_mismatch: true,
                 ..BundleDecodePolicy::default()
             },
         )
         .expect("allow mismatch");
         assert!(!decoded.hash_matches);
+        assert_eq!(decoded.digest_matches, Some(false));
     }
 
     #[test]
@@ -282,5 +346,34 @@ mod tests {
         assert_eq!(inspection.page_count, 1);
         assert_eq!(inspection.node_count, 2);
         assert!(inspection.hash_matches);
+    }
+
+    #[test]
+    fn exported_bundles_carry_a_verifiable_content_digest() {
+        let bundle = export_project_bundle(&document(), BundleMetadata::default()).expect("export");
+        let digest = bundle.content_digest.clone().expect("digest");
+        assert_eq!(digest.algorithm(), "sha256");
+
+        let decoded = decode_project_bundle_value(
+            serde_json::to_value(&bundle).expect("value"),
+            &BundleDecodePolicy::verified(),
+        )
+        .expect("verified import");
+        assert_eq!(decoded.digest_matches, Some(true));
+        assert!(decoded.hash_matches);
+    }
+
+    #[test]
+    fn verified_policy_rejects_a_bundle_without_a_digest() {
+        let mut bundle =
+            export_project_bundle(&document(), BundleMetadata::default()).expect("export");
+        bundle.content_digest = None;
+        assert!(matches!(
+            decode_project_bundle_value(
+                serde_json::to_value(&bundle).expect("value"),
+                &BundleDecodePolicy::verified(),
+            ),
+            Err(FlyError::ProjectBundleDigestMissing)
+        ));
     }
 }

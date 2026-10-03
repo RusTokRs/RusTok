@@ -1,6 +1,6 @@
 use crate::{
     ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument, ProjectPage,
-    StyleRuleDescriptor,
+    StyleRuleIdentity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -268,7 +268,7 @@ fn remove_known_page_style_rules(document: &mut ProjectDocument, page: &ProjectP
     }
     let component_ids = component_ids.into_iter().collect::<BTreeSet<_>>();
     document.project.styles.retain(|raw| {
-        StyleRuleDescriptor::from_value(raw.clone()).is_none_or(|rule| {
+        StyleRuleIdentity::from_value(raw).is_none_or(|rule| {
             rule.component_id
                 .as_ref()
                 .is_none_or(|component_id| !component_ids.contains(component_id))
