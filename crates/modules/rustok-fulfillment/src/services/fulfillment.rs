@@ -448,6 +448,11 @@ impl FulfillmentService {
         let checkout_fulfillment_index = identity.as_ref().map(|value| i64::from(value.index));
         let checkout_plan_hash = identity.as_ref().map(|value| value.plan_hash.clone());
 
+        if let Some(identity) = identity.as_ref() {
+            self.ensure_checkout_identity_anchor(&txn, tenant_id, order_id, identity)
+                .await?;
+        }
+
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
             tenant_id: Set(tenant_id),
@@ -503,6 +508,54 @@ impl FulfillmentService {
         validate_tenant_id(tenant_id)?;
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
         self.build_fulfillment_response(fulfillment).await
+    }
+
+    async fn ensure_checkout_identity_anchor(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        identity: &CheckoutFulfillmentIdentity,
+    ) -> FulfillmentResult<()> {
+        let now = Utc::now();
+        let insert = entities::checkout_identity::ActiveModel {
+            tenant_id: Set(tenant_id),
+            checkout_operation_id: Set(identity.operation_id),
+            order_id: Set(order_id),
+            plan_hash: Set(identity.plan_hash.clone()),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(txn)
+        .await;
+
+        match insert {
+            Ok(_) => Ok(()),
+            Err(insert_error) => {
+                let existing = entities::checkout_identity::Entity::find()
+                    .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
+                    .filter(
+                        entities::checkout_identity::Column::CheckoutOperationId
+                            .eq(identity.operation_id),
+                    )
+                    .one(txn)
+                    .await?;
+
+                match existing {
+                    Some(existing)
+                        if existing.order_id == order_id
+                            && existing.plan_hash == identity.plan_hash =>
+                    {
+                        Ok(())
+                    }
+                    Some(_) => Err(FulfillmentError::Validation(
+                        "checkout operation identity is already bound to a different order or plan"
+                            .to_string(),
+                    )),
+                    None => Err(insert_error.into()),
+                }
+            }
+        }
     }
 
     pub(crate) async fn find_checkout_fulfillment(
