@@ -281,20 +281,14 @@ export function CartDrawer({ locale = "ru" }: CartDrawerProps) {
 
               {/* Action Buttons */}
               <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    alert(
-                      isRu
-                        ? "Переход к модулю оформления заказа (Checkout)"
-                        : "Proceeding to Checkout module",
-                    );
-                  }}
+                <Link
+                  href={`/${locale}/checkout`}
+                  onClick={closeCart}
                   className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs"
                 >
                   {isRu ? "Оформить заказ" : "Proceed to Checkout"}
                   <ArrowRight className="h-4 w-4" />
-                </button>
+                </Link>
 
                 <button
                   type="button"

@@ -13,3 +13,5 @@ export * from "./api/cart";
 export * from "./context/cart-context";
 export * from "./components/cart-drawer";
 export * from "./components/cart-trigger";
+export * from "./components/checkout-view";
+

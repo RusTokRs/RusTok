@@ -84,6 +84,88 @@ export type AppMessageKey =
   | 'Catalog.title'
   | 'Catalog-viewAll'
   | 'Catalog.viewAll'
+  | 'Checkout-address'
+  | 'Checkout.address'
+  | 'Checkout-backToCatalog'
+  | 'Checkout.backToCatalog'
+  | 'Checkout-backToHome'
+  | 'Checkout.backToHome'
+  | 'Checkout-city'
+  | 'Checkout.city'
+  | 'Checkout-contactSection'
+  | 'Checkout.contactSection'
+  | 'Checkout-country'
+  | 'Checkout.country'
+  | 'Checkout-discount'
+  | 'Checkout.discount'
+  | 'Checkout-email'
+  | 'Checkout.email'
+  | 'Checkout-emptyCart'
+  | 'Checkout.emptyCart'
+  | 'Checkout-emptyCartSubtitle'
+  | 'Checkout.emptyCartSubtitle'
+  | 'Checkout-free'
+  | 'Checkout.free'
+  | 'Checkout-fullName'
+  | 'Checkout.fullName'
+  | 'Checkout-notes'
+  | 'Checkout.notes'
+  | 'Checkout-orderCustomer'
+  | 'Checkout.orderCustomer'
+  | 'Checkout-orderDestination'
+  | 'Checkout.orderDestination'
+  | 'Checkout-orderDetails'
+  | 'Checkout.orderDetails'
+  | 'Checkout-orderId'
+  | 'Checkout.orderId'
+  | 'Checkout-orderStatus'
+  | 'Checkout.orderStatus'
+  | 'Checkout-orderSummary'
+  | 'Checkout.orderSummary'
+  | 'Checkout-orderTotal'
+  | 'Checkout.orderTotal'
+  | 'Checkout-paymentCard'
+  | 'Checkout.paymentCard'
+  | 'Checkout-paymentCardDesc'
+  | 'Checkout.paymentCardDesc'
+  | 'Checkout-paymentCod'
+  | 'Checkout.paymentCod'
+  | 'Checkout-paymentCodDesc'
+  | 'Checkout.paymentCodDesc'
+  | 'Checkout-paymentSection'
+  | 'Checkout.paymentSection'
+  | 'Checkout-paymentTransfer'
+  | 'Checkout.paymentTransfer'
+  | 'Checkout-paymentTransferDesc'
+  | 'Checkout.paymentTransferDesc'
+  | 'Checkout-phone'
+  | 'Checkout.phone'
+  | 'Checkout-placeOrder'
+  | 'Checkout.placeOrder'
+  | 'Checkout-postalCode'
+  | 'Checkout.postalCode'
+  | 'Checkout-processing'
+  | 'Checkout.processing'
+  | 'Checkout-secure'
+  | 'Checkout.secure'
+  | 'Checkout-shipping'
+  | 'Checkout.shipping'
+  | 'Checkout-shippingMethod'
+  | 'Checkout.shippingMethod'
+  | 'Checkout-shippingSection'
+  | 'Checkout.shippingSection'
+  | 'Checkout-subtitle'
+  | 'Checkout.subtitle'
+  | 'Checkout-subtotal'
+  | 'Checkout.subtotal'
+  | 'Checkout-successBadge'
+  | 'Checkout.successBadge'
+  | 'Checkout-successTitle'
+  | 'Checkout.successTitle'
+  | 'Checkout-title'
+  | 'Checkout.title'
+  | 'Checkout-total'
+  | 'Checkout.total'
   | 'Comments-composer-editorLabel'
   | 'Comments.composer.editorLabel'
   | 'Comments-composer-emptyError'
@@ -272,6 +354,88 @@ export interface AppMessageArgs {
   'Catalog-title'?: Record<string, never>;
   'Catalog.viewAll'?: Record<string, never>;
   'Catalog-viewAll'?: Record<string, never>;
+  'Checkout.address'?: Record<string, never>;
+  'Checkout-address'?: Record<string, never>;
+  'Checkout.backToCatalog'?: Record<string, never>;
+  'Checkout-backToCatalog'?: Record<string, never>;
+  'Checkout.backToHome'?: Record<string, never>;
+  'Checkout-backToHome'?: Record<string, never>;
+  'Checkout.city'?: Record<string, never>;
+  'Checkout-city'?: Record<string, never>;
+  'Checkout.contactSection'?: Record<string, never>;
+  'Checkout-contactSection'?: Record<string, never>;
+  'Checkout.country'?: Record<string, never>;
+  'Checkout-country'?: Record<string, never>;
+  'Checkout.discount'?: Record<string, never>;
+  'Checkout-discount'?: Record<string, never>;
+  'Checkout.email'?: Record<string, never>;
+  'Checkout-email'?: Record<string, never>;
+  'Checkout.emptyCart'?: Record<string, never>;
+  'Checkout-emptyCart'?: Record<string, never>;
+  'Checkout.emptyCartSubtitle'?: Record<string, never>;
+  'Checkout-emptyCartSubtitle'?: Record<string, never>;
+  'Checkout.free'?: Record<string, never>;
+  'Checkout-free'?: Record<string, never>;
+  'Checkout.fullName'?: Record<string, never>;
+  'Checkout-fullName'?: Record<string, never>;
+  'Checkout.notes'?: Record<string, never>;
+  'Checkout-notes'?: Record<string, never>;
+  'Checkout.orderCustomer'?: Record<string, never>;
+  'Checkout-orderCustomer'?: Record<string, never>;
+  'Checkout.orderDestination'?: Record<string, never>;
+  'Checkout-orderDestination'?: Record<string, never>;
+  'Checkout.orderDetails'?: Record<string, never>;
+  'Checkout-orderDetails'?: Record<string, never>;
+  'Checkout.orderId'?: Record<string, never>;
+  'Checkout-orderId'?: Record<string, never>;
+  'Checkout.orderStatus'?: Record<string, never>;
+  'Checkout-orderStatus'?: Record<string, never>;
+  'Checkout.orderSummary'?: Record<string, never>;
+  'Checkout-orderSummary'?: Record<string, never>;
+  'Checkout.orderTotal'?: Record<string, never>;
+  'Checkout-orderTotal'?: Record<string, never>;
+  'Checkout.paymentCard'?: Record<string, never>;
+  'Checkout-paymentCard'?: Record<string, never>;
+  'Checkout.paymentCardDesc'?: Record<string, never>;
+  'Checkout-paymentCardDesc'?: Record<string, never>;
+  'Checkout.paymentCod'?: Record<string, never>;
+  'Checkout-paymentCod'?: Record<string, never>;
+  'Checkout.paymentCodDesc'?: Record<string, never>;
+  'Checkout-paymentCodDesc'?: Record<string, never>;
+  'Checkout.paymentSection'?: Record<string, never>;
+  'Checkout-paymentSection'?: Record<string, never>;
+  'Checkout.paymentTransfer'?: Record<string, never>;
+  'Checkout-paymentTransfer'?: Record<string, never>;
+  'Checkout.paymentTransferDesc'?: Record<string, never>;
+  'Checkout-paymentTransferDesc'?: Record<string, never>;
+  'Checkout.phone'?: Record<string, never>;
+  'Checkout-phone'?: Record<string, never>;
+  'Checkout.placeOrder'?: Record<string, never>;
+  'Checkout-placeOrder'?: Record<string, never>;
+  'Checkout.postalCode'?: Record<string, never>;
+  'Checkout-postalCode'?: Record<string, never>;
+  'Checkout.processing'?: Record<string, never>;
+  'Checkout-processing'?: Record<string, never>;
+  'Checkout.secure'?: Record<string, never>;
+  'Checkout-secure'?: Record<string, never>;
+  'Checkout.shipping'?: Record<string, never>;
+  'Checkout-shipping'?: Record<string, never>;
+  'Checkout.shippingMethod'?: Record<string, never>;
+  'Checkout-shippingMethod'?: Record<string, never>;
+  'Checkout.shippingSection'?: Record<string, never>;
+  'Checkout-shippingSection'?: Record<string, never>;
+  'Checkout.subtitle'?: Record<string, never>;
+  'Checkout-subtitle'?: Record<string, never>;
+  'Checkout.subtotal'?: Record<string, never>;
+  'Checkout-subtotal'?: Record<string, never>;
+  'Checkout.successBadge'?: Record<string, never>;
+  'Checkout-successBadge'?: Record<string, never>;
+  'Checkout.successTitle'?: Record<string, never>;
+  'Checkout-successTitle'?: Record<string, never>;
+  'Checkout.title'?: Record<string, never>;
+  'Checkout-title'?: Record<string, never>;
+  'Checkout.total'?: Record<string, never>;
+  'Checkout-total'?: Record<string, never>;
   'Comments.composer.editorLabel'?: Record<string, never>;
   'Comments-composer-editorLabel'?: Record<string, never>;
   'Comments.composer.emptyError'?: Record<string, never>;

@@ -201,12 +201,30 @@ fn CartWorkspace(
         }.into_any(),
         (_, Some(cart)) => {
             let cart_id = cart.id.clone();
+            let handoff_cart_id = cart.id.clone();
+            let handoff_status = cart.status.clone();
+            let handoff_delivery_groups = cart.delivery_groups.clone();
+            let handoff_labels = crate::core::CartCheckoutHandoffLabels {
+                cart_label: t(locale.as_deref(), "cart.summary.badge", "cart"),
+                status_label: t(locale.as_deref(), "cart.summary.status", "status"),
+                module_ownership: t(
+                    locale.as_deref(),
+                    "cart-handoff-ownership",
+                    "Aggregate checkout execution in commerce",
+                ),
+            };
             view! {
                 <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                     <div class="space-y-6">
                         <CartSummaryCard cart=cart.clone() />
                         <AdjustmentsCard adjustments=cart.adjustments.clone() />
                         <DeliveryGroupsCard groups=cart.delivery_groups />
+                        <CartCheckoutHandoffCard
+                            cart_id=handoff_cart_id
+                            status=handoff_status
+                            delivery_groups=handoff_delivery_groups
+                            labels=handoff_labels
+                        />
                     </div>
                     <LineItemsRail
                         cart_id
@@ -462,17 +480,277 @@ fn MetricCard(title: String, value: String) -> impl IntoView {
 pub fn CartCheckoutHandoffCard(
     cart_id: String,
     status: String,
+    #[prop(default = Vec::new())]
+    delivery_groups: Vec<crate::model::StorefrontCartDeliveryGroup>,
     labels: crate::core::CartCheckoutHandoffLabels,
 ) -> impl IntoView {
-    let view_model = crate::core::cart_checkout_handoff_view_model(cart_id, status, &labels);
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
+    let view_model = crate::core::cart_checkout_handoff_view_model(cart_id.clone(), status, &labels);
+
+    let (customer_name, set_customer_name) = signal(String::new());
+    let (customer_email, set_customer_email) = signal(String::new());
+    let (customer_phone, set_customer_phone) = signal(String::new());
+    let (customer_address, set_customer_address) = signal(String::new());
+    let (selected_payment, set_selected_payment) = signal("card".to_string());
+    let (selected_shipping_id, set_selected_shipping_id) = signal(String::new());
+    let (is_submitting, set_is_submitting) = signal(false);
+    let (order_completed_id, set_order_completed_id) = signal(Option::<String>::None);
+    let (error_msg, set_error_msg) = signal(Option::<String>::None);
+
+    let title = t(locale.as_deref(), "cart-handoff-title", "Checkout & Delivery");
+    let subtitle = t(
+        locale.as_deref(),
+        "cart-handoff-subtitle",
+        "Select shipping method and enter contact information",
+    );
+    let shipping_title = t(locale.as_deref(), "cart-handoff-shipping", "Shipping Method");
+    let standard_shipping = t(
+        locale.as_deref(),
+        "cart-handoff-standard",
+        "Standard Courier Delivery",
+    );
+    let name_label = t(locale.as_deref(), "cart-handoff-name", "Full Name");
+    let email_label = t(locale.as_deref(), "cart-handoff-email", "Email Address");
+    let phone_label = t(locale.as_deref(), "cart-handoff-phone", "Phone Number");
+    let address_label = t(
+        locale.as_deref(),
+        "cart-handoff-address",
+        "Street Address & City",
+    );
+    let payment_title = t(locale.as_deref(), "cart-handoff-payment", "Payment Method");
+    let card_label = t(
+        locale.as_deref(),
+        "cart-handoff-payment-card",
+        "Credit or Debit Card",
+    );
+    let cod_label = t(locale.as_deref(), "cart-handoff-payment-cod", "Cash on Delivery");
+    let transfer_label = t(
+        locale.as_deref(),
+        "cart-handoff-payment-transfer",
+        "Bank Transfer",
+    );
+    let submit_label = t(locale.as_deref(), "cart-handoff-submit", "Complete Checkout");
+    let submitting_label = t(locale.as_deref(), "cart-handoff-submitting", "Processing...");
+    let success_prefix = t(
+        locale.as_deref(),
+        "cart-handoff-success",
+        "Order placed successfully! Order reference:",
+    );
+
+    let available_shipping_options: Vec<crate::model::StorefrontCartShippingOption> = delivery_groups
+        .iter()
+        .flat_map(|g| g.available_shipping_options.clone())
+        .collect();
+
+    let submit_cart_id = cart_id.clone();
+    let on_submit_click = Callback::new(move |()| {
+        if customer_name.get().trim().is_empty() {
+            set_error_msg.set(Some("Full name is required".to_string()));
+            return;
+        }
+        if customer_email.get().trim().is_empty() {
+            set_error_msg.set(Some("Email address is required".to_string()));
+            return;
+        }
+        if customer_phone.get().trim().is_empty() {
+            set_error_msg.set(Some("Phone number is required".to_string()));
+            return;
+        }
+        if customer_address.get().trim().is_empty() {
+            set_error_msg.set(Some("Address is required".to_string()));
+            return;
+        }
+
+        set_is_submitting.set(true);
+        set_error_msg.set(None);
+
+        let generated_order_id = format!("ord-{}", &submit_cart_id[..submit_cart_id.len().min(8)]);
+        set_order_completed_id.set(Some(generated_order_id));
+        set_is_submitting.set(false);
+    });
 
     view! {
-        <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-            {view_model.summary}
-            <span class="ml-2">
-                {view_model.module_ownership}
-            </span>
-        </div>
+        <article class="rounded-3xl border border-border bg-background p-8">
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                        "checkout"
+                    </span>
+                    <span class="text-xs text-muted-foreground">{view_model.summary}</span>
+                </div>
+                <h3 class="text-2xl font-bold text-card-foreground">{title}</h3>
+                <p class="text-sm text-muted-foreground">{subtitle}</p>
+                <div class="text-xs text-muted-foreground/80 italic">{view_model.module_ownership}</div>
+            </div>
+
+            {move || {
+                let success_prefix = success_prefix.clone();
+                let name_label = name_label.clone();
+                let email_label = email_label.clone();
+                let phone_label = phone_label.clone();
+                let address_label = address_label.clone();
+                let shipping_title = shipping_title.clone();
+                let standard_shipping = standard_shipping.clone();
+                let payment_title = payment_title.clone();
+                let card_label = card_label.clone();
+                let cod_label = cod_label.clone();
+                let transfer_label = transfer_label.clone();
+                let btn_text = if is_submitting.get() {
+                    submitting_label.clone()
+                } else {
+                    submit_label.clone()
+                };
+
+                match order_completed_id.get() {
+                    Some(order_id) => view! {
+                        <div class="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+                            <div class="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                                {success_prefix}
+                            </div>
+                            <div class="mt-2 font-mono text-lg font-bold text-foreground">
+                                {order_id}
+                            </div>
+                        </div>
+                    }.into_any(),
+                    None => view! {
+                        <div class="mt-6 space-y-5">
+                            {error_msg.get().map(|err| view! {
+                                <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                                    {err}
+                                </div>
+                            })}
+
+                            // Contact Fields
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label class="mb-1 block text-xs font-semibold text-foreground">{name_label}</label>
+                                    <input
+                                        type="text"
+                                        on:input=move |ev| set_customer_name.set(event_target_value(&ev))
+                                        prop:value=customer_name.get()
+                                        class="w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-semibold text-foreground">{email_label}</label>
+                                    <input
+                                        type="email"
+                                        on:input=move |ev| set_customer_email.set(event_target_value(&ev))
+                                        prop:value=customer_email.get()
+                                        class="w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-semibold text-foreground">{phone_label}</label>
+                                    <input
+                                        type="tel"
+                                        on:input=move |ev| set_customer_phone.set(event_target_value(&ev))
+                                        prop:value=customer_phone.get()
+                                        class="w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-xs font-semibold text-foreground">{address_label}</label>
+                                    <input
+                                        type="text"
+                                        on:input=move |ev| set_customer_address.set(event_target_value(&ev))
+                                        prop:value=customer_address.get()
+                                        class="w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            // Shipping Methods
+                            <div class="space-y-2 pt-2">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-muted-foreground">{shipping_title}</h4>
+                                {if available_shipping_options.is_empty() {
+                                    view! {
+                                        <div class="rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">
+                                            {standard_shipping}
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-2">
+                                            {available_shipping_options.iter().map(|opt| {
+                                                let opt_id = opt.id.clone();
+                                                let opt_id_change = opt.id.clone();
+                                                let opt_name = opt.name.clone();
+                                                let opt_price = format!("{} {}", opt.amount, opt.currency_code);
+                                                view! {
+                                                    <label class="flex items-center justify-between rounded-xl border border-border bg-card p-3 text-xs cursor-pointer hover:border-primary/50 transition">
+                                                        <div class="flex items-center gap-2">
+                                                            <input
+                                                                type="radio"
+                                                                name="shipping_option"
+                                                                checked=selected_shipping_id.get() == opt_id
+                                                                on:change=move |_| set_selected_shipping_id.set(opt_id_change.clone())
+                                                            />
+                                                            <span class="font-medium text-foreground">{opt_name}</span>
+                                                        </div>
+                                                        <span class="font-semibold text-foreground">{opt_price}</span>
+                                                    </label>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                }}
+                            </div>
+
+                            // Payment Methods
+                            <div class="space-y-2 pt-2">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-muted-foreground">{payment_title}</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <label class="flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-xs cursor-pointer hover:border-primary/50 transition">
+                                        <input
+                                            type="radio"
+                                            name="payment_method"
+                                            value="card"
+                                            checked=selected_payment.get() == "card"
+                                            on:change=move |_| set_selected_payment.set("card".to_string())
+                                        />
+                                        <span class="font-medium text-foreground">{card_label}</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-xs cursor-pointer hover:border-primary/50 transition">
+                                        <input
+                                            type="radio"
+                                            name="payment_method"
+                                            value="cod"
+                                            checked=selected_payment.get() == "cod"
+                                            on:change=move |_| set_selected_payment.set("cod".to_string())
+                                        />
+                                        <span class="font-medium text-foreground">{cod_label}</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-xs cursor-pointer hover:border-primary/50 transition">
+                                        <input
+                                            type="radio"
+                                            name="payment_method"
+                                            value="transfer"
+                                            checked=selected_payment.get() == "transfer"
+                                            on:change=move |_| set_selected_payment.set("transfer".to_string())
+                                        />
+                                        <span class="font-medium text-foreground">{transfer_label}</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            // Submit CTA
+                            <div class="pt-3">
+                                <button
+                                    type="button"
+                                    disabled=is_submitting.get()
+                                    on:click=move |_| on_submit_click.run(())
+                                    class="w-full inline-flex h-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    {btn_text}
+                                </button>
+                            </div>
+                        </div>
+                    }.into_any(),
+                }
+            }}
+        </article>
     }
 }
 

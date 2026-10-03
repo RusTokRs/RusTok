@@ -9,7 +9,12 @@
  */
 
 import type { storefrontGraphql } from "@/shared/lib/graphql";
-import type { Cart } from "./types";
+import type {
+  Cart,
+  CompleteCheckoutResult,
+  CompleteStorefrontCheckoutInput,
+  StorefrontShippingSelectionInput,
+} from "./types";
 
 export type CartGraphqlExecutor = typeof storefrontGraphql;
 
@@ -22,6 +27,11 @@ const CART_FIELDS = `
   totalAmount
   taxTotal
   status
+  email
+  regionId
+  countryCode
+  localeCode
+  selectedShippingOptionId
   lineItems {
     id
     cartId
@@ -33,6 +43,8 @@ const CART_FIELDS = `
     unitPrice
     totalPrice
     currencyCode
+    shippingProfileSlug
+    sellerId
   }
   adjustments {
     id
@@ -41,6 +53,19 @@ const CART_FIELDS = `
     sourceType
     sourceId
     adjustedAmount
+  }
+  deliveryGroups {
+    shippingProfileSlug
+    sellerId
+    selectedShippingOptionId
+    availableShippingOptions {
+      id
+      name
+      currencyCode
+      amount
+      providerId
+      active
+    }
   }
 `;
 
@@ -243,3 +268,121 @@ export async function removeStorefrontCartLineItem(
     return null;
   }
 }
+
+const UPDATE_STOREFRONT_CART_SHIPPING_MUTATION = `
+  mutation UpdateStorefrontCartShipping(
+    $cartId: UUID!
+    $input: UpdateStorefrontCartContextInput!
+  ) {
+    updateStorefrontCartContext(cartId: $cartId, input: $input) {
+      cart {
+        ${CART_FIELDS}
+      }
+    }
+  }
+`;
+
+export async function updateStorefrontCartShipping(
+  graphql: CartGraphqlExecutor,
+  cartId: string,
+  shippingOptionId: string,
+  shippingSelections?: StorefrontShippingSelectionInput[],
+  tenantSlug?: string | null,
+): Promise<Cart | null> {
+  try {
+    const response = await graphql<{
+      updateStorefrontCartContext: { cart: Cart };
+    }, {
+      cartId: string;
+      input: {
+        selectedShippingOptionId: string;
+        shippingSelections?: StorefrontShippingSelectionInput[];
+      };
+    }>({
+      query: UPDATE_STOREFRONT_CART_SHIPPING_MUTATION,
+      variables: {
+        cartId,
+        input: {
+          selectedShippingOptionId: shippingOptionId,
+          ...(shippingSelections && shippingSelections.length > 0 ? { shippingSelections } : {}),
+        },
+      },
+      tenant: tenantSlug ?? undefined,
+    });
+
+    return response.data?.updateStorefrontCartContext.cart ?? null;
+  } catch (error) {
+    console.error("Failed to update storefront cart shipping option:", error);
+    return null;
+  }
+}
+
+const COMPLETE_STOREFRONT_CHECKOUT_MUTATION = `
+  mutation CompleteStorefrontCheckout(
+    $idempotencyKey: String!
+    $input: CompleteStorefrontCheckoutInput!
+  ) {
+    completeStorefrontCheckout(
+      idempotencyKey: $idempotencyKey
+      input: $input
+    ) {
+      cart {
+        ${CART_FIELDS}
+      }
+      order {
+        id
+        tenantId
+        channelId
+        channelSlug
+        customerId
+        status
+        currencyCode
+        subtotalAmount
+        adjustmentTotal
+        shippingTotal
+        totalAmount
+        taxTotal
+        taxIncluded
+        metadata
+      }
+      paymentCollection {
+        id
+        status
+        currencyCode
+        amount
+      }
+    }
+  }
+`;
+
+export async function completeStorefrontCheckout(
+  graphql: CartGraphqlExecutor,
+  input: CompleteStorefrontCheckoutInput,
+  tenantSlug?: string | null,
+): Promise<CompleteCheckoutResult | null> {
+  const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  try {
+    const response = await graphql<{
+      completeStorefrontCheckout: CompleteCheckoutResult;
+    }, {
+      idempotencyKey: string;
+      input: CompleteStorefrontCheckoutInput;
+    }>({
+      query: COMPLETE_STOREFRONT_CHECKOUT_MUTATION,
+      variables: {
+        idempotencyKey,
+        input,
+      },
+      tenant: tenantSlug ?? undefined,
+    });
+
+    return response.data?.completeStorefrontCheckout ?? null;
+  } catch (error) {
+    console.error("Failed to complete storefront checkout:", error);
+    throw error;
+  }
+}
+

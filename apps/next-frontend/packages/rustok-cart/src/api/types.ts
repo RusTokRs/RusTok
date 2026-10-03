@@ -19,6 +19,8 @@ export interface CartLineItem {
   unitPrice: string;
   totalPrice: string;
   currencyCode: string;
+  shippingProfileSlug?: string | null;
+  sellerId?: string | null;
 }
 
 export interface CartAdjustment {
@@ -30,6 +32,23 @@ export interface CartAdjustment {
   adjustedAmount: string;
 }
 
+export interface CartShippingOptionSummary {
+  id: string;
+  name: string;
+  currencyCode: string;
+  amount: string;
+  providerId: string;
+  active: boolean;
+}
+
+export interface CartDeliveryGroup {
+  shippingProfileSlug: string;
+  sellerId?: string | null;
+  lineItemIds?: string[];
+  selectedShippingOptionId?: string | null;
+  availableShippingOptions: CartShippingOptionSummary[];
+}
+
 export interface Cart {
   id: string;
   currencyCode: string;
@@ -39,6 +58,71 @@ export interface Cart {
   totalAmount: string;
   taxTotal: string;
   status: string;
+  email?: string | null;
+  regionId?: string | null;
+  countryCode?: string | null;
+  localeCode?: string | null;
+  selectedShippingOptionId?: string | null;
   lineItems: CartLineItem[];
   adjustments: CartAdjustment[];
+  deliveryGroups?: CartDeliveryGroup[];
+}
+
+export interface StorefrontShippingSelectionInput {
+  shippingProfileSlug: string;
+  sellerId?: string | null;
+  selectedShippingOptionId?: string | null;
+}
+
+export interface CompleteStorefrontCheckoutInput {
+  cartId: string;
+  shippingOptionId?: string | null;
+  shippingSelections?: StorefrontShippingSelectionInput[];
+  regionId?: string | null;
+  countryCode?: string | null;
+  locale?: string | null;
+  createFulfillment?: boolean;
+  metadata?: string | null;
+}
+
+export interface OrderSummary {
+  id: string;
+  tenantId: string;
+  channelId?: string | null;
+  channelSlug?: string | null;
+  customerId?: string | null;
+  status: string;
+  currencyCode: string;
+  subtotalAmount: string;
+  adjustmentTotal: string;
+  shippingTotal: string;
+  totalAmount: string;
+  taxTotal: string;
+  taxIncluded: boolean;
+  metadata?: string | null;
+}
+
+export interface PaymentCollectionSummary {
+  id: string;
+  status: string;
+  currencyCode: string;
+  amount: string;
+}
+
+export interface CompleteCheckoutResult {
+  cart: Cart;
+  order: OrderSummary;
+  paymentCollection: PaymentCollectionSummary;
+}
+
+export interface CustomerShippingAddress {
+  fullName: string;
+  email: string;
+  phone: string;
+  countryCode: string;
+  city: string;
+  streetAddress: string;
+  postalCode: string;
+  paymentMethod: "card" | "cod" | "transfer";
+  notes?: string;
 }

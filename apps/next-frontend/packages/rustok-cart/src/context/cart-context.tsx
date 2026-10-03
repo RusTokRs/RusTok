@@ -26,6 +26,7 @@ import {
   fetchStorefrontCart,
   removeStorefrontCartLineItem,
   updateStorefrontCartLineItemQuantity,
+  updateStorefrontCartShipping,
 } from "../api/cart";
 import type { Cart } from "../api/types";
 
@@ -44,6 +45,8 @@ export interface CartContextValue {
   updateQuantity: (lineItemId: string, quantity: number) => Promise<boolean>;
   removeItem: (lineItemId: string) => Promise<boolean>;
   refreshCart: () => Promise<void>;
+  selectShippingOption: (shippingOptionId: string) => Promise<boolean>;
+  clearCart: () => void;
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
@@ -250,6 +253,42 @@ export function CartProvider({
     [cart?.id, tenantSlug],
   );
 
+  const selectShippingOption = useCallback(
+    async (shippingOptionId: string): Promise<boolean> => {
+      if (!cart?.id) return false;
+      setIsUpdating(true);
+      try {
+        const updated = await updateStorefrontCartShipping(
+          storefrontGraphql,
+          cart.id,
+          shippingOptionId,
+          undefined,
+          tenantSlug,
+        );
+        if (updated) {
+          setCart(updated);
+          return true;
+        }
+        return false;
+      } catch (err) {
+        console.error("Failed to update shipping option:", err);
+        return false;
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [cart?.id, tenantSlug],
+  );
+
+  const clearCart = useCallback(() => {
+    try {
+      window.localStorage.removeItem(CART_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setCart(null);
+  }, []);
+
   const itemCount = useMemo(() => {
     if (!cart?.lineItems) return 0;
     return cart.lineItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -269,6 +308,8 @@ export function CartProvider({
       updateQuantity,
       removeItem,
       refreshCart,
+      selectShippingOption,
+      clearCart,
     }),
     [
       cart,
@@ -283,6 +324,8 @@ export function CartProvider({
       updateQuantity,
       removeItem,
       refreshCart,
+      selectShippingOption,
+      clearCart,
     ],
   );
 
