@@ -82,6 +82,20 @@ members = [
 [patch.crates-io]
 utoipa-swagger-ui-vendored = { path = "crates/utils/utoipa-swagger-ui-vendored" }
 
+# Shared lint policy for the Fly crates.
+#
+# Scope is deliberately narrow: CI lints Fly with `-D warnings`, so every lint enabled here is a
+# build failure, not advice. Each entry below was verified to have zero occurrences in the tree
+# before being switched on, which makes it a regression guard rather than a backlog of work.
+# Broader lints (`unreachable_pub`, `missing_debug_implementations`, `clippy::pedantic`) are left
+# off until someone can run them and triage the output.
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

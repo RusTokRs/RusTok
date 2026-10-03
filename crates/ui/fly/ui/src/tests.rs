@@ -283,3 +283,38 @@ fn contribution_filtering_is_capability_driven() {
     assert_eq!(registry.available(&capabilities).count(), 1);
     assert_eq!(registry.available(&BTreeSet::new()).count(), 0);
 }
+
+#[test]
+fn a_read_only_session_cannot_slip_an_empty_batch_past_the_gate() {
+    // The state machine skips its whole guarded branch when a command requires no capability.
+    // An empty batch used to compute an empty requirement, so it bypassed the read-only check
+    // and still reached `FlyEditor::apply`, which records a history entry and marks the revision
+    // changed — enough for a read-only session to make the real editor's save fail on a conflict.
+    let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    let error = machine
+        .dispatch(UiIntent::execute(EditorCommand::Batch { commands: vec![] }))
+        .expect_err("read-only must reject an empty batch");
+    assert_eq!(error, UiError::ReadOnly);
+}
+
+#[test]
+fn an_empty_batch_is_still_accepted_when_editing_is_allowed() {
+    // Failing closed must not break a legitimate session.
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Batch { commands: vec![] }))
+        .expect("an editing session may dispatch an empty batch");
+}
+
+#[test]
+fn selection_remains_possible_without_edit_capability() {
+    // `Select` requires no capability by design: inspecting a read-only preview is legitimate.
+    // The empty-batch fix must not have swept that up.
+    let mut machine = FlyUiStateMachine::new(Presentation::ReadOnly);
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Select {
+            component_id: Some("hero".to_string()),
+        }))
+        .expect("selection must stay available in a read-only session");
+}
+

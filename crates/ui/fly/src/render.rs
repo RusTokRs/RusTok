@@ -1,3 +1,7 @@
+use crate::safe_url::{
+    self, UrlAttributeKind, UrlPolicy, absolute_url_has_authority, normalized_url_candidate,
+    safe_data_image,
+};
 use crate::{
     ComponentNode, ComponentObject, FlyError, FlyResult, PageMetadata, ProjectDocument,
     ProjectPage, StyleRuleCatalog, StyleRuleScope,
@@ -145,9 +149,23 @@ pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> Str
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<style>{}</style></head><body>{}</body></html>",
         head.render_html(),
-        css,
+        escape_style_element_text(css),
         body_html,
     )
+}
+
+/// Make a stylesheet safe to embed inside a raw `<style>` element.
+///
+/// The HTML tokenizer leaves "raw text" mode at the first literal `</` regardless of CSS syntax,
+/// so any `</style>` reaching this point would end the element and let the remainder of the
+/// stylesheet be parsed as markup. CSS string/identifier escapes are invisible to the HTML
+/// tokenizer but fully understood by the CSS parser, so escaping the `<` keeps the stylesheet
+/// semantically identical while removing the breakout. `<!--` is neutralised for the same reason.
+fn escape_style_element_text(css: &str) -> String {
+    if !css.contains('<') {
+        return css.to_string();
+    }
+    css.replace('<', "\\00003c ")
 }
 
 pub fn render_page(
@@ -165,7 +183,7 @@ pub fn render_page(
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
-        render_project_styles(document, page)
+        render_project_styles(document, page, policy)
     } else {
         String::new()
     };
@@ -287,7 +305,7 @@ fn render_component(
     {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -301,7 +319,7 @@ fn render_component(
     }
 
     if let Some(content) = component.extensions.get("content").and_then(Value::as_str) {
-        output.push_str(&escape_html(&strip_tags(content)));
+        push_escaped_html(output, content);
     }
     for (child_index, child) in component.children().iter().enumerate() {
         render_node(child, component_id, child_index, policy, output);
@@ -311,7 +329,11 @@ fn render_component(
     output.push('>');
 }
 
-fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> String {
+fn render_project_styles(
+    document: &ProjectDocument,
+    page: &ProjectPage,
+    policy: &RenderPolicy,
+) -> String {
     let mut component_ids = Vec::new();
     if let Some(root) = page.component.as_ref() {
         root.collect_ids(&mut component_ids);
@@ -329,7 +351,7 @@ fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> Stri
         let declarations = rule
             .declarations
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if declarations.is_empty() {
@@ -352,12 +374,12 @@ fn render_project_styles(document: &ProjectDocument, page: &ProjectPage) -> Stri
         }
     }
     if let Some(root) = page.component.as_ref() {
-        append_component_style_rules(root, &mut css);
+        append_component_style_rules(root, policy, &mut css);
     }
     css
 }
 
-fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
+fn append_component_style_rules(node: &ComponentNode, policy: &RenderPolicy, css: &mut String) {
     let ComponentNode::Object(component) = node else {
         return;
     };
@@ -367,7 +389,7 @@ fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
     ) {
         let declarations = style
             .iter()
-            .filter_map(|(name, value)| safe_style(name, value))
+            .filter_map(|(name, value)| safe_style(name, value, policy))
             .collect::<Vec<_>>()
             .join(";");
         if !declarations.is_empty() {
@@ -379,7 +401,7 @@ fn append_component_style_rules(node: &ComponentNode, css: &mut String) {
         }
     }
     for child in component.children() {
-        append_component_style_rules(child, css);
+        append_component_style_rules(child, policy, css);
     }
 }
 
@@ -515,105 +537,53 @@ fn safe_head_url(value: &str, allow_data_image: bool) -> Option<String> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UrlAttributeKind {
-    Navigation,
-    Resource,
-    FormAction,
-}
-
-impl UrlAttributeKind {
-    fn for_attribute(name: &str) -> Option<Self> {
-        match name {
-            "href" => Some(Self::Navigation),
-            "src" | "poster" => Some(Self::Resource),
-            "action" | "formaction" => Some(Self::FormAction),
-            _ => None,
+impl RenderPolicy {
+    /// Project the render policy onto the shared URL policy.
+    fn url_policy(&self) -> UrlPolicy {
+        UrlPolicy {
+            allow_http: self.allow_http,
+            allow_https: self.allow_https,
+            allow_relative_urls: self.allow_relative_urls,
+            allow_hash_urls: self.allow_hash_urls,
+            allow_mailto: self.allow_mailto,
+            allow_tel: self.allow_tel,
+            allow_data_images: self.allow_data_images,
         }
     }
 }
 
 fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bool {
-    let Some(value) = normalized_url_candidate(value) else {
-        return false;
-    };
-    let normalized = value.to_ascii_lowercase();
-
-    match kind {
-        UrlAttributeKind::Navigation => {
-            (policy.allow_hash_urls && normalized.starts_with('#'))
-                || (policy.allow_relative_urls && relative_url_allowed(value))
-                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
-                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
-                || (policy.allow_mailto && scheme_target_is_not_empty(value, "mailto:"))
-                || (policy.allow_tel && scheme_target_is_not_empty(value, "tel:"))
-        }
-        UrlAttributeKind::Resource => {
-            (policy.allow_relative_urls && relative_url_allowed(value))
-                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
-                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
-                || (policy.allow_data_images && safe_data_image(&normalized))
-        }
-        UrlAttributeKind::FormAction => {
-            (policy.allow_relative_urls && relative_url_allowed(value))
-                || (policy.allow_http && absolute_url_has_authority(value, "http://"))
-                || (policy.allow_https && absolute_url_has_authority(value, "https://"))
-        }
-    }
+    safe_url::url_allowed(value, kind, &policy.url_policy())
 }
 
-fn normalized_url_candidate(value: &str) -> Option<&str> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > 2048
-        || value.starts_with("//")
-        || value.contains('\\')
-        || value.chars().any(char::is_control)
-        || value.chars().any(char::is_whitespace)
-    {
-        return None;
-    }
-    Some(value)
-}
 
-fn relative_url_allowed(value: &str) -> bool {
-    if value.starts_with('#') {
-        return false;
-    }
-    let scheme_boundary = value.find(['/', '?', '#']).unwrap_or(value.len());
-    !value[..scheme_boundary].contains(':')
-}
 
-fn absolute_url_has_authority(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with(scheme) {
-        return false;
-    }
-    let authority = value[scheme.len()..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    !authority.is_empty() && !authority.starts_with(':')
-}
+/// Properties that can execute script regardless of their value.
+const DENIED_STYLE_PROPERTIES: &[&str] = &[
+    "behavior",
+    "-moz-binding",
+    "-ms-behavior",
+    "expression",
+];
 
-fn scheme_target_is_not_empty(value: &str, scheme: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with(scheme) && !value[scheme.len()..].is_empty()
-}
-
-fn safe_data_image(normalized: &str) -> bool {
-    [
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/gif;base64,",
-        "data:image/webp;base64,",
-        "data:image/avif;base64,",
-    ]
-    .iter()
-    .any(|prefix| normalized.starts_with(prefix))
-}
-
-fn safe_style(name: &str, value: &Value) -> Option<String> {
+/// Decide whether a single CSS declaration may be emitted.
+///
+/// `url(...)` used to be rejected outright, which is safe but wrong for a page builder: it made
+/// `background-image` unusable. References are now allowed when the URL inside them satisfies the
+/// same resource policy the renderer applies to `src`, so `url(/hero.png)` works while
+/// `url(javascript:...)` and `url(data:text/html,...)` remain blocked.
+///
+/// # The invariant this upholds
+///
+/// Within one layer, a URL must be judged the same whether it appears in an attribute or inside
+/// `url()`. Accepting an image through `src` and refusing the identical image through
+/// `background-image` is not a stricter policy, it is an incoherent one.
+///
+/// Layers may still differ from each other, and do: static publishing refuses plain `http://`
+/// where this renderer allows it. That is a coherent difference, because publishing applies the
+/// same stricter rule to attributes *and* references — see `FORBIDDEN_CSS_TOKENS` and
+/// `strip_validated_css_urls` in `rustok-page-builder`'s `static_publish_policy`.
+fn safe_style(name: &str, value: &Value, policy: &RenderPolicy) -> Option<String> {
     if name.is_empty()
         || name.starts_with("--")
         || !name
@@ -622,32 +592,112 @@ fn safe_style(name: &str, value: &Value) -> Option<String> {
     {
         return None;
     }
+    // These properties execute code by design, so no value is safe. Previously they were blocked
+    // only as a side effect of banning `url(` outright; now that safe references are permitted,
+    // the property itself has to be refused.
+    if DENIED_STYLE_PROPERTIES.contains(&name.to_ascii_lowercase().as_str()) {
+        return None;
+    }
     let value = scalar_string(value)?;
-    let normalized = value.to_ascii_lowercase();
-    let compact = normalized
+    if value.chars().any(char::is_control) {
+        return None;
+    }
+
+    // Validate and blank out every `url(...)` token *before* the structural check, because a
+    // legitimate data-image reference legally contains `;` (`data:image/png;base64,...`) and the
+    // structural check must not see it. Characters that are dangerous *inside* a reference are
+    // rejected by `url_allowed` and by the stricter check in the stripping pass.
+    let without_urls = validate_and_strip_url_tokens(&value, policy)?;
+
+    // Structural characters in what remains are what would let a declaration escape into a new
+    // rule or a comment.
+    if without_urls.contains('\\')
+        || without_urls.contains('<')
+        || without_urls.contains('>')
+        || without_urls.contains(';')
+        || without_urls.contains('{')
+        || without_urls.contains('}')
+        || without_urls.contains("/*")
+        || without_urls.contains("*/")
+    {
+        return None;
+    }
+
+    let compact = without_urls
+        .to_ascii_lowercase()
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
     if compact.contains("expression(")
         || compact.contains("javascript:")
-        || compact.contains("url(")
         || compact.contains("@import")
         || compact.contains("behavior:")
         || compact.contains("-moz-binding")
         || compact.contains("data:")
-        || value.contains('\\')
-        || value.contains('<')
-        || value.contains('>')
-        || value.contains(';')
-        || value.contains('{')
-        || value.contains('}')
-        || value.contains("/*")
-        || value.contains("*/")
-        || value.chars().any(char::is_control)
+        || compact.contains("url(")
     {
         return None;
     }
+
     Some(format!("{name}:{value}"))
+}
+
+/// Replace each well-formed `url(...)` token with a placeholder, rejecting the declaration if any
+/// of them fails the resource URL policy.
+fn validate_and_strip_url_tokens(value: &str, policy: &RenderPolicy) -> Option<String> {
+    let lowered = value.to_ascii_lowercase();
+    // Built once rather than per token: a declaration may carry several references.
+    let url_policy = policy.url_policy();
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+
+    while let Some(offset) = lowered[cursor..].find("url(") {
+        let start = cursor + offset;
+        // Something like `blurl(` is not a reference; require a non-identifier character before.
+        let preceded_by_identifier = value[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
+        if preceded_by_identifier {
+            output.push_str(&value[cursor..start + 4]);
+            cursor = start + 4;
+            continue;
+        }
+
+        let open = start + 4;
+        // An unterminated reference is rejected outright rather than guessed at.
+        let close = value[open..].find(')')? + open;
+        let raw = value[open..close].trim();
+        let unquoted = raw
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+            .or_else(|| {
+                raw.strip_prefix('\'')
+                    .and_then(|rest| rest.strip_suffix('\''))
+            })
+            .unwrap_or(raw);
+
+        // `;` is legal inside a data URL, but these would still let the reference break out of
+        // the declaration or open a comment.
+        if unquoted.is_empty()
+            || unquoted.contains('{')
+            || unquoted.contains('}')
+            || unquoted.contains('<')
+            || unquoted.contains('>')
+            || unquoted.contains("/*")
+            || unquoted.contains("*/")
+            || !safe_url::url_allowed(unquoted, UrlAttributeKind::Resource, &url_policy)
+        {
+            return None;
+        }
+
+        output.push_str(&value[cursor..start]);
+        output.push_str("url-ok");
+        cursor = close + 1;
+    }
+
+    output.push_str(&value[cursor..]);
+    Some(output)
 }
 
 fn safe_media_query(query: &str) -> bool {
@@ -670,52 +720,80 @@ fn write_attribute(output: &mut String, name: &str, value: &str) {
     output.push(' ');
     output.push_str(name);
     output.push_str("=\"");
-    output.push_str(&escape_attribute(value));
+    push_escaped_attribute(output, value);
     output.push('"');
 }
 
 fn render_opaque(value: &Value, output: &mut String) {
     match value {
-        Value::String(value) => output.push_str(&escape_html(&strip_tags(value))),
+        Value::String(value) => push_escaped_html(output, value),
         Value::Number(value) => output.push_str(&value.to_string()),
         Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
         _ => {}
     }
 }
 
-fn strip_tags(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut inside_tag = false;
+/// Append `value` to `output` as HTML text content.
+///
+/// Escaping alone is the whole defence here. The renderer previously also ran a hand-rolled
+/// `strip_tags` pass first, which was both redundant (the escape already neutralises markup) and
+/// lossy: authored text such as `5 < 10 and 3 > 2` silently lost everything between the angle
+/// brackets.
+fn push_escaped_html(output: &mut String, value: &str) {
+    output.reserve(value.len());
     for character in value.chars() {
         match character {
-            '<' => inside_tag = true,
-            '>' => inside_tag = false,
-            _ if !inside_tag => result.push(character),
-            _ => {}
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
         }
     }
-    result
+}
+
+/// Append `value` to `output` as a double-quoted attribute value.
+fn push_escaped_attribute(output: &mut String, value: &str) {
+    output.reserve(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(character),
+        }
+    }
 }
 
 fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    let mut output = String::with_capacity(value.len());
+    push_escaped_html(&mut output, value);
+    output
 }
 
 fn escape_attribute(value: &str) -> String {
-    escape_html(value)
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    let mut output = String::with_capacity(value.len());
+    push_escaped_attribute(&mut output, value);
+    output
 }
 
+/// Escape a value for use inside a double-quoted CSS attribute-selector string.
+///
+/// Allow-list based on purpose: anything that is not an unambiguously inert identifier character
+/// is emitted as a CSS numeric escape (`\\XX `). A deny-list here is not sufficient, because the
+/// result is embedded in a `<style>` element and therefore has to survive both the CSS grammar
+/// and the HTML tokenizer.
 fn escape_css_attribute(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\a ")
-        .replace('\r', "\\d ")
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':') {
+            escaped.push(character);
+        } else {
+            escaped.push_str(&format!("\\{:x} ", character as u32));
+        }
+    }
+    escaped
 }
 
 #[cfg(test)]
@@ -937,14 +1015,18 @@ mod tests {
 
     #[test]
     fn style_policy_rejects_resource_loading_and_custom_properties() {
-        assert!(safe_style("color", &Value::String("red".to_string())).is_some());
+        let policy = RenderPolicy::default();
+        assert!(safe_style("color", &Value::String("red".to_string()), &policy).is_some());
         for (name, value) in [
             ("--payload", "red"),
             ("background", "u r l(https://evil.example/x)"),
             ("color", "\\75rl(https://evil.example/x)"),
             ("behavior", "url(x.htc)"),
         ] {
-            assert!(safe_style(name, &Value::String(value.to_string())).is_none());
+            assert!(
+                safe_style(name, &Value::String(value.to_string()), &policy).is_none(),
+                "accepted {name}: {value}"
+            );
         }
     }
 
@@ -1012,4 +1094,141 @@ mod tests {
         assert!(!head.contains("canonical"));
         assert!(!head.contains("og:image"));
     }
+
+    #[test]
+    fn safe_url_references_are_allowed_in_declarations() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "url(/hero.png)",
+            "url(\"/hero.png\")",
+            "url('/hero.png')",
+            "url(https://cdn.example/hero.png)",
+            "url(  /hero.png  )",
+            "linear-gradient(red, blue), url(/hero.png)",
+            "url(data:image/png;base64,iVBORw0KGgo=)",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy)
+                    .is_some(),
+                "rejected legitimate {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn hostile_url_references_are_still_refused() {
+        let policy = RenderPolicy::default();
+        for value in [
+            "url(javascript:alert(1))",
+            "url(data:text/html;base64,PHNjcmlwdD4=)",
+            "url(//attacker.example/x.png)",
+            "url()",
+            "url(/a.png) ; background: url(javascript:alert(1))",
+            "url(/unterminated.png",
+        ] {
+            assert!(
+                safe_style("background-image", &Value::String(value.to_string()), &policy)
+                    .is_none(),
+                "accepted hostile {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_disabled_resource_scheme_also_disables_it_inside_url() {
+        // The declaration path must honour the same policy flags as the attribute path, rather
+        // than quietly applying a more permissive rule of its own.
+        let policy = RenderPolicy {
+            allow_data_images: false,
+            ..RenderPolicy::default()
+        };
+        assert!(
+            safe_style(
+                "background-image",
+                &Value::String("url(data:image/png;base64,iVBORw0KGgo=)".to_string()),
+                &policy
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn component_id_cannot_break_out_of_the_style_element() {
+        let hostile_id = "x\"]{}</style><script>alert(1)</script><style>{a:b";
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": hostile_id,
+                        "type": "section",
+                        "style": { "margin-top": "12px" }
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
+        let html = rendered.document_html();
+
+        // Exactly one `</style>`: the real closing tag. A second one would mean the stylesheet
+        // ended the element early and the rest of it is being parsed as markup.
+        assert_eq!(
+            html.matches("</style>").count(),
+            1,
+            "stylesheet terminated the style element: {html}"
+        );
+        assert!(
+            !html.contains("<script>"),
+            "stylesheet injected markup: {html}"
+        );
+        assert!(
+            !rendered.css.contains('<'),
+            "raw `<` survived CSS escaping: {}",
+            rendered.css
+        );
+        assert!(
+            rendered.css.contains("margin-top:12px"),
+            "escaping dropped the declaration: {}",
+            rendered.css
+        );
+    }
+
+    #[test]
+    fn text_content_keeps_angle_brackets_as_literal_text() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "note",
+                        "type": "text",
+                        "content": "5 < 10 and 3 > 2 & true"
+                    }]
+                }
+            }]
+        }))
+        .expect("decode");
+
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("render");
+
+        assert!(
+            rendered.html.contains("5 &lt; 10 and 3 &gt; 2 &amp; true"),
+            "authored text was mangled: {}",
+            rendered.html
+        );
+    }
+
+    #[test]
+    fn style_element_escaping_preserves_ordinary_css() {
+        let css = "[data-fly-style-id=\"hero\"]{margin-top:12px}";
+        assert_eq!(escape_style_element_text(css), css);
+    }
 }
+
