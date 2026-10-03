@@ -29,7 +29,7 @@ The same admission, validation, or delegated `PortError` is returned unchanged.
 
 Events retain the correlation id. Other `PortContext` values are represented by
 lengths, presence flags, actor kind, claim/role counts, and deadline milliseconds;
-raw context values are not recorded.
+raw context values are not recorded. Raw tenant, actor, channel, locale, causation, traceparent, and idempotency values are not recorded.
 
 The shared admission/context diagnostic payload is source-closed and unvalidated.
 Write-admission events retain only stable code, a closed static `PortErrorKind`,
@@ -49,7 +49,7 @@ admission and all context-validation rejections remain warning severity.
 ## Payment-settlement boundary
 
 The payment-settlement post-delegation mapper and canonical owner payload-diagnostic
-sites are source-closed / unvalidated. The mapper retains only static
+sites are source-closed / unvalidated. Payment-settlement owner-local request/identity/lifecycle diagnostics remain a source-closed implementation. The mapper retains only static
 `PortErrorKind` plus message shape. The owner retains static `OrderError` variant,
 aggregate text/UUID/opaque-payload shape, static parse-failure facts, and a closed
 lifecycle status label. Complete errors, parser causes, owner validation text, and

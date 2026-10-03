@@ -33,12 +33,20 @@ const baseConfig = {
   },
   transpilePackages: [
     'geist',
-    '@rustok/blog-admin',
     '@rustok/ai-admin',
+    '@rustok/blog-admin',
+    '@rustok/cache-admin',
     '@rustok/commerce-admin',
+    '@rustok/email-admin',
     '@rustok/events-admin',
     '@rustok/iggy-connector-admin',
-    '@rustok/richtext'
+    '@rustok/mcp-admin',
+    '@rustok/product-admin',
+    '@rustok/rbac-admin',
+    '@rustok/richtext',
+    '@rustok/search-admin',
+    '@rustok/translation-admin',
+    '@rustok/workflow-admin'
   ],
   turbopack: {
     root: path.resolve(__dirname, '../..').replace(/\\/g, '/'),

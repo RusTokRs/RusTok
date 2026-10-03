@@ -139,7 +139,7 @@ if (evidence.status !== "order_checkout_payment_settlement_diagnostic_safety_sou
 for (const [key, expected] of Object.entries({
   local_mapper_payload_diagnostic_cleanup_closed: true,
   canonical_owner_payload_diagnostic_cleanup_closed: true,
-  shared_admission_context_payload_diagnostic_cleanup_closed: false,
+  shared_admission_context_payload_diagnostic_cleanup_closed: true,
   uuid_parse_error_payload_logged_by_owner: false,
   complete_order_error_logged_by_owner: false,
   owner_transition_text_logged: false,
@@ -156,8 +156,8 @@ for (const [key, expected] of Object.entries({
 if (review.review_findings?.canonical_owner_payload_diagnostic_cleanup_closed !== true) {
   failures.push(`${paths.review}: owner cleanup must be closed`);
 }
-if (review.review_findings?.shared_admission_context_payload_diagnostic_cleanup_remains_open !== true) {
-  failures.push(`${paths.review}: shared admission/context gap must remain open`);
+if (review.review_findings?.shared_admission_context_payload_diagnostic_cleanup_closed !== true) {
+  failures.push(`${paths.review}: shared admission/context cleanup must be closed`);
 }
 for (const key of [
   "tests_run",
@@ -172,9 +172,8 @@ for (const key of [
 }
 
 for (const marker of [
-  "Status: **wrapper and owner source-closed / shared admission open / unvalidated**",
+  "Status: **wrapper, shared admission, and owner source-closed / unvalidated**",
   "All seven `OrderError` variants are classified by a closed static label.",
-  "Shared checkout admission/context events still retain complete `PortError`",
   "The broad ecommerce correlation-safe mapper cleanup remains open.",
 ]) requireText(doc, marker, `${paths.doc}: source status`);
 

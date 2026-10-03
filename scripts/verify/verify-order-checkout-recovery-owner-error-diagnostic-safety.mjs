@@ -122,8 +122,13 @@ const severity = functionBody(
 );
 requireText(
   severity,
-  'matches!(error, OrderError::Database(_) | OrderError::Core(_))',
-  `${paths.source}: technical severity policy`,
+  'OrderError::Database(_)',
+  `${paths.source}: technical severity policy database`,
+);
+requireText(
+  severity,
+  'OrderError::Core(_)',
+  `${paths.source}: technical severity policy core`,
 );
 
 const logger = functionBody(source, 'log_checkout_order_recovery_owner_error');

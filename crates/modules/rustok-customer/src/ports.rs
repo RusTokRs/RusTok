@@ -121,8 +121,7 @@ impl CustomerReadPort for crate::CustomerService {
         require_customer_read_policy(&context, owner_operation)?;
         validate_customer_list_projection_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
-        let (items, total) = self
-            .list_customers(
+        let (items, total) = self.list_customers(
                 tenant_id,
                 ListCustomersInput {
                     search: request.search,
@@ -154,11 +153,15 @@ fn require_customer_read_policy(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<(), PortError> {
-    context
+    match context
         .require_policy(PortCallPolicy::read())
-        .inspect_err(|error| {
-            log_customer_read_admission_rejection(context, owner_operation, error);
-        })
+    {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            log_customer_read_admission_rejection(context, owner_operation, &error);
+            Err(error)
+        }
+    }
 }
 
 fn validate_customer_list_projection_request(
@@ -540,7 +543,7 @@ fn customer_error_to_port_error(
                 "customer storage is temporarily unavailable",
             )
         }
-        CustomerError::CustomerNotFound(customer_id) => {
+        CustomerError::CustomerNotFound(_) => {
             log_customer_owner_failure(
                 context,
                 owner_operation,
@@ -550,10 +553,10 @@ fn customer_error_to_port_error(
             );
             PortError::not_found(
                 "customer.customer_not_found",
-                format!("customer '{customer_id}' was not found"),
+                "customer was not found",
             )
         }
-        CustomerError::CustomerByUserNotFound(user_id) => {
+        CustomerError::CustomerByUserNotFound(_) => {
             log_customer_owner_failure(
                 context,
                 owner_operation,
@@ -563,7 +566,7 @@ fn customer_error_to_port_error(
             );
             PortError::not_found(
                 "customer.customer_by_user_not_found",
-                format!("customer was not found for the requested user '{user_id}'"),
+                "customer was not found for the requested user",
             )
         }
         CustomerError::DuplicateEmail(_) => {

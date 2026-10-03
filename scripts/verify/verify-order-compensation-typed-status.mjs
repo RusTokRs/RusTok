@@ -9,11 +9,12 @@ const source = readFileSync(
 );
 const failures = [];
 
+const normalizedSource = source.replace(/\s+/g, ' ');
 const requireText = (value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!normalizedSource.includes(value.replace(/\s+/g, ' '))) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+  if (normalizedSource.includes(value.replace(/\s+/g, ' '))) failures.push(`${label}: forbidden ${value}`);
 };
 
 requireText('OrderStatusKind', 'typed status import');

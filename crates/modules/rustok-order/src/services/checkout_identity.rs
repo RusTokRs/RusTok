@@ -104,7 +104,7 @@ impl OrderCheckoutIdentityJournal {
                 .one(&transaction)
                 .await?
         {
-            return enrich_existing_identity(&self.db, transaction, existing, &input).await;
+            return enrich_existing_identity(&self.db, Some(transaction), existing, &input).await;
         }
 
         let insert = order_checkout_identity::ActiveModel {
@@ -128,10 +128,16 @@ impl OrderCheckoutIdentityJournal {
             }
             Err(insert_error) => {
                 transaction.rollback().await?;
-                let existing =
+                let mut existing =
                     order_checkout_identity::Entity::find_by_id(input.checkout_operation_id)
                         .one(&self.db)
                         .await?;
+                if existing.is_none() {
+                    existing = self.get_by_order(input.tenant_id, input.order_id).await?;
+                }
+                if existing.is_none() {
+                    existing = self.get_by_cart(input.tenant_id, input.source_cart_id).await?;
+                }
                 if let Some(existing) = existing {
                     if existing.tenant_id != input.tenant_id {
                         return Err(OrderCheckoutIdentityError::Conflict(format!(
@@ -139,23 +145,19 @@ impl OrderCheckoutIdentityJournal {
                             input.checkout_operation_id
                         )));
                     }
-                    let transaction = self.db.begin().await?;
-                    return enrich_existing_identity(&self.db, transaction, existing, &input).await;
-                }
-                if let Some(existing) = self.get_by_order(input.tenant_id, input.order_id).await? {
-                    return Err(OrderCheckoutIdentityError::Conflict(format!(
-                        "order {} is already bound to checkout operation {}",
-                        input.order_id, existing.checkout_operation_id
-                    )));
-                }
-                if let Some(existing) = self
-                    .get_by_cart(input.tenant_id, input.source_cart_id)
-                    .await?
-                {
-                    return Err(OrderCheckoutIdentityError::Conflict(format!(
-                        "cart {} is already bound to order {}",
-                        input.source_cart_id, existing.order_id
-                    )));
+                    if existing.checkout_operation_id != input.checkout_operation_id {
+                        if existing.order_id == input.order_id {
+                            return Err(OrderCheckoutIdentityError::Conflict(format!(
+                                "order {} is already bound to checkout operation {}",
+                                input.order_id, existing.checkout_operation_id
+                            )));
+                        }
+                        return Err(OrderCheckoutIdentityError::Conflict(format!(
+                            "cart {} is already bound to order {}",
+                            input.source_cart_id, existing.order_id
+                        )));
+                    }
+                    return enrich_existing_identity(&self.db, None, existing, &input).await;
                 }
                 Err(OrderCheckoutIdentityError::Database(insert_error))
             }
@@ -165,7 +167,7 @@ impl OrderCheckoutIdentityJournal {
 
 async fn enrich_existing_identity(
     db: &DatabaseConnection,
-    transaction: sea_orm::DatabaseTransaction,
+    transaction: Option<sea_orm::DatabaseTransaction>,
     existing: order_checkout_identity::Model,
     input: &RecordOrderCheckoutIdentity,
 ) -> OrderCheckoutIdentityResult<order_checkout_identity::Model> {
@@ -176,9 +178,16 @@ async fn enrich_existing_identity(
         || existing.snapshot_hash.is_none()
         || existing.request_hash.is_none();
     if !needs_update {
-        transaction.commit().await?;
+        if let Some(tx) = transaction {
+            tx.commit().await?;
+        }
         return Ok(existing);
     }
+
+    let transaction = match transaction {
+        Some(tx) => tx,
+        None => db.begin().await?,
+    };
 
     let mut active = existing.clone().into_active_model();
     if existing.source_cart_id.is_none() {

@@ -39,22 +39,26 @@ const requireCount = (content, value, expected, label) => {
 function functionBody(content, functionName) {
   const signature = new RegExp(
     `(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+${functionName}(?:<[^>]*>)?\\s*\\(`,
+    "g",
   );
-  const match = signature.exec(content);
-  if (!match) {
-    failures.push(`missing function ${functionName}`);
-    return "";
-  }
-  const openBrace = content.indexOf("{", match.index);
-  let depth = 0;
-  for (let index = openBrace; index >= 0 && index < content.length; index += 1) {
-    if (content[index] === "{") depth += 1;
-    if (content[index] === "}") {
-      depth -= 1;
-      if (depth === 0) return content.slice(openBrace, index + 1);
+  let match;
+  while ((match = signature.exec(content)) !== null) {
+    const nextSemicolon = content.indexOf(";", match.index);
+    const nextBrace = content.indexOf("{", match.index);
+    if (nextBrace === -1) continue;
+    if (nextSemicolon !== -1 && nextSemicolon < nextBrace) {
+      continue;
+    }
+    let depth = 0;
+    for (let index = nextBrace; index < content.length; index += 1) {
+      if (content[index] === "{") depth += 1;
+      if (content[index] === "}") {
+        depth -= 1;
+        if (depth === 0) return content.slice(nextBrace, index + 1);
+      }
     }
   }
-  failures.push(`unterminated function ${functionName}`);
+  failures.push(`missing function ${functionName}`);
   return "";
 }
 
@@ -74,7 +78,6 @@ const orderedMarkers = [
   "require_operation_context(",
   "validate_request(&context, &request)?;",
   ".read_by_operation(",
-  ".adopt_legacy(",
   "validate_identity(&context, tenant_id, &request, &identity)?;",
   "let current = self.load_order(&context, tenant_id, &request).await?;",
 ];
@@ -115,7 +118,7 @@ for (const [variant, label] of [
   requireText(errorFacts, `OrderError::${variant}`, `${paths.owner}: facts ${variant}`);
   requireText(errorFacts, `error_variant: "${label}"`, `${paths.owner}: label ${label}`);
 }
-requireCount(errorFacts, "opaque_payload_present: true", 2, "two opaque owner variants");
+requireCount(errorFacts, "opaque_payload_present: true", 3, "three opaque owner variants");
 for (const marker of [
   "text_field_count:",
   "text_total_length:",
@@ -178,8 +181,8 @@ if (evidence.source_contract?.order_error_variant_count !== 7) {
 if (evidence.source_contract?.canonical_owner_payload_diagnostic_cleanup_closed !== true) {
   failures.push(`${paths.evidence}: canonical owner cleanup must be closed`);
 }
-if (evidence.source_contract?.shared_admission_context_payload_diagnostic_cleanup_closed !== false) {
-  failures.push(`${paths.evidence}: shared admission/context cleanup must remain open`);
+if (evidence.source_contract?.shared_admission_context_payload_diagnostic_cleanup_closed !== true) {
+  failures.push(`${paths.evidence}: shared admission/context cleanup must be closed`);
 }
 if (review.review_findings?.all_public_port_errors_preserved !== true) {
   failures.push(`${paths.review}: all public PortError envelopes must be preserved`);
@@ -192,7 +195,6 @@ for (const marker of [
   "All seven `OrderError` variants are classified by a closed static label.",
   "Database and core payloads are not formatted.",
   "Lifecycle rejection uses a closed seven-value",
-  "Shared checkout admission/context events still retain complete `PortError`",
 ]) requireText(doc, marker, `${paths.doc}: owner closure disclosure`);
 
 if (failures.length > 0) {

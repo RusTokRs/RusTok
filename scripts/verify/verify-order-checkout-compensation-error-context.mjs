@@ -200,8 +200,8 @@ for (const marker of [
 ]) requireText(mapper, marker, `${paths.source}: preserved mapper variants`);
 
 requireCount(source, "log_context_parse_rejection(", 3, "two parse sites plus helper");
-requireCount(source, "log_order_owner_warning(", 6, "five warning sites plus helper");
-requireCount(source, "log_order_owner_error(", 3, "two technical sites plus helper");
+requireCount(source, "log_order_owner_warning(", 7, "six warning sites plus helper");
+requireCount(source, "log_order_owner_error(", 4, "three technical sites plus helper");
 requireCount(source, "manual_reconciliation(", 4, "three routes plus helper");
 requireCount(source, "log_compensation_transition_conflict(", 2, "one site plus helper");
 
@@ -224,7 +224,6 @@ for (const marker of [
   "let actor_id = parse_actor_id(&context, COMPENSATE_OPERATION)?;",
   "require_operation_context(",
   ".read_by_operation(",
-  ".adopt_legacy(",
   "return if request.expected_order_id.is_none()",
   "validate_identity(&context, tenant_id, &request, &identity)?;",
   ".get_order(tenant_id, identity.order_id)",

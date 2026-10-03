@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
-import { listProducts } from '../../../../packages/rustok-product/src';
+import { listProducts } from '@rustok/product-admin';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
 import {

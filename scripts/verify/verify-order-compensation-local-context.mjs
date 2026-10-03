@@ -282,7 +282,6 @@ for (const marker of [
   "let actor_id = parse_actor_id(&context, COMPENSATE_OPERATION)?;",
   "request.checkout_operation_id",
   ".read_by_operation(",
-  ".adopt_legacy(",
   "return if request.expected_order_id.is_none()",
   "validate_identity(&context, tenant_id, &request, &identity)?;",
   ".get_order(tenant_id, identity.order_id)",

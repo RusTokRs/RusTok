@@ -515,7 +515,7 @@ async fn customer_read_port_maps_missing_customer_to_typed_not_found() {
 
     assert_eq!(error.kind, PortErrorKind::NotFound);
     assert_eq!(error.code, "customer.customer_not_found");
-    assert!(error.message.contains(&missing_customer_id.to_string()));
+    assert_eq!(error.message, "customer was not found");
     assert!(!error.retryable);
 }
 

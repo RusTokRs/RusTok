@@ -8,10 +8,10 @@ import type {
 } from '@tanstack/react-table';
 import * as React from 'react';
 
-import { DataTableDateFilter } from '@/widgets/data-table';
-import { DataTableFacetedFilter } from '@/widgets/data-table';
-import { DataTableSliderFilter } from '@/widgets/data-table';
-import { DataTableViewOptions } from '@/widgets/data-table';
+import { DataTableDateFilter } from './data-table-date-filter';
+import { DataTableFacetedFilter } from './data-table-faceted-filter';
+import { DataTableSliderFilter } from './data-table-slider-filter';
+import { DataTableViewOptions } from './data-table-view-options';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { cn } from '@/shared/lib/utils';

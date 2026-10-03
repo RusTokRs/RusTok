@@ -46,10 +46,15 @@ const portsPath = path.join(reordered, 'crates/modules/rustok-search/src/ports.r
 const ports = fs.readFileSync(portsPath, 'utf8');
 fs.writeFileSync(
   portsPath,
-  ports.replace(
-    '        context.require_policy(PortCallPolicy::read())?;\n        request.locale.get_or_insert_with(|| context.locale.clone());',
-    '        request.locale.get_or_insert_with(|| context.locale.clone());\n        context.require_policy(PortCallPolicy::read())?;',
-  ),
+  ports
+    .replace(
+      '        context.require_policy(PortCallPolicy::read())?;',
+      '        request.locale.get_or_insert_with(|| context.locale.clone());\n        context.require_policy(PortCallPolicy::read())?;',
+    )
+    .replace(
+      '        request.locale.get_or_insert_with(|| context.locale.clone());\n        self.search(request)',
+      '        self.search(request)',
+    ),
 );
 const reorderedResult = run(reordered);
 assert(reorderedResult.status !== 0, 'expected reordered policy/locale markers to fail');

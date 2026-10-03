@@ -1,7 +1,7 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { DataTableSkeleton } from '@/widgets/data-table';
-import { RolesPage } from '../../../../packages/rbac/src';
+import { RolesPage } from '@rustok/rbac-admin';
 import { Suspense } from 'react';
 
 export const metadata = {
@@ -12,6 +12,7 @@ export default async function Page() {
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
+
 
   return (
     <PageContainer

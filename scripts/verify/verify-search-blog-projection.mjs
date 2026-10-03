@@ -51,8 +51,7 @@ try {
 for (const marker of [
   "self.ensure_blog_tables_available(&tx).await?;",
   "let row = conn",
-  ".try_get::<bool>(\"\", \"available\")",
-  ".map_err(Error::Database)?;",
+  '.try_get::<bool>("", "available")\n            .map_err(Error::Database)?;',
 ]) {
   requireMarker(projector, marker, projectorPath);
 }

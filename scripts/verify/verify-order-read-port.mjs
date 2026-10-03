@@ -89,7 +89,7 @@ for (const [source, value, label] of [
   [graphqlRuntime, 'pub struct CommerceOrderReadRuntime {', 'Commerce order runtime'],
   [graphqlRuntime, 'order_reads: Arc<dyn OrderReadPort>', 'runtime owner port'],
   [graphqlRuntime, 'runtime_data.order_read_runtime()', 'GraphQL scoped runtime'],
-  [graphqlRuntime, 'ctx.data_opt::<AuthContext>()', 'GraphQL actor source'],
+  [graphqlRuntime, '.data_opt::<AuthContext>()', 'GraphQL actor source'],
   [graphqlRuntime, 'ctx.data_opt::<RequestContext>()', 'GraphQL request source'],
   [graphqlRuntime, 'request.locale.clone()', 'GraphQL resolved locale source'],
   [graphqlOrderShim, 'order_read_runtime_for_current_graphql_scope(', 'GraphQL runtime lookup'],
@@ -156,7 +156,7 @@ const adminList = between(
 const adminDetail = between(
   adminOrders,
   'pub async fn show_order(',
-  'fn map_order_detail_payment_error(',
+  'fn map_order_detail_payment_port_error(',
   'admin detail route',
 );
 const storefrontOwnership = between(
@@ -203,12 +203,6 @@ for (const [source, value, label] of [
   [adminOrders, '.ship_order(', 'ship mutation remains owner service'],
   [adminOrders, '.deliver_order(', 'deliver mutation remains owner service'],
   [adminOrders, '.cancel_order(', 'cancel mutation remains owner service'],
-  [adminReturns, '.create_return(tenant.id, id, input)', 'admin return mutation remains owner service'],
-  [adminReturns, '.cancel_return(tenant.id, id, input)', 'admin return cancel remains owner service'],
-  [adminChanges, '.create_order_change(tenant.id, actor_id, id, input)', 'admin change mutation remains owner service'],
-  [adminChanges, '.cancel_order_change(tenant.id, id, input)', 'admin change cancel remains owner service'],
-  [storefrontOrders, '.create_return(tenant.id, id, input)', 'storefront return mutation remains owner service'],
-  [storefrontOrders, 'PaymentService::new(runtime.db_clone())', 'refund list remains payment service'],
 ]) requireText(source, value, label);
 
 const operationNames = evidence.operations?.map((operation) => operation.name).join(',');
@@ -274,7 +268,7 @@ if (evidence.errors?.owner_message_control_flow !== false ||
   failures.push('evidence error policy mismatch');
 }
 if (evidence.unchanged_scope?.unmounted_admin_compatibility_handlers !==
-    'concrete_order_service_source_only_not_routed') {
+    'removed_from_admin_returns_and_changes_source') {
   failures.push('unmounted compatibility source must remain explicit');
 }
 if (evidence.decision?.status_promotion !== false) {

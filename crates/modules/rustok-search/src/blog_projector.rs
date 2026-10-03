@@ -33,14 +33,14 @@ SET
         COALESCE(sd.payload->>'seo_title', ''),
         COALESCE(sd.payload->>'seo_description', ''),
         COALESCE((
-            SELECT string_agg(value, ' ' ORDER BY value)
-            FROM jsonb_array_elements_text(
+            SELECT string_agg(elem #>> '{}', ' ' ORDER BY elem #>> '{}')
+            FROM jsonb_array_elements(
                 CASE
                     WHEN jsonb_typeof(COALESCE(sd.payload->'tags', '[]'::jsonb)) = 'array'
                         THEN COALESCE(sd.payload->'tags', '[]'::jsonb)
                     ELSE '[]'::jsonb
                 END
-            ) AS tags(value)
+            ) AS tags(elem)
         ), '')
     ),
     payload = jsonb_set(
@@ -536,11 +536,10 @@ impl BlogSearchProjector {
             let last_row = rows.last().ok_or_else(|| {
                 Error::Internal("Blog Search body refresh returned an empty batch".to_string())
             })?;
-            cursor = Some(
-                last_row
+            let next_cursor = last_row
                     .try_get::<String>("", "document_key")
-                    .map_err(Error::Database)?,
-            );
+                    .map_err(Error::Database)?;
+            cursor = Some(next_cursor);
 
             if rows.len() < BATCH_SIZE as usize {
                 break;

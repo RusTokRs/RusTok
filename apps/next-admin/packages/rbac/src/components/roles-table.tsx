@@ -1,6 +1,4 @@
-'use client';
-
-import { useTranslations } from '@rustok/next-fluent';
+import { getTranslations } from '@rustok/next-fluent/server';
 import {
   Table,
   TableBody,
@@ -8,14 +6,9 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/widgets/data-table/table';
+} from '@/widgets/data-table';
 import { Badge } from '@/shared/ui/shadcn/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger
-} from '@/shared/ui/shadcn/collapsible';
-import { ChevronDown } from 'lucide-react';
+import { IconChevronDown } from '@tabler/icons-react';
 import type { RoleInfo } from '../api/roles';
 
 interface RolesTableProps {
@@ -32,8 +25,11 @@ const ROLE_BADGE_VARIANT: Record<
   customer: 'outline'
 };
 
-export function RolesTable({ roles }: RolesTableProps) {
-  const t = useTranslations('roles');
+export async function RolesTable({ roles }: RolesTableProps) {
+  const t = await getTranslations('roles');
+
+
+
 
   return (
     <div className='rounded-md border'>
@@ -59,25 +55,23 @@ export function RolesTable({ roles }: RolesTableProps) {
                 {role.permissions.length}
               </TableCell>
               <TableCell>
-                <Collapsible>
-                  <CollapsibleTrigger className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm'>
+                <details className='group'>
+                  <summary className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm cursor-pointer list-none'>
                     {t('list.showPermissions')}
-                    <ChevronDown className='h-3 w-3' />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className='mt-2 flex flex-wrap gap-1'>
-                      {role.permissions.map((perm) => (
-                        <Badge
-                          key={perm}
-                          variant='outline'
-                          className='font-mono text-xs'
-                        >
-                          {perm}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                    <IconChevronDown className='h-3 w-3 transition-transform group-open:rotate-180' />
+                  </summary>
+                  <div className='mt-2 flex flex-wrap gap-1'>
+                    {role.permissions.map((perm) => (
+                      <Badge
+                        key={perm}
+                        variant='outline'
+                        className='font-mono text-xs'
+                      >
+                        {perm}
+                      </Badge>
+                    ))}
+                  </div>
+                </details>
               </TableCell>
             </TableRow>
           ))}

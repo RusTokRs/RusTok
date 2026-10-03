@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-table';
 import type * as React from 'react';
 
-import { DataTablePagination } from '@/widgets/data-table';
+import { DataTablePagination } from './data-table-pagination';
 import {
   Table,
   TableBody,
@@ -14,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/widgets/data-table';
+} from './table';
 import { ScrollArea, ScrollBar } from '@/shared/ui/shadcn/scroll-area';
 
 interface DataTableProps<

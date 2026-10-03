@@ -15,7 +15,7 @@ The module-path factory under `rustok_customer::ports` remains an explicit compa
 
 ## Bounded context shape
 
-Covered events retain owner operation, local operation, stable boundary, and correlation-ID character length. Raw correlation IDs are not recorded.
+Covered events retain owner operation, local operation, stable boundary, and correlation-ID character length. The raw correlation IDs are not recorded.
 
 The remaining delegated context is represented only through bounded facts:
 

@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(path, 'utf8');
 const portPath = 'crates/modules/rustok-order/src/post_order_command.rs';
+const servicePath = 'crates/modules/rustok-order/src/services/order.rs';
 const libPath = 'crates/modules/rustok-order/src/lib.rs';
 const recordPath = 'crates/modules/rustok-commerce/docs/order-post-order-command-owner-capability-2026-08-09.md';
 
 const port = read(portPath);
+const service = read(servicePath);
 const lib = read(libPath);
 const record = read(recordPath);
 
@@ -35,14 +37,19 @@ for (const marker of [
   '.cancel_return(',
   'PortErrorKind::Unavailable',
   'PortErrorKind::InvariantViolation',
-  'CommandReceiptAdmission::Replay',
-  'complete_command(receipt, "order_change",',
-  'complete_command(receipt, "order_return",',
-  'context.idempotency_key',
+  '.idempotency_key',
   'OrderError::IdempotencyConflict',
   'OrderError::CommandReceiptCorrupt',
 ]) {
   requireText(port, marker, `${portPath}: missing ${marker}`);
+}
+
+for (const marker of [
+  'CommandReceiptAdmission::Replay',
+  'complete_command(receipt, "order_change",',
+  'complete_command(receipt, "order_return",',
+]) {
+  requireText(service, marker, `${servicePath}: missing ${marker}`);
 }
 
 for (const marker of [

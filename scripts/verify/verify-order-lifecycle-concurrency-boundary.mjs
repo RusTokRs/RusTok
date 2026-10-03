@@ -27,8 +27,8 @@ for (const marker of [
 
 for (const marker of [
   'find_order_for_update_in_tx(&txn, tenant_id, order_id).await?',
-  'find_order_change_for_update_in_tx(&txn, tenant_id, change_id).await?',
-  'find_order_return_for_update_in_tx(&txn, tenant_id, return_id).await?',
+  'find_order_change_for_update_in_tx(txn, tenant_id, change_id).await?',
+  'find_order_return_for_update_in_tx(txn, tenant_id, return_id).await?',
   'let txn = self.db.begin().await?',
   'active.update(&txn).await?',
   'txn.commit().await?',

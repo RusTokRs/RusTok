@@ -182,7 +182,7 @@ for (const marker of [
 
 requireText(
   nativeGuard,
-  "customer admin native transport uses static public envelopes",
+  "customer admin native transport keeps static public envelopes",
   `${paths.nativeGuard}: prior server-side policy remains registered`,
 );
 

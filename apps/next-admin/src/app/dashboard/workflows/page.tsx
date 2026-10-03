@@ -1,7 +1,7 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { Button } from '@/shared/ui/shadcn/button';
-import { WorkflowsPage } from '../../../../packages/workflow/src';
+import { WorkflowsPage } from '@rustok/workflow-admin';
 import Link from 'next/link';
 import { Suspense } from 'react';
 

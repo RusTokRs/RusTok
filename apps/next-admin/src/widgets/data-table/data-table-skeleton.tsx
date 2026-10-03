@@ -6,7 +6,7 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/widgets/data-table';
+} from './table';
 import { cn } from '@/shared/lib/utils';
 
 interface DataTableSkeletonProps extends React.ComponentProps<'div'> {
