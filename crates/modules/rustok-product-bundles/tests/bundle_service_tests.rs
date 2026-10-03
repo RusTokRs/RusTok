@@ -52,6 +52,41 @@ CREATE TABLE product_bundle_items (
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE products (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    seller_id TEXT,
+    vendor TEXT,
+    product_type TEXT,
+    shipping_profile_slug TEXT,
+    primary_category_id TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    published_at TEXT
+);
+
+CREATE TABLE product_variants (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    sku TEXT,
+    barcode TEXT,
+    shipping_profile_slug TEXT,
+    ean TEXT,
+    upc TEXT,
+    inventory_policy TEXT NOT NULL DEFAULT 'deny',
+    inventory_management TEXT NOT NULL DEFAULT 'manual',
+    inventory_quantity INTEGER NOT NULL DEFAULT 0,
+    weight REAL,
+    weight_unit TEXT,
+    combination_identity TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 "#,
     )
     .await
@@ -60,13 +95,32 @@ CREATE TABLE product_bundle_items (
     db
 }
 
+async fn insert_test_product(db: &DatabaseConnection, tenant_id: Uuid, product_id: Uuid) {
+    use rustok_product::entities::product;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    let prod = product::ActiveModel {
+        id: Set(product_id),
+        tenant_id: Set(tenant_id),
+        status: Set(product::ProductStatus::Active),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(chrono::Utc::now().into()),
+        updated_at: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
+    prod.insert(db).await.expect("Failed to insert test product");
+}
+
 #[tokio::test]
 async fn creates_and_queries_bundle_with_translations_and_items() {
     let db = setup_test_db().await;
-    let service = BundleService::new(db);
+    let service = BundleService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let product_id_1 = Uuid::new_v4();
     let product_id_2 = Uuid::new_v4();
+
+    insert_test_product(&db, tenant_id, product_id_1).await;
+    insert_test_product(&db, tenant_id, product_id_2).await;
 
     let created = service
         .create_bundle(
@@ -252,9 +306,11 @@ async fn updates_bundle_and_upserts_translations() {
 #[tokio::test]
 async fn adds_and_removes_bundle_items() {
     let db = setup_test_db().await;
-    let service = BundleService::new(db);
+    let service = BundleService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let product_id = Uuid::new_v4();
+
+    insert_test_product(&db, tenant_id, product_id).await;
 
     let bundle = service
         .create_bundle(
@@ -312,10 +368,13 @@ async fn adds_and_removes_bundle_items() {
 #[tokio::test]
 async fn finds_bundles_for_product_and_filters_list() {
     let db = setup_test_db().await;
-    let service = BundleService::new(db);
+    let service = BundleService::new(db.clone());
     let tenant_id = Uuid::new_v4();
     let product_a = Uuid::new_v4();
     let product_b = Uuid::new_v4();
+
+    insert_test_product(&db, tenant_id, product_a).await;
+    insert_test_product(&db, tenant_id, product_b).await;
 
     service
         .create_bundle(

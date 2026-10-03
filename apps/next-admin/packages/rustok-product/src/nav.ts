@@ -32,6 +32,11 @@ export const productNavItems: NavItem[] = [
         title: 'Attributes',
         url: '/dashboard/product/attributes',
         i18nKey: 'attributes'
+      },
+      {
+        title: 'Bundles',
+        url: '/dashboard/product/bundles',
+        i18nKey: 'bundles'
       }
     ],
     access: { role: 'manager' }

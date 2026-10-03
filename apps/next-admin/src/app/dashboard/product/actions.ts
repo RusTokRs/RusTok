@@ -24,12 +24,36 @@ import {
   reorderProductImages,
   saveProductAttributeValues,
   getCategoryEffectiveForm,
+  fetchProductRelations,
+  addProductRelation,
+  removeProductRelation,
+  reorderProductRelations,
+  fetchActivePriceLists,
+  upsertVariantPrice,
+  previewVariantDiscount,
+  applyVariantDiscount,
+  listProducts,
+  fetchProductBundles,
+  fetchBundles,
+  createBundle,
+  updateBundle,
+  deleteBundle,
+  addBundleItem,
+  removeBundleItem,
   type ProductTranslation,
   type ProductVariant,
   type ProductAttributeValuePatch,
   type UpdateProductInput,
   type CreateVariantInput,
-  type UpdateVariantInput
+  type UpdateVariantInput,
+  type ProductRelationType,
+  type AddProductRelationInput,
+  type UpsertVariantPriceInput,
+  type VariantDiscountInput,
+  type CreateBundleInput,
+  type UpdateBundleInput,
+  type AddBundleItemInput,
+  type ProductBundle
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -250,3 +274,161 @@ export async function fetchEffectiveFormAction(
   const opts = await getAuthOpts();
   return getCategoryEffectiveForm(opts, categoryId, locale);
 }
+
+export async function addProductRelationAction(input: AddProductRelationInput) {
+  const opts = await getAuthOpts();
+  const res = await addProductRelation(opts, input);
+  revalidatePath(`/dashboard/product/${input.productId}`);
+  return res;
+}
+
+export async function removeProductRelationAction(
+  id: string,
+  productId: string
+) {
+  const opts = await getAuthOpts();
+  const res = await removeProductRelation(opts, id);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return res;
+}
+
+export async function reorderProductRelationsAction(
+  productId: string,
+  relationType: ProductRelationType,
+  orderedIds: string[]
+) {
+  const opts = await getAuthOpts();
+  const res = await reorderProductRelations(
+    opts,
+    productId,
+    relationType,
+    orderedIds
+  );
+  revalidatePath(`/dashboard/product/${productId}`);
+  return res;
+}
+
+export async function searchProductsAction(query: string) {
+  const opts = await getAuthOpts();
+  const res = await listProducts(opts, { search: query, perPage: 20 });
+  return res.items || [];
+}
+
+export async function fetchActivePriceListsAction(
+  channelId?: string,
+  channelSlug?: string
+) {
+  const opts = await getAuthOpts();
+  return fetchActivePriceLists(opts, channelId, channelSlug);
+}
+
+export async function upsertVariantPriceAction(
+  productId: string,
+  variantId: string,
+  input: UpsertVariantPriceInput
+) {
+  const opts = await getAuthOpts();
+  const res = await upsertVariantPrice(opts, variantId, input);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return res;
+}
+
+export async function previewVariantDiscountAction(
+  variantId: string,
+  input: VariantDiscountInput
+) {
+  const opts = await getAuthOpts();
+  return previewVariantDiscount(opts, variantId, input);
+}
+
+export async function applyVariantDiscountAction(
+  productId: string,
+  variantId: string,
+  input: VariantDiscountInput
+) {
+  const opts = await getAuthOpts();
+  const res = await applyVariantDiscount(opts, variantId, input);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return res;
+}
+
+export async function fetchProductBundlesAction(
+  productId: string,
+  locale?: string
+): Promise<ProductBundle[]> {
+  const opts = await getAuthOpts();
+  return fetchProductBundles(opts, productId, locale);
+}
+
+export async function fetchBundlesAction(
+  filter?: {
+    search?: string;
+    status?: string;
+    bundleType?: string;
+    page?: number;
+    perPage?: number;
+  },
+  locale?: string
+) {
+  const opts = await getAuthOpts();
+  return fetchBundles(opts, filter, locale);
+}
+
+export async function createBundleAction(
+  input: CreateBundleInput,
+  locale?: string
+) {
+  const opts = await getAuthOpts();
+  const res = await createBundle(opts, input, locale);
+  if (input.bundleProductId) {
+    revalidatePath(`/dashboard/product/${input.bundleProductId}`);
+  }
+  revalidatePath('/dashboard/product/bundles');
+  return res;
+}
+
+export async function updateBundleAction(
+  productId: string,
+  bundleId: string,
+  input: UpdateBundleInput,
+  locale?: string
+) {
+  const opts = await getAuthOpts();
+  const res = await updateBundle(opts, bundleId, input, locale);
+  revalidatePath(`/dashboard/product/${productId}`);
+  revalidatePath('/dashboard/product/bundles');
+  return res;
+}
+
+export async function deleteBundleAction(id: string) {
+  const opts = await getAuthOpts();
+  const res = await deleteBundle(opts, id);
+  revalidatePath('/dashboard/product/bundles');
+  return res;
+}
+
+export async function addBundleItemAction(
+  productId: string,
+  input: AddBundleItemInput
+) {
+  const opts = await getAuthOpts();
+  const res = await addBundleItem(opts, input);
+  revalidatePath(`/dashboard/product/${productId}`);
+  revalidatePath('/dashboard/product/bundles');
+  return res;
+}
+
+export async function removeBundleItemAction(
+  productId: string,
+  bundleId: string,
+  itemId: string
+) {
+  const opts = await getAuthOpts();
+  const res = await removeBundleItem(opts, bundleId, itemId);
+  revalidatePath(`/dashboard/product/${productId}`);
+  revalidatePath('/dashboard/product/bundles');
+  return res;
+}
+
+
+

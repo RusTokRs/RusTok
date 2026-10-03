@@ -63,6 +63,7 @@ app-nav-cache = Кэш
 app-nav-catalog = Каталог
 app-nav-categories = Категории
 app-nav-attributes = Атрибуты
+app-nav-bundles = Комплекты
 app-nav-email = Почта
 app-nav-events = События
 app-nav-forum = Форум

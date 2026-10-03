@@ -33,6 +33,9 @@ export * from './api/types';
 export * from './api/categories';
 export * from './api/attributes';
 export * from './api/products';
+export * from './api/relations';
+export * from './api/pricing';
+export * from './api/bundles';
 export * from './components/categories/categories-table';
 export * from './components/categories/category-create-dialog';
 export * from './components/attributes/attributes-table';
@@ -44,10 +47,17 @@ export * from './components/products/product-general-card';
 export * from './components/products/product-category-card';
 export * from './components/products/product-variants-card';
 export * from './components/products/product-media-card';
+export * from './components/products/product-relations-card';
+export * from './components/products/product-relation-add-dialog';
+export * from './components/products/product-bundle-card';
+export * from './components/products/product-bundle-item-dialog';
 export * from './components/products/product-seo-card';
+export * from './components/bundles/bundles-table';
+export * from './components/bundles/bundle-create-dialog';
 export * from './pages/categories-page';
 export * from './pages/attributes-page';
 export * from './pages/product-editor-page';
+export * from './pages/bundles-page';
 
 export type ProductCatalogSearchOption = {
   value: string;

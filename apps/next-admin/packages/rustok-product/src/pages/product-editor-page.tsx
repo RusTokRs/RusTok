@@ -17,10 +17,13 @@ import { ProductGeneralCard } from '../components/products/product-general-card'
 import { ProductCategoryCard } from '../components/products/product-category-card';
 import { ProductVariantsCard } from '../components/products/product-variants-card';
 import { ProductMediaCard } from '../components/products/product-media-card';
+import { ProductRelationsCard } from '../components/products/product-relations-card';
+import { ProductBundleCard } from '../components/products/product-bundle-card';
 import { ProductSeoCard } from '../components/products/product-seo-card';
 import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type {
+  ProductListItem,
   ProductDetail,
   ProductTranslation,
   ProductVariant,
@@ -28,7 +31,15 @@ import type {
   CatalogCategorySummary,
   ProductEffectiveForm,
   ProductAttributeValuePatch,
-  ProductAttributeValueItem
+  ProductAttributeValueItem,
+  ProductRelation,
+  ProductRelationType,
+  AddProductRelationInput,
+  ActivePriceList,
+  ProductBundle,
+  CreateBundleInput,
+  UpdateBundleInput,
+  AddBundleItemInput
 } from '../api/types';
 
 export interface ProductEditorPageProps {
@@ -36,6 +47,8 @@ export interface ProductEditorPageProps {
   categories: CatalogCategorySummary[];
   initialEffectiveForm?: ProductEffectiveForm | null;
   initialAttributeValues?: ProductAttributeValueItem[];
+  initialRelations?: ProductRelation[];
+  activePriceLists?: ActivePriceList[];
   isNew?: boolean;
   onSaveProduct: (payload: {
     id?: string;
@@ -77,10 +90,23 @@ export interface ProductEditorPageProps {
   ) => Promise<void>;
   onDeleteImage?: (productId: string, id: string) => Promise<void>;
   onReorderImages?: (productId: string, imageIds: string[]) => Promise<void>;
+  onAddRelation?: (input: AddProductRelationInput) => Promise<void>;
+  onRemoveRelation?: (id: string) => Promise<void>;
+  onReorderRelations?: (
+    productId: string,
+    relationType: ProductRelationType,
+    orderedIds: string[]
+  ) => Promise<void>;
+  onSearchProducts?: (query: string) => Promise<ProductListItem[]>;
   fetchEffectiveForm?: (
     categoryId: string,
     locale: string
   ) => Promise<ProductEffectiveForm | null>;
+  initialBundles?: ProductBundle[];
+  onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
+  onUpdateBundle?: (bundleId: string, input: UpdateBundleInput) => Promise<void>;
+  onAddBundleItem?: (input: AddBundleItemInput) => Promise<void>;
+  onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
 }
 
 export function ProductEditorPage({
@@ -88,6 +114,9 @@ export function ProductEditorPage({
   categories,
   initialEffectiveForm = null,
   initialAttributeValues = [],
+  initialRelations = [],
+  activePriceLists = [],
+  initialBundles = [],
   isNew = false,
   onSaveProduct,
   onDeleteProduct,
@@ -97,7 +126,15 @@ export function ProductEditorPage({
   onAddImage,
   onDeleteImage,
   onReorderImages,
-  fetchEffectiveForm
+  onAddRelation,
+  onRemoveRelation,
+  onReorderRelations,
+  onSearchProducts,
+  fetchEffectiveForm,
+  onCreateBundle,
+  onUpdateBundle,
+  onAddBundleItem,
+  onRemoveBundleItem
 }: ProductEditorPageProps) {
   const router = useRouter();
   const [activeLocale, setActiveLocale] = React.useState('en');
@@ -200,6 +237,28 @@ export function ProductEditorPage({
   const [images, setImages] = React.useState<ProductImage[]>(
     initialProduct?.images || []
   );
+
+  // Relations State
+  const [relations, setRelations] = React.useState<ProductRelation[]>(
+    initialRelations || []
+  );
+
+  React.useEffect(() => {
+    if (initialRelations) {
+      setRelations(initialRelations);
+    }
+  }, [initialRelations]);
+
+  // Bundles State
+  const [bundles, setBundles] = React.useState<ProductBundle[]>(
+    initialBundles || []
+  );
+
+  React.useEffect(() => {
+    if (initialBundles) {
+      setBundles(initialBundles);
+    }
+  }, [initialBundles]);
 
   // Dynamic Effective Form Loader
   const handleSelectCategory = async (categoryId: string) => {
@@ -433,6 +492,7 @@ export function ProductEditorPage({
           <ProductVariantsCard
             variants={variants}
             isNew={isNew}
+            activePriceLists={activePriceLists}
             newVariantDraft={newVariantDraft}
             onNewVariantDraftChange={(draft) =>
               setNewVariantDraft({
@@ -466,6 +526,103 @@ export function ProductEditorPage({
             }
             disabled={isSaving}
           />
+
+          {/* Product Relations (Cross-sell, Up-sell, Accessories, Alternatives) */}
+          {!isNew && initialProduct?.id && (
+            <ProductRelationsCard
+              productId={initialProduct.id}
+              relations={relations}
+              onAddRelation={
+                onAddRelation
+                  ? async (input) => {
+                      await onAddRelation(input);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onRemoveRelation={
+                onRemoveRelation
+                  ? async (id) => {
+                      await onRemoveRelation(id);
+                      setRelations((prev) => prev.filter((r) => r.id !== id));
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onReorderRelations={
+                onReorderRelations
+                  ? async (pId, type, orderedIds) => {
+                      await onReorderRelations(pId, type, orderedIds);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onSearchProducts={onSearchProducts}
+              disabled={isSaving}
+            />
+          )}
+
+          {/* Product Bundle & Kit Composition */}
+          {!isNew && initialProduct?.id && (
+            <ProductBundleCard
+              productId={initialProduct.id}
+              productTitle={translations[activeLocale]?.title || ''}
+              productHandle={translations[activeLocale]?.handle || ''}
+              bundle={
+                bundles.find((b) => b.bundleProductId === initialProduct.id) ||
+                bundles[0] ||
+                null
+              }
+              onCreateBundle={
+                onCreateBundle
+                  ? async (input) => {
+                      await onCreateBundle(input);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onUpdateBundle={
+                onUpdateBundle
+                  ? async (bundleId, input) => {
+                      await onUpdateBundle(bundleId, input);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onAddBundleItem={
+                onAddBundleItem
+                  ? async (input) => {
+                      await onAddBundleItem(input);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onRemoveBundleItem={
+                onRemoveBundleItem
+                  ? async (bundleId, itemId) => {
+                      await onRemoveBundleItem(bundleId, itemId);
+                      router.refresh();
+                    }
+                  : undefined
+              }
+              onSearchProducts={
+                onSearchProducts
+                  ? async (q) => {
+                      const items = await onSearchProducts(q);
+                      return items.map((p) => ({
+                        id: p.id,
+                        title: p.title,
+                        handle: p.handle,
+                        sku: undefined,
+                        thumbnail: undefined,
+                        price: undefined
+                      }));
+                    }
+                  : undefined
+              }
+              disabled={isSaving}
+            />
+          )}
         </div>
 
         {/* Right (Sidebar) Column - 1 Col */}

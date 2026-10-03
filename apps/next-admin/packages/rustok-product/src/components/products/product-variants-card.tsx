@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-'use client';
+'use strict';
 
 import * as React from 'react';
 import {
@@ -45,8 +45,40 @@ import {
   TableHeader,
   TableRow
 } from '@/widgets/data-table/table';
-import { Plus, Edit2, Trash2, Box, DollarSign } from 'lucide-react';
-import type { ProductVariant } from '../../api/types';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Box,
+  DollarSign,
+  Percent,
+  Tag,
+  Globe,
+  Coins
+} from 'lucide-react';
+import type {
+  ProductVariant,
+  ProductVariantPrice,
+  ActivePriceList
+} from '../../api/types';
+
+interface PriceRowDraft {
+  currencyCode: string;
+  amount: string;
+  compareAtAmount: string;
+  priceListId?: string;
+}
+
+const SUPPORTED_CURRENCIES = [
+  { code: 'USD', symbol: '$', label: 'USD ($)' },
+  { code: 'EUR', symbol: '€', label: 'EUR (€)' },
+  { code: 'RUB', symbol: '₽', label: 'RUB (₽)' },
+  { code: 'GBP', symbol: '£', label: 'GBP (£)' },
+  { code: 'CNY', symbol: '¥', label: 'CNY (¥)' },
+  { code: 'KZT', symbol: '₸', label: 'KZT (₸)' },
+  { code: 'BYN', symbol: 'Br', label: 'BYN (Br)' },
+  { code: 'TRY', symbol: '₺', label: 'TRY (₺)' }
+];
 
 interface ProductVariantsCardProps {
   variants: ProductVariant[];
@@ -57,6 +89,7 @@ interface ProductVariantsCardProps {
   ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
   isNew: boolean;
+  activePriceLists?: ActivePriceList[];
   onNewVariantDraftChange?: (draft: {
     sku: string;
     barcode: string;
@@ -84,6 +117,7 @@ export function ProductVariantsCard({
   onUpdateVariant,
   onDeleteVariant,
   isNew,
+  activePriceLists = [],
   onNewVariantDraftChange,
   newVariantDraft,
   disabled = false
@@ -96,9 +130,9 @@ export function ProductVariantsCard({
   // Dialog form fields
   const [formSku, setFormSku] = React.useState('');
   const [formBarcode, setFormBarcode] = React.useState('');
-  const [formPrice, setFormPrice] = React.useState('0.00');
-  const [formCurrency, setFormCurrency] = React.useState('USD');
-  const [formCompareAt, setFormCompareAt] = React.useState('');
+  const [formPrices, setFormPrices] = React.useState<PriceRowDraft[]>([
+    { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
+  ]);
   const [formStock, setFormStock] = React.useState('0');
   const [formPolicy, setFormPolicy] = React.useState('deny');
 
@@ -106,9 +140,9 @@ export function ProductVariantsCard({
     setEditingVariant(null);
     setFormSku('');
     setFormBarcode('');
-    setFormPrice('0.00');
-    setFormCurrency('USD');
-    setFormCompareAt('');
+    setFormPrices([
+      { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
+    ]);
     setFormStock('0');
     setFormPolicy('deny');
     setDialogOpen(true);
@@ -118,33 +152,105 @@ export function ProductVariantsCard({
     setEditingVariant(variant);
     setFormSku(variant.sku || '');
     setFormBarcode(variant.barcode || '');
-    const primaryPrice = variant.prices[0];
-    setFormPrice(
-      primaryPrice ? (primaryPrice.amount / 100).toFixed(2) : '0.00'
-    );
-    setFormCurrency(primaryPrice ? primaryPrice.currencyCode : 'USD');
-    setFormCompareAt(
-      primaryPrice?.compareAtAmount
-        ? (primaryPrice.compareAtAmount / 100).toFixed(2)
-        : ''
-    );
+
+    if (variant.prices && variant.prices.length > 0) {
+      setFormPrices(
+        variant.prices.map((p) => ({
+          currencyCode: p.currencyCode,
+          amount: (p.amount / 100).toFixed(2),
+          compareAtAmount: p.compareAtAmount
+            ? (p.compareAtAmount / 100).toFixed(2)
+            : '',
+          priceListId: p.priceListId || undefined
+        }))
+      );
+    } else {
+      setFormPrices([
+        { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
+      ]);
+    }
+
     setFormStock(variant.inventoryQuantity.toString());
     setFormPolicy(variant.inventoryPolicy || 'deny');
     setDialogOpen(true);
   };
 
+  const handlePriceChange = (
+    index: number,
+    field: keyof PriceRowDraft,
+    value: string
+  ) => {
+    setFormPrices((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleApplyDiscountPercent = (index: number, percent: number) => {
+    setFormPrices((prev) => {
+      const next = [...prev];
+      const row = next[index];
+      const base = parseFloat(row.compareAtAmount || row.amount);
+      if (Number.isFinite(base) && base > 0) {
+        const compareAt = row.compareAtAmount ? base : parseFloat(row.amount);
+        const discounted = compareAt * (1 - percent / 100);
+        next[index] = {
+          ...row,
+          compareAtAmount: compareAt.toFixed(2),
+          amount: Math.max(0, discounted).toFixed(2)
+        };
+      }
+      return next;
+    });
+  };
+
+  const handleAddPriceRow = () => {
+    const existingCurrencies = new Set(formPrices.map((p) => p.currencyCode));
+    const nextCur =
+      SUPPORTED_CURRENCIES.find((c) => !existingCurrencies.has(c.code))?.code ||
+      'EUR';
+    setFormPrices((prev) => [
+      ...prev,
+      { currencyCode: nextCur, amount: '0.00', compareAtAmount: '' }
+    ]);
+  };
+
+  const handleRemovePriceRow = (index: number) => {
+    if (formPrices.length <= 1) return;
+    setFormPrices((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSaveDialog = async () => {
-    const priceRaw = parseFloat(formPrice);
-    const amount =
-      Number.isFinite(priceRaw) && priceRaw > 0
-        ? Math.round(priceRaw * 100)
-        : 0;
-    const compareRaw = parseFloat(formCompareAt);
-    const compareAtAmount =
-      Number.isFinite(compareRaw) && compareRaw > 0
-        ? Math.round(compareRaw * 100)
-        : null;
     const qty = parseInt(formStock, 10) || 0;
+
+    const mappedPrices: ProductVariantPrice[] = formPrices.map((p) => {
+      const priceRaw = parseFloat(p.amount);
+      const amount =
+        Number.isFinite(priceRaw) && priceRaw > 0
+          ? Math.round(priceRaw * 100)
+          : 0;
+      const compareRaw = parseFloat(p.compareAtAmount);
+      const compareAtAmount =
+        Number.isFinite(compareRaw) && compareRaw > 0
+          ? Math.round(compareRaw * 100)
+          : null;
+      const onSale = Boolean(compareAtAmount && compareAtAmount > amount);
+      const discountPercent = onSale
+        ? Math.round(
+            ((compareAtAmount! - amount) / compareAtAmount!) * 100
+          ).toString()
+        : null;
+
+      return {
+        currencyCode: p.currencyCode,
+        amount,
+        compareAtAmount,
+        discountPercent,
+        onSale,
+        priceListId: p.priceListId || null
+      };
+    });
 
     setIsBusy(true);
     try {
@@ -154,14 +260,7 @@ export function ProductVariantsCard({
           barcode: formBarcode || null,
           inventoryQuantity: qty,
           inventoryPolicy: formPolicy,
-          prices: [
-            {
-              currencyCode: formCurrency,
-              amount,
-              compareAtAmount,
-              onSale: Boolean(compareAtAmount && compareAtAmount > amount)
-            }
-          ]
+          prices: mappedPrices
         });
       } else if (onAddVariant) {
         await onAddVariant({
@@ -171,14 +270,7 @@ export function ProductVariantsCard({
           inventoryQuantity: qty,
           inventoryPolicy: formPolicy,
           inStock: qty > 0,
-          prices: [
-            {
-              currencyCode: formCurrency,
-              amount,
-              compareAtAmount,
-              onSale: Boolean(compareAtAmount && compareAtAmount > amount)
-            }
-          ]
+          prices: mappedPrices
         });
       }
       setDialogOpen(false);
@@ -202,11 +294,10 @@ export function ProductVariantsCard({
             <Box className='text-primary h-4 w-4' />
             <div>
               <CardTitle className='text-sm font-semibold'>
-                Pricing & Variants
+                Цены и варианты (Pricing & Variants Matrix)
               </CardTitle>
               <CardDescription className='text-xs'>
-                Manage SKUs, barcodes, multi-currency pricing, and inventory
-                quantities.
+                SKU, штрихкоды, мультивалютная сетка цен, скидки и остатки
               </CardDescription>
             </div>
           </div>
@@ -219,58 +310,17 @@ export function ProductVariantsCard({
               disabled={disabled}
             >
               <Plus className='h-3.5 w-3.5' />
-              <span>Add Variant</span>
+              Добавить вариант
             </Button>
           )}
         </div>
       </CardHeader>
-      <CardContent className='space-y-4 pt-5'>
+      <CardContent className='pt-4'>
         {isNew ? (
-          // Simple inline variant inputs for new products
-          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3'>
-            <div className='space-y-1.5'>
-              <Label htmlFor='new-price' className='text-xs font-medium'>
-                Price Amount <span className='text-destructive'>*</span>
-              </Label>
-              <div className='border-input focus-within:ring-ring bg-background flex overflow-hidden rounded-xl border focus-within:ring-1'>
-                <span className='text-muted-foreground bg-muted/40 border-border border-r px-3 py-2 text-xs select-none'>
-                  {newVariantDraft?.currencyCode || 'USD'}
-                </span>
-                <input
-                  id='new-price'
-                  type='number'
-                  step='0.01'
-                  value={
-                    newVariantDraft
-                      ? (newVariantDraft.priceAmount / 100).toFixed(2)
-                      : '0.00'
-                  }
-                  onChange={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    const amount =
-                      Number.isFinite(parsed) && parsed > 0
-                        ? Math.round(parsed * 100)
-                        : 0;
-                    onNewVariantDraftChange?.({
-                      ...(newVariantDraft || {
-                        sku: '',
-                        barcode: '',
-                        currencyCode: 'USD',
-                        inventoryQuantity: 0,
-                        inventoryPolicy: 'deny'
-                      }),
-                      priceAmount: amount
-                    });
-                  }}
-                  className='flex-1 bg-transparent px-3 py-2 font-mono text-xs outline-none'
-                  disabled={disabled}
-                />
-              </div>
-            </div>
-
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'>
             <div className='space-y-1.5'>
               <Label htmlFor='new-sku' className='text-xs font-medium'>
-                Primary SKU
+                SKU (Артикул)
               </Label>
               <Input
                 id='new-sku'
@@ -278,24 +328,85 @@ export function ProductVariantsCard({
                 onChange={(e) =>
                   onNewVariantDraftChange?.({
                     ...(newVariantDraft || {
+                      sku: '',
+                      barcode: '',
                       priceAmount: 0,
                       currencyCode: 'USD',
-                      barcode: '',
                       inventoryQuantity: 0,
                       inventoryPolicy: 'deny'
                     }),
                     sku: e.target.value
                   })
                 }
-                placeholder='e.g. PRD-001'
+                placeholder='e.g. PROD-001'
                 className='h-9 rounded-xl font-mono text-xs'
                 disabled={disabled}
               />
             </div>
-
+            <div className='space-y-1.5'>
+              <Label htmlFor='new-barcode' className='text-xs font-medium'>
+                Штрихкод (Barcode / EAN)
+              </Label>
+              <Input
+                id='new-barcode'
+                value={newVariantDraft?.barcode || ''}
+                onChange={(e) =>
+                  onNewVariantDraftChange?.({
+                    ...(newVariantDraft || {
+                      sku: '',
+                      barcode: '',
+                      priceAmount: 0,
+                      currencyCode: 'USD',
+                      inventoryQuantity: 0,
+                      inventoryPolicy: 'deny'
+                    }),
+                    barcode: e.target.value
+                  })
+                }
+                placeholder='e.g. 793573192842'
+                className='h-9 rounded-xl font-mono text-xs'
+                disabled={disabled}
+              />
+            </div>
+            <div className='space-y-1.5'>
+              <Label htmlFor='new-price' className='text-xs font-medium'>
+                Цена по умолчанию ({newVariantDraft?.currencyCode || 'USD'}) *
+              </Label>
+              <div className='relative'>
+                <Input
+                  id='new-price'
+                  type='number'
+                  step='0.01'
+                  value={
+                    newVariantDraft?.priceAmount
+                      ? (newVariantDraft.priceAmount / 100).toFixed(2)
+                      : '0.00'
+                  }
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    onNewVariantDraftChange?.({
+                      ...(newVariantDraft || {
+                        sku: '',
+                        barcode: '',
+                        priceAmount: 0,
+                        currencyCode: 'USD',
+                        inventoryQuantity: 0,
+                        inventoryPolicy: 'deny'
+                      }),
+                      priceAmount:
+                        Number.isFinite(val) && val > 0
+                          ? Math.round(val * 100)
+                          : 0
+                    });
+                  }}
+                  className='h-9 rounded-xl font-mono text-xs'
+                  disabled={disabled}
+                />
+              </div>
+            </div>
             <div className='space-y-1.5'>
               <Label htmlFor='new-stock' className='text-xs font-medium'>
-                Inventory Stock
+                Начальный остаток
               </Label>
               <Input
                 id='new-stock'
@@ -321,27 +432,39 @@ export function ProductVariantsCard({
           </div>
         ) : variants.length === 0 ? (
           <div className='text-muted-foreground bg-muted/20 rounded-xl py-8 text-center text-xs italic'>
-            No variants found for this product. Click "Add Variant" to create
-            one.
+            Нет вариантов для этого товара. Нажмите «Добавить вариант».
           </div>
         ) : (
           <div className='border-border overflow-hidden rounded-xl border'>
             <Table>
               <TableHeader className='bg-muted/50'>
                 <TableRow className='text-[11px]'>
-                  <TableHead>SKU / Barcode</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Compare-at</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Policy</TableHead>
-                  <TableHead className='text-right'>Actions</TableHead>
+                  <TableHead>SKU / Штрихкод</TableHead>
+                  <TableHead>Основная цена</TableHead>
+                  <TableHead>Валютная сетка</TableHead>
+                  <TableHead>Остаток</TableHead>
+                  <TableHead>Политика</TableHead>
+                  <TableHead className='text-right'>Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className='text-xs'>
                 {variants.map((v) => {
-                  const price = v.prices[0];
+                  const primaryPrice = v.prices[0];
+                  const additionalPrices = v.prices.slice(1);
+                  const isOnSale = Boolean(
+                    primaryPrice?.compareAtAmount &&
+                      primaryPrice.compareAtAmount > primaryPrice.amount
+                  );
+                  const discountPct = isOnSale
+                    ? Math.round(
+                        ((primaryPrice!.compareAtAmount! - primaryPrice!.amount) /
+                          primaryPrice!.compareAtAmount!) *
+                          100
+                      )
+                    : null;
+
                   return (
-                    <TableRow key={v.id} className='hover:bg-accent/40'>
+                    <TableRow key={v.id} className='hover:bg-accent/40 group'>
                       <TableCell className='font-mono'>
                         <div className='text-foreground font-medium'>
                           {v.sku || '—'}
@@ -352,47 +475,140 @@ export function ProductVariantsCard({
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className='text-foreground font-semibold'>
-                        {price
-                          ? formatPrice(price.amount, price.currencyCode)
-                          : '—'}
-                      </TableCell>
-                      <TableCell className='text-muted-foreground text-[11px] line-through'>
-                        {price?.compareAtAmount
-                          ? formatPrice(
-                              price.compareAtAmount,
-                              price.currencyCode
-                            )
-                          : '—'}
-                      </TableCell>
+
+                      {/* Primary Price & Sale Badges */}
                       <TableCell>
-                        <Badge
-                          variant={v.inStock ? 'secondary' : 'outline'}
-                          className={`text-[10px] ${
-                            v.inStock
-                              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                              : 'border-rose-500/30 text-rose-500'
-                          }`}
-                        >
-                          {v.inventoryQuantity} in stock
-                        </Badge>
+                        {primaryPrice ? (
+                          <div className='space-y-0.5'>
+                            <div className='flex items-center gap-1.5'>
+                              <span className='text-foreground font-semibold'>
+                                {formatPrice(
+                                  primaryPrice.amount,
+                                  primaryPrice.currencyCode
+                                )}
+                              </span>
+                              {isOnSale && (
+                                <Badge
+                                  variant='outline'
+                                  className='bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 text-[9px] px-1 py-0'
+                                >
+                                  -{discountPct}%
+                                </Badge>
+                              )}
+                            </div>
+                            {primaryPrice.compareAtAmount && (
+                              <div className='text-muted-foreground text-[10px] line-through'>
+                                {formatPrice(
+                                  primaryPrice.compareAtAmount,
+                                  primaryPrice.currencyCode
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
-                      <TableCell className='text-muted-foreground font-mono text-[10px] uppercase'>
+
+                      {/* Additional Currency Prices */}
+                      <TableCell>
+                        {additionalPrices.length > 0 ? (
+                          <div className='flex flex-wrap gap-1'>
+                            {additionalPrices.map((p, pIdx) => (
+                              <Badge
+                                key={pIdx}
+                                variant='secondary'
+                                className='text-[10px] font-mono font-normal'
+                              >
+                                {formatPrice(p.amount, p.currencyCode)}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className='text-muted-foreground text-[11px]'>
+                            Одна валюта
+                          </span>
+                        )}
+                      </TableCell>
+
+                      {/* Stock & Quick Adjust */}
+                      <TableCell>
+                        <div className='flex items-center gap-1.5'>
+                          <Badge
+                            variant='outline'
+                            className={`text-[10px] font-mono font-medium ${
+                              v.inventoryQuantity <= 0
+                                ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300'
+                                : v.inventoryQuantity <= 5
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                            }`}
+                          >
+                            {v.inventoryQuantity} шт.
+                            {v.inventoryQuantity <= 0
+                              ? ' (0)'
+                              : v.inventoryQuantity <= 5
+                                ? ' (Мало)'
+                                : ''}
+                          </Badge>
+                          {onUpdateVariant && (
+                            <div className='flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity'>
+                              <button
+                                type='button'
+                                onClick={() =>
+                                  onUpdateVariant(v.id, {
+                                    inventoryQuantity: Math.max(
+                                      0,
+                                      v.inventoryQuantity - 1
+                                    )
+                                  })
+                                }
+                                disabled={disabled || v.inventoryQuantity <= 0}
+                                className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[11px] flex items-center justify-center font-bold text-muted-foreground hover:text-foreground'
+                                title='Уменьшить остаток на 1'
+                              >
+                                -
+                              </button>
+                              <button
+                                type='button'
+                                onClick={() =>
+                                  onUpdateVariant(v.id, {
+                                    inventoryQuantity: v.inventoryQuantity + 1
+                                  })
+                                }
+                                disabled={disabled}
+                                className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[11px] flex items-center justify-center font-bold text-muted-foreground hover:text-foreground'
+                                title='Увеличить остаток на 1'
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      {/* Policy */}
+                      <TableCell className='text-muted-foreground text-[11px] font-mono'>
                         {v.inventoryPolicy}
                       </TableCell>
+
+                      {/* Actions */}
                       <TableCell className='text-right'>
                         <div className='flex items-center justify-end gap-1'>
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='icon'
-                            onClick={() => openEditDialog(v)}
-                            className='text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg'
-                            disabled={disabled}
-                          >
-                            <Edit2 className='h-3.5 w-3.5' />
-                          </Button>
-                          {variants.length > 1 && onDeleteVariant && (
+                          {onUpdateVariant && (
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='icon'
+                              onClick={() => openEditDialog(v)}
+                              className='h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground'
+                              disabled={disabled}
+                              title='Редактировать вариант и цены'
+                            >
+                              <Edit2 className='h-3.5 w-3.5' />
+                            </Button>
+                          )}
+                          {onDeleteVariant && variants.length > 1 && (
                             <Button
                               type='button'
                               variant='ghost'
@@ -400,6 +616,7 @@ export function ProductVariantsCard({
                               onClick={() => onDeleteVariant(v.id)}
                               className='h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40'
                               disabled={disabled}
+                              title='Удалить вариант'
                             >
                               <Trash2 className='h-3.5 w-3.5' />
                             </Button>
@@ -415,22 +632,23 @@ export function ProductVariantsCard({
         )}
       </CardContent>
 
-      {/* Add / Edit Variant Dialog */}
+      {/* Add / Edit Variant Dialog with Multi-Currency & Discount Tools */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className='rounded-2xl sm:max-w-md'>
+        <DialogContent className='rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle className='text-sm font-semibold'>
-              {editingVariant ? 'Edit Variant' : 'Add New Variant'}
+              {editingVariant ? 'Редактировать вариант' : 'Новый вариант товара'}
             </DialogTitle>
             <DialogDescription className='text-xs'>
-              Configure SKU, barcode identifier, price and inventory settings.
+              Настройте SKU, штрихкод, мультивалютную сетку цен и правила скидок.
             </DialogDescription>
           </DialogHeader>
 
           <div className='space-y-4 py-2 text-xs'>
+            {/* SKU and Barcode */}
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-1.5'>
-                <Label htmlFor='var-sku'>SKU</Label>
+                <Label htmlFor='var-sku'>SKU (Артикул)</Label>
                 <Input
                   id='var-sku'
                   value={formSku}
@@ -440,7 +658,7 @@ export function ProductVariantsCard({
                 />
               </div>
               <div className='space-y-1.5'>
-                <Label htmlFor='var-barcode'>Barcode</Label>
+                <Label htmlFor='var-barcode'>Штрихкод (Barcode / EAN)</Label>
                 <Input
                   id='var-barcode'
                   value={formBarcode}
@@ -451,51 +669,225 @@ export function ProductVariantsCard({
               </div>
             </div>
 
-            <div className='grid grid-cols-3 gap-3'>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-currency'>Currency</Label>
-                <Select value={formCurrency} onValueChange={setFormCurrency}>
-                  <SelectTrigger
-                    id='var-currency'
-                    className='h-9 rounded-xl font-mono text-xs'
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='USD'>USD ($)</SelectItem>
-                    <SelectItem value='EUR'>EUR (€)</SelectItem>
-                    <SelectItem value='RUB'>RUB (₽)</SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Pricing Section - Multi-Currency Grid */}
+            <div className='space-y-3 rounded-xl border border-border p-3.5 bg-muted/10'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-1.5 font-semibold text-foreground text-xs'>
+                  <Coins className='h-3.5 w-3.5 text-primary' />
+                  <span>Валютная сетка и цены</span>
+                </div>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={handleAddPriceRow}
+                  className='h-7 rounded-lg text-[11px] gap-1 px-2'
+                >
+                  <Plus className='h-3 w-3' />
+                  Добавить валюту
+                </Button>
               </div>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-price'>Price *</Label>
-                <Input
-                  id='var-price'
-                  type='number'
-                  step='0.01'
-                  value={formPrice}
-                  onChange={(e) => setFormPrice(e.target.value)}
-                  className='h-9 rounded-xl font-mono text-xs'
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-compare'>Compare-at</Label>
-                <Input
-                  id='var-compare'
-                  type='number'
-                  step='0.01'
-                  value={formCompareAt}
-                  onChange={(e) => setFormCompareAt(e.target.value)}
-                  placeholder='0.00'
-                  className='h-9 rounded-xl font-mono text-xs'
-                />
+
+              {/* Price Rows */}
+              <div className='space-y-2.5'>
+                {formPrices.map((row, idx) => {
+                  const amt = parseFloat(row.amount) || 0;
+                  const comp = parseFloat(row.compareAtAmount) || 0;
+                  const hasDiscount = comp > amt && amt > 0;
+                  const discountPct = hasDiscount
+                    ? Math.round(((comp - amt) / comp) * 100)
+                    : 0;
+
+                  return (
+                    <div
+                      key={idx}
+                      className='p-2.5 rounded-xl border border-border/80 bg-background space-y-2'
+                    >
+                      <div className='grid grid-cols-3 gap-2.5 items-end'>
+                        {/* Currency */}
+                        <div className='space-y-1'>
+                          <Label className='text-[10px] text-muted-foreground'>
+                            Валюта
+                          </Label>
+                          <Select
+                            value={row.currencyCode}
+                            onValueChange={(val) =>
+                              handlePriceChange(idx, 'currencyCode', val)
+                            }
+                          >
+                            <SelectTrigger className='h-8 rounded-lg font-mono text-xs'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SUPPORTED_CURRENCIES.map((c) => (
+                                <SelectItem
+                                  key={c.code}
+                                  value={c.code}
+                                  className='text-xs'
+                                >
+                                  {c.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Price */}
+                        <div className='space-y-1'>
+                          <Label className='text-[10px] text-muted-foreground'>
+                            Цена продажи *
+                          </Label>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            value={row.amount}
+                            onChange={(e) =>
+                              handlePriceChange(idx, 'amount', e.target.value)
+                            }
+                            className='h-8 rounded-lg font-mono text-xs font-semibold'
+                          />
+                        </div>
+
+                        {/* Compare-at Price */}
+                        <div className='space-y-1'>
+                          <div className='flex items-center justify-between'>
+                            <Label className='text-[10px] text-muted-foreground'>
+                              Старая цена
+                            </Label>
+                            {formPrices.length > 1 && (
+                              <button
+                                type='button'
+                                onClick={() => handleRemovePriceRow(idx)}
+                                className='text-rose-500 hover:text-rose-700 text-[10px]'
+                                title='Удалить цену в этой валюте'
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            value={row.compareAtAmount}
+                            onChange={(e) =>
+                              handlePriceChange(
+                                idx,
+                                'compareAtAmount',
+                                e.target.value
+                              )
+                            }
+                            placeholder='0.00'
+                            className='h-8 rounded-lg font-mono text-xs'
+                          />
+                        </div>
+                      </div>
+
+                      {/* Quick Discount Buttons & Sale Indicator */}
+                      <div className='flex items-center justify-between pt-1 border-t border-border/40 text-[10px]'>
+                        <div className='flex items-center gap-1'>
+                          <span className='text-muted-foreground'>Скидка:</span>
+                          {[10, 15, 20, 30].map((pct) => (
+                            <button
+                              key={pct}
+                              type='button'
+                              onClick={() =>
+                                handleApplyDiscountPercent(idx, pct)
+                              }
+                              className='px-1.5 py-0.5 rounded bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition'
+                            >
+                              -{pct}%
+                            </button>
+                          ))}
+                        </div>
+                        {hasDiscount && (
+                          <Badge
+                            variant='outline'
+                            className='bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 text-[9px] px-1.5 py-0'
+                          >
+                            Скидка {discountPct}% (ON SALE)
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Optional Price List Association */}
+                      {activePriceLists.length > 0 && (
+                        <div className='pt-1'>
+                          <Select
+                            value={row.priceListId || 'base'}
+                            onValueChange={(val) =>
+                              handlePriceChange(
+                                idx,
+                                'priceListId',
+                                val === 'base' ? '' : val
+                              )
+                            }
+                          >
+                            <SelectTrigger className='h-7 rounded-lg text-[10px]'>
+                              <SelectValue placeholder='Прайс-лист' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='base' className='text-xs'>
+                                Базовая цена (Все покупатели)
+                              </SelectItem>
+                              {activePriceLists.map((pl) => (
+                                <SelectItem
+                                  key={pl.id}
+                                  value={pl.id}
+                                  className='text-xs'
+                                >
+                                  {pl.name} ({pl.listType})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Inventory and Policy */}
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-1.5'>
-                <Label htmlFor='var-stock'>Stock Quantity</Label>
+                <div className='flex items-center justify-between'>
+                  <Label htmlFor='var-stock'>Остаток на складе</Label>
+                  <div className='flex items-center gap-1'>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        setFormStock(
+                          Math.max(0, (parseInt(formStock, 10) || 0) - 1).toString()
+                        )
+                      }
+                      className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[10px] font-bold'
+                      title='-1 шт.'
+                    >
+                      -1
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        setFormStock(((parseInt(formStock, 10) || 0) + 1).toString())
+                      }
+                      className='h-5 w-5 rounded bg-muted hover:bg-muted/80 text-[10px] font-bold'
+                      title='+1 шт.'
+                    >
+                      +1
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        setFormStock(((parseInt(formStock, 10) || 0) + 10).toString())
+                      }
+                      className='h-5 px-1 rounded bg-muted hover:bg-muted/80 text-[10px] font-medium'
+                      title='+10 шт.'
+                    >
+                      +10
+                    </button>
+                  </div>
+                </div>
                 <Input
                   id='var-stock'
                   type='number'
@@ -505,20 +897,17 @@ export function ProductVariantsCard({
                 />
               </div>
               <div className='space-y-1.5'>
-                <Label htmlFor='var-policy'>Inventory Policy</Label>
+                <Label htmlFor='var-policy'>Политика списания</Label>
                 <Select value={formPolicy} onValueChange={setFormPolicy}>
-                  <SelectTrigger
-                    id='var-policy'
-                    className='h-9 rounded-xl text-xs'
-                  >
+                  <SelectTrigger id='var-policy' className='h-9 rounded-xl text-xs'>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='deny' className='text-xs'>
-                      Deny on out of stock
+                      Блокировать при 0 остатке (Deny)
                     </SelectItem>
                     <SelectItem value='continue' className='text-xs'>
-                      Continue selling
+                      Разрешить предзаказ (Backorder / Continue)
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -526,14 +915,14 @@ export function ProductVariantsCard({
             </div>
           </div>
 
-          <DialogFooter className='gap-2 sm:gap-0'>
+          <DialogFooter className='gap-2 sm:gap-0 pt-2'>
             <Button
               type='button'
               variant='outline'
               onClick={() => setDialogOpen(false)}
               className='h-9 rounded-xl text-xs'
             >
-              Cancel
+              Отмена
             </Button>
             <Button
               type='button'
@@ -542,10 +931,10 @@ export function ProductVariantsCard({
               className='h-9 rounded-xl text-xs font-semibold'
             >
               {isBusy
-                ? 'Saving...'
+                ? 'Сохранение...'
                 : editingVariant
-                  ? 'Update Variant'
-                  : 'Create Variant'}
+                  ? 'Сохранить вариант'
+                  : 'Создать вариант'}
             </Button>
           </DialogFooter>
         </DialogContent>

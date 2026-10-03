@@ -63,6 +63,7 @@ app-nav-cache = Cache
 app-nav-catalog = Catalog
 app-nav-categories = Categories
 app-nav-attributes = Attributes
+app-nav-bundles = Bundles
 app-nav-email = Email
 app-nav-events = Events
 app-nav-forum = Forum

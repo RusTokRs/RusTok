@@ -155,7 +155,55 @@ export interface ProductVariantPrice {
   currencyCode: string;
   amount: number;
   compareAtAmount: number | null;
+  discountPercent?: string | null;
   onSale?: boolean;
+  priceListId?: string | null;
+  channelId?: string | null;
+  channelSlug?: string | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+}
+
+export interface ActivePriceList {
+  id: string;
+  name: string;
+  listType: string;
+  channelId?: string | null;
+  channelSlug?: string | null;
+  ruleKind?: string | null;
+  adjustmentPercent?: string | null;
+}
+
+export interface PricingAdjustmentPreview {
+  kind: string;
+  currencyCode: string;
+  currentAmount: string;
+  baseAmount: string;
+  adjustmentPercent: string;
+  adjustedAmount: string;
+  compareAtAmount?: string | null;
+  priceListId?: string | null;
+  channelId?: string | null;
+  channelSlug?: string | null;
+}
+
+export interface UpsertVariantPriceInput {
+  currencyCode: string;
+  amount: string;
+  compareAtAmount?: string | null;
+  priceListId?: string | null;
+  channelId?: string | null;
+  channelSlug?: string | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+}
+
+export interface VariantDiscountInput {
+  currencyCode: string;
+  discountPercent: string;
+  priceListId?: string | null;
+  channelId?: string | null;
+  channelSlug?: string | null;
 }
 
 export interface ProductVariant {
@@ -237,3 +285,125 @@ export interface ProductAttributeValuePatch {
   optionIds?: string[] | null;
   json?: string | null;
 }
+
+export type ProductRelationType =
+  | 'CROSS_SELL'
+  | 'UP_SELL'
+  | 'RELATED'
+  | 'ACCESSORY'
+  | 'ALTERNATIVE';
+
+export interface ProductRelation {
+  id: string;
+  productId: string;
+  relatedProductId: string;
+  relationType: ProductRelationType;
+  position: number;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  relatedProduct?: {
+    id: string;
+    title: string;
+    handle?: string;
+    thumbnail?: string;
+    sku?: string;
+    status?: string;
+    price?: string;
+  };
+}
+
+export interface AddProductRelationInput {
+  productId: string;
+  relatedProductId: string;
+  relationType: ProductRelationType;
+  position?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export type BundleType = 'fixed' | 'flexible';
+export type BundleStatus = 'draft' | 'active' | 'archived';
+export type BundleDiscountType = 'none' | 'percentage' | 'fixed_amount';
+
+export interface BundleItem {
+  id: string;
+  bundleId: string;
+  productId: string;
+  variantId?: string | null;
+  quantity: number;
+  isOptional: boolean;
+  discountRate?: string | null;
+  position: number;
+  product?: {
+    id: string;
+    title: string;
+    handle?: string;
+    thumbnail?: string;
+    price?: string;
+  } | null;
+  variant?: {
+    id: string;
+    title?: string | null;
+    sku?: string | null;
+  } | null;
+}
+
+export interface ProductBundle {
+  id: string;
+  tenantId: string;
+  bundleProductId?: string | null;
+  slug: string;
+  name: string;
+  description?: string | null;
+  bundleType: BundleType | string;
+  status: BundleStatus | string;
+  discountType: BundleDiscountType | string;
+  discountValue: string;
+  metadata?: Record<string, unknown> | null;
+  items: BundleItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBundleInput {
+  bundleProductId?: string | null;
+  slug: string;
+  name: string;
+  description?: string | null;
+  bundleType: string;
+  status: string;
+  discountType: string;
+  discountValue: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface UpdateBundleInput {
+  bundleProductId?: string | null;
+  slug?: string | null;
+  name?: string | null;
+  description?: string | null;
+  bundleType?: string | null;
+  status?: string | null;
+  discountType?: string | null;
+  discountValue?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AddBundleItemInput {
+  bundleId: string;
+  productId: string;
+  variantId?: string | null;
+  quantity?: number;
+  isOptional?: boolean;
+  discountRate?: string | null;
+  position?: number;
+}
+
+export interface BundleListResponse {
+  items: ProductBundle[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+

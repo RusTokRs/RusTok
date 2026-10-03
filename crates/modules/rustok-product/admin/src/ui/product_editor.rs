@@ -74,6 +74,9 @@ pub fn ProductEditorPage(
 
     // Bundle Product Specific
     let (bundle_components_str, set_bundle_components_str) = signal(String::new());
+    let (bundle_type, set_bundle_type) = signal("fixed".to_string());
+    let (bundle_discount_type, set_bundle_discount_type) = signal("none".to_string());
+    let (bundle_discount_value, set_bundle_discount_value) = signal("0".to_string());
 
     // SEO
     let (meta_title, set_meta_title) = signal(String::new());
@@ -700,7 +703,10 @@ pub fn ProductEditorPage(
                                 </span>
                             </h2>
                             <span class=move || active_kind.get().badge_class()>
-                                {move || active_kind.get().label(locale.as_deref())}
+                                {
+                                    let loc_label = locale.clone();
+                                    move || active_kind.get().label(loc_label.as_deref())
+                                }
                             </span>
                         </div>
 
@@ -829,10 +835,64 @@ pub fn ProductEditorPage(
 
                             ProductKind::Bundle => view! {
                                 <div class="space-y-4">
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div class="space-y-1.5">
+                                            <label class="text-xs font-medium text-foreground">
+                                                {if is_ru { "Тип комплекта" } else { "Kit Type" }}
+                                            </label>
+                                            <select
+                                                prop:value=move || bundle_type.get()
+                                                on:change=move |ev| set_bundle_type.set(event_target_value(&ev))
+                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
+                                            >
+                                                <option value="fixed">{if is_ru { "Фиксированный состав" } else { "Fixed Composition" }}</option>
+                                                <option value="flexible">{if is_ru { "Настраиваемый сет" } else { "Flexible / Configurable" }}</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="space-y-1.5">
+                                            <label class="text-xs font-medium text-foreground">
+                                                {if is_ru { "Тип скидки комплекта" } else { "Bundle Discount" }}
+                                            </label>
+                                            <select
+                                                prop:value=move || bundle_discount_type.get()
+                                                on:change=move |ev| set_bundle_discount_type.set(event_target_value(&ev))
+                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
+                                            >
+                                                <option value="none">{if is_ru { "Без скидки" } else { "None" }}</option>
+                                                <option value="percentage">{if is_ru { "Процентная (%)" } else { "Percentage (%)" }}</option>
+                                                <option value="fixed_amount">{if is_ru { "Фиксированная сумма" } else { "Fixed Amount" }}</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="space-y-1.5">
+                                            <label class="text-xs font-medium text-foreground">
+                                                {if is_ru { "Размер скидки" } else { "Discount Value" }}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.5"
+                                                prop:value=move || bundle_discount_value.get()
+                                                on:input=move |ev| set_bundle_discount_value.set(event_target_value(&ev))
+                                                class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground font-mono outline-none focus:border-primary"
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Компоненты набора" } else { "Bundle Components" }}
-                                        </label>
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-xs font-medium text-foreground">
+                                                {if is_ru { "Компоненты набора" } else { "Bundle Components" }}
+                                            </label>
+                                            <a
+                                                href="/admin/bundles"
+                                                class="text-xs text-primary hover:underline font-medium inline-flex items-center gap-1"
+                                                target="_blank"
+                                            >
+                                                {if is_ru { "Управление комплектами →" } else { "Open Bundles Manager →" }}
+                                            </a>
+                                        </div>
                                         <textarea
                                             rows="3"
                                             placeholder=if is_ru { "ID или SKU товаров, входящих в набор..." } else { "IDs or SKUs of items included in this kit..." }
@@ -842,9 +902,9 @@ pub fn ProductEditorPage(
                                         />
                                         <p class="text-[11px] text-muted-foreground">
                                             {if is_ru {
-                                                "При покупке комплекта остатки списываются с каждого входящего товара отдельно"
+                                                "При покупке комплекта остатки списываются с каждого входящего товара отдельно. Для расширенной настройки состава используйте раздел комплектов."
                                             } else {
-                                                "Inventory will be deducted from each individual component upon bundle purchase"
+                                                "Inventory will be deducted from each individual component upon bundle purchase. Use the Bundles module for advanced configuration."
                                             }}
                                         </p>
                                     </div>
@@ -1041,6 +1101,37 @@ pub fn ProductEditorPage(
                             </div>
                         </Show>
                     </div>
+
+                    // Product Relations & Merchandising Panel
+                    {
+                        let active_pid = if !is_new {
+                            product_id.filter(|p| !p.is_empty())
+                        } else {
+                            None
+                        };
+                        let ui_loc = locale.clone();
+                        let token_sig = token;
+                        let tenant_sig = tenant;
+                        move || {
+                            if let Some(pid) = active_pid.as_ref() {
+                                view! {
+                                    <div class="bg-card rounded-2xl border border-border p-5 shadow-sm space-y-4">
+                                        <rustok_product_relations_admin::ProductRelationsPanel
+                                            locale=ui_loc.clone().unwrap_or_else(|| "en".to_string())
+                                            product_id=pid.clone()
+                                            token=token_sig
+                                            tenant=tenant_sig
+                                            busy=is_busy
+                                            set_busy=set_is_busy
+                                            set_error=set_error_msg
+                                        />
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <div class="hidden" /> }.into_any()
+                            }
+                        }
+                    }
                 </div>
 
                 // Right Column (Sidebar 1 col)

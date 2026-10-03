@@ -15,6 +15,9 @@ import { notFound } from 'next/navigation';
 import {
   fetchProductDetail,
   fetchProductAttributeValues,
+  fetchProductRelations,
+  fetchActivePriceLists,
+  fetchProductBundles,
   listCatalogCategories,
   getCategoryEffectiveForm,
   ProductEditorPage
@@ -28,7 +31,15 @@ import {
   addImageAction,
   deleteImageAction,
   reorderImagesAction,
-  fetchEffectiveFormAction
+  fetchEffectiveFormAction,
+  addProductRelationAction,
+  removeProductRelationAction,
+  reorderProductRelationsAction,
+  searchProductsAction,
+  createBundleAction,
+  updateBundleAction,
+  addBundleItemAction,
+  removeBundleItemAction
 } from '../actions';
 
 export const metadata = {
@@ -58,6 +69,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
     console.error('Failed to load catalog categories for product editor:', err);
   }
 
+  // Load active price lists
+  let activePriceLists: Awaited<ReturnType<typeof fetchActivePriceLists>> = [];
+  try {
+    activePriceLists = await fetchActivePriceLists(opts);
+  } catch (err) {
+    console.error('Failed to pre-load active price lists:', err);
+  }
+
   if (isNew) {
     return (
       <PageContainer
@@ -67,6 +86,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
         <ProductEditorPage
           isNew={true}
           categories={categories}
+          activePriceLists={activePriceLists}
           onSaveProduct={saveProductAction}
           fetchEffectiveForm={fetchEffectiveFormAction}
         />
@@ -108,12 +128,26 @@ export default async function ProductDetailPage({ params }: PageProps) {
     console.error('Failed to pre-load product attribute values:', err);
   }
 
+  let relations: Awaited<ReturnType<typeof fetchProductRelations>> = [];
+  try {
+    relations = await fetchProductRelations(opts, productId);
+  } catch (err) {
+    console.error('Failed to pre-load product relations:', err);
+  }
+
+  let bundles: Awaited<ReturnType<typeof fetchProductBundles>> = [];
+  try {
+    bundles = await fetchProductBundles(opts, productId);
+  } catch (err) {
+    console.error('Failed to pre-load product bundles:', err);
+  }
+
   const primaryTranslation = product.translations[0] || null;
 
   return (
     <PageContainer
       pageTitle={primaryTranslation?.title || 'Product Editor'}
-      pageDescription='RusTok product catalog editor, variant matrix, media gallery, and effective specifications.'
+      pageDescription='RusTok product catalog editor, variant matrix, media gallery, relations, bundles, and effective specifications.'
     >
       <ProductEditorPage
         isNew={false}
@@ -121,6 +155,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
         categories={categories}
         initialEffectiveForm={effectiveForm}
         initialAttributeValues={attributeValues}
+        initialRelations={relations}
+        activePriceLists={activePriceLists}
+        initialBundles={bundles}
         onSaveProduct={saveProductAction}
         onDeleteProduct={async (id) => {
           await deleteProductAction(id);
@@ -142,6 +179,30 @@ export default async function ProductDetailPage({ params }: PageProps) {
         }}
         onReorderImages={async (pid, ids) => {
           await reorderImagesAction(pid, ids);
+        }}
+        onAddRelation={async (input) => {
+          await addProductRelationAction(input);
+        }}
+        onRemoveRelation={async (id) => {
+          await removeProductRelationAction(id, productId);
+        }}
+        onReorderRelations={async (pid, type, orderedIds) => {
+          await reorderProductRelationsAction(pid, type, orderedIds);
+        }}
+        onCreateBundle={async (input) => {
+          await createBundleAction(input);
+        }}
+        onUpdateBundle={async (bundleId, input) => {
+          await updateBundleAction(productId, bundleId, input);
+        }}
+        onAddBundleItem={async (input) => {
+          await addBundleItemAction(productId, input);
+        }}
+        onRemoveBundleItem={async (bundleId, itemId) => {
+          await removeBundleItemAction(productId, bundleId, itemId);
+        }}
+        onSearchProducts={async (query) => {
+          return searchProductsAction(query);
         }}
         fetchEffectiveForm={fetchEffectiveFormAction}
       />

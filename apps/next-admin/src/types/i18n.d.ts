@@ -90,6 +90,8 @@ export type AppMessageKey =
   | 'app.nav.attributes'
   | 'app-nav-blog'
   | 'app.nav.blog'
+  | 'app-nav-bundles'
+  | 'app.nav.bundles'
   | 'app-nav-cache'
   | 'app.nav.cache'
   | 'app-nav-catalog'
@@ -1416,6 +1418,8 @@ export interface AppMessageArgs {
   'app-nav-attributes'?: Record<string, never>;
   'app.nav.blog'?: Record<string, never>;
   'app-nav-blog'?: Record<string, never>;
+  'app.nav.bundles'?: Record<string, never>;
+  'app-nav-bundles'?: Record<string, never>;
   'app.nav.cache'?: Record<string, never>;
   'app-nav-cache'?: Record<string, never>;
   'app.nav.catalog'?: Record<string, never>;
