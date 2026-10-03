@@ -84,6 +84,21 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
     "data:image/webp;base64,",
 ];
 
+/// CSS tokens refused in a published static landing.
+///
+/// `url(` is deliberately **not** listed. A blanket ban looked like a "published landings must be
+/// self-contained" rule, but this policy already permits `https://` and relative URLs for
+/// resource attributes (see [`UrlKind::Resource`] and [`UrlKind::ResourceImage`]), so the same
+/// image was accepted through `src` and refused through `background-image`. That is not a
+/// stricter policy, it is an incoherent one — and it surfaced as a late, confusing publish
+/// failure after the author had already seen the background render in the editor.
+///
+/// References are instead validated per URL, with exactly the rule this policy applies to image
+/// resources, by [`strip_validated_css_urls`]. Everything listed below has no legitimate use in a
+/// declaration and stays banned outright.
+///
+/// An operator who re-adds `"url("` to `forbidden_css_tokens` still gets the blanket ban: the
+/// configuration is honoured over the default.
 const FORBIDDEN_CSS_TOKENS: &[&str] = &[
     "-moz-binding",
     "@import",
@@ -91,7 +106,6 @@ const FORBIDDEN_CSS_TOKENS: &[&str] = &[
     "data:",
     "expression(",
     "javascript:",
-    "url(",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -861,24 +875,111 @@ fn relative_url_allowed(value: &str) -> bool {
 }
 
 fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
-    let normalized = value.to_ascii_lowercase();
-    let compact = normalized
+    if value.chars().any(char::is_control) {
+        return false;
+    }
+
+    // An operator who keeps `url(` in the configured list still gets the old blanket ban:
+    // explicit configuration outranks the default.
+    let bans_all_references = policy
+        .forbidden_css_tokens
+        .iter()
+        .any(|token| token == "url(");
+    let scanned = if bans_all_references {
+        value.to_string()
+    } else {
+        // Validate and blank out references *before* the delimiter checks. A permitted
+        // `data:image/png;base64,...` legally contains `;`, which the check below would
+        // otherwise reject — the same ordering trap `fly::render::safe_style` had to fix.
+        match strip_validated_css_urls(value, policy) {
+            Some(stripped) => stripped,
+            None => return false,
+        }
+    };
+
+    let compact = scanned
+        .to_ascii_lowercase()
         .chars()
         .filter(|character| !character.is_ascii_whitespace())
         .collect::<String>();
-    !policy
+    if policy
         .forbidden_css_tokens
         .iter()
         .any(|token| compact.contains(token))
-        && !value.contains('\\')
-        && !value.contains('<')
-        && !value.contains('>')
-        && !value.contains(';')
-        && !value.contains('{')
-        && !value.contains('}')
-        && !value.contains("/*")
-        && !value.contains("*/")
-        && !value.chars().any(char::is_control)
+    {
+        return false;
+    }
+    // A reference that survived stripping is malformed or disguised (`blurl(`, `u r l(`).
+    if compact.contains("url(") {
+        return false;
+    }
+    !scanned.contains('\\')
+        && !scanned.contains('<')
+        && !scanned.contains('>')
+        && !scanned.contains(';')
+        && !scanned.contains('{')
+        && !scanned.contains('}')
+        && !scanned.contains("/*")
+        && !scanned.contains("*/")
+}
+
+/// Replace each well-formed `url(...)` with a placeholder, rejecting the declaration when any
+/// referenced URL fails the image-resource rule this policy already applies to `src`.
+fn strip_validated_css_urls(
+    value: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+) -> Option<String> {
+    let lowered = value.to_ascii_lowercase();
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+
+    while let Some(offset) = lowered[cursor..].find("url(") {
+        let start = cursor + offset;
+        // `blurl(` is not a reference; leave it in place so the caller's scan rejects it.
+        let preceded_by_identifier = value[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-');
+        if preceded_by_identifier {
+            output.push_str(&value[cursor..start + 4]);
+            cursor = start + 4;
+            continue;
+        }
+
+        let open = start + 4;
+        // An unterminated reference is refused rather than guessed at.
+        let close = value[open..].find(')')? + open;
+        let raw = value[open..close].trim();
+        let unquoted = raw
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+            .or_else(|| {
+                raw.strip_prefix('\'')
+                    .and_then(|rest| rest.strip_suffix('\''))
+            })
+            .unwrap_or(raw);
+
+        // `;` is legal inside a data URL, but these would still let a reference escape the
+        // declaration or open a comment.
+        if unquoted.is_empty()
+            || unquoted.contains('{')
+            || unquoted.contains('}')
+            || unquoted.contains('<')
+            || unquoted.contains('>')
+            || unquoted.contains("/*")
+            || unquoted.contains("*/")
+            || validate_url(unquoted, UrlKind::ResourceImage, policy).is_err()
+        {
+            return None;
+        }
+
+        output.push_str(&value[cursor..start]);
+        output.push_str("url-ok");
+        cursor = close + 1;
+    }
+
+    output.push_str(&value[cursor..]);
+    Some(output)
 }
 
 fn safe_media_query(query: &str, policy: &PageBuilderStaticPublishPolicy) -> bool {
@@ -1062,7 +1163,7 @@ mod tests {
                     "href": "javascript:alert(1)",
                     "hidden": false
                 },
-                "style": { "background-image": "url(https://evil.example/a.png)" },
+                "style": { "background-image": "url(javascript:alert(1))" },
                 "content": "Safe text"
             }]
         }));
@@ -1116,4 +1217,67 @@ mod tests {
                 .any(|diagnostic| diagnostic.code == "landing_metadata_url_invalid")
         );
     }
+
+    #[test]
+    fn css_references_follow_the_same_rule_as_image_attributes() {
+        // The point of the change: the same image must not be accepted through `src` and refused
+        // through `background-image`.
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for url in [
+            "/hero.png",
+            "https://cdn.example/hero.png",
+            "data:image/png;base64,iVBORw0KGgo=",
+        ] {
+            assert!(
+                validate_url(url, UrlKind::ResourceImage, &policy).is_ok(),
+                "attribute rule rejected {url}"
+            );
+            assert!(
+                safe_css_value(&format!("url({url})"), &policy),
+                "css rule rejected {url} that the attribute rule accepts"
+            );
+        }
+    }
+
+    #[test]
+    fn hostile_css_references_are_still_refused() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for value in [
+            "url(javascript:alert(1))",
+            "url(http://insecure.example/a.png)",
+            "url(//protocol.relative/a.png)",
+            "url(data:text/html;base64,PHNjcmlwdD4=)",
+            "url()",
+            "url(/unterminated.png",
+            "url(/a.png);color:red",
+            "u r l(https://cdn.example/a.png)",
+            "blurl(https://cdn.example/a.png)",
+        ] {
+            assert!(
+                !safe_css_value(value, &policy),
+                "accepted hostile {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_operator_may_keep_the_blanket_reference_ban() {
+        // Explicit configuration outranks the coherent default.
+        let mut policy = PageBuilderStaticPublishPolicy::default();
+        policy.forbidden_css_tokens.push("url(".to_string());
+        assert!(!safe_css_value("url(https://cdn.example/hero.png)", &policy));
+        assert!(safe_css_value("#ffffff", &policy));
+    }
+
+    #[test]
+    fn ordinary_declarations_are_unaffected() {
+        let policy = PageBuilderStaticPublishPolicy::default();
+        for value in ["#ffffff", "12px", "1px solid #333", "linear-gradient(red, blue)"] {
+            assert!(safe_css_value(value, &policy), "rejected {value}");
+        }
+        for value in ["expression(alert(1))", "@import 'x'", "color:red;}", "a<b"] {
+            assert!(!safe_css_value(value, &policy), "accepted {value}");
+        }
+    }
 }
+

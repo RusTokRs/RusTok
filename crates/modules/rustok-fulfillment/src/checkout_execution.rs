@@ -659,6 +659,14 @@ fn validate_request(
             }
         }
     }
+    if let Some(max_index) = indexes.iter().copied().max().map(u64::from) {
+        if max_index + 1 != indexes.len() as u64 {
+            return Err(PortError::validation(
+                "fulfillment.checkout_plan_invalid",
+                "checkout fulfillment plan indexes must form a dense zero-based set",
+            ));
+        }
+    }
     Ok(plan_hash)
 }
 
@@ -1366,6 +1374,41 @@ mod tests {
         let canonical = validate_request(operation_id, order_id, &"A".repeat(64), &[plan])
             .expect("uppercase hexadecimal plan hash should canonicalize");
         assert_eq!(canonical, "a".repeat(64));
+    }
+
+    #[test]
+    fn checkout_request_rejects_sparse_indexes() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let item = || CheckoutFulfillmentItemCommand {
+            order_line_item_id: Uuid::new_v4(),
+            cart_line_item_id: Uuid::new_v4(),
+            quantity: 1,
+            metadata: Value::Null,
+        };
+        let sparse = vec![
+            CheckoutFulfillmentCommand {
+                index: 0,
+                shipping_option_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: vec![item()],
+                metadata: Value::Null,
+            },
+            CheckoutFulfillmentCommand {
+                index: 2,
+                shipping_option_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: vec![item()],
+                metadata: Value::Null,
+            },
+        ];
+        let error = validate_request(operation_id, order_id, &hash, &sparse)
+            .expect_err("sparse checkout plan indexes must fail");
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.checkout_plan_invalid");
     }
 
     #[test]

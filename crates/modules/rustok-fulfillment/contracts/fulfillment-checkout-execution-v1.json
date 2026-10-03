@@ -26,6 +26,7 @@
     "fulfillment persistence and lifecycle remain inside fulfillment owner",
     "commerce sends typed order-line commands derived from the immutable checkout plan",
     "owner creates or adopts each typed checkout fulfillment identity",
+    "checkout fulfillment request indexes must form the dense zero-based set derived from the immutable Commerce plan",
     "owner reads fulfillment recovery state through FulfillmentService rather than consumer SQL",
     "duplicate checkout fulfillment identity fails closed",
     "raw storage errors never cross the port"

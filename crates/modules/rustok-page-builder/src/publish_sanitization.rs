@@ -318,7 +318,7 @@ mod tests {
                             "onclick": "alert(1)",
                             "href": "javascript:alert(1)"
                         },
-                        "style": { "background-image": "url(https://evil.example/x.png)" },
+                        "style": { "background-image": "url(javascript:alert(1))" },
                         "content": "Unsafe"
                     }]
                 }
