@@ -476,6 +476,138 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION rustok_product_assert_product_variant_axis_state(
+    p_tenant_id UUID,
+    p_product_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    variant_row RECORD;
+BEGIN
+    -- Deferred child triggers run during a Product cascade. A deleted owner has no remaining
+    -- aggregate state to validate.
+    IF NOT EXISTS (
+        SELECT 1 FROM products
+        WHERE tenant_id = p_tenant_id AND id = p_product_id
+    ) THEN
+        RETURN;
+    END IF;
+
+    PERFORM rustok_product_assert_default_variant_state(p_tenant_id, p_product_id);
+
+    IF EXISTS (
+        SELECT 1
+        FROM product_variant_axes axis
+        LEFT JOIN product_variant_axis_values allowed
+          ON allowed.tenant_id = axis.tenant_id AND allowed.axis_id = axis.id
+        WHERE axis.tenant_id = p_tenant_id
+          AND axis.product_id = p_product_id
+          AND allowed.id IS NULL
+    ) THEN
+        RAISE EXCEPTION
+            'product % has a variant axis without an allowed option', p_product_id;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM product_variant_axes axis
+        LEFT JOIN product_attributes attribute
+          ON attribute.tenant_id = axis.tenant_id AND attribute.id = axis.attribute_id
+        WHERE axis.tenant_id = p_tenant_id
+          AND axis.product_id = p_product_id
+          AND (
+              attribute.id IS NULL
+              OR attribute.archived_at IS NOT NULL
+              OR attribute.value_type <> 'select'
+              OR attribute.scope NOT IN ('variant', 'both')
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'product % has an inactive or non-select variant axis attribute', p_product_id;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM product_variant_axes axis
+        JOIN product_variant_axis_values allowed
+          ON allowed.tenant_id = axis.tenant_id AND allowed.axis_id = axis.id
+        LEFT JOIN product_attribute_options attribute_option
+          ON attribute_option.tenant_id = allowed.tenant_id
+         AND attribute_option.id = allowed.option_id
+        WHERE axis.tenant_id = p_tenant_id
+          AND axis.product_id = p_product_id
+          AND (
+              attribute_option.id IS NULL
+              OR attribute_option.archived_at IS NOT NULL
+              OR attribute_option.attribute_id <> axis.attribute_id
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'product % has an inactive or mismatched variant axis option', p_product_id;
+    END IF;
+
+    FOR variant_row IN
+        SELECT id FROM product_variants
+        WHERE tenant_id = p_tenant_id AND product_id = p_product_id
+    LOOP
+        PERFORM rustok_product_assert_variant_axis_state(
+            p_tenant_id,
+            p_product_id,
+            variant_row.id
+        );
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_assert_variant_axis_state_for_axis(
+    p_tenant_id UUID,
+    p_axis_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    v_product_id UUID;
+BEGIN
+    SELECT product_id INTO v_product_id
+    FROM product_variant_axes
+    WHERE tenant_id = p_tenant_id AND id = p_axis_id;
+    IF v_product_id IS NOT NULL THEN
+        PERFORM rustok_product_assert_product_variant_axis_state(p_tenant_id, v_product_id);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis_attribute()
+RETURNS TRIGGER AS $$
+DECLARE
+    product_row RECORD;
+BEGIN
+    FOR product_row IN
+        SELECT DISTINCT product_id
+        FROM product_variant_axes
+        WHERE tenant_id = NEW.tenant_id AND attribute_id = NEW.id
+    LOOP
+        PERFORM rustok_product_assert_product_variant_axis_state(NEW.tenant_id, product_row.product_id);
+    END LOOP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis_option()
+RETURNS TRIGGER AS $$
+DECLARE
+    product_row RECORD;
+BEGIN
+    FOR product_row IN
+        SELECT DISTINCT axis.product_id
+        FROM product_variant_axis_values allowed
+        JOIN product_variant_axes axis
+          ON axis.tenant_id = allowed.tenant_id AND axis.id = allowed.axis_id
+        WHERE allowed.tenant_id = NEW.tenant_id AND allowed.option_id = NEW.id
+    LOOP
+        PERFORM rustok_product_assert_product_variant_axis_state(NEW.tenant_id, product_row.product_id);
+    END LOOP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_value()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -505,54 +637,29 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis()
 RETURNS TRIGGER AS $$
-DECLARE
-    v_tenant_id UUID;
-    v_product_id UUID;
-    variant_row RECORD;
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        v_tenant_id := OLD.tenant_id;
-        v_product_id := OLD.product_id;
-    ELSE
-        v_tenant_id := NEW.tenant_id;
-        v_product_id := NEW.product_id;
+    -- An UPDATE can move an axis between Products. Validate both final aggregates rather than
+    -- only NEW, otherwise the old Product can retain an invalid no-axis/default state.
+    IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_product_variant_axis_state(OLD.tenant_id, OLD.product_id);
     END IF;
-    PERFORM rustok_product_assert_default_variant_state(v_tenant_id, v_product_id);
-    FOR variant_row IN
-        SELECT id FROM product_variants
-        WHERE tenant_id = v_tenant_id AND product_id = v_product_id
-    LOOP
-        PERFORM rustok_product_assert_variant_axis_state(v_tenant_id, v_product_id, variant_row.id);
-    END LOOP;
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_product_variant_axis_state(NEW.tenant_id, NEW.product_id);
+    END IF;
     IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis_value()
 RETURNS TRIGGER AS $$
-DECLARE
-    v_axis_id UUID;
-    v_tenant_id UUID;
-    v_product_id UUID;
-    variant_row RECORD;
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        v_axis_id := OLD.axis_id;
-        v_tenant_id := OLD.tenant_id;
-    ELSE
-        v_axis_id := NEW.axis_id;
-        v_tenant_id := NEW.tenant_id;
+    -- Like axis changes, an allowed-option update can move a row between axes. Revalidate both
+    -- owners so neither axis can be left with no allowed values or an invalid Variant assignment.
+    IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_variant_axis_state_for_axis(OLD.tenant_id, OLD.axis_id);
     END IF;
-    SELECT product_id INTO v_product_id
-    FROM product_variant_axes
-    WHERE tenant_id = v_tenant_id AND id = v_axis_id;
-    IF v_product_id IS NOT NULL THEN
-        FOR variant_row IN
-            SELECT id FROM product_variants
-            WHERE tenant_id = v_tenant_id AND product_id = v_product_id
-        LOOP
-            PERFORM rustok_product_assert_variant_axis_state(v_tenant_id, v_product_id, variant_row.id);
-        END LOOP;
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_variant_axis_state_for_axis(NEW.tenant_id, NEW.axis_id);
     END IF;
     IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
@@ -565,20 +672,12 @@ $$ LANGUAGE plpgsql;
 DO $$
 DECLARE
     product_row RECORD;
-    variant_row RECORD;
 BEGIN
     FOR product_row IN SELECT tenant_id, id FROM products LOOP
-        PERFORM rustok_product_assert_default_variant_state(product_row.tenant_id, product_row.id);
-        FOR variant_row IN
-            SELECT id FROM product_variants
-            WHERE tenant_id = product_row.tenant_id AND product_id = product_row.id
-        LOOP
-            PERFORM rustok_product_assert_variant_axis_state(
-                product_row.tenant_id,
-                product_row.id,
-                variant_row.id
-            );
-        END LOOP;
+        PERFORM rustok_product_assert_product_variant_axis_state(
+            product_row.tenant_id,
+            product_row.id
+        );
     END LOOP;
 END $$;
 
@@ -593,6 +692,18 @@ CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_value
 AFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_value();
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_attribute ON product_attributes;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis_attribute
+AFTER UPDATE ON product_attributes
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_axis_attribute();
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_option ON product_attribute_options;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis_option
+AFTER UPDATE ON product_attribute_options
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_axis_option();
 
 DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis ON product_variant_axes;
 CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis
@@ -623,13 +734,19 @@ FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_ax
             .get_connection()
             .execute_unprepared(
                 r#"
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_option ON product_attribute_options;
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_attribute ON product_attributes;
 DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_value ON product_variant_axis_values;
 DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis ON product_variant_axes;
 DROP TRIGGER IF EXISTS trg_variant_axis_state_from_value ON product_variant_attribute_values;
 DROP TRIGGER IF EXISTS trg_variant_axis_state_from_variant ON product_variants;
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis_option();
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis_attribute();
 DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis_value();
+DROP FUNCTION IF EXISTS rustok_product_assert_variant_axis_state_for_axis(UUID, UUID);
 DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis();
 DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_value();
+DROP FUNCTION IF EXISTS rustok_product_assert_product_variant_axis_state(UUID, UUID);
 DROP FUNCTION IF EXISTS rustok_product_assert_default_variant_state(UUID, UUID);
 DROP FUNCTION IF EXISTS rustok_product_assert_variant_axis_state_for_variant(UUID, UUID);
 DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_variant();

@@ -575,6 +575,14 @@ VALUES (
     'select',
     'variant'
 );
+INSERT INTO product_attributes (id, tenant_id, code, value_type, scope)
+VALUES (
+    '00000000-0000-0000-0000-000000000146',
+    '00000000-0000-0000-0000-000000000001',
+    'color',
+    'select',
+    'variant'
+);
 INSERT INTO product_attribute_options (id, tenant_id, attribute_id, code)
 VALUES (
     '00000000-0000-0000-0000-000000000142',
@@ -613,6 +621,21 @@ VALUES (
 );
 COMMIT;
 "#,
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        "UPDATE product_variant_attribute_values \
+         SET attribute_id = '00000000-0000-0000-0000-000000000146' \
+         WHERE id = '00000000-0000-0000-0000-000000000145'",
+        "does not have exactly one active allowed assignment",
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        "UPDATE product_attribute_options SET archived_at = now() \
+         WHERE id = '00000000-0000-0000-0000-000000000142'",
+        "inactive or mismatched variant axis option",
     )
     .await?;
     assert_constraint_rejection(

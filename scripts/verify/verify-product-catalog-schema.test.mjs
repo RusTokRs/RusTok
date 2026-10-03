@@ -279,6 +279,25 @@ assert(
   `expected direct variant-value state trigger failure, got ${missingVariantAxisValueStateTriggerResult.stderr}`,
 );
 
+const missingAxisAttributeStateTrigger = copyFixture();
+replaceInFixture(
+  missingAxisAttributeStateTrigger,
+  'crates/modules/rustok-product/src/migrations/m20260918_000033_create_variant_axes_and_invariants.rs',
+  'CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis_attribute\nAFTER UPDATE ON product_attributes',
+  'CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis_attribute_drift\nAFTER UPDATE ON product_attributes',
+);
+const missingAxisAttributeStateTriggerResult = run(missingAxisAttributeStateTrigger);
+assert(
+  missingAxisAttributeStateTriggerResult.status !== 0,
+  'expected axis-attribute state trigger to fail',
+);
+assert(
+  missingAxisAttributeStateTriggerResult.stderr.includes(
+    'trg_variant_axis_state_from_axis_attribute',
+  ),
+  `expected axis-attribute state trigger failure, got ${missingAxisAttributeStateTriggerResult.stderr}`,
+);
+
 const missingTenantAwareValueOptionInsert = copyFixture();
 replaceInFixture(
   missingTenantAwareValueOptionInsert,
