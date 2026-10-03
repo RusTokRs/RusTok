@@ -471,6 +471,22 @@ pub fn ProductGridPage() -> impl IntoView {
                         />
                     </div>
 
+                    // Categories navigation link
+                    <a
+                        href=format!("{base_route}/categories")
+                        class="inline-flex items-center justify-center h-9 px-3 rounded-xl border border-border bg-background text-xs font-medium text-foreground hover:bg-accent transition"
+                    >
+                        {if is_ru { "📁 Категории" } else { "📁 Categories" }}
+                    </a>
+
+                    // Attributes navigation link
+                    <a
+                        href=format!("{base_route}/attributes")
+                        class="inline-flex items-center justify-center h-9 px-3 rounded-xl border border-border bg-background text-xs font-medium text-foreground hover:bg-accent transition"
+                    >
+                        {if is_ru { "🏷️ Атрибуты" } else { "🏷️ Attributes" }}
+                    </a>
+
                     // Refresh button
                     <button
                         type="button"

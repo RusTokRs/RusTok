@@ -9,32 +9,12 @@
  */
 
 import { registerAdminModule } from '@/modules/registry';
-import type { NavItem } from '@/types';
 import {
   graphqlRequest,
   type AdminGraphqlExecutor,
   type GqlOpts
 } from '@/lib/graphql';
-
-export const productNavItems: NavItem[] = [
-  {
-    title: 'Catalog',
-    url: '#',
-    i18nKey: 'catalog',
-    group: 'modulePlugins',
-    icon: 'product',
-    isActive: false,
-    items: [
-      {
-        title: 'Products',
-        url: '/dashboard/product',
-        i18nKey: 'products',
-        shortcut: ['p', 'l']
-      }
-    ],
-    access: { role: 'manager' }
-  }
-];
+import { productNavItems } from './nav';
 
 registerAdminModule({
   id: 'product',
@@ -42,82 +22,31 @@ registerAdminModule({
   navItems: productNavItems
 });
 
-export type ProductListItem = {
-  id: string;
-  status: string;
-  title: string;
-  handle: string;
-  sellerId: string | null;
-  vendor: string | null;
-  productType: string | null;
-  shippingProfileSlug: string | null;
-  tags: string[];
-  createdAt: string | null;
-  publishedAt: string | null;
-};
+export { productNavItems } from './nav';
+export * from './api/types';
+export * from './api/categories';
+export * from './api/attributes';
+export * from './api/products';
+export * from './components/categories/categories-table';
+export * from './components/categories/category-create-dialog';
+export * from './components/attributes/attributes-table';
+export * from './components/attributes/attribute-create-dialog';
+export * from './components/attributes/attribute-options-dialog';
+export * from './components/attributes/attribute-schemas-card';
+export * from './components/products/product-header-bar';
+export * from './components/products/product-general-card';
+export * from './components/products/product-category-card';
+export * from './components/products/product-variants-card';
+export * from './components/products/product-media-card';
+export * from './components/products/product-seo-card';
+export * from './pages/categories-page';
+export * from './pages/attributes-page';
+export * from './pages/product-editor-page';
 
-export type ProductVariant = {
-  id: string;
-  sku: string | null;
-  barcode: string | null;
-  title: string | null;
-  inventoryQuantity: number;
-  inventoryPolicy: string;
-  inStock: boolean;
-  prices: Array<{
-    currencyCode: string;
-    amount: number;
-    compareAtAmount: number | null;
-    onSale: boolean;
-  }>;
-};
-
-export type ProductTranslation = {
-  locale: string;
-  title: string;
-  handle: string;
-  description: string | null;
-  metaTitle: string | null;
-  metaDescription: string | null;
-};
-
-export type ProductDetail = {
-  id: string;
-  status: string;
-  sellerId: string | null;
-  vendor: string | null;
-  productType: string | null;
-  shippingProfileSlug: string | null;
-  tags: string[];
-  createdAt: string | null;
-  updatedAt: string | null;
-  publishedAt: string | null;
-  translations: ProductTranslation[];
-  variants: ProductVariant[];
-};
 
 export type ProductCatalogSearchOption = {
   value: string;
   label: string;
-};
-
-export type ProductAttributeSummary = {
-  id: string;
-  code: string;
-  valueType: string;
-  isFilterable: boolean;
-  isSortable: boolean;
-  label: string;
-};
-
-export type CatalogCategorySummary = {
-  id: string;
-  parentId: string | null;
-  code: string;
-  slug: string;
-  path: string;
-  kind: string;
-  name: string;
 };
 
 const PRODUCTS_QUERY = `
@@ -152,6 +81,7 @@ query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) {
     vendor
     productType
     shippingProfileSlug
+    primaryCategoryId
     tags
     createdAt
     updatedAt
@@ -178,6 +108,13 @@ query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) {
         compareAtAmount
         onSale
       }
+    }
+    images {
+      id
+      mediaId
+      url
+      altText
+      position
     }
   }
 }`;

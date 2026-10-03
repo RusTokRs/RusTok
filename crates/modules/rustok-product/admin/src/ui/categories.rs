@@ -176,6 +176,12 @@ pub fn CategoriesPage() -> impl IntoView {
                 </div>
 
                 <div class="flex items-center gap-2">
+                    <a
+                        href=format!("{base_route}/attributes")
+                        class="h-9 px-3 rounded-xl border border-border bg-background text-xs font-medium text-foreground hover:bg-accent transition inline-flex items-center"
+                    >
+                        {if is_ru { "🏷️ Атрибуты" } else { "🏷️ Attributes" }}
+                    </a>
                     <button
                         type="button"
                         class="h-9 px-3 rounded-xl border border-border bg-background text-xs font-medium text-foreground hover:bg-accent transition"
@@ -280,7 +286,7 @@ pub fn CategoriesPage() -> impl IntoView {
                                                         <button
                                                             type="button"
                                                             class="h-6 px-2 rounded text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent"
-                                                            title=if is_ru { "Добавить подкатегорию" } else { "Add subcategory" }
+                                                            title=if is_ru { "Добавить дочернюю категорию" } else { "Add child category" }
                                                             on:click=move |_| {
                                                                 reset_form();
                                                                 set_cat_parent_id.set(cat_id_sub.clone());

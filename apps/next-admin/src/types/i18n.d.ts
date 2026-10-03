@@ -86,12 +86,16 @@ export type AppMessageKey =
   | 'app.nav.allWorkflows'
   | 'app-nav-appConnections'
   | 'app.nav.appConnections'
+  | 'app-nav-attributes'
+  | 'app.nav.attributes'
   | 'app-nav-blog'
   | 'app.nav.blog'
   | 'app-nav-cache'
   | 'app.nav.cache'
   | 'app-nav-catalog'
   | 'app.nav.catalog'
+  | 'app-nav-categories'
+  | 'app.nav.categories'
   | 'app-nav-dashboard'
   | 'app.nav.dashboard'
   | 'app-nav-email'
@@ -1408,12 +1412,16 @@ export interface AppMessageArgs {
   'app-nav-allWorkflows'?: Record<string, never>;
   'app.nav.appConnections'?: Record<string, never>;
   'app-nav-appConnections'?: Record<string, never>;
+  'app.nav.attributes'?: Record<string, never>;
+  'app-nav-attributes'?: Record<string, never>;
   'app.nav.blog'?: Record<string, never>;
   'app-nav-blog'?: Record<string, never>;
   'app.nav.cache'?: Record<string, never>;
   'app-nav-cache'?: Record<string, never>;
   'app.nav.catalog'?: Record<string, never>;
   'app-nav-catalog'?: Record<string, never>;
+  'app.nav.categories'?: Record<string, never>;
+  'app-nav-categories'?: Record<string, never>;
   'app.nav.dashboard'?: Record<string, never>;
   'app-nav-dashboard'?: Record<string, never>;
   'app.nav.email'?: Record<string, never>;

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
+use super::attributes::AttributesPage;
 use super::categories::CategoriesPage;
 use super::product_editor::ProductEditorPage;
 use super::product_grid::ProductGridPage;
@@ -33,6 +34,8 @@ pub fn ProductAdmin() -> impl IntoView {
 
     let view = if route_context.subpath_matches("categories") {
         view! { <CategoriesPage /> }.into_any()
+    } else if route_context.subpath_matches("attributes") {
+        view! { <AttributesPage /> }.into_any()
     } else if route_context.subpath_matches("new") {
         view! { <ProductEditorPage is_new=true /> }.into_any()
     } else if let Some(pid) = edit_id {

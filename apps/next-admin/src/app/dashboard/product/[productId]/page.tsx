@@ -1,138 +1,45 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
-import { getProduct } from '@rustok/product-admin';
-import { Badge } from '@/shared/ui/shadcn/badge';
-import { Button } from '@/shared/ui/shadcn/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle
-} from '@/shared/ui/shadcn/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/widgets/data-table/table';
 import { PageContainer } from '@/widgets/app-shell';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
-import { ProductCreateForm } from '../product-create-form';
+import {
+  fetchProductDetail,
+  fetchProductAttributeValues,
+  listCatalogCategories,
+  getCategoryEffectiveForm,
+  ProductEditorPage
+} from '@rustok/product-admin';
+import {
+  saveProductAction,
+  deleteProductAction,
+  addVariantAction,
+  updateVariantAction,
+  deleteVariantAction,
+  addImageAction,
+  deleteImageAction,
+  reorderImagesAction,
+  fetchEffectiveFormAction
+} from '../actions';
 
 export const metadata = {
-  title: 'RusTok Admin: Product'
+  title: 'RusTok Admin: Product Editor'
 };
 
 type PageProps = { params: Promise<{ productId: string }> };
 
-const PRODUCT_ATTRIBUTES_COPY_INSTRUCTIONS =
-  'Generate only verifiable attributes and mark unverified attributes as not_specified.';
-
-function normalizeSeedText(value: string | null | undefined): string {
-  return (value ?? '').trim();
-}
-
-function buildProductAttributesTaskInput(
-  product: NonNullable<Awaited<ReturnType<typeof getProduct>>>,
-  translation: { title: string; description: string | null; locale: string }
-) {
-  const sourceTitle = normalizeSeedText(translation.title);
-  const sourceDescription = normalizeSeedText(translation.description);
-  const sourceLocale = normalizeSeedText(translation.locale);
-  const categorySlug = normalizeSeedText(product.productType);
-  return JSON.stringify(
-    {
-      product_id: product.id,
-      source_locale: sourceLocale || null,
-      source_title: sourceTitle || null,
-      source_description: sourceDescription || null,
-      category_slug: categorySlug || null,
-      image_urls: [],
-      copy_instructions: PRODUCT_ATTRIBUTES_COPY_INSTRUCTIONS
-    },
-    null,
-    2
-  );
-}
-
-function buildProductAttributesHref(
-  product: NonNullable<Awaited<ReturnType<typeof getProduct>>>,
-  translation: { title: string; description: string | null; locale: string }
-) {
-  const sourceTitle = normalizeSeedText(translation.title);
-  const sourceDescription = normalizeSeedText(translation.description);
-  const sourceLocale = normalizeSeedText(translation.locale);
-  const categorySlug = normalizeSeedText(product.productType);
-  const params = new URLSearchParams({
-    task: 'product_attributes',
-    title: `Product Attributes ${product.id}`,
-    productId: product.id,
-    copyInstructions: PRODUCT_ATTRIBUTES_COPY_INSTRUCTIONS
-  });
-  if (sourceLocale.length > 0) {
-    params.set('locale', sourceLocale);
-    params.set('sourceLocale', sourceLocale);
-  }
-  if (categorySlug.length > 0) {
-    params.set('categorySlug', categorySlug);
-  }
-  if (sourceTitle.length > 0) {
-    params.set('sourceTitle', sourceTitle);
-  }
-  if (sourceDescription.length > 0) {
-    params.set('sourceDescription', sourceDescription);
-  }
-  return `/dashboard/ai?${params.toString()}`;
-}
-
-function hasProductAttributesSeedData(
-  translation: {
-    title: string;
-    description: string | null;
-    locale: string;
-  } | null
-): boolean {
-  if (!translation) return false;
-  return (
-    normalizeSeedText(translation.title).length > 0 ||
-    normalizeSeedText(translation.description).length > 0
-  );
-}
-
-function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '-';
-}
-
-function formatMoney(amount: number): string {
-  return (amount / 100).toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD'
-  });
-}
-
 export default async function ProductDetailPage({ params }: PageProps) {
   const { productId } = await params;
   const session = await auth();
-
-  if (productId === 'new') {
-    return (
-      <PageContainer
-        pageTitle='Create product'
-        pageDescription='Create a new catalog product with pricing, inventory, and categorization.'
-        pageHeaderAction={
-          <Button asChild variant='outline'>
-            <Link href='/dashboard/product'>Back to catalog</Link>
-          </Button>
-        }
-      >
-        <ProductCreateForm />
-      </PageContainer>
-    );
-  }
 
   const opts = {
     graphql: graphqlRequest,
@@ -141,200 +48,84 @@ export default async function ProductDetailPage({ params }: PageProps) {
     tenantId: session?.user?.tenantId ?? null
   };
 
-  let product: Awaited<ReturnType<typeof getProduct>> | null = null;
-  let error: string | null = null;
+  const isNew = productId === 'new';
 
+  // Load category taxonomy
+  let categories: Awaited<ReturnType<typeof listCatalogCategories>> = [];
   try {
-    product = await getProduct(opts, productId);
+    categories = await listCatalogCategories(opts, 'en');
   } catch (err) {
-    error = err instanceof Error ? err.message : 'Failed to load product.';
+    console.error('Failed to load catalog categories for product editor:', err);
   }
 
-  if (!error && !product) {
+  if (isNew) {
+    return (
+      <PageContainer
+        pageTitle='Create Product'
+        pageDescription='Configure catalog product entity, primary category, pricing, and specifications.'
+      >
+        <ProductEditorPage
+          isNew={true}
+          categories={categories}
+          onSaveProduct={saveProductAction}
+          fetchEffectiveForm={fetchEffectiveFormAction}
+        />
+      </PageContainer>
+    );
+  }
+
+  // Fetch product detail for existing product
+  let product: Awaited<ReturnType<typeof fetchProductDetail>> = null;
+  try {
+    product = await fetchProductDetail(opts, productId);
+  } catch (err) {
+    console.error('Failed to load product detail:', err);
+  }
+
+  if (!product) {
     notFound();
   }
 
-  const primaryTranslation = product?.translations[0] ?? null;
+  // Pre-load effective form and attribute values if category is assigned
+  let effectiveForm = null;
+  let attributeValues = [];
+  if (product.primaryCategoryId) {
+    try {
+      effectiveForm = await getCategoryEffectiveForm(opts, product.primaryCategoryId, 'en');
+    } catch (err) {
+      console.error('Failed to pre-load category effective form:', err);
+    }
+  }
+
+  try {
+    attributeValues = await fetchProductAttributeValues(opts, productId, 'en');
+  } catch (err) {
+    console.error('Failed to pre-load product attribute values:', err);
+  }
+
+  const primaryTranslation = product.translations[0] || null;
 
   return (
     <PageContainer
-      pageTitle={primaryTranslation?.title ?? 'Product'}
-      pageDescription='RusTok product detail backed by GraphQL.'
-      pageHeaderAction={
-        <Button asChild variant='outline'>
-          <Link href='/dashboard/product'>Back to catalog</Link>
-        </Button>
-      }
+      pageTitle={primaryTranslation?.title || 'Product Editor'}
+      pageDescription='RusTok product catalog editor, variant matrix, media gallery, and effective specifications.'
     >
-      {error ? (
-        <Card className='border-destructive/50'>
-          <CardContent className='text-destructive py-6 text-sm'>
-            {error}
-          </CardContent>
-        </Card>
-      ) : product ? (
-        <div className='space-y-4'>
-          <Card>
-            <CardHeader>
-              <CardTitle className='text-base'>Product state</CardTitle>
-            </CardHeader>
-            <CardContent className='grid gap-4 md:grid-cols-3'>
-              <div>
-                <p className='text-muted-foreground text-xs'>Status</p>
-                <Badge variant='outline'>{product.status}</Badge>
-              </div>
-              <div>
-                <p className='text-muted-foreground text-xs'>Handle</p>
-                <p className='text-sm'>{primaryTranslation?.handle ?? '-'}</p>
-              </div>
-              <div>
-                <p className='text-muted-foreground text-xs'>Seller</p>
-                <p className='text-sm'>{product.sellerId ?? '-'}</p>
-              </div>
-              <div>
-                <p className='text-muted-foreground text-xs'>Vendor</p>
-                <p className='text-sm'>{product.vendor ?? '-'}</p>
-              </div>
-              <div>
-                <p className='text-muted-foreground text-xs'>Type</p>
-                <p className='text-sm'>{product.productType ?? '-'}</p>
-              </div>
-              <div>
-                <p className='text-muted-foreground text-xs'>Published</p>
-                <p className='text-sm'>{formatDate(product.publishedAt)}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className='text-base'>Localized content</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3'>
-              {product.translations.length === 0 ? (
-                <p className='text-muted-foreground text-sm'>
-                  No translations are stored for this product.
-                </p>
-              ) : (
-                product.translations.map((translation) => (
-                  <div
-                    key={translation.locale}
-                    className='rounded-md border p-3'
-                  >
-                    <div className='mb-2 flex items-center justify-between gap-2'>
-                      <p className='font-medium'>{translation.title}</p>
-                      <Badge variant='secondary'>{translation.locale}</Badge>
-                    </div>
-                    <p className='text-muted-foreground text-sm'>
-                      {translation.description ?? 'No description.'}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className='text-base'>AI product attributes</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3'>
-              <p className='text-muted-foreground text-sm'>
-                Product write-side is module-owned. Use the AI task runner with
-                <code className='bg-muted mx-1 rounded px-1 py-0.5'>
-                  product_attributes
-                </code>
-                and this payload draft based on the current product translation.
-              </p>
-              {hasProductAttributesSeedData(primaryTranslation) ? (
-                <pre className='bg-muted/40 overflow-x-auto rounded-md border p-3 text-xs'>
-                  {buildProductAttributesTaskInput(
-                    product,
-                    primaryTranslation!
-                  )}
-                </pre>
-              ) : (
-                <p className='text-muted-foreground text-xs'>
-                  Payload preview is unavailable until title or description
-                  translation is provided.
-                </p>
-              )}
-              {hasProductAttributesSeedData(primaryTranslation) ? (
-                <Button asChild variant='outline' size='sm'>
-                  <Link
-                    href={buildProductAttributesHref(
-                      product,
-                      primaryTranslation!
-                    )}
-                  >
-                    Open AI task runner
-                  </Link>
-                </Button>
-              ) : (
-                <p className='text-muted-foreground text-xs'>
-                  Add title or description translation before launching
-                  product_attributes.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className='text-base'>Variants</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className='rounded-md border'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Variant</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Inventory</TableHead>
-                      <TableHead>Policy</TableHead>
-                      <TableHead>Prices</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {product.variants.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className='text-muted-foreground text-center text-sm'
-                        >
-                          No variants found.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      product.variants.map((variant) => (
-                        <TableRow key={variant.id}>
-                          <TableCell>{variant.title ?? variant.id}</TableCell>
-                          <TableCell>{variant.sku ?? '-'}</TableCell>
-                          <TableCell>
-                            {variant.inventoryQuantity}{' '}
-                            {variant.inStock ? 'in stock' : 'out of stock'}
-                          </TableCell>
-                          <TableCell>{variant.inventoryPolicy}</TableCell>
-                          <TableCell>
-                            {variant.prices.length === 0
-                              ? '-'
-                              : variant.prices
-                                  .map(
-                                    (price) =>
-                                      `${price.currencyCode} ${formatMoney(price.amount)}`
-                                  )
-                                  .join(', ')}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+      <ProductEditorPage
+        isNew={false}
+        initialProduct={product}
+        categories={categories}
+        initialEffectiveForm={effectiveForm}
+        initialAttributeValues={attributeValues}
+        onSaveProduct={saveProductAction}
+        onDeleteProduct={deleteProductAction}
+        onAddVariant={addVariantAction}
+        onUpdateVariant={updateVariantAction}
+        onDeleteVariant={deleteVariantAction}
+        onAddImage={addImageAction}
+        onDeleteImage={deleteImageAction}
+        onReorderImages={reorderImagesAction}
+        fetchEffectiveForm={fetchEffectiveFormAction}
+      />
     </PageContainer>
   );
 }
