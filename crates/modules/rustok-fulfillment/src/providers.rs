@@ -685,7 +685,7 @@ fn validate_operation_result(
         result.external_reference.as_deref(),
         191,
     )?;
-    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 191)?;
+    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 100)?;
     if !result.metadata.is_object() {
         return Err(FulfillmentError::Validation(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
@@ -826,6 +826,28 @@ mod boundary_tests {
             metadata: serde_json::json!({"provider": "carrier"}),
         };
         assert!(validate_operation_result("carrier", "create_label", &result).is_ok());
+    }
+
+    #[test]
+    fn accepts_operation_result_tracking_number_at_fulfillment_limit() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: Some("t".repeat(100)),
+            metadata: serde_json::json!({"provider": "carrier"}),
+        };
+        assert!(validate_operation_result("carrier", "ship", &result).is_ok());
+    }
+
+    #[test]
+    fn rejects_operation_result_tracking_number_over_fulfillment_limit() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: Some("t".repeat(101)),
+            metadata: serde_json::json!({"provider": "carrier"}),
+        };
+        assert!(validate_operation_result("carrier", "ship", &result).is_err());
     }
 
     #[test]
