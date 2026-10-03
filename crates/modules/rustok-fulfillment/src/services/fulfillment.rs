@@ -449,8 +449,14 @@ impl FulfillmentService {
         let checkout_plan_hash = identity.as_ref().map(|value| value.plan_hash.clone());
 
         if let Some(identity) = identity.as_ref() {
-            self.ensure_checkout_identity_anchor(&txn, tenant_id, order_id, identity)
-                .await?;
+            self.ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                customer_id,
+                identity,
+            )
+            .await?;
         }
 
         entities::fulfillment::ActiveModel {
@@ -515,6 +521,7 @@ impl FulfillmentService {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         order_id: Uuid,
+        customer_id: Option<Uuid>,
         identity: &CheckoutFulfillmentIdentity,
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
@@ -522,6 +529,7 @@ impl FulfillmentService {
             tenant_id: Set(tenant_id),
             checkout_operation_id: Set(identity.operation_id),
             order_id: Set(order_id),
+            customer_id: Set(customer_id),
             plan_hash: Set(identity.plan_hash.clone()),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -544,12 +552,13 @@ impl FulfillmentService {
                 match existing {
                     Some(existing)
                         if existing.order_id == order_id
+                            && existing.customer_id == customer_id
                             && existing.plan_hash == identity.plan_hash =>
                     {
                         Ok(())
                     }
                     Some(_) => Err(FulfillmentError::Validation(
-                        "checkout operation identity is already bound to a different order or plan"
+                        "checkout operation identity is already bound to a different order, customer, or plan"
                             .to_string(),
                     )),
                     None => Err(insert_error.into()),
