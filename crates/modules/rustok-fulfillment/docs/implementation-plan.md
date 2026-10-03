@@ -27,7 +27,12 @@ Before the typed checkout-identity cutover, the legacy checkout metadata identit
 The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
-fail closed with typed manual reconciliation. Durable typed checkout fulfillment identity and the operation-level anchor plus concurrency-safe uniqueness constraint are source-complete;
+fail closed with typed manual reconciliation. Typed checkout creation/adoption now
+uses `FulfillmentService::create_checkout_fulfillment` and typed lookup uses
+`find_checkout_fulfillment` / `list_checkout_fulfillments`; the owner also binds
+each checkout operation to one order, customer, and normalized plan hash through a
+concurrency-safe identity anchor. Durable typed checkout fulfillment identity,
+the operation-level anchor, and the uniqueness constraint are source-complete;
 cross-backend migration, rollback/reapply, contention, restart, and mounted parity evidence remains maintainer-owned.
 The typed identity cutover also treats migration rollback as a compatibility boundary: current legacy SQLite/MySQL identity guards are restored exactly, MySQL legacy INSERT protection is removed during cutover, and PostgreSQL numeric legacy indices are bounded before BIGINT conversion.
 Migration sources are registry-complete: executable migrations are declared once in `src/migrations/mod.rs`. The historical unregistered `m20260713_000111_enforce_order_line_allocation` prototype is not part of the current target architecture and has been removed; allocation read-before-write concurrency remains a separate owner-path concern and is tracked independently.
