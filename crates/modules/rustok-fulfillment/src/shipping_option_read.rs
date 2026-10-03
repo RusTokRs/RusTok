@@ -388,6 +388,13 @@ fn map_owner_error(
             false,
             false,
         ),
+        FulfillmentError::ProviderResultInvalid(_) => (
+            PortErrorKind::Conflict,
+            "fulfillment.reconciliation_required",
+            "fulfillment provider result requires reconciliation",
+            false,
+            false,
+        ),
         FulfillmentError::ShippingOptionNotFound(_) => (
             PortErrorKind::NotFound,
             "fulfillment.shipping_option_not_found",
