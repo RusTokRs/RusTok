@@ -19,7 +19,8 @@ call, while `FulfillmentService` remains the lifecycle owner.
 Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
 the immutable checkout plan and receives normalized owner projections. The owner
-uses `FulfillmentService::list_by_order` and `create_fulfillment`; mounted Commerce
+uses typed `FulfillmentService::create_checkout_fulfillment`,
+`find_checkout_fulfillment`, and `list_checkout_fulfillments`; mounted Commerce
 checkout no longer queries fulfillment persistence or constructs the service.
 
 Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract is owned by `m20260925_000119_type_checkout_fulfillment_identity`, with `m20261003_000120_create_checkout_identity_anchor` adding one owner-owned operation anchor that binds the typed fulfillment set to a single order, customer, and normalized plan hash.
