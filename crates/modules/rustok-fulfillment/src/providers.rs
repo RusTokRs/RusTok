@@ -693,7 +693,7 @@ fn validate_operation_result(
         result.tracking_number.as_deref(),
         FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
     )
-    .map_err(|error| ProviderResultInvalid(error.to_string()))?;
+    .map_err(provider_result_invalid)?;
     if !result.metadata.is_object() {
         return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
