@@ -120,7 +120,12 @@ async fn list_legacy_storefront_http_products(
     per_page: u64,
 ) -> Result<LegacyStorefrontProductList, CommerceError> {
     let fallback_locale = fallback_locale.unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
-    let offset = (page.saturating_sub(1)) * per_page;
+    let offset = page
+        .checked_sub(1)
+        .and_then(|page| page.checked_mul(per_page))
+        .ok_or_else(|| CommerceError::Validation("page and per_page are too large".to_owned()))?;
+    let offset_usize = usize::try_from(offset)
+        .map_err(|_| CommerceError::Validation("page and per_page are too large".to_owned()))?;
     let db = service.database();
 
     let mut query = product::Entity::find()
@@ -136,6 +141,7 @@ async fn list_legacy_storefront_http_products(
     if let Some(search) = search {
         query = query.filter(product_title_search_condition(
             db.get_database_backend(),
+            tenant_id,
             search,
         ));
     }
@@ -156,7 +162,7 @@ async fn list_legacy_storefront_http_products(
     let total = visible_products.len() as u64;
     let products = visible_products
         .into_iter()
-        .skip(offset as usize)
+        .skip(offset_usize)
         .take(per_page as usize)
         .collect::<Vec<_>>();
 
@@ -168,6 +174,7 @@ async fn list_legacy_storefront_http_products(
         Vec::new()
     } else {
         product_translation::Entity::find()
+            .filter(product_translation::Column::TenantId.eq(tenant_id))
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(db)
             .await?
@@ -215,7 +222,9 @@ async fn list_legacy_storefront_http_products(
         total,
         page,
         per_page,
-        has_next: page * per_page < total,
+        has_next: offset
+            .checked_add(items.len() as u64)
+            .is_some_and(|through| through < total),
     })
 }
 
@@ -257,20 +266,24 @@ fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
-fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> sea_orm::Condition {
+fn product_title_search_condition(
+    backend: sea_orm::DbBackend,
+    tenant_id: Uuid,
+    search: &str,
+) -> sea_orm::Condition {
     let pattern = format!("%{search}%");
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.title LIKE ?\n            )"
+            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = ?\n                  AND pt.title LIKE ?\n            )"
         }
         _ => {
-            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.title LIKE $1\n            )"
+            "EXISTS (\n                SELECT 1\n                FROM product_translations pt\n                WHERE pt.product_id = products.id\n                  AND pt.tenant_id = $1\n                  AND pt.title LIKE $2\n            )"
         }
     };
 
     sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
         exists_sql,
-        vec![sea_orm::Value::from(pattern)],
+        vec![sea_orm::Value::from(tenant_id), sea_orm::Value::from(pattern)],
     ))
 }
 

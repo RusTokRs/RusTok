@@ -39,6 +39,8 @@ const productCategoryTreeInvariantMigrationPath =
   'crates/modules/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs';
 const productTransitionalColumnCleanupMigrationPath =
   'crates/modules/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs';
+const productVariantAxesInvariantMigrationPath =
+  'crates/modules/rustok-product/src/migrations/m20260918_000033_create_variant_axes_and_invariants.rs';
 const legacyProductMigrationPaths = [
   'crates/modules/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/modules/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
@@ -49,6 +51,8 @@ const schemaAttributesPath = 'crates/modules/rustok-product/src/services/catalog
 const schemaCategoriesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs';
 const schemaSchemasPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs';
 const schemaValuesPath = 'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs';
+const schemaVariantValuesPath =
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values/variant.rs';
 const schemaEffectiveFormsPath =
   'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
 const schemaVirtualCategoriesPath =
@@ -88,12 +92,14 @@ const productCategoryTreeInvariantMigration = read(productCategoryTreeInvariantM
 const productTransitionalColumnCleanupMigration = read(
   productTransitionalColumnCleanupMigrationPath,
 );
+const productVariantAxesInvariantMigration = read(productVariantAxesInvariantMigrationPath);
 const legacyProductMigrations = legacyProductMigrationPaths.map((path) => [path, read(path)]);
 const schemaService = read(schemaServicePath);
 const schemaAttributes = read(schemaAttributesPath);
 const schemaCategories = read(schemaCategoriesPath);
 const schemaSchemas = read(schemaSchemasPath);
 const schemaValues = read(schemaValuesPath);
+const schemaVariantValues = read(schemaVariantValuesPath);
 const schemaEffectiveForms = read(schemaEffectiveFormsPath);
 const schemaVirtualCategories = read(schemaVirtualCategoriesPath);
 const schemaServiceAggregate = [
@@ -229,6 +235,8 @@ for (const marker of [
   'Box::new(m20260725_000002_enforce_catalog_category_tree_invariants::Migration)',
   'mod m20260725_000003_remove_transitional_catalog_columns;',
   'Box::new(m20260725_000003_remove_transitional_catalog_columns::Migration)',
+  'mod m20260918_000033_create_variant_axes_and_invariants;',
+  'Box::new(m20260918_000033_create_variant_axes_and_invariants::Migration)',
 ]) {
   requireSource(productMigrationsMod, marker, productMigrationsModPath);
 }
@@ -298,7 +306,8 @@ for (const marker of [
   'cannot remove transitional product image storage: media_id is missing',
   'DROP COLUMN IF EXISTS is_gift_card',
   'DROP COLUMN IF EXISTS subtitle',
-  'DROP COLUMN IF EXISTS name',
+  'chk_product_images_position_nonnegative',
+  'uq_product_images_product_position',
   'ALTER COLUMN media_id SET NOT NULL',
   'DROP COLUMN IF EXISTS url',
   'ALTER COLUMN weight TYPE NUMERIC(20, 6)',
@@ -310,6 +319,31 @@ for (const marker of [
     productTransitionalColumnCleanupMigrationPath,
   );
 }
+forbidSource(
+  productTransitionalColumnCleanupMigration,
+  'ALTER TABLE product_options',
+  productTransitionalColumnCleanupMigrationPath,
+);
+
+for (const marker of [
+  'rustok-product migrations require PostgreSQL',
+  'CHECK (position >= 0)',
+  'rustok_product_validate_axis_value_option',
+  'rustok_product_compute_combination_identity',
+  'rustok_product_assert_variant_axis_state',
+  'rustok_product_assert_default_variant_state',
+  'CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_value\nAFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values',
+  'AFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values',
+  'does not have exactly one active allowed assignment for every configured axis',
+  'legacy multi-variant products',
+]) {
+  requireSource(
+    productVariantAxesInvariantMigration,
+    marker,
+    productVariantAxesInvariantMigrationPath,
+  );
+}
+
 for (const marker of [
   'ALTER TABLE product_translations',
   'ALTER TABLE product_image_translations',
@@ -321,6 +355,19 @@ for (const marker of [
 ]) {
   requireSource(productLocaleExpansionMigration, marker, productLocaleExpansionMigrationPath);
 }
+for (const marker of [
+  'async fn reject_configured_variant_axis_attribute_changes<C>(\n    conn: &C,',
+  'must be changed through the variant axis command',
+]) {
+  requireSource(schemaVariantValues, marker, schemaVariantValuesPath);
+}
+for (const marker of [
+  'required variant axes are missing from the configuration',
+  'validate_variant_axis_configuration_in',
+]) {
+  requireSource(catalogCommands, marker, catalogCommandsPath);
+}
+
 for (const marker of [
   'UPDATE product_variants pv',
   'ALTER TABLE product_variants',

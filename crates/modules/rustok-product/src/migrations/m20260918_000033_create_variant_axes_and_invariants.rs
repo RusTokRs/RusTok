@@ -7,70 +7,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() == DatabaseBackend::Sqlite {
-            manager
-                .get_connection()
-                .execute_unprepared(
-                    r#"
-CREATE TABLE IF NOT EXISTS product_variant_axes (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    product_id TEXT NOT NULL,
-    attribute_id TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS product_variant_axis_values (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    axis_id TEXT NOT NULL,
-    option_id TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS product_attribute_groups (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    code TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS product_attribute_group_translations (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    locale TEXT NOT NULL,
-    label TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS product_attribute_group_attributes (
-    tenant_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    attribute_id TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (tenant_id, group_id, attribute_id)
-);
-
-CREATE TABLE IF NOT EXISTS product_attribute_group_channel_settings (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    is_visible BOOLEAN NOT NULL DEFAULT 1,
-    position INTEGER,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-                    "#,
-                )
-                .await?;
-            return Ok(());
-        }
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Err(DbErr::Custom(
                 "rustok-product migrations require PostgreSQL".to_owned(),
@@ -87,7 +23,7 @@ CREATE TABLE IF NOT EXISTS product_variant_axes (
     tenant_id UUID NOT NULL,
     product_id UUID NOT NULL,
     attribute_id UUID NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     FOREIGN KEY (tenant_id, product_id)
@@ -106,7 +42,7 @@ CREATE TABLE IF NOT EXISTS product_variant_axis_values (
     tenant_id UUID NOT NULL,
     axis_id UUID NOT NULL,
     option_id UUID NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     FOREIGN KEY (tenant_id, axis_id)
@@ -274,7 +210,7 @@ BEGIN
 
     RETURN result;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql VOLATILE;
 
 -- 7. Trigger to Maintain Combination Identity
 CREATE OR REPLACE FUNCTION rustok_product_maintain_combination_identity()
@@ -393,6 +329,282 @@ ON product_variant_attribute_value_options
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION rustok_product_validate_variant_axis_completeness();
+
+-- 9. Complete state validation. The earlier option-row trigger cannot see a value
+-- row after it is cascade-deleted, and it does not run when only axis configuration
+-- changes. These deferred triggers make PostgreSQL the final authority for exact
+-- configuration/assignment matching, allowed-option membership, derived identity,
+-- and the single default-variant rule.
+CREATE OR REPLACE FUNCTION rustok_product_assert_variant_axis_state(
+    p_tenant_id UUID,
+    p_product_id UUID,
+    p_variant_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    configured_count INTEGER;
+    invalid_assignment_count INTEGER;
+    variant_count INTEGER;
+    stored_identity TEXT;
+    computed_identity TEXT;
+BEGIN
+    SELECT COUNT(*) INTO configured_count
+    FROM product_variant_axes
+    WHERE tenant_id = p_tenant_id AND product_id = p_product_id;
+
+    SELECT combination_identity INTO stored_identity
+    FROM product_variants
+    WHERE tenant_id = p_tenant_id AND id = p_variant_id;
+
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    IF configured_count = 0 THEN
+        SELECT COUNT(*) INTO variant_count
+        FROM product_variants
+        WHERE tenant_id = p_tenant_id AND product_id = p_product_id;
+        IF variant_count <> 1 THEN
+            RAISE EXCEPTION
+                'product % without variant axes must own exactly one default variant',
+                p_product_id;
+        END IF;
+        -- Combination identity is derived state, not a caller-controlled field. Normalize an
+        -- old or direct write so the default-variant unique index and persisted state agree.
+        IF stored_identity IS NOT NULL THEN
+            UPDATE product_variants
+            SET combination_identity = NULL
+            WHERE tenant_id = p_tenant_id AND id = p_variant_id;
+        END IF;
+        RETURN;
+    END IF;
+
+    SELECT COUNT(*) INTO invalid_assignment_count
+    FROM (
+        SELECT axis.id
+        FROM product_variant_axes axis
+        LEFT JOIN product_variant_attribute_values value
+          ON value.tenant_id = axis.tenant_id
+         AND value.variant_id = p_variant_id
+         AND value.attribute_id = axis.attribute_id
+        LEFT JOIN product_variant_attribute_value_options selected
+          ON selected.tenant_id = value.tenant_id
+         AND selected.value_id = value.id
+        LEFT JOIN product_variant_axis_values allowed
+          ON allowed.tenant_id = axis.tenant_id
+         AND allowed.axis_id = axis.id
+         AND allowed.option_id = selected.option_id
+        WHERE axis.tenant_id = p_tenant_id
+          AND axis.product_id = p_product_id
+        GROUP BY axis.id, value.id, value.detached_at
+        HAVING value.id IS NULL
+            OR value.detached_at IS NOT NULL
+            OR COUNT(selected.option_id) <> 1
+            OR COUNT(allowed.option_id) <> 1
+    ) invalid_axis_assignments;
+
+    IF invalid_assignment_count <> 0 THEN
+        RAISE EXCEPTION
+            'variant % does not have exactly one active allowed assignment for every configured axis',
+            p_variant_id;
+    END IF;
+
+    computed_identity := rustok_product_compute_combination_identity(
+        p_variant_id,
+        p_product_id,
+        p_tenant_id
+    );
+    -- Synchronize derived identity here as well as in the option-row maintenance trigger.
+    -- Constraint triggers may run in a different deferred-event order, so relying only on the
+    -- maintenance trigger can observe a complete assignment set before it has refreshed the
+    -- stored value. A duplicate final identity still fails the Product unique index.
+    IF stored_identity IS DISTINCT FROM computed_identity THEN
+        UPDATE product_variants
+        SET combination_identity = computed_identity
+        WHERE tenant_id = p_tenant_id AND id = p_variant_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_assert_variant_axis_state_for_variant(
+    p_tenant_id UUID,
+    p_variant_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    v_product_id UUID;
+BEGIN
+    SELECT product_id INTO v_product_id
+    FROM product_variants
+    WHERE tenant_id = p_tenant_id AND id = p_variant_id;
+    IF v_product_id IS NOT NULL THEN
+        PERFORM rustok_product_assert_variant_axis_state(p_tenant_id, v_product_id, p_variant_id);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_assert_default_variant_state(
+    p_tenant_id UUID,
+    p_product_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    configured_count INTEGER;
+    variant_count INTEGER;
+    product_exists BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 FROM products
+        WHERE tenant_id = p_tenant_id AND id = p_product_id
+    ) INTO product_exists;
+    -- A deferred child-row trigger also runs while its Product is being deleted. The final
+    -- state has no Product to constrain, so do not turn a legitimate cascade into an error.
+    IF NOT product_exists THEN
+        RETURN;
+    END IF;
+    SELECT COUNT(*) INTO configured_count
+    FROM product_variant_axes
+    WHERE tenant_id = p_tenant_id AND product_id = p_product_id;
+    IF configured_count <> 0 THEN
+        RETURN;
+    END IF;
+    SELECT COUNT(*) INTO variant_count
+    FROM product_variants
+    WHERE tenant_id = p_tenant_id AND product_id = p_product_id;
+    IF variant_count <> 1 THEN
+        RAISE EXCEPTION
+            'product % without variant axes must own exactly one default variant',
+            p_product_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_value()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_variant_axis_state_for_variant(OLD.tenant_id, OLD.variant_id);
+    END IF;
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_variant_axis_state_for_variant(NEW.tenant_id, NEW.variant_id);
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_variant()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN
+        PERFORM rustok_product_assert_default_variant_state(OLD.tenant_id, OLD.product_id);
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    PERFORM rustok_product_assert_variant_axis_state(NEW.tenant_id, NEW.product_id, NEW.id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_tenant_id UUID;
+    v_product_id UUID;
+    variant_row RECORD;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_tenant_id := OLD.tenant_id;
+        v_product_id := OLD.product_id;
+    ELSE
+        v_tenant_id := NEW.tenant_id;
+        v_product_id := NEW.product_id;
+    END IF;
+    PERFORM rustok_product_assert_default_variant_state(v_tenant_id, v_product_id);
+    FOR variant_row IN
+        SELECT id FROM product_variants
+        WHERE tenant_id = v_tenant_id AND product_id = v_product_id
+    LOOP
+        PERFORM rustok_product_assert_variant_axis_state(v_tenant_id, v_product_id, variant_row.id);
+    END LOOP;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rustok_product_validate_variant_axis_state_from_axis_value()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_axis_id UUID;
+    v_tenant_id UUID;
+    v_product_id UUID;
+    variant_row RECORD;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_axis_id := OLD.axis_id;
+        v_tenant_id := OLD.tenant_id;
+    ELSE
+        v_axis_id := NEW.axis_id;
+        v_tenant_id := NEW.tenant_id;
+    END IF;
+    SELECT product_id INTO v_product_id
+    FROM product_variant_axes
+    WHERE tenant_id = v_tenant_id AND id = v_axis_id;
+    IF v_product_id IS NOT NULL THEN
+        FOR variant_row IN
+            SELECT id FROM product_variants
+            WHERE tenant_id = v_tenant_id AND product_id = v_product_id
+        LOOP
+            PERFORM rustok_product_assert_variant_axis_state(v_tenant_id, v_product_id, variant_row.id);
+        END LOOP;
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Existing catalog rows predate these triggers. Validate them before installing the
+-- constraint triggers so a successful migration means every persisted product already obeys
+-- the same invariants as subsequent writes. Operators must explicitly remediate ambiguous
+-- legacy multi-variant products instead of silently losing a variant or inventing an axis.
+DO $$
+DECLARE
+    product_row RECORD;
+    variant_row RECORD;
+BEGIN
+    FOR product_row IN SELECT tenant_id, id FROM products LOOP
+        PERFORM rustok_product_assert_default_variant_state(product_row.tenant_id, product_row.id);
+        FOR variant_row IN
+            SELECT id FROM product_variants
+            WHERE tenant_id = product_row.tenant_id AND product_id = product_row.id
+        LOOP
+            PERFORM rustok_product_assert_variant_axis_state(
+                product_row.tenant_id,
+                product_row.id,
+                variant_row.id
+            );
+        END LOOP;
+    END LOOP;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_variant ON product_variants;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_variant
+AFTER INSERT OR UPDATE OR DELETE ON product_variants
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_variant();
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_value ON product_variant_attribute_values;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_value
+AFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_value();
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis ON product_variant_axes;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis
+AFTER INSERT OR UPDATE OR DELETE ON product_variant_axes
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_axis();
+
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_value ON product_variant_axis_values;
+CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_axis_value
+AFTER INSERT OR UPDATE OR DELETE ON product_variant_axis_values
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_variant_axis_state_from_axis_value();
 "#,
             )
             .await?;
@@ -401,30 +613,27 @@ EXECUTE FUNCTION rustok_product_validate_variant_axis_completeness();
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() == DatabaseBackend::Sqlite {
-            manager
-                .get_connection()
-                .execute_unprepared(
-                    r#"
-DROP TABLE IF EXISTS product_attribute_group_channel_settings;
-DROP TABLE IF EXISTS product_attribute_group_attributes;
-DROP TABLE IF EXISTS product_attribute_group_translations;
-DROP TABLE IF EXISTS product_attribute_groups;
-DROP TABLE IF EXISTS product_variant_axis_values;
-DROP TABLE IF EXISTS product_variant_axes;
-                    "#,
-                )
-                .await?;
-            return Ok(());
-        }
         if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Ok(());
+            return Err(DbErr::Custom(
+                "rustok-product migrations require PostgreSQL".to_owned(),
+            ));
         }
 
         manager
             .get_connection()
             .execute_unprepared(
                 r#"
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis_value ON product_variant_axis_values;
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_axis ON product_variant_axes;
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_value ON product_variant_attribute_values;
+DROP TRIGGER IF EXISTS trg_variant_axis_state_from_variant ON product_variants;
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis_value();
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_axis();
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_value();
+DROP FUNCTION IF EXISTS rustok_product_assert_default_variant_state(UUID, UUID);
+DROP FUNCTION IF EXISTS rustok_product_assert_variant_axis_state_for_variant(UUID, UUID);
+DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_state_from_variant();
+DROP FUNCTION IF EXISTS rustok_product_assert_variant_axis_state(UUID, UUID, UUID);
 DROP TRIGGER IF EXISTS trg_variant_axis_completeness ON product_variant_attribute_value_options;
 DROP FUNCTION IF EXISTS rustok_product_validate_variant_axis_completeness();
 DROP TRIGGER IF EXISTS trg_maintain_combination_identity ON product_variant_attribute_value_options;

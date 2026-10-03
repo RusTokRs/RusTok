@@ -206,6 +206,13 @@ impl ProductCatalogSchemaService {
                 "variant owner changed while attribute values were being saved".into(),
             ));
         }
+        reject_configured_variant_axis_attribute_changes(
+            &txn,
+            tenant_id,
+            locked_owner.product_id,
+            patch_attribute_ids.as_slice(),
+        )
+        .await?;
         for patch in &patches {
             let definition = definitions
                 .get(&patch.attribute_id)
@@ -290,6 +297,13 @@ impl ProductCatalogSchemaService {
             ));
         }
         if !target_attribute_ids.is_empty() {
+            reject_configured_variant_axis_attribute_changes(
+                &txn,
+                tenant_id,
+                locked_owner.product_id,
+                target_attribute_ids.as_slice(),
+            )
+            .await?;
             let (placeholders, mut values) = uuid_filter_values(tenant_id, &target_attribute_ids);
             let variant_placeholder = format!("${}", values.len() + 1);
             values.push(variant_id.into());
@@ -324,6 +338,40 @@ impl ProductCatalogSchemaService {
         txn.commit().await?;
         Ok(result)
     }
+}
+
+async fn reject_configured_variant_axis_attribute_changes<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    attribute_ids: &[Uuid],
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    if attribute_ids.is_empty() {
+        return Ok(());
+    }
+
+    let (placeholders, mut values) = uuid_filter_values(tenant_id, attribute_ids);
+    values.push(product_id.into());
+    let product_placeholder = format!("${}", values.len());
+    let configured_axis = AttributeIdRow::find_by_statement(Statement::from_sql_and_values(
+        conn.get_database_backend(),
+        format!(
+            "SELECT attribute_id FROM product_variant_axes WHERE tenant_id = $1 AND attribute_id IN ({placeholders}) AND product_id = {product_placeholder} LIMIT 1"
+        ),
+        values,
+    ))
+    .one(conn)
+    .await?;
+    if let Some(axis) = configured_axis {
+        return Err(CommerceError::Validation(format!(
+            "attribute {} is a configured variant axis and must be changed through the variant axis command",
+            axis.attribute_id
+        )));
+    }
+    Ok(())
 }
 
 async fn load_variant_owner<C>(

@@ -17,6 +17,7 @@ const fixtureFiles = [
   'crates/modules/rustok-product/src/migrations/m20260711_000004_normalize_product_channel_visibility.rs',
   'crates/modules/rustok-product/src/migrations/m20260725_000002_enforce_catalog_category_tree_invariants.rs',
   'crates/modules/rustok-product/src/migrations/m20260725_000003_remove_transitional_catalog_columns.rs',
+  'crates/modules/rustok-product/src/migrations/m20260918_000033_create_variant_axes_and_invariants.rs',
   'crates/modules/rustok-product/src/migrations/m20250130_000012_create_commerce_products.rs',
   'crates/modules/rustok-product/src/migrations/m20250130_000013_create_commerce_options.rs',
   'crates/modules/rustok-product/src/migrations/m20250130_000014_create_commerce_variants.rs',
@@ -25,6 +26,7 @@ const fixtureFiles = [
   'crates/modules/rustok-product/src/services/catalog_schema_service/categories.rs',
   'crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs',
   'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs',
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values/variant.rs',
   'crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
   'crates/modules/rustok-product/src/services/catalog_schema_service/virtual_categories.rs',
   'crates/modules/rustok-product/src/services/catalog_schema.rs',
@@ -100,6 +102,13 @@ function replaceInFixture(root, file, search, replacement) {
   fs.writeFileSync(fullPath, original.replace(search, replacement));
 }
 
+function replaceAllInFixture(root, file, search, replacement) {
+  const fullPath = path.join(root, file);
+  const original = fs.readFileSync(fullPath, 'utf8');
+  assert(original.includes(search), `fixture source did not contain expected marker ${search}`);
+  fs.writeFileSync(fullPath, original.replaceAll(search, replacement));
+}
+
 const success = run();
 assert(
   success.status === 0,
@@ -110,8 +119,8 @@ const missingValueOptions = copyFixture();
 replaceInFixture(
   missingValueOptions,
   'crates/modules/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs',
-  'CREATE TABLE IF NOT EXISTS product_attribute_value_options',
-  'CREATE TABLE IF NOT EXISTS product_attribute_value_options_drift',
+  'CREATE TABLE IF NOT EXISTS product_attribute_value_options (\n    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE',
+  'CREATE TABLE IF NOT EXISTS product_attribute_value_options_drift (\n    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE',
 );
 const missingValueOptionsResult = run(missingValueOptions);
 assert(missingValueOptionsResult.status !== 0, 'expected missing multiselect value option table to fail');
@@ -253,6 +262,23 @@ assert(
   `expected transitional-column cleanup failure, got ${missingTransitionalColumnCleanupResult.stderr}`,
 );
 
+const missingVariantAxisValueStateTrigger = copyFixture();
+replaceInFixture(
+  missingVariantAxisValueStateTrigger,
+  'crates/modules/rustok-product/src/migrations/m20260918_000033_create_variant_axes_and_invariants.rs',
+  'CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_value\nAFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values',
+  'CREATE CONSTRAINT TRIGGER trg_variant_axis_state_from_value_drift\nAFTER INSERT OR UPDATE OR DELETE ON product_variant_attribute_values',
+);
+const missingVariantAxisValueStateTriggerResult = run(missingVariantAxisValueStateTrigger);
+assert(
+  missingVariantAxisValueStateTriggerResult.status !== 0,
+  'expected missing direct variant-value state trigger to fail',
+);
+assert(
+  missingVariantAxisValueStateTriggerResult.stderr.includes('trg_variant_axis_state_from_value'),
+  `expected direct variant-value state trigger failure, got ${missingVariantAxisValueStateTriggerResult.stderr}`,
+);
+
 const missingTenantAwareValueOptionInsert = copyFixture();
 replaceInFixture(
   missingTenantAwareValueOptionInsert,
@@ -268,7 +294,7 @@ assert(
 );
 
 const missingBatchPriceInsert = copyFixture();
-replaceInFixture(
+replaceAllInFixture(
   missingBatchPriceInsert,
   'crates/modules/rustok-product/src/services/catalog/commands.rs',
   'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
@@ -279,6 +305,27 @@ assert(missingBatchPriceInsertResult.status !== 0, 'expected missing batch price
 assert(
   missingBatchPriceInsertResult.stderr.includes('PricingBootstrapService::create_initial_prices_in_tx'),
   `expected batch price insert failure, got ${missingBatchPriceInsertResult.stderr}`,
+);
+
+const missingConfiguredVariantAxisWriteProtection = copyFixture();
+replaceInFixture(
+  missingConfiguredVariantAxisWriteProtection,
+  'crates/modules/rustok-product/src/services/catalog_schema_service/values/variant.rs',
+  'async fn reject_configured_variant_axis_attribute_changes<C>(\n    conn: &C,',
+  'async fn reject_configured_variant_axis_attribute_changes_drift<C>(\n    conn: &C,',
+);
+const missingConfiguredVariantAxisWriteProtectionResult = run(
+  missingConfiguredVariantAxisWriteProtection,
+);
+assert(
+  missingConfiguredVariantAxisWriteProtectionResult.status !== 0,
+  'expected configured variant-axis write protection to fail',
+);
+assert(
+  missingConfiguredVariantAxisWriteProtectionResult.stderr.includes(
+    'reject_configured_variant_axis_attribute_changes',
+  ),
+  `expected configured variant-axis write protection failure, got ${missingConfiguredVariantAxisWriteProtectionResult.stderr}`,
 );
 
 const directSchemaTransaction = copyFixture();
@@ -341,7 +388,7 @@ assert(
 );
 
 const missingMutationActorBinding = copyFixture();
-replaceInFixture(
+replaceAllInFixture(
   missingMutationActorBinding,
   'crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs',
   'product_mutation_actor(ctx)?',
@@ -350,7 +397,7 @@ replaceInFixture(
 const missingMutationActorBindingResult = run(missingMutationActorBinding);
 assert(missingMutationActorBindingResult.status !== 0, 'expected missing mutation actor binding to fail');
 assert(
-  missingMutationActorBindingResult.stderr.includes('trusted product mutation actor'),
+  missingMutationActorBindingResult.stderr.includes('product_mutation_actor(ctx)'),
   `expected mutation actor binding failure, got ${missingMutationActorBindingResult.stderr}`,
 );
 
