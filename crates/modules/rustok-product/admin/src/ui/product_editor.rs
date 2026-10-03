@@ -22,7 +22,7 @@ pub fn ProductEditorPage(
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
     let is_ru = locale.as_deref() == Some("ru");
-    let base_route = route_context.module_route_base("product");
+    let base_route = route_context.admin_module_route_base("product");
     let token = use_token();
     let tenant = use_tenant();
 

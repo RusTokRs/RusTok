@@ -332,6 +332,7 @@ fn product_command_error(
         operation,
         error_kind,
         code = product_error_code(&error),
+        error_details = %error,
         "product catalog owner command failed"
     );
 

@@ -150,6 +150,15 @@ impl UiRouteContext {
         self.query.get(key).map(String::as_str)
     }
 
+    pub fn admin_module_route_base(&self, route_segment: &str) -> String {
+        let route_segment = route_segment.trim_matches('/');
+        if route_segment.is_empty() {
+            "/modules".to_string()
+        } else {
+            format!("/modules/{route_segment}")
+        }
+    }
+
     pub fn module_route_base(&self, route_segment: &str) -> String {
         let route_segment = route_segment.trim_matches('/');
         match self

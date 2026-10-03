@@ -338,3 +338,112 @@ export async function listCatalogAttributeSearchOptions(
       label: `${attribute.label || attribute.code} (${attribute.code})`
     }));
 }
+
+export type CreateProductPayload = {
+  title: string;
+  handle?: string;
+  locale?: string;
+  description?: string;
+  vendor?: string;
+  productType?: string;
+  sellerId?: string;
+  tags?: string[];
+  sku?: string;
+  priceAmount?: number;
+  currencyCode?: string;
+  inventoryQuantity?: number;
+  publish?: boolean;
+};
+
+const CREATE_PRODUCT_MUTATION = `
+mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) {
+  createProduct(idempotencyKey: $idempotencyKey, input: $input) {
+    id
+    status
+    title
+    handle
+    sellerId
+    vendor
+    productType
+    shippingProfileSlug
+    tags
+    createdAt
+    publishedAt
+  }
+}`;
+
+type CreateProductResponse = {
+  createProduct: ProductListItem;
+};
+
+export async function createProduct(
+  opts: GqlOpts,
+  payload: CreateProductPayload
+): Promise<ProductListItem> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to create products.');
+  }
+
+  const locale = payload.locale || 'en';
+  const handle =
+    payload.handle ||
+    payload.title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+
+  const input = {
+    translations: [
+      {
+        locale,
+        title: payload.title,
+        handle: handle || null,
+        description: payload.description || null,
+        metaTitle: null,
+        metaDescription: null
+      }
+    ],
+    variants: [
+      {
+        sku: payload.sku || null,
+        barcode: null,
+        shippingProfileSlug: null,
+        axisValues: [],
+        prices:
+          payload.priceAmount !== undefined && payload.priceAmount > 0
+            ? [
+                {
+                  currencyCode: payload.currencyCode || 'USD',
+                  amount: payload.priceAmount,
+                  compareAtAmount: null
+                }
+              ]
+            : [],
+        inventoryQuantity: payload.inventoryQuantity ?? 0,
+        inventoryPolicy: 'deny'
+      }
+    ],
+    sellerId: payload.sellerId || null,
+    vendor: payload.vendor || null,
+    productType: payload.productType || 'simple',
+    shippingProfileSlug: null,
+    primaryCategoryId: null,
+    tags: payload.tags || [],
+    publish: Boolean(payload.publish)
+  };
+
+  const idempotencyKey = crypto.randomUUID();
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    { idempotencyKey: string; input: typeof input },
+    CreateProductResponse
+  >(
+    CREATE_PRODUCT_MUTATION,
+    { idempotencyKey, input },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.createProduct;
+}

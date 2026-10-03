@@ -20,6 +20,7 @@ import {
 } from '@/widgets/data-table';
 import { PageContainer } from '@/widgets/app-shell';
 import Link from 'next/link';
+import { Plus, PackageOpen, ExternalLink, Search } from 'lucide-react';
 
 export const metadata = {
   title: 'RusTok Admin: Catalog'
@@ -40,6 +41,31 @@ function toPositiveInt(value: string | undefined, fallback: number): number {
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleDateString() : '-';
+}
+
+function getStatusBadge(status: string) {
+  const s = status.toLowerCase();
+  if (s === 'active' || s === 'published') {
+    return (
+      <Badge
+        variant='outline'
+        className='border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+      >
+        {status}
+      </Badge>
+    );
+  }
+  if (s === 'draft') {
+    return <Badge variant='secondary'>{status}</Badge>;
+  }
+  if (s === 'archived') {
+    return (
+      <Badge variant='outline' className='text-muted-foreground'>
+        {status}
+      </Badge>
+    );
+  }
+  return <Badge variant='outline'>{status}</Badge>;
 }
 
 export default async function ProductPage({ searchParams }: PageProps) {
@@ -82,6 +108,14 @@ export default async function ProductPage({ searchParams }: PageProps) {
     <PageContainer
       pageTitle='Product catalog'
       pageDescription='Module-owned RusTok product read-side backed by GraphQL.'
+      pageHeaderAction={
+        <Button asChild>
+          <Link href='/dashboard/product/new'>
+            <Plus className='mr-1.5 h-4 w-4' />
+            Add Product
+          </Link>
+        </Button>
+      }
     >
       <div className='space-y-4'>
         <Card>
@@ -93,11 +127,15 @@ export default async function ProductPage({ searchParams }: PageProps) {
               className='grid gap-3 md:grid-cols-[1fr_auto]'
               action='/dashboard/product'
             >
-              <Input
-                name='search'
-                defaultValue={search ?? ''}
-                placeholder='Search products by localized title...'
-              />
+              <div className='relative'>
+                <Search className='text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2' />
+                <Input
+                  name='search'
+                  defaultValue={search ?? ''}
+                  placeholder='Search products by localized title...'
+                  className='pl-9'
+                />
+              </div>
               <input type='hidden' name='perPage' value={perPage} />
               <Button type='submit' variant='outline'>
                 Search
@@ -134,16 +172,33 @@ export default async function ProductPage({ searchParams }: PageProps) {
                       <TableHead>Type</TableHead>
                       <TableHead>Seller</TableHead>
                       <TableHead>Published</TableHead>
+                      <TableHead className='text-right'>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {products.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
-                          className='text-muted-foreground text-center text-sm'
+                          colSpan={7}
+                          className='py-12 text-center'
                         >
-                          No products found for this tenant.
+                          <div className='flex flex-col items-center justify-center space-y-3'>
+                            <PackageOpen className='text-muted-foreground/50 h-10 w-10' />
+                            <p className='text-foreground text-sm font-medium'>
+                              No products found
+                            </p>
+                            <p className='text-muted-foreground max-w-sm text-xs'>
+                              {search
+                                ? 'No products match your current search query. Try clearing the filter.'
+                                : 'Get started by creating your first product in this tenant.'}
+                            </p>
+                            <Button asChild size='sm' className='mt-2'>
+                              <Link href='/dashboard/product/new'>
+                                <Plus className='mr-1.5 h-3.5 w-3.5' />
+                                Add Product
+                              </Link>
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -161,7 +216,7 @@ export default async function ProductPage({ searchParams }: PageProps) {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant='outline'>{product.status}</Badge>
+                            {getStatusBadge(product.status)}
                           </TableCell>
                           <TableCell>{product.vendor ?? '-'}</TableCell>
                           <TableCell>{product.productType ?? '-'}</TableCell>
@@ -171,6 +226,14 @@ export default async function ProductPage({ searchParams }: PageProps) {
                           <TableCell>
                             {formatDate(product.publishedAt)}
                           </TableCell>
+                          <TableCell className='text-right'>
+                            <Button asChild variant='ghost' size='sm'>
+                              <Link href={`/dashboard/product/${product.id}`}>
+                                View
+                                <ExternalLink className='ml-1 h-3.5 w-3.5' />
+                              </Link>
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -178,29 +241,36 @@ export default async function ProductPage({ searchParams }: PageProps) {
                 </Table>
               </div>
 
-              <div className='mt-4 flex items-center justify-end gap-2'>
-                <Button
-                  asChild
-                  variant='outline'
-                  size='sm'
-                  disabled={!hasPrevious}
-                >
-                  <Link
-                    href={hasPrevious ? pageHref(page - 1) : pageHref(page)}
-                    aria-disabled={!hasPrevious}
+              {products.length > 0 && (
+                <div className='mt-4 flex items-center justify-end gap-2'>
+                  <Button
+                    asChild
+                    variant='outline'
+                    size='sm'
+                    disabled={!hasPrevious}
                   >
-                    Previous
-                  </Link>
-                </Button>
-                <Button asChild variant='outline' size='sm' disabled={!hasNext}>
-                  <Link
-                    href={hasNext ? pageHref(page + 1) : pageHref(page)}
-                    aria-disabled={!hasNext}
+                    <Link
+                      href={hasPrevious ? pageHref(page - 1) : pageHref(page)}
+                      aria-disabled={!hasPrevious}
+                    >
+                      Previous
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant='outline'
+                    size='sm'
+                    disabled={!hasNext}
                   >
-                    Next
-                  </Link>
-                </Button>
-              </div>
+                    <Link
+                      href={hasNext ? pageHref(page + 1) : pageHref(page)}
+                      aria-disabled={!hasNext}
+                    >
+                      Next
+                    </Link>
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

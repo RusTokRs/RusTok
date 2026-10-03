@@ -272,6 +272,7 @@ impl CatalogService {
                 updated_at: Set(now.into()),
             };
             variant.insert(&txn).await.map_err(|error| {
+                tracing::error!(%error, "variant.insert failed in create_product");
                 map_product_unique_violation(error, "", "", var_input.sku.as_deref())
             })?;
 

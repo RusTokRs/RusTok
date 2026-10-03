@@ -658,3 +658,23 @@ modules-depends_on = Depends on
 modules-toast-enabled = Module enabled successfully
 modules-toast-disabled = Module disabled successfully
 modules-error-load = Failed to load modules
+
+auth-title = Sign In
+auth-subtitle = Enter your credentials to access the RusTok Admin panel
+auth-tenantLabel = Workspace / Tenant
+auth-emailLabel = Email
+auth-passwordLabel = Password
+auth-submit = Sign In
+auth-registerLink = Don't have an account? Sign up
+auth-errorRequired = Please fill in all fields
+
+register-title = Create Account
+register-subtitle = Enter your information to create a new RusTok Admin account
+register-tenantLabel = Workspace / Tenant
+register-nameLabel = Full Name
+register-emailLabel = Email
+register-passwordLabel = Password
+register-submit = Register
+register-loginLink = Already have an account? Sign in
+register-errorRequired = Please fill in all required fields
+register-success = Account created successfully!

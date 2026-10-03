@@ -21,6 +21,8 @@ import { PageContainer } from '@/widgets/app-shell';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ProductCreateForm } from '../product-create-form';
+
 export const metadata = {
   title: 'RusTok Admin: Product'
 };
@@ -28,7 +30,7 @@ export const metadata = {
 type PageProps = { params: Promise<{ productId: string }> };
 
 const PRODUCT_ATTRIBUTES_COPY_INSTRUCTIONS =
-  'РЎС„РѕСЂРјРёСЂСѓР№ С‚РѕР»СЊРєРѕ РїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ Р°С‚СЂРёР±СѓС‚С‹ Рё РїРѕРјРµС‚СЊ РЅРµРїРѕРґС‚РІРµСЂР¶РґР°РµРјС‹Рµ РєР°Рє not_specified.';
+  'Generate only verifiable attributes and mark unverified attributes as not_specified.';
 
 function normalizeSeedText(value: string | null | undefined): string {
   return (value ?? '').trim();
@@ -120,19 +122,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
     return (
       <PageContainer
         pageTitle='Create product'
-        pageDescription='Product write-side is owned by the RusTok product module.'
+        pageDescription='Create a new catalog product with pricing, inventory, and categorization.'
+        pageHeaderAction={
+          <Button asChild variant='outline'>
+            <Link href='/dashboard/product'>Back to catalog</Link>
+          </Button>
+        }
       >
-        <Card>
-          <CardContent className='space-y-3 py-6'>
-            <p className='text-muted-foreground text-sm'>
-              The old demo form has been removed. Product creation must use the
-              module-owned product write contract, not the old demo form fields.
-            </p>
-            <Button asChild variant='outline'>
-              <Link href='/dashboard/product'>Back to catalog</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <ProductCreateForm />
       </PageContainer>
     );
   }
