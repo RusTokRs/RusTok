@@ -1017,7 +1017,7 @@ mod tests {
 
     use super::*;
 
-    
+
     #[test]
     fn invalid_provider_result_maps_to_reconciliation_conflict() {
         let context = PortContext::new(
@@ -1030,7 +1030,9 @@ mod tests {
         let error = map_fulfillment_error(
             &context,
             "ship_admin_fulfillment",
-            FulfillmentError::ProviderResultInvalid("tracking number exceeds 100 characters".into()),
+            FulfillmentError::ProviderResultInvalid(
+                "tracking number exceeds 100 characters".into(),
+            ),
         );
 
         assert!(matches!(error.kind, PortErrorKind::Conflict));
