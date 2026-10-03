@@ -523,7 +523,7 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-pub(crate) pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
+pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
 
 fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
