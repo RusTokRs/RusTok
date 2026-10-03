@@ -71,7 +71,6 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260925_000119_type_checkout_fulfillment_identity",
             vec!["m20260713_000117_enforce_checkout_fulfillment_identity"],
         ),
-
         MigrationDependencyDescriptor::new(
             "m20261003_000120_create_checkout_identity_anchor",
             vec!["m20260925_000119_type_checkout_fulfillment_identity"],
