@@ -523,7 +523,9 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-pub(crate) fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
+pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
+
+fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > 100
@@ -549,7 +551,7 @@ fn validate_currency_code(value: &str) -> FulfillmentResult<String> {
     Ok(normalized)
 }
 
-fn validate_optional_boundary_text(
+pub(crate) fn validate_optional_boundary_text(
     field: &str,
     value: Option<&str>,
     max_len: usize,
@@ -675,7 +677,7 @@ fn validate_operation_result(
     result: &FulfillmentProviderOperationResult,
 ) -> FulfillmentResult<()> {
     if result.provider_id != provider_id {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider `{provider_id}` returned {operation} result for `{}`",
             result.provider_id
         )));
@@ -684,14 +686,27 @@ fn validate_operation_result(
         "external_reference",
         result.external_reference.as_deref(),
         191,
-    )?;
-    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 191)?;
+    )
+    .map_err(provider_result_invalid)?;
+    validate_optional_boundary_text(
+        "tracking_number",
+        result.tracking_number.as_deref(),
+        FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
+    )
+    .map_err(provider_result_invalid)?;
     if !result.metadata.is_object() {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
         )));
     }
     Ok(())
+}
+
+fn provider_result_invalid(error: FulfillmentError) -> FulfillmentError {
+    match error {
+        FulfillmentError::Validation(message) => FulfillmentError::ProviderResultInvalid(message),
+        other => other,
+    }
 }
 
 fn validate_webhook_request(
@@ -826,6 +841,31 @@ mod boundary_tests {
             metadata: serde_json::json!({"provider": "carrier"}),
         };
         assert!(validate_operation_result("carrier", "create_label", &result).is_ok());
+    }
+
+    #[test]
+    fn accepts_operation_result_tracking_number_at_fulfillment_limit() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: Some("t".repeat(100)),
+            metadata: serde_json::json!({"provider": "carrier"}),
+        };
+        assert!(validate_operation_result("carrier", "ship", &result).is_ok());
+    }
+
+    #[test]
+    fn rejects_operation_result_tracking_number_over_fulfillment_limit() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: Some("t".repeat(101)),
+            metadata: serde_json::json!({"provider": "carrier"}),
+        };
+        assert!(matches!(
+            validate_operation_result("carrier", "ship", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
     }
 
     #[test]

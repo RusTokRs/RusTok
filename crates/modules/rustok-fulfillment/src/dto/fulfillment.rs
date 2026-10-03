@@ -24,6 +24,13 @@ fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
     }
 }
 
+fn validate_non_blank_text(value: &str) -> Result<(), ValidationError> {
+    if value.trim().is_empty() {
+        return Err(ValidationError::new("not_blank"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateShippingOptionInput {
     #[validate(length(min = 1, message = "At least one translation required"))]
@@ -102,8 +109,10 @@ pub struct FulfillmentItemQuantityInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ShipFulfillmentInput {
     #[validate(length(min = 1, max = 100))]
+    #[validate(custom(function = "validate_non_blank_text"))]
     pub carrier: String,
     #[validate(length(min = 1, max = 100))]
+    #[validate(custom(function = "validate_non_blank_text"))]
     pub tracking_number: String,
     pub items: Option<Vec<FulfillmentItemQuantityInput>>,
     pub metadata: Value,
@@ -126,8 +135,10 @@ pub struct ReopenFulfillmentInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ReshipFulfillmentInput {
     #[validate(length(min = 1, max = 100))]
+    #[validate(custom(function = "validate_non_blank_text"))]
     pub carrier: String,
     #[validate(length(min = 1, max = 100))]
+    #[validate(custom(function = "validate_non_blank_text"))]
     pub tracking_number: String,
     pub items: Option<Vec<FulfillmentItemQuantityInput>>,
     pub metadata: Value,
@@ -263,6 +274,41 @@ mod tests {
             metadata: serde_json::json!({}),
         };
         assert!(boundary_reason.validate().is_ok());
+    }
+
+    #[test]
+    fn shipment_identifiers_reject_whitespace_only_values() {
+        let ship = ShipFulfillmentInput {
+            carrier: "   ".to_string(),
+            tracking_number: "TRACK-1".to_string(),
+            items: None,
+            metadata: json!({}),
+        };
+        assert!(ship.validate().is_err());
+
+        let ship = ShipFulfillmentInput {
+            carrier: "DHL".to_string(),
+            tracking_number: "\t\n".to_string(),
+            items: None,
+            metadata: json!({}),
+        };
+        assert!(ship.validate().is_err());
+
+        let reship = ReshipFulfillmentInput {
+            carrier: " ".to_string(),
+            tracking_number: "TRACK-2".to_string(),
+            items: None,
+            metadata: json!({}),
+        };
+        assert!(reship.validate().is_err());
+
+        let reship = ReshipFulfillmentInput {
+            carrier: "UPS".to_string(),
+            tracking_number: "\r\t".to_string(),
+            items: None,
+            metadata: json!({}),
+        };
+        assert!(reship.validate().is_err());
     }
 
     #[test]

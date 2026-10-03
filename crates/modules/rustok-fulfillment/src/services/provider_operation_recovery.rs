@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::FulfillmentProviderOperationResult;
+use crate::providers::{
+    FULFILLMENT_TRACKING_NUMBER_MAX_LEN, FulfillmentProviderOperationResult,
+    validate_optional_boundary_text,
+};
 
 use super::provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
@@ -182,7 +185,7 @@ impl FulfillmentProviderOperationRecovery {
         validate_optional_boundary_text(
             "tracking_number",
             typed_result.tracking_number.as_deref(),
-            191,
+            FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
         )?;
         let result_reference = normalize_optional(typed_result.external_reference.clone());
         let supplied_reference = normalize_optional(provider_reference);
@@ -263,21 +266,6 @@ fn validate_provider_result_metadata(metadata: &Value) -> FulfillmentResult<()> 
         return Err(FulfillmentError::Validation(
             "provider_result metadata must be a JSON object".to_string(),
         ));
-    }
-    Ok(())
-}
-
-fn validate_optional_boundary_text(
-    field: &str,
-    value: Option<&str>,
-    max: usize,
-) -> FulfillmentResult<()> {
-    if let Some(value) = value
-        && (value.trim().is_empty() || value.len() > max)
-    {
-        return Err(FulfillmentError::Validation(format!(
-            "{field} must be non-empty and at most {max} characters when provided"
-        )));
     }
     Ok(())
 }

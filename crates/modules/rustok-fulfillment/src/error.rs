@@ -8,6 +8,8 @@ pub type FulfillmentResult<T> = Result<T, FulfillmentError>;
 pub enum FulfillmentError {
     #[error("validation failed: {0}")]
     Validation(String),
+    #[error("provider returned an invalid result after execution: {0}")]
+    ProviderResultInvalid(String),
     #[error("shipping option {0} not found")]
     ShippingOptionNotFound(Uuid),
     #[error("fulfillment {0} not found")]
