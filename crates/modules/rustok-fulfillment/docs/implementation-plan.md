@@ -210,6 +210,7 @@ disable/reconciliation matrix in
 - [x] Replace metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint, including an operation-level anchor
   for immutable order, customer, and plan-hash coherence.
+- [x] Require checkout execution request indices to form the dense zero-based set produced by the immutable Commerce fulfillment plan.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
   process-exit, restart, contention, and remote-profile evidence.
 
