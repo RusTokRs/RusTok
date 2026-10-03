@@ -67,6 +67,16 @@ impl CommandCapabilityRequirement {
             | EditorCommand::Translation { .. } => self.insert(EditorCapability::Properties),
             EditorCommand::RestoreSnapshot { .. } => self.insert(EditorCapability::History),
             EditorCommand::Batch { commands } => {
+                if commands.is_empty() {
+                    // Fail closed, as `extend_component_patch` does for a patch that changes
+                    // nothing. An empty batch otherwise produces an empty requirement, and the
+                    // state machine skips its entire guarded branch when the requirement is
+                    // empty — including the read-only check. The command still reaches
+                    // `FlyEditor::apply`, which pushes a history entry and marks the revision
+                    // changed, so a read-only session could grow history and bump the revision
+                    // until the real editor's save fails on a conflict.
+                    self.insert(EditorCapability::Edit);
+                }
                 for command in commands {
                     self.extend_command(command);
                 }
@@ -206,4 +216,42 @@ mod tests {
             .is_empty()
         );
     }
+
+    #[test]
+    fn an_empty_batch_is_not_a_free_pass() {
+        let requirement =
+            CommandCapabilityRequirement::for_command(&EditorCommand::Batch { commands: vec![] });
+        assert!(
+            !requirement.is_empty(),
+            "an empty batch produced an empty requirement, which skips the read-only gate"
+        );
+        assert_eq!(
+            requirement.capabilities().collect::<Vec<_>>(),
+            vec![EditorCapability::Edit]
+        );
+    }
+
+    #[test]
+    fn a_batch_still_aggregates_the_capabilities_of_its_members() {
+        let requirement = CommandCapabilityRequirement::for_command(&EditorCommand::Batch {
+            commands: vec![
+                EditorCommand::StyleRule {
+                    command: fly::StyleRuleCommand::RemoveComponentRule {
+                        component_id: "hero".to_string(),
+                        scope: fly::StyleRuleScope::Base,
+                    },
+                },
+                EditorCommand::Asset {
+                    command: AssetCommand::Remove {
+                        asset_id: "a1".to_string(),
+                    },
+                },
+            ],
+        });
+        let capabilities = requirement.capabilities().collect::<Vec<_>>();
+        assert!(capabilities.contains(&EditorCapability::Styles));
+        assert!(capabilities.contains(&EditorCapability::Assets));
+        assert!(!capabilities.contains(&EditorCapability::Edit));
+    }
 }
+

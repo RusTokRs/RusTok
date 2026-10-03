@@ -1,3 +1,4 @@
+use crate::id_reference::{remap_map_ids, remap_value_ids};
 use crate::{
     AssetCommand, AssetDescriptor, ComponentNode, EditorCommand, FLY_COMPONENT_RULE_FIELD,
     FLY_RULE_ID_FIELD, FlyEditor, FlyError, FlyResult, IdGenerator, ProjectDocument,
@@ -95,13 +96,13 @@ impl ProjectFragment {
             component.remap_ids(&mapping);
         }
         for style in &mut self.styles {
-            replace_value_references(style, &mapping);
+            remap_value_ids(style, &mapping);
             reset_remapped_style_rule_identity(style, &mapping);
         }
         for asset in &mut self.assets {
-            replace_value_references(asset, &mapping);
+            remap_value_ids(asset, &mapping);
         }
-        replace_map_references(&mut self.extensions, &mapping);
+        remap_map_ids(&mut self.extensions, &mapping);
         mapping
     }
 
@@ -202,29 +203,6 @@ fn reset_remapped_style_rule_identity(style: &mut Value, mapping: &BTreeMap<Stri
     if mapping.values().any(|target_id| target_id == &component_id) {
         object.remove(FLY_RULE_ID_FIELD);
         object.remove("id");
-    }
-}
-
-fn replace_map_references(map: &mut Map<String, Value>, mapping: &BTreeMap<String, String>) {
-    for value in map.values_mut() {
-        replace_value_references(value, mapping);
-    }
-}
-
-fn replace_value_references(value: &mut Value, mapping: &BTreeMap<String, String>) {
-    match value {
-        Value::String(string) => {
-            if let Some(replacement) = mapping.get(string) {
-                *string = replacement.clone();
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                replace_value_references(value, mapping);
-            }
-        }
-        Value::Object(map) => replace_map_references(map, mapping),
-        _ => {}
     }
 }
 

@@ -497,6 +497,16 @@ pub fn validate_context_definitions(document: &ProjectDocument) -> Vec<Validatio
         }
     }
 
+    // A field path that is a strict ancestor of another field's path.
+    //
+    // Only exact duplicates were rejected, so a schema could declare both `user` and `user.name`
+    // and validate clean. The generated JSON Schema then depends on declaration order: inserting
+    // `user` first yields `{"type":"string","properties":{"name":...}}` — a string carrying
+    // properties, which every validator ignores — while inserting `user.name` first means the
+    // later `user` simply overwrites it and the nested field disappears. Both outcomes are
+    // silent, and neither is what the author wrote.
+    diagnostics.extend(conflicting_field_paths(&catalog));
+
     let mut computed_paths = BTreeMap::<String, String>::new();
     for computed in &catalog.computed {
         validate_definition_id(
@@ -664,6 +674,53 @@ fn set_path_segments(
 enum ContextPathSegment {
     Key(String),
     Index(usize),
+}
+
+/// Report field paths where one is a strict ancestor of another.
+///
+/// Comparison is by *segment*, never by string prefix: `user` and `username` share a textual
+/// prefix but describe unrelated properties, and flagging them would be worse than the bug.
+fn conflicting_field_paths(catalog: &ContextSchemaCatalog) -> Vec<ValidationDiagnostic> {
+    // Segments are compared as `Vec<String>` tokens rather than a joined string, so a key that
+    // happens to contain the delimiter cannot forge or hide a relationship.
+    let mut declared = BTreeMap::<Vec<String>, String>::new();
+    let mut parsed = Vec::new();
+    for field in &catalog.fields {
+        let Some(segments) = parse_context_path(&field.path) else {
+            continue;
+        };
+        let tokens = segments
+            .iter()
+            .map(|segment| match segment {
+                ContextPathSegment::Key(key) => format!("k{key}"),
+                ContextPathSegment::Index(index) => format!("i{index}"),
+            })
+            .collect::<Vec<_>>();
+        declared
+            .entry(tokens.clone())
+            .or_insert_with(|| field.path.clone());
+        parsed.push((field, tokens));
+    }
+
+    let mut diagnostics = Vec::new();
+    for (field, tokens) in parsed {
+        for depth in 1..tokens.len() {
+            let Some(ancestor) = declared.get(&tokens[..depth].to_vec()) else {
+                continue;
+            };
+            diagnostics.push(context_diagnostic(
+                ValidationSeverity::Error,
+                "runtime_context_field_path_conflict",
+                &field.path,
+                format!(
+                    "field `{}` path `{}` is nested under field path `{}`, which is declared as a \
+                     value; the generated schema would silently drop one of them",
+                    field.id, field.path, ancestor
+                ),
+            ));
+        }
+    }
+    diagnostics
 }
 
 fn parse_context_path(path: &str) -> Option<Vec<ContextPathSegment>> {
@@ -1615,4 +1672,79 @@ mod tests {
             assert!(result.is_err(), "path {path:?} should be invalid");
         }
     }
+
+    fn document_with_fields(fields: Value) -> ProjectDocument {
+        GrapesJsCodec::decode_value(json!({
+            "pages": [{ "component": { "id": "root", "type": "wrapper" } }],
+            "flyRuntimeContextSchema": fields
+        }))
+        .expect("document")
+    }
+
+    fn conflict_codes(fields: Value) -> Vec<String> {
+        validate_context_definitions(&document_with_fields(fields))
+            .into_iter()
+            .filter(|diagnostic| diagnostic.code == "runtime_context_field_path_conflict")
+            .map(|diagnostic| diagnostic.path)
+            .collect()
+    }
+
+    #[test]
+    fn a_field_nested_under_a_value_field_is_rejected() {
+        // Only exact duplicates were caught, so this validated clean and then produced a schema
+        // that silently lost one of the two fields depending on declaration order.
+        let conflicts = conflict_codes(json!([
+            { "id": "user", "path": "user", "kind": "string" },
+            { "id": "user-name", "path": "user.name", "kind": "string" }
+        ]));
+        assert_eq!(conflicts, vec!["user.name"]);
+    }
+
+    #[test]
+    fn declaration_order_does_not_change_the_verdict() {
+        // The corruption was order-dependent; the diagnostic must not be.
+        let conflicts = conflict_codes(json!([
+            { "id": "user-name", "path": "user.name", "kind": "string" },
+            { "id": "user", "path": "user", "kind": "string" }
+        ]));
+        assert_eq!(conflicts, vec!["user.name"]);
+    }
+
+    #[test]
+    fn a_shared_textual_prefix_is_not_a_conflict() {
+        // `user` and `username` describe unrelated properties. Comparing strings rather than
+        // segments here would be worse than the bug being fixed.
+        assert!(
+            conflict_codes(json!([
+                { "id": "user", "path": "user", "kind": "string" },
+                { "id": "username", "path": "username", "kind": "string" },
+                { "id": "users", "path": "users", "kind": "array", "item_kind": "string" }
+            ]))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn sibling_and_deeper_paths_without_a_declared_ancestor_are_fine() {
+        assert!(
+            conflict_codes(json!([
+                { "id": "a", "path": "shop.currency", "kind": "string" },
+                { "id": "b", "path": "shop.locale", "kind": "string" },
+                { "id": "c", "path": "shop.address.city", "kind": "string" }
+            ]))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_conflict_is_reported_for_every_declared_ancestor() {
+        let conflicts = conflict_codes(json!([
+            { "id": "a", "path": "a", "kind": "string" },
+            { "id": "ab", "path": "a.b", "kind": "string" },
+            { "id": "abc", "path": "a.b.c", "kind": "string" }
+        ]));
+        // `a.b` is nested under `a`; `a.b.c` is nested under both `a` and `a.b`.
+        assert_eq!(conflicts, vec!["a.b", "a.b.c", "a.b.c"]);
+    }
 }
+

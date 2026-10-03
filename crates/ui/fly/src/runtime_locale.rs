@@ -1,3 +1,4 @@
+use crate::{LocaleResolver, default_locale_resolver};
 use crate::{ValidationDiagnostic, ValidationSeverity};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -243,7 +244,7 @@ fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
     // Share the platform fallback chain instead of peeling at the first
     // hyphen, which skipped the script layer entirely (`zh-Hant-TW` resolved
     // straight to `zh`, never consulting a `zh-Hant` translation).
-    for candidate in rustok_ui_i18n::locale_fallback_chain(locale) {
+    for candidate in default_locale_resolver().fallback_chain(locale) {
         if !candidates.contains(&candidate) {
             candidates.push(candidate);
         }
@@ -252,7 +253,8 @@ fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
 
 /// Canonicalizes a locale tag for runtime localized-value selection.
 ///
-/// Delegates to `rustok-ui-i18n`, the platform owner of Unicode/CLDR locale
+/// Delegates to the configured [`crate::LocaleResolver`] — by default the platform owner of
+/// Unicode/CLDR locale
 /// identity. The previous implementation lowercased the whole tag, so this
 /// module produced `ru-ru` and `zh-hant` while `rustok_api::RuntimeLocale`,
 /// `tenant_locales.locale` and the `Content-Language` header all carry the
@@ -260,7 +262,7 @@ fn push_locale_candidate(candidates: &mut Vec<String>, locale: &str) {
 /// single context because its `Accept-Language` branch already used the
 /// canonical parser.
 pub fn normalize_locale_tag(locale: &str) -> Option<String> {
-    rustok_ui_i18n::normalize_locale_tag(locale)
+    default_locale_resolver().normalize_tag(locale)
 }
 
 fn locale_diagnostic(

@@ -33,13 +33,22 @@ const forbidMarker = (key, marker, message) => {
   if (source[key].includes(marker)) failures.push(message);
 };
 
+// `hydrate_page_components_from_frames` and `synchronize_first_frame` were removed when the
+// builder moved to current-only tree authority: the component tree is the single source of truth
+// and GrapesJS `frames` are no longer synchronised back into it. `page_builder_roundtrip.rs`
+// asserts the inverse (`!builder.contains("frames[0].component")`), so requiring them here was a
+// contradiction. The forbid below keeps the removal from silently regressing.
 for (const marker of [
-  'hydrate_page_components_from_frames',
   'canonical_project',
-  'synchronize_first_frame',
   'GrapesJsCodec::encode_vec',
 ]) {
   requireMarker('flyCodec', marker, `Fly GrapesJS codec is missing ${marker}`);
+}
+for (const marker of [
+  'hydrate_page_components_from_frames',
+  'synchronize_first_frame',
+]) {
+  forbidMarker('flyCodec', marker, `Fly GrapesJS codec resurrected frame syncing via ${marker}`);
 }
 for (const marker of [
   'mod editor;',
@@ -74,14 +83,26 @@ for (const marker of [
 ]) {
   requireMarker('manifest', marker, `Page Builder manifest is missing ${marker}`);
 }
+// Attribute/style sanitising (`safe_attribute_name`, `safe_style`) now lives in `fly::render_page`
+// rather than being hand-rolled in the canvas. Assert the delegation instead of the moved symbols,
+// so the canvas cannot quietly grow a second, weaker sanitiser.
 for (const marker of [
   'Content-Security-Policy',
   'include_str!("canvas_runtime.js")',
   'data-fly-component-id',
-  'safe_attribute_name',
-  'safe_style',
+  'use fly::render_page;',
 ]) {
   requireMarker('canvasDocument', marker, `instrumented canvas renderer is missing ${marker}`);
+}
+for (const marker of [
+  'fn safe_attribute_name',
+  'fn safe_style',
+]) {
+  forbidMarker(
+    'canvasDocument',
+    marker,
+    `canvas must sanitise via the shared Fly renderer, not its own ${marker}`,
+  );
 }
 for (const marker of [
   'getBoundingClientRect',
@@ -114,7 +135,8 @@ requireMarker('controller', 'PageBuilderCapabilityRequest::Publish', 'controller
 for (const marker of [
   'impl PageBuilderAdminFacade for PagesBuilderFacade',
   'transport::fetch_page',
-  'transport::update_page',
+  // Renamed from `transport::update_page`; `page_builder_roundtrip.rs` now forbids the old name.
+  'transport::save_page_document',
   'REVISION_CONFLICT',
 ]) {
   requireMarker('pagesBuilder', marker, `Pages builder facade is missing ${marker}`);

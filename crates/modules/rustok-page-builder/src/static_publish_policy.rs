@@ -84,6 +84,17 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
     "data:image/webp;base64,",
 ];
 
+/// CSS tokens refused in a published static landing.
+///
+/// `url(` is listed deliberately and is *stricter* than `fly`'s renderer, which since the
+/// `safe_style` rework accepts `url(...)` whose inner URL passes the resource policy. The two
+/// answer different questions: the renderer asks whether a declaration is safe to emit, while
+/// publishing asks whether a landing may reference anything outside its own bundle.
+///
+/// Keep the asymmetry only as long as it is intended. Today an author can set a background image
+/// in the editor, watch it render, and have publishing reject it — a late and confusing failure.
+/// If published landings should be allowed to reference approved URLs, drop `url(` here and
+/// validate the inner URL the way `fly::render` does, rather than relaxing the token list wholesale.
 const FORBIDDEN_CSS_TOKENS: &[&str] = &[
     "-moz-binding",
     "@import",

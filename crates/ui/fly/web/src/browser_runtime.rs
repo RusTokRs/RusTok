@@ -51,12 +51,7 @@ fn browser_error(value: JsValue) -> BrowserRuntimeError {
 }
 
 fn validate_origin(origin: impl Into<String>) -> Result<String, BrowserRuntimeError> {
-    let origin = origin.into();
-    if origin.trim().is_empty() || origin == "*" {
-        Err(BrowserRuntimeError::InvalidTargetOrigin)
-    } else {
-        Ok(origin)
-    }
+    crate::normalize_expected_origin(&origin.into()).ok_or(BrowserRuntimeError::InvalidTargetOrigin)
 }
 
 /// RAII event listener. Dropping the handle unregisters the exact callback from the target.
