@@ -739,6 +739,19 @@ mod tests {
     }
 
     #[test]
+    fn invalid_provider_result_maps_to_reconciliation_conflict() {
+        let error = map_fulfillment_error_without_context(
+            FulfillmentError::ProviderResultInvalid(
+                "tracking number exceeds 100 characters".to_string(),
+            ),
+        );
+
+        assert!(matches!(error.kind, rustok_api::PortErrorKind::Conflict));
+        assert_eq!(error.code, "fulfillment.reconciliation_required");
+        assert!(!error.retryable);
+    }
+
+    #[test]
     fn create_label_replay_rejects_changed_request_payload() {
         let existing = provider_operation(serde_json::json!({
             "provider_id": "manual",
