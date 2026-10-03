@@ -18,6 +18,38 @@ export type AppMessageKey =
   | 'Blog.latest.subtitle'
   | 'Blog-latest-title'
   | 'Blog.latest.title'
+  | 'Catalog-allCategories'
+  | 'Catalog.allCategories'
+  | 'Catalog-bundleBadge'
+  | 'Catalog.bundleBadge'
+  | 'Catalog-empty'
+  | 'Catalog.empty'
+  | 'Catalog-fromPrice'
+  | 'Catalog.fromPrice'
+  | 'Catalog-inStock'
+  | 'Catalog.inStock'
+  | 'Catalog-outOfStock'
+  | 'Catalog.outOfStock'
+  | 'Catalog-resetFilters'
+  | 'Catalog.resetFilters'
+  | 'Catalog-saleBadge'
+  | 'Catalog.saleBadge'
+  | 'Catalog-searchPlaceholder'
+  | 'Catalog.searchPlaceholder'
+  | 'Catalog-sortBy'
+  | 'Catalog.sortBy'
+  | 'Catalog-sortCreated'
+  | 'Catalog.sortCreated'
+  | 'Catalog-sortNewest'
+  | 'Catalog.sortNewest'
+  | 'Catalog-sortOldest'
+  | 'Catalog.sortOldest'
+  | 'Catalog-subtitle'
+  | 'Catalog.subtitle'
+  | 'Catalog-title'
+  | 'Catalog.title'
+  | 'Catalog-viewAll'
+  | 'Catalog.viewAll'
   | 'Comments-composer-editorLabel'
   | 'Comments.composer.editorLabel'
   | 'Comments-composer-emptyError'
@@ -36,6 +68,28 @@ export type AppMessageKey =
   | 'Comments.composer.success'
   | 'Comments-composer-title'
   | 'Comments.composer.title'
+  | 'Product-addedToCart'
+  | 'Product.addedToCart'
+  | 'Product-addToCart'
+  | 'Product.addToCart'
+  | 'Product-backToCatalog'
+  | 'Product.backToCatalog'
+  | 'Product-bundleIncludes'
+  | 'Product.bundleIncludes'
+  | 'Product-description'
+  | 'Product.description'
+  | 'Product-details'
+  | 'Product.details'
+  | 'Product-quantity'
+  | 'Product.quantity'
+  | 'Product-selectVariant'
+  | 'Product.selectVariant'
+  | 'Product-shipping'
+  | 'Product.shipping'
+  | 'Product-sku'
+  | 'Product.sku'
+  | 'Product-vendor'
+  | 'Product.vendor'
   | 'richText-apply_link'
   | 'richText.apply_link'
   | 'richText-blockquote'
@@ -118,6 +172,38 @@ export interface AppMessageArgs {
   'Blog-latest-subtitle'?: Record<string, never>;
   'Blog.latest.title'?: Record<string, never>;
   'Blog-latest-title'?: Record<string, never>;
+  'Catalog.allCategories'?: Record<string, never>;
+  'Catalog-allCategories'?: Record<string, never>;
+  'Catalog.bundleBadge'?: Record<string, never>;
+  'Catalog-bundleBadge'?: Record<string, never>;
+  'Catalog.empty'?: Record<string, never>;
+  'Catalog-empty'?: Record<string, never>;
+  'Catalog.fromPrice'?: Record<string, never>;
+  'Catalog-fromPrice'?: Record<string, never>;
+  'Catalog.inStock'?: Record<string, never>;
+  'Catalog-inStock'?: Record<string, never>;
+  'Catalog.outOfStock'?: Record<string, never>;
+  'Catalog-outOfStock'?: Record<string, never>;
+  'Catalog.resetFilters'?: Record<string, never>;
+  'Catalog-resetFilters'?: Record<string, never>;
+  'Catalog.saleBadge'?: Record<string, never>;
+  'Catalog-saleBadge'?: Record<string, never>;
+  'Catalog.searchPlaceholder'?: Record<string, never>;
+  'Catalog-searchPlaceholder'?: Record<string, never>;
+  'Catalog.sortBy'?: Record<string, never>;
+  'Catalog-sortBy'?: Record<string, never>;
+  'Catalog.sortCreated'?: Record<string, never>;
+  'Catalog-sortCreated'?: Record<string, never>;
+  'Catalog.sortNewest'?: Record<string, never>;
+  'Catalog-sortNewest'?: Record<string, never>;
+  'Catalog.sortOldest'?: Record<string, never>;
+  'Catalog-sortOldest'?: Record<string, never>;
+  'Catalog.subtitle'?: Record<string, never>;
+  'Catalog-subtitle'?: Record<string, never>;
+  'Catalog.title'?: Record<string, never>;
+  'Catalog-title'?: Record<string, never>;
+  'Catalog.viewAll'?: Record<string, never>;
+  'Catalog-viewAll'?: Record<string, never>;
   'Comments.composer.editorLabel'?: Record<string, never>;
   'Comments-composer-editorLabel'?: Record<string, never>;
   'Comments.composer.emptyError'?: Record<string, never>;
@@ -136,6 +222,28 @@ export interface AppMessageArgs {
   'Comments-composer-success'?: Record<string, never>;
   'Comments.composer.title'?: Record<string, never>;
   'Comments-composer-title'?: Record<string, never>;
+  'Product.addedToCart'?: Record<string, never>;
+  'Product-addedToCart'?: Record<string, never>;
+  'Product.addToCart'?: Record<string, never>;
+  'Product-addToCart'?: Record<string, never>;
+  'Product.backToCatalog'?: Record<string, never>;
+  'Product-backToCatalog'?: Record<string, never>;
+  'Product.bundleIncludes'?: Record<string, never>;
+  'Product-bundleIncludes'?: Record<string, never>;
+  'Product.description'?: Record<string, never>;
+  'Product-description'?: Record<string, never>;
+  'Product.details'?: Record<string, never>;
+  'Product-details'?: Record<string, never>;
+  'Product.quantity'?: Record<string, never>;
+  'Product-quantity'?: Record<string, never>;
+  'Product.selectVariant'?: Record<string, never>;
+  'Product-selectVariant'?: Record<string, never>;
+  'Product.shipping'?: Record<string, never>;
+  'Product-shipping'?: Record<string, never>;
+  'Product.sku'?: Record<string, never>;
+  'Product-sku'?: Record<string, never>;
+  'Product.vendor'?: Record<string, never>;
+  'Product-vendor'?: Record<string, never>;
   'richText.apply_link'?: Record<string, never>;
   'richText-apply_link'?: Record<string, never>;
   'richText.blockquote'?: Record<string, never>;
