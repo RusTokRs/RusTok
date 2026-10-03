@@ -523,7 +523,9 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-pub(crate) fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
+pub(crate) pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
+
+fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > 100
@@ -549,7 +551,7 @@ fn validate_currency_code(value: &str) -> FulfillmentResult<String> {
     Ok(normalized)
 }
 
-fn validate_optional_boundary_text(
+pub(crate) fn validate_optional_boundary_text(
     field: &str,
     value: Option<&str>,
     max_len: usize,
@@ -685,7 +687,11 @@ fn validate_operation_result(
         result.external_reference.as_deref(),
         191,
     )?;
-    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 100)?;
+    validate_optional_boundary_text(
+        "tracking_number",
+        result.tracking_number.as_deref(),
+        FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
+    )?;
     if !result.metadata.is_object() {
         return Err(FulfillmentError::Validation(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
