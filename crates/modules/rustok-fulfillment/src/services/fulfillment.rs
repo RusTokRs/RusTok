@@ -526,7 +526,7 @@ impl FulfillmentService {
         identity: &CheckoutFulfillmentIdentity,
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
-        entities::checkout_identity::Entity::insert(
+        let _ = entities::checkout_identity::Entity::insert(
             entities::checkout_identity::ActiveModel {
                 tenant_id: Set(tenant_id),
                 checkout_operation_id: Set(identity.operation_id),
@@ -542,9 +542,13 @@ impl FulfillmentService {
                 entities::checkout_identity::Column::TenantId,
                 entities::checkout_identity::Column::CheckoutOperationId,
             ])
-            .do_nothing()
+            .do_nothing_on([
+                entities::checkout_identity::Column::TenantId,
+                entities::checkout_identity::Column::CheckoutOperationId,
+            ])
             .to_owned(),
         )
+        .try_insert()
         .exec(txn)
         .await?;
 
