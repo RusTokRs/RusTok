@@ -2507,6 +2507,36 @@ mod tests {
             "same operation must not bind a different order"
         );
 
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                Some(Uuid::new_v4()),
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different customer"
+        );
+
+        let mut different_plan = identity.clone();
+        different_plan.plan_hash = "b".repeat(64);
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                customer_id,
+                &different_plan,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different plan"
+        );
+
         txn.rollback().await.expect("transaction should roll back");
     }
 
