@@ -9,6 +9,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub checkout_operation_id: Uuid,
     pub order_id: Uuid,
+    pub customer_id: Option<Uuid>,
     pub plan_hash: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
