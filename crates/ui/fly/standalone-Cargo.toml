@@ -1,6 +1,23 @@
 # Standalone Cargo workspace template for Fly
+#
 # When extracting `crates/ui/fly` into an independent repository (e.g. `github.com/rustok/fly`),
-# rename this file to `Cargo.toml` or include it in the repository root.
+# rename this file to `Cargo.toml`.
+#
+# Every sub-crate uses `version.workspace = true` and `<dep>.workspace = true`, so the template has
+# to supply `[workspace.package]` and `[workspace.dependencies]`. Keep the dependency versions in
+# step with the host workspace's root `Cargo.toml`; `scripts/verify/verify-fly-standalone-workspace.mjs`
+# fails the build when they drift.
+#
+# The former extraction blocker is resolved: `rustok-ui-i18n` is now an optional dependency behind
+# the `platform-i18n` feature, and locale identity goes through the `LocaleResolver` trait
+# (`src/locale_resolver.rs`). An extracted repository builds with `default-features = false`,
+# which substitutes Fly's own structural BCP-47 resolver.
+#
+# That substitution is not free: without CLDR likely-subtag data, `zh-TW` falls back to `zh`
+# instead of `zh-Hant`, and legacy codes such as `iw` are not canonicalized to `he`. If the
+# standalone build needs full CLDR behaviour, implement `LocaleResolver` over `icu_locid` and
+# install it instead. See `docs/audits/fly-builder-engineering-audit-2026-10-02.md`.
+
 [workspace]
 resolver = "2"
 members = [
@@ -11,3 +28,30 @@ members = [
     "leptos",
     "dioxus",
 ]
+
+# Mirrors the host workspace's `[workspace.lints]`. Every Fly crate declares
+# `[lints] workspace = true`, which Cargo rejects if the workspace root does not define the
+# policy, so this section is required for the extracted repository to build at all.
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "BUSL-1.1"
+description = "Framework-neutral visual editor engine and lossless GrapesJS compatibility core"
+repository = "https://github.com/rustok/fly"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+thiserror = "2.0.18"
+leptos = "0.8.19"
+dioxus = { version = "0.6" }
+proptest = "1.11"

@@ -1,4 +1,5 @@
 use super::patch::ComponentPatch;
+use std::sync::Arc;
 use crate::{
     BindingCommand, ComponentNode, ContextCommand, DynamicCommand, FlyError, FlyResult,
     GrapesJsCodec, PageCommand, ProjectDocument, ProjectSnapshot, StyleRuleCommand,
@@ -6,6 +7,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -83,24 +85,100 @@ impl EditorCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HistoryEntry {
     pub command: EditorCommand,
-    pub before: ProjectDocument,
-    pub after: ProjectDocument,
+    pub before: Arc<ProjectDocument>,
+    pub after: Arc<ProjectDocument>,
 }
+
+impl HistoryEntry {
+    /// Approximate retained size, measured as the serialized JSON length of both documents.
+    ///
+    /// Deliberately counts both halves even though consecutive entries now share an allocation
+    /// (`entry[i].after` and `entry[i + 1].before` are the same `Arc`). The measure therefore
+    /// over-estimates real memory by roughly 2x, which keeps the budget conservative: the same
+    /// number of entries is retained as before, at about half the actual memory. Teaching it to
+    /// count distinct allocations would need bookkeeping across the whole deque.
+    ///
+    /// Serializing to measure is not free, which is itself an argument for moving history to
+    /// inverse commands; it is still far cheaper than the clones the entry already paid for.
+    pub fn approximate_bytes(&self) -> usize {
+        serde_json::to_vec(&self.before).map_or(0, |bytes| bytes.len())
+            + serde_json::to_vec(&self.after).map_or(0, |bytes| bytes.len())
+    }
+}
+
+/// Default ceiling on how much serialized document state undo history may retain.
+///
+/// Each entry currently stores a full before/after document pair, so an entry-count limit alone
+/// lets a large project pin an unbounded amount of memory: 100 entries of a 5 MB project is a
+/// gigabyte. The byte budget is the backstop until history moves to inverse commands.
+pub const DEFAULT_HISTORY_MEMORY_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct History {
     limit: usize,
-    pub(super) undo: Vec<HistoryEntry>,
-    pub(super) redo: Vec<HistoryEntry>,
+    #[serde(default = "default_history_memory_budget")]
+    memory_budget_bytes: usize,
+    /// Running total of `undo_sizes`, kept incrementally so eviction never re-measures.
+    #[serde(default)]
+    retained_bytes: usize,
+    #[serde(default)]
+    undo_sizes: VecDeque<usize>,
+    undo: VecDeque<HistoryEntry>,
+    redo: VecDeque<HistoryEntry>,
+}
+
+fn default_history_memory_budget() -> usize {
+    DEFAULT_HISTORY_MEMORY_BUDGET_BYTES
 }
 
 impl History {
     pub fn new(limit: usize) -> Self {
         Self {
             limit: limit.max(1),
-            undo: Vec::new(),
-            redo: Vec::new(),
+            memory_budget_bytes: DEFAULT_HISTORY_MEMORY_BUDGET_BYTES,
+            retained_bytes: 0,
+            undo_sizes: VecDeque::new(),
+            undo: VecDeque::new(),
+            redo: VecDeque::new(),
         }
+    }
+
+    /// Override how many bytes of retained document state history may hold.
+    pub fn with_memory_budget(mut self, memory_budget_bytes: usize) -> Self {
+        self.memory_budget_bytes = memory_budget_bytes.max(1);
+        self
+    }
+
+    /// Approximate retained size of the undo stack, in bytes of serialized JSON.
+    pub fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    /// Configured memory ceiling for the undo stack.
+    pub fn memory_budget_bytes(&self) -> usize {
+        self.memory_budget_bytes
+    }
+
+    /// Rebuild the size index when it does not line up with the entries.
+    ///
+    /// Only reachable after deserializing a `History` written before the byte budget existed, in
+    /// which case `undo_sizes` arrives empty while `undo` is populated.
+    fn resync_sizes(&mut self) {
+        self.undo_sizes = self
+            .undo
+            .iter()
+            .map(HistoryEntry::approximate_bytes)
+            .collect();
+        self.retained_bytes = self.undo_sizes.iter().sum();
+    }
+
+    fn evict_oldest(&mut self) -> bool {
+        if self.undo.pop_front().is_none() {
+            return false;
+        }
+        let evicted = self.undo_sizes.pop_front().unwrap_or_default();
+        self.retained_bytes = self.retained_bytes.saturating_sub(evicted);
+        true
     }
 
     pub fn can_undo(&self) -> bool {
@@ -109,6 +187,14 @@ impl History {
 
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
+    }
+
+    /// Undo entries, oldest first.
+    ///
+    /// Exposed so callers can inspect history without the editor having to mirror it, and so the
+    /// sharing between adjacent entries can be asserted rather than assumed.
+    pub fn undo_entries(&self) -> impl Iterator<Item = &HistoryEntry> {
+        self.undo.iter()
     }
 
     pub fn undo_len(&self) -> usize {
@@ -120,30 +206,85 @@ impl History {
     }
 
     pub(super) fn push(&mut self, entry: HistoryEntry) {
-        self.undo.push(entry);
-        self.redo.clear();
-        if self.undo.len() > self.limit {
-            self.undo.remove(0);
+        if self.undo_sizes.len() != self.undo.len() {
+            self.resync_sizes();
         }
+        let size = entry.approximate_bytes();
+        self.undo.push_back(entry);
+        self.undo_sizes.push_back(size);
+        self.retained_bytes = self.retained_bytes.saturating_add(size);
+        self.redo.clear();
+
+        // Oldest-first eviction. `VecDeque` keeps this O(1); the previous `Vec::remove(0)` shifted
+        // every retained document on every command once the limit was reached.
+        while self.undo.len() > self.limit && self.evict_oldest() {}
+        while self.undo.len() > 1
+            && self.retained_bytes > self.memory_budget_bytes
+            && self.evict_oldest()
+        {}
     }
 
     pub(super) fn pop_undo(&mut self) -> FlyResult<HistoryEntry> {
-        self.undo.pop().ok_or(FlyError::UndoHistoryEmpty)
+        if self.undo_sizes.len() != self.undo.len() {
+            self.resync_sizes();
+        }
+        let entry = self.undo.pop_back().ok_or(FlyError::UndoHistoryEmpty)?;
+        let size = self.undo_sizes.pop_back().unwrap_or_default();
+        self.retained_bytes = self.retained_bytes.saturating_sub(size);
+        Ok(entry)
+    }
+
+    pub(super) fn push_undo(&mut self, entry: HistoryEntry) {
+        if self.undo_sizes.len() != self.undo.len() {
+            self.resync_sizes();
+        }
+        let size = entry.approximate_bytes();
+        self.undo.push_back(entry);
+        self.undo_sizes.push_back(size);
+        self.retained_bytes = self.retained_bytes.saturating_add(size);
+    }
+
+    pub(super) fn push_redo(&mut self, entry: HistoryEntry) {
+        self.redo.push_back(entry);
     }
 
     pub(super) fn pop_redo(&mut self) -> FlyResult<HistoryEntry> {
-        self.redo.pop().ok_or(FlyError::RedoHistoryEmpty)
+        self.redo.pop_back().ok_or(FlyError::RedoHistoryEmpty)
     }
 }
 
+/// Cheap, non-cryptographic fingerprint of a project (FNV-1a 64).
+///
+/// # This is not an integrity primitive
+///
+/// `ProjectHash` exists for change detection: dirty flags, ETag-style comparison and optimistic
+/// concurrency, where both sides are trusted and the only question is "did this change?".
+///
+/// It is 64-bit and non-cryptographic, so an attacker who controls a payload can produce a
+/// collision on demand. Anything answering "is this payload the one that was approved?" must use
+/// [`crate::ContentDigest`] (SHA-256) instead — see `ProjectSnapshot::content_digest` and
+/// `ProjectBundle::content_digest`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProjectHash(pub u64);
 
 impl ProjectHash {
-    pub fn from_document(document: &ProjectDocument) -> Self {
+    /// Fingerprint a document, falling back to the raw project encoding.
+    ///
+    /// Returns `None` when the document cannot be serialized at all. The previous version
+    /// swallowed that case into `unwrap_or_default()`, which hashed an empty byte slice — so every
+    /// unserializable document shared one fingerprint and compared equal to the others.
+    pub fn try_from_document(document: &ProjectDocument) -> Option<Self> {
         let bytes = GrapesJsCodec::encode_vec(document)
-            .unwrap_or_else(|_| serde_json::to_vec(&document.project).unwrap_or_default());
-        Self::from_bytes(&bytes)
+            .ok()
+            .or_else(|| serde_json::to_vec(&document.project).ok())?;
+        Some(Self::from_bytes(&bytes))
+    }
+
+    pub fn from_document(document: &ProjectDocument) -> Self {
+        // A `ProjectDocument` is built from `serde_json::Value`, so encoding it cannot fail in
+        // practice; the sentinel keeps the infallible signature without silently colliding with
+        // the hash of an empty document.
+        Self::try_from_document(document).unwrap_or(Self(u64::MAX))
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {

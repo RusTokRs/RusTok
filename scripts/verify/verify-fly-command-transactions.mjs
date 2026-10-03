@@ -50,7 +50,6 @@ requireMarkers('commandPatch', [
   'pub fn clear_component_type',
   'pub fn set_tag_name',
   'pub fn set_provider',
-  'pub fn set_schema_version',
   'pub fn set_field',
   'pub fn remove_field',
   'pub fn set_attribute',
@@ -74,7 +73,8 @@ requireMarkers('commandEditor', [
   'pub fn restore_snapshot(',
   'self.apply(EditorCommand::restore_snapshot(snapshot.clone()))',
   'EditorCommand::RestoreSnapshot { snapshot }',
-  '*document = snapshot.restore()?;',
+  // Verified restore: the editor must not accept a snapshot whose integrity digest is absent.
+  '*document = snapshot.restore_verified()?;',
   'self.history.push(HistoryEntry',
   'self.revision.mark_changed(&self.document)',
 ], 'transactional editor engine');

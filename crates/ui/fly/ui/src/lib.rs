@@ -1,5 +1,9 @@
 //! Framework-neutral visual-editor state, intents, policies, and contribution contracts.
 
+// The entire Fly stack is safe Rust. `forbid` (not `deny`) so it cannot be re-enabled
+// locally with an `allow` attribute.
+#![forbid(unsafe_code)]
+
 mod capability_policy;
 mod command_capability;
 mod contribution;
