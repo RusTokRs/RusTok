@@ -1,7 +1,9 @@
 use chrono::Utc;
 use rustok_fulfillment::entities::{checkout_identity, fulfillment};
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set, Statement};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -359,7 +361,7 @@ async fn checkout_identity_rejects_insert_without_operation_id() {
 async fn checkout_identity_rejects_update_that_removes_operation_id() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    apply_checkout_identity_migration(&db).await;
+    apply_typed_checkout_identity_migration(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let fulfillment = insert_fulfillment(
@@ -393,7 +395,7 @@ async fn checkout_identity_rejects_update_that_removes_operation_id() {
 async fn checkout_identity_allows_unrelated_metadata_updates() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    apply_checkout_identity_migration(&db).await;
+    apply_typed_checkout_identity_migration(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();
