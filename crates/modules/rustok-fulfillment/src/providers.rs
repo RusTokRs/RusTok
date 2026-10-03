@@ -523,7 +523,7 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
     }
 }
 
-pub(crate) pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
+pub(crate) const FULFILLMENT_TRACKING_NUMBER_MAX_LEN: usize = 100;
 
 fn validate_provider_id(value: &str) -> FulfillmentResult<()> {
     let value = value.trim();
@@ -677,7 +677,7 @@ fn validate_operation_result(
     result: &FulfillmentProviderOperationResult,
 ) -> FulfillmentResult<()> {
     if result.provider_id != provider_id {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider `{provider_id}` returned {operation} result for `{}`",
             result.provider_id
         )));
@@ -686,18 +686,27 @@ fn validate_operation_result(
         "external_reference",
         result.external_reference.as_deref(),
         191,
-    )?;
+    )
+    .map_err(|error| ProviderResultInvalid(error.to_string()))?;
     validate_optional_boundary_text(
         "tracking_number",
         result.tracking_number.as_deref(),
         FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
-    )?;
+    )
+    .map_err(|error| ProviderResultInvalid(error.to_string()))?;
     if !result.metadata.is_object() {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
         )));
     }
     Ok(())
+}
+
+fn provider_result_invalid(error: FulfillmentError) -> FulfillmentError {
+    match error {
+        FulfillmentError::Validation(message) => FulfillmentError::ProviderResultInvalid(message),
+        other => other,
+    }
 }
 
 fn validate_webhook_request(
