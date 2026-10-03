@@ -52,6 +52,7 @@ const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
 const product = read('crates/modules/rustok-product/src/ports.rs');
+const productCommandPort = read('crates/modules/rustok-product/src/catalog_command_port.rs');
 const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
 const storefrontOrders = read('crates/modules/rustok-commerce/src/controllers/store/orders.rs');
@@ -66,7 +67,10 @@ const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_com
 const fulfillment = read('crates/modules/rustok-fulfillment/src/ports.rs');
 const tax = read('crates/modules/rustok-tax/src/ports.rs');
 const taxCalculation = read('crates/modules/rustok-tax/src/calculation_context.rs');
-const customer = read('crates/modules/rustok-customer/src/ports.rs');
+const customer =
+  read('crates/modules/rustok-customer/src/ports.rs') +
+  '\n' +
+  read('crates/modules/rustok-customer/src/read_context.rs');
 const inventory = read('crates/modules/rustok-inventory/src/ports.rs');
 const order = read('crates/modules/rustok-order/src/ports.rs');
 const orderCompensation = read('crates/modules/rustok-order/src/checkout_compensation.rs');
@@ -254,7 +258,8 @@ requireAll(product, [
   'struct ProductOwnerErrorFacts',
   'fn product_port_context_facts(',
   'fn product_owner_error_facts(',
-  'fn product_port_error_kind(',
+  'fn product_error_code(',
+  'PortError::invariant_violation(',
   'fn log_product_port_failure(',
   'fn log_product_context_rejection(',
   'correlation_id_length = context_facts.correlation_id_length',
@@ -276,7 +281,6 @@ requireAll(product, [
   'opaque_payload_present = error_facts.opaque_payload_present',
   'parse_failed = true',
   'product.tenant_id_invalid',
-  'product.context_invalid',
   'product.database_unavailable',
   'product.product_not_found',
   'product.variant_not_found',
@@ -296,6 +300,7 @@ requireAll(product, [
   'product_error_to_port_error(',
   'boundary = "product_catalog_read_port"',
 ], 'product bounded diagnostics');
+requireAll(productCommandPort, ['"product.context_invalid"'], 'product command port diagnostics');
 
 
 forbidAll(pricing, [
@@ -524,8 +529,17 @@ forbidAll(orderCheckoutAdapters, [
   'format!(\n                "{field} must be a lowercase hexadecimal value',
 ], 'order checkout adapter public error mapping');
 
+// The LedgerBoundary construction itself is allowed as long as the owner
+// message is replaced with a payout-safe static one and the kind is preserved
+// (map_ledger_port_error), instead of the old message passthrough / binary
+// retryable collapse.
+requireAll(marketplacePayoutService, [
+  'fn map_ledger_port_error(',
+  '"marketplace ledger request is invalid"',
+  'message: message.to_string(),',
+  'MarketplaceLedgerBoundaryKind::InvariantViolation',
+], 'marketplace payout ledger-boundary safe mapping');
 forbidAll(marketplacePayoutService, [
-  'MarketplacePayoutError::LedgerBoundary {',
   'message: error.message,',
   'if retryable {\n                PortErrorKind::Unavailable\n            } else {\n                PortErrorKind::Conflict',
 ], 'marketplace payout ledger-boundary public error mapping');
@@ -597,10 +611,11 @@ requireAll(storefrontProductsLegacy, [
   'owner_code_length = error.code.chars().count()',
   'fn storefront_auxiliary_public_error(',
   '"storefront auxiliary operation failed with bounded diagnostics"',
-  'error_kind = "database"',
-  'error_kind = "validation"',
-  'error_kind = "not_found"',
-  'error_kind = "unexpected_owner_error"',
+  'let (status, code, message, error_kind) = match &error {',
+  '"database",',
+  '"validation",',
+  '"not_found",',
+  '"unexpected_owner_error",',
   '"storefront product operation failed with bounded diagnostics"',
   '"storefront shipping-option owner read failed with bounded diagnostics"',
 ], 'storefront auxiliary bounded diagnostics');
@@ -707,7 +722,10 @@ requireAll(adminCheckoutOperations, [
   'order_return_state = context.order_return_state',
   'order_change_state = context.order_change_state',
   'fn admin_checkout_operation_http_error(',
-  '"storefront auxiliary operation failed with bounded diagnostics"',
+  "log_message: &'static str",
+  '"{log_message}"',
+  '"commerce admin checkout operation lookup failed"',
+  '"commerce admin checkout compensation failed"',
 ], 'admin checkout operation bounded diagnostics');
 
 forbidAll(storefrontStore, [
@@ -964,12 +982,13 @@ const required = [
     'uuid_non_nil_count = facts.uuid_non_nil_count',
     'opaque_payload_present = facts.opaque_payload_present',
     'operation = owner_operation',
-    'code = "order.checkout_identity_validation"',
-    'code = "order.checkout_identity_storage_unavailable"',
-    'code = "order.database_unavailable"',
-    'code = "order.validation"',
-    'code = "order.invalid_transition"',
-    'code = "order.invariant_violation"',
+    'let (code, technical_failure) = match &error {',
+    '"order.checkout_identity_validation"',
+    '"order.checkout_identity_storage_unavailable"',
+    '"order.database_unavailable"',
+    '"order.validation"',
+    '"order.invalid_transition"',
+    '"order.invariant_violation"',
     '"checkout order identity request is invalid"',
     '"order request is invalid"',
     '"order request context is invalid"',
@@ -979,7 +998,6 @@ const required = [
     'let owner_operation = "read_checkout_identity_by_operation"',
     'let owner_operation = "read_checkout_identity_by_cart"',
     'let owner_operation = "bind_checkout_identity"',
-    'let owner_operation = "adopt_legacy_checkout_identity"',
     'let owner_operation = "complete_checkout"',
     'let owner_operation = "read_checkout_result"',
     'let owner_operation = "read_checkout_result_by_operation"',

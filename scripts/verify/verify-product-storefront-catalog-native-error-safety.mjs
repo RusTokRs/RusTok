@@ -29,10 +29,16 @@ const forbidText = (content, value, label) => {
 };
 const countText = (content, value) => content.split(value).length - 1;
 
-for (const [value, label] of [
-  ['"dep:tracing"', "Product storefront SSR tracing feature"],
-  ["tracing = { workspace = true, optional = true }", "Product storefront tracing dependency"],
-]) requireText(cargo, value, label);
+// Product storefront logs GraphQL transport failures on every build profile
+// (graphql_error_safety.rs), so tracing must stay an all-profile dependency —
+// same convention as the pricing storefront gates.
+requireText(cargo, "tracing.workspace = true", "Product storefront all-profile tracing dependency");
+forbidText(cargo, '"dep:tracing"', "Product storefront stale SSR-only tracing feature");
+forbidText(
+  cargo,
+  "tracing = { workspace = true, optional = true }",
+  "Product storefront stale optional tracing dependency",
+);
 
 for (const [value, label] of [
   ["const PRODUCT_STOREFRONT_CATALOG_OWNER", "catalog owner constant"],

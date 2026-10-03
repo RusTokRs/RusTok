@@ -55,7 +55,8 @@ for (const marker of [
   "pub provenance: MarketplaceListingEventProvenance",
 ]) requireMarker(dto, marker, files.dto);
 for (const marker of [
-  "actor_id: Set(Some(actor_id))",
+  "actor_id: Set(Some(params.actor_id))",
+  "let locale = normalize_listing_event_locale(params.locale)?;",
   "locale: Set(Some(locale))",
   "MarketplaceListingEventProvenance::Command",
   "command listing event is missing actor or locale attribution",

@@ -522,8 +522,8 @@ contains(
 );
 contains(
   source.nextRegistry,
-  "packages/translation/src",
-  `${files.nextRegistry}: Next module registry must import Translation package`,
+  "@rustok/translation-admin",
+  `${files.nextRegistry}: Next module registry must import the Translation package entrypoint`,
 );
 contains(
   source.nextWrapper,

@@ -73,7 +73,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
     fail('tax calculate_tax must enforce shared read/deadline semantics');
   }
   if (portSource.includes('require_write_semantics()?')) fail('tax calculate_tax must not require write idempotency semantics');
-  if (!portSource.includes('PortError::validation("tax.validation"')) fail('tax errors must map to typed PortError validation');
+  if (!/PortError::validation\(\s*"tax\.validation"/.test(portSource)) fail('tax errors must map to typed PortError validation');
   if (!servicesSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');
 
   if (!plan.includes('- FBA status: `boundary_ready`')) fail('tax local plan FBA status drift');

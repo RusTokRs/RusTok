@@ -19,7 +19,15 @@
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
-      "deadline_required": true
+      "deadline_required": true,
+      "read_operations": [
+        "resolve_product_price",
+        "read_price_list_projection",
+        "list_active_price_list_projections",
+        "read_admin_product_pricing_projection",
+        "read_storefront_product_pricing_projection",
+        "preview_variant_discount"
+      ]
     },
     {
       "name": "PricingWritePort",
@@ -140,28 +148,62 @@
       },
       {
         "operation": "preview_variant_discount",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
       },
       {
         "operation": "upsert_variant_price",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
       },
       {
         "operation": "set_price_list_scope",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
       },
       {
         "operation": "apply_variant_discount",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
       },
       {
         "operation": "set_price_list_percentage_rule",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
       }
     ],
     "fallback_smoke": {

@@ -15,7 +15,13 @@
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
-      "deadline_required": true
+      "deadline_required": true,
+      "read_operations": [
+        "read_collection_status"
+      ],
+      "write_operations": [
+        "create_or_reuse_collection"
+      ]
     }
   ],
   "consumers": [

@@ -35,10 +35,19 @@ requireMarkers(controller, [
   'tenant_condition_covers_current_and_legacy_envelope_shapes',
 ], controllerPath);
 
-if (/pub struct DlqQuery[\s\S]*?tenant_id\s*:/u.test(controller)) {
+// Bound both checks to their own regions: an unbounded `[\s\S]*?` scan would
+// match `tenant_id:`/`RequireLogsRead` from unrelated code later in the file
+// (e.g. the tenant-scoping helper this gate itself requires).
+const dlqQueryStruct = controller.match(/pub struct DlqQuery\s*\{[^}]*\}/u)?.[0] ?? '';
+if (/\btenant_id\s*:/u.test(dlqQueryStruct)) {
   fail('DLQ query accepts a client-selected tenant_id');
 }
-if (/replay_dlq_event[\s\S]*?RequireLogsRead/u.test(controller)) {
+const replayStart = controller.indexOf('async fn replay_dlq_event');
+const replayEnd = controller.indexOf('async fn', replayStart + 1);
+const replayRegion = replayStart >= 0
+  ? controller.slice(replayStart, replayEnd === -1 ? controller.length : replayEnd)
+  : '';
+if (replayRegion.includes('RequireLogsRead')) {
   fail('DLQ replay is still authorized by logs:read');
 }
 if (/find_by_id\(id\)/u.test(controller)) {

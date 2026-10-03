@@ -1,8 +1,27 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const failures = [];
-const read = (path) => readFileSync(path, "utf8");
+// `read` accepts either a file or a directory; for a directory (e.g. a Rust
+// module split into `machine_service/{mod,types,operations,tests}.rs`) it
+// returns the concatenation of every `.rs` file beneath it, so marker
+// require/forbid checks keep their meaning across the module split.
+const read = (path) => {
+  if (existsSync(path) && statSync(path).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir).sort()) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith(".rs")) parts.push(readFileSync(full, "utf8"));
+      }
+    };
+    walk(path);
+    return parts.join("\n");
+  }
+  return readFileSync(path, "utf8");
+};
 const fail = (message) => failures.push(message);
 const requireFile = (path) => {
   if (!existsSync(path)) fail(`${path}: missing required file`);
@@ -37,7 +56,7 @@ const files = {
   aiLocalePolicy: "crates/modules/rustok-ai/src/service/helpers.rs",
   translationCargo: "crates/modules/rustok-translation/Cargo.toml",
   translationPort: "crates/modules/rustok-translation/src/machine.rs",
-  translationService: "crates/modules/rustok-translation/src/machine_service.rs",
+  translationService: "crates/modules/rustok-translation/src/machine_service",
   translationScheduler: "crates/modules/rustok-translation/src/scheduler.rs",
   translationInventoryTests: "crates/modules/rustok-translation/tests/inventory_sync.rs",
   translationPlan: "crates/modules/rustok-translation/docs/implementation-plan.md",
@@ -75,7 +94,10 @@ const aiRouter = read(files.aiRouter);
 const aiStructuredRuntime = read(files.aiStructuredRuntime);
 const aiStructuredLive = read(files.aiStructuredLive);
 const aiStructuredResult = read(files.aiStructuredResult);
-const aiService = read(files.aiService);
+// rustok-ai's service was split into service.rs + service/{profiles,workflow,...}.rs;
+// check markers across the whole module.
+const aiService =
+  read(files.aiService) + "\n" + read("crates/modules/rustok-ai/src/service");
 const aiScheduler = read(files.aiScheduler);
 const aiEntities = read(files.aiEntities);
 const aiGraphqlQuery = read(files.aiGraphqlQuery);

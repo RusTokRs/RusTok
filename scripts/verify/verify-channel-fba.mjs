@@ -52,7 +52,7 @@ if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profi
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
   if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) fail(`runtime smoke missing executable no-compile profile ${profile}`);
 }
-for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
+for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ensure_tenant_scope', '!request.include_inactive && !detail.channel.is_active', 'list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
 }
 const transportFacade = read('crates/modules/rustok-channel/admin/src/transport/mod.rs');

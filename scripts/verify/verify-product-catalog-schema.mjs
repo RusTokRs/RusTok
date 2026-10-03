@@ -480,10 +480,10 @@ for (const marker of [
   'validate_product_publish_requirements',
   'validate_new_product_publish_requirements',
   'DomainEvent::ProductPublished { product_id }',
-  'product_option::Entity::insert_many(option_models)',
-  'product_option_translation::Entity::insert_many(option_translation_models)',
-  'product_option_value::Entity::insert_many(option_value_models)',
-  'product_option_value_translation::Entity::insert_many(',
+  // Zero-legacy policy: the legacy product_options subsystem was dropped
+  // (m20250130_000013); variant option axes now live in the attribute tables.
+  'INSERT INTO product_variant_attribute_values (',
+  'INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)',
   'variant_translation::Entity::insert_many(variant_translation_models)',
   'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
 ]) {

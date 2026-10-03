@@ -148,7 +148,11 @@ if (
 
 const ports = read('crates/modules/rustok-comments/src/ports.rs');
 const providerImpl = 'impl CommentsThreadPort for InProcessCommentsThreadProvider';
-hasAll(ports, ['pub trait CommentsThreadPort', providerImpl, 'PortContext', 'PortError', 'TransactionalEventBus', 'CommentsService::with_event_bus'], 'ports.rs');
+// The port trait was extracted into the consumer-facing rustok-comments-api
+// crate (dependency inversion); the provider crate re-exports and implements it.
+const commentsApi = read('crates/modules/rustok-comments-api/src/provider.rs');
+hasAll(commentsApi, ['pub trait CommentsThreadPort'], 'rustok-comments-api provider contract');
+hasAll(ports, ['pub use rustok_comments_api::CommentsThreadPort;', providerImpl, 'PortContext', 'PortError', 'TransactionalEventBus', 'CommentsService::with_event_bus'], 'ports.rs');
 const publicRead = read('crates/modules/rustok-comments/src/public_read.rs');
 hasAll(publicRead, ['CommentStatus::Approved', 'DeletedAt.is_null()', 'list_public_comments_for_target'], 'public comments projection');
 const services = read('crates/modules/rustok-comments/src/services.rs');

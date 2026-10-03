@@ -17,7 +17,8 @@ export const foundationFbaRuntimeSmokeModules = [
         'context.require_policy(PortCallPolicy::read())?;',
         'validate_channel_read_request(&request)?;',
         'ensure_tenant_scope(tenant_id, &detail)?;',
-        'request.include_inactive || detail.channel.is_active',
+        '!request.include_inactive && !detail.channel.is_active',
+        'list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)',
         'channel.slug_empty',
         'channel.host_target_empty'
       ]],

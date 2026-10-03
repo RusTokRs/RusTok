@@ -46,8 +46,11 @@ requireSource(ports, 'validate_channel_read_request(&request)?;', 'ports');
 
 const listCase = requireCase('embedded_native', 'list_channels_for_tenant');
 for (const assertion of ['in_process_channel_service_impl_exported', 'deadline_required_before_lookup', 'tenant_scope_preserved_by_list_service', 'inactive_channels_filtered_when_include_inactive_false']) requireAssertion(listCase, assertion);
-requireSource(ports, 'self.list_channel_details(tenant_id)', 'ports');
-requireSource(ports, '.filter(|detail| request.include_inactive || detail.channel.is_active)', 'ports');
+// The list path pushes pagination and the inactive-channel filter down into the
+// service query instead of filtering a full in-memory list.
+requireSource(ports, '.list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)', 'ports');
+const channelService = read('crates/modules/rustok-channel/src/services/channel_service.rs');
+requireSource(channelService, 'query.filter(channel::Column::IsActive.eq(true))', 'channel service');
 
 const restCase = requireCase('rest_compatibility', 'admin_transport_fallback');
 for (const assertion of ['module_owned_transport_facade_present', 'native_server_adapter_present', 'rest_adapter_present', 'ui_uses_facade_not_raw_rest']) requireAssertion(restCase, assertion);

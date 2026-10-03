@@ -209,10 +209,12 @@ pub fn build_ui_breadcrumbs(
         current_href.push('/');
         current_href.push_str(seg);
         let is_last = i == segments.len() - 1;
-        let capitalized = seg
-            .chars()
+        // Capitalize through the char iterator: slicing `&seg[1..]` panics on
+        // multi-byte first characters (non-ASCII route segments).
+        let mut seg_chars = seg.chars();
+        let capitalized = seg_chars
             .next()
-            .map(|first| first.to_uppercase().collect::<String>() + &seg[1..])
+            .map(|first| first.to_uppercase().chain(seg_chars).collect::<String>())
             .unwrap_or_default();
 
         crumbs.push(UiBreadcrumb {
@@ -334,5 +336,15 @@ mod tests {
         assert_eq!(post_crumbs[1].label, "Blog");
         assert_eq!(post_crumbs[2].label, "Posts");
         assert!(post_crumbs[2].is_current);
+    }
+
+    #[test]
+    fn test_build_ui_breadcrumbs_handles_non_ascii_segments() {
+        // The segment-based fallback must not panic on multi-byte characters.
+        let crumbs = build_ui_breadcrumbs("/модули/блог", &[], "Home");
+        assert_eq!(crumbs.len(), 3);
+        assert_eq!(crumbs[1].label, "Модули");
+        assert_eq!(crumbs[2].label, "Блог");
+        assert!(crumbs[2].is_current);
     }
 }

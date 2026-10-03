@@ -16,7 +16,14 @@
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
-      "deadline_required": true
+      "deadline_required": true,
+      "read_operations": [
+        "check_availability"
+      ],
+      "write_operations": [
+        "reserve_inventory",
+        "release_inventory_reservation"
+      ]
     }
   ],
   "consumers": [

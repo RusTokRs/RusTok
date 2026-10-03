@@ -1,6 +1,23 @@
 import fs from 'node:fs';
 
-function read(path) { return fs.readFileSync(path, 'utf8'); }
+// Dir-aware read: for a directory (a Rust module split into submodules),
+// returns the concatenation of all .rs files beneath it so marker checks
+// keep their meaning across file splits.
+function read(path) {
+  if (fs.statSync(path).isDirectory()) {
+    const parts = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir).sort()) {
+        const full = dir + '/' + entry;
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.rs')) parts.push(fs.readFileSync(full, 'utf8'));
+      }
+    };
+    walk(path);
+    return parts.join('\n');
+  }
+  return fs.readFileSync(path, 'utf8');
+}
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-alloy-runtime-contract] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) {
@@ -199,7 +216,7 @@ hasAll(memory, [
   'a deleted draft ID cannot be reused while immutable evidence is retained'
 ], 'in-memory storage');
 
-const sea = read('crates/modules/alloy/src/storage/sea_orm.rs');
+const sea = read('crates/modules/alloy/src/storage/sea_orm');
 hasAll(sea, [
   'ScriptQuery::ByStatus(status) => select.filter(Column::Status.eq(status.as_str()))',
   '.order_by_asc(Column::Name)',
@@ -321,17 +338,23 @@ const provenanceHttp = read('crates/modules/alloy/src/controllers/mod.rs');
 const provenanceGraphql = read('crates/modules/alloy/src/graphql/mutation.rs');
 const provenanceRemoteMcp = read('crates/modules/alloy/src/authoring.rs');
 const provenanceImport = read('crates/modules/alloy/src/model/import.rs');
+// Provenance is now centralized: transports pass AuthoringOrigin into the
+// shared authoring service, which maps origin -> SourceProvenance in
+// operator_provenance(); transports no longer hardcode provenance literals.
 hasAll(provenanceHttp, [
-  'SourceProvenance::http("alloy_create_script")',
-  'SourceProvenance::http("alloy_update_script")'
+  'AuthoringOrigin::Http'
 ], 'HTTP source provenance composition');
 hasAll(provenanceGraphql, [
-  'SourceProvenance::graphql("create_script")',
-  'SourceProvenance::graphql("update_script")'
+  'AuthoringOrigin::Graphql'
 ], 'GraphQL source provenance composition');
 hasAll(provenanceRemoteMcp, [
-  'SourceProvenance::remote_mcp("alloy_create_script")',
-  'SourceProvenance::remote_mcp("alloy_update_script")'
+  'operator_provenance(origin, "alloy_create_script")',
+  'operator_provenance(origin, "alloy_update_script")',
+  'AuthoringOrigin::Http => Ok(SourceProvenance::http(tool_name))'
+], 'origin -> provenance central mapping');
+hasAll(provenanceRemoteMcp, [
+  'AuthoringOrigin::RemoteMcp => Ok(SourceProvenance::remote_mcp(tool_name))',
+  'SourceProvenance::remote_mcp("alloy_create_script")'
 ], 'remote MCP source provenance composition');
 hasAll(provenanceImport, [
   'SourceProvenance::release_import()',
@@ -415,7 +438,7 @@ hasAll(releaseGraphql, [
   'AlloyReleaseStageCommand',
   'idempotency_key: input.idempotency_key'
 ], 'Alloy GraphQL release transport');
-const governance = read('crates/modules/rustok-modules/src/governance.rs');
+const governance = read('crates/modules/rustok-modules/src/governance');
 hasAll(governance, [
   'AlloyAuthored',
   'pub struct ModuleAlloyAuthoredStageCommand',
@@ -656,32 +679,39 @@ if (brokeredHttpRhai.includes('reqwest::')) fail('neutral Rhai bridge must not o
 if (read('crates/modules/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
 
 const gqlMutation = read('crates/modules/alloy/src/graphql/mutation.rs');
+// CRUD validation moved into the shared AlloyAuthoringService: transports
+// authenticate, then delegate with their AuthoringOrigin; trigger/workspace
+// validation and tenant/author binding are pinned in authoring.rs below.
 hasAll(gqlMutation, [
-  'fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()>',
   'require_admin(ctx).await?',
-  'validate_cron_trigger(&input.trigger)?',
+  'AlloyAuthoringService::from_scoped(runtime.clone())',
+  'create_script_from(',
+  'AuthoringOrigin::Graphql',
+  'update_script_from(',
+  'expected_version: input.expected_version',
   'input.workspace.0',
-  '.compile(&input.name, source, &mut scope)',
-  'validate_cron_trigger(trigger)?',
-  '.compile(&script.name, source, &mut scope)',
-  'input.expected_version',
-  'script.tenant_id = runtime.tenant_id;',
-  'script.author_id = Some(auth.user_id.to_string());'
-], 'GraphQL CRUD validation');
+  'let actor_id = auth.user_id.to_string();'
+], 'GraphQL CRUD delegation');
+hasAll(provenanceRemoteMcp, [
+  'fn validate_trigger(&self, trigger: &ScriptTrigger)',
+  'validate_cron_expression(expression)',
+  '.compile(name, source, &mut scope)',
+  'script.tenant_id = self.tenant_id;',
+  'script.author_id = Some(actor_id.to_owned());'
+], 'shared authoring CRUD validation');
 
 const controllers = read('crates/modules/alloy/src/controllers/mod.rs');
 hasAll(controllers, [
-  'validate_trigger(&req.trigger)?',
-  '.compile(&req.name, source, &mut scope)',
-  'req.expected_version',
-  'validate_trigger(trigger)?',
-  '.compile(&script.name, source, &mut scope)',
+  'AlloyAuthoringService::from_scoped(runtime.clone())',
+  'create_script_from(',
+  'AuthoringOrigin::Http',
+  'update_script_from(',
+  'expected_version: req.expected_version',
   'fn scripts_manage_auth(',
   'fn scripts_manage_actor(',
   'scripts_manage_actor(auth, &tenant, "Alloy script creation")?',
-  'script.tenant_id = tenant.id;',
-  'script.author_id = Some(actor_id);'
-], 'host-composed REST CRUD validation');
+  'runtime.scoped(tenant.id)?'
+], 'host-composed REST CRUD delegation');
 if (read('crates/modules/alloy/src/api/mod.rs').includes('handlers') || read('crates/modules/alloy/src/api/mod.rs').includes('routes')) fail('generic Alloy HTTP router must not remain exported');
 if (fs.existsSync('crates/modules/alloy/src/api/handlers.rs') || fs.existsSync('crates/modules/alloy/src/api/routes.rs')) fail('generic Alloy HTTP router files must be removed');
 hasAll(dto, [
@@ -804,7 +834,7 @@ hasAll(memoryStorage, [
   'Test diagnostic that must be erased after expiry.',
   'legal_hold_requires_a_retention_revision_and_blocks_collection_until_release'
 ], 'memory attributable delete contract');
-const seaOrmStorage = read('crates/modules/alloy/src/storage/sea_orm.rs');
+const seaOrmStorage = read('crates/modules/alloy/src/storage/sea_orm');
 hasAll(seaOrmStorage, [
   'async fn delete(&self, command: ScriptDeletionCommand)',
   'Column::Version.eq',

@@ -261,7 +261,7 @@ jobs:
     # Flip `continue-on-error` to false once `cargo audit` is clean.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
