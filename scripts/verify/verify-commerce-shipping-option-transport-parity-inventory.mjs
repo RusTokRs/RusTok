@@ -86,6 +86,9 @@ const storefrontList = storefrontRest.slice(
 if (!storefrontList) failures.push('storefront shipping-option list: unable to isolate source block');
 
 for (const [source, value, label] of [
+  [safeQuery, 'shipping_option_graphql_read_port_context(', 'shared GraphQL shipping-option owner context helper'],
+  [safeQuery, '.with_deadline(std::time::Duration::from_secs(2))', 'shared GraphQL shipping-option read deadline'],
+for (const [source, value, label] of [
   [graphqlShippingOptionList, 'tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id)', 'GraphQL storefront tenant binding'],
   [graphqlShippingOptionList, 'auth.tenant_id != tenant.id', 'GraphQL storefront authenticated-actor binding'],
   [graphqlShippingOptionList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL storefront authenticated actor'],
