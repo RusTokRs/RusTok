@@ -294,29 +294,6 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             })
     }
 
-    async fn find_checkout_fulfillment(
-        &self,
-        context: &PortContext,
-        owner_operation: &'static str,
-        service_operation: &'static str,
-        tenant_id: Uuid,
-        checkout_operation_id: Uuid,
-        checkout_fulfillment_index: u32,
-    ) -> Result<Option<CheckoutFulfillmentRecord>, PortError> {
-        self.service
-            .find_checkout_fulfillment(tenant_id, checkout_operation_id, checkout_fulfillment_index)
-            .await
-            .map_err(|error| fulfillment_error_to_port_error(context, service_operation, error))
-            .inspect(|record| {
-                tracing::debug!(
-                    boundary = CHECKOUT_FULFILLMENT_BOUNDARY,
-                    owner_operation,
-                    record_present = record.is_some(),
-                    "checkout fulfillment typed identity lookup completed"
-                );
-            })
-    }
-}
 
 fn map_checkout_fulfillment_local_port_error(
     context: &PortContext,
