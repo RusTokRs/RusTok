@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "packet": "shipping-option-read-transport-parity-execution-contract",
+  "status": "runtime_execution_contract_locked",
+  "source_base_revision": "5d43657c9e5803d69421d7d625b243e41ec89704",
+  "runner": "scripts/evidence/capture-shipping-option-read-transport-parity.mjs",
+  "verifier": "scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs",
+  "evidence_path": "crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-execution.json",
+  "evidence_status": "runtime_execution_pending",
+  "source_files": [
+    "apps/server/src/controllers/graphql.rs",
+    "crates/modules/rustok-commerce/src/graphql/query.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query.rs",
+    "crates/modules/rustok-commerce/src/graphql_runtime.rs",
+    "crates/modules/rustok-commerce/src/controllers/store/products.rs",
+    "crates/modules/rustok-commerce/src/controllers/admin/shipping.rs",
+    "crates/modules/rustok-fulfillment/src/shipping_option_read.rs",
+    "crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs",
+    "crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-source.json"
+  ],
+  "required_environment": [
+    "RUSTOK_SHIPPING_PARITY_GRAPHQL_URL",
+    "RUSTOK_SHIPPING_PARITY_REST_BASE_URL",
+    "RUSTOK_SHIPPING_PARITY_TENANT_ID",
+    "RUSTOK_SHIPPING_PARITY_AUTH_TOKEN",
+    "RUSTOK_SHIPPING_PARITY_DETAIL_ID",
+    "RUSTOK_SHIPPING_PARITY_MISSING_ID"
+  ],
+  "optional_environment": {
+    "RUSTOK_SHIPPING_PARITY_TENANT_HEADER": "X-Tenant-ID",
+    "RUSTOK_SHIPPING_PARITY_LOCALE": "en",
+    "RUSTOK_SHIPPING_PARITY_CURRENCY_CODE": "",
+    "RUSTOK_SHIPPING_PARITY_REGION_ID": "",
+    "RUSTOK_SHIPPING_PARITY_COUNTRY_CODE": "",
+    "RUSTOK_SHIPPING_PARITY_ADMIN_ACTIVE": "",
+    "RUSTOK_SHIPPING_PARITY_ADMIN_PROVIDER_ID": "",
+    "RUSTOK_SHIPPING_PARITY_ADMIN_SEARCH": "",
+    "RUSTOK_SHIPPING_PARITY_PAGE": "1",
+    "RUSTOK_SHIPPING_PARITY_PER_PAGE": "100",
+    "RUSTOK_SHIPPING_PARITY_TIMEOUT_MS": "10000"
+  },
+  "request_policy": {
+    "graphql_method": "POST",
+    "rest_method": "GET",
+    "graphql_mounted_path": "/api/graphql",
+    "storefront_rest_path": "/store/shipping-options",
+    "admin_rest_path": "/admin/shipping-options",
+    "admin_detail_path_template": "/admin/shipping-options/{shipping_option_id}",
+    "maximum_response_bytes": 1048576,
+    "allow_http_for_local_capture": true,
+    "forbid_url_credentials_query_and_fragment": true
+  },
+  "scenarios": [
+    {
+      "id": "storefront_active_list_projection_parity",
+      "graphql_field": "storefrontShippingOptions",
+      "rest_path": "/store/shipping-options",
+      "assertions": [
+        "both transports succeed",
+        "all storefront results are active",
+        "normalized option projections are identical in order"
+      ]
+    },
+    {
+      "id": "admin_lookup_projection_parity",
+      "graphql_field": "shippingOption",
+      "rest_path": "/admin/shipping-options/{detail_id}",
+      "assertions": [
+        "both transports succeed",
+        "normalized option projections are identical"
+      ]
+    },
+    {
+      "id": "admin_list_projection_parity",
+      "graphql_field": "shippingOptions",
+      "rest_path": "/admin/shipping-options",
+      "assertions": [
+        "both transports succeed",
+        "normalized filtered projections are identical in order",
+        "pagination total, page and per-page are identical"
+      ]
+    },
+    {
+      "id": "optional_not_found_transport_policy",
+      "graphql_field": "shippingOption",
+      "rest_path": "/admin/shipping-options/{missing_id}",
+      "assertions": [
+        "GraphQL returns null without errors",
+        "REST returns 404 commerce_admin_not_found"
+      ]
+    }
+  ],
+  "retained_boundary": {
+    "bearer_token_retained": false,
+    "raw_response_bodies_retained": false,
+    "shipping_option_metadata_retained": false,
+    "normalized_projection_hashes_retained": true,
+    "source_hashes_retained": true,
+    "urls_retained_without_credentials_query_or_fragment": true,
+    "transport_projection_parity_requires_successful_capture": true,
+    "runtime_context_failure_restart_and_remote_adapter_evidence_separate": true
+  }
+}
