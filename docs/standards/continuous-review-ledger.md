@@ -4390,7 +4390,7 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 ### FS-22.06.100 Assessment — `rustok-fulfillment/src/checkout_execution.rs` exact checkout fulfillment-set replay/concurrency boundary
 
-- **Base:** `2bcd09124d8fc7ab1aee1090f3bbc36d74e769a4`; direct integration on refreshed `main`.
+- **Base:** `2bcd09124d8fc7ab1aee1090f3bbc36d74e769a4`; integrated through `192f320eda74bfb03a86ec2667e0eb91d21ed37a` plus the verifier correction commit.
 - **Primary scope:** one Fulfillment owner boundary — aggregate create/adopt semantics for one immutable checkout operation after the operation-level typed identity anchor.
 - **Confirmed finding FULFILLMENT-22.06.100-01:** the previous owner implementation performed identity adoption one index at a time. The request validator enforced a dense request, but `ensure_checkout_fulfillments` did not compare the persisted child-index set with the immutable request set. A same-operation request could therefore expand an existing set (for example `0,1` followed by `0,1,2`) while keeping the same order/customer/plan hash; an empty request could also return successfully without observing an existing set. Concurrent callers with different cardinalities could interleave per-index transactions and produce a poisoned aggregate.
 - **Production remediation:** added owner-owned `FulfillmentService::ensure_checkout_fulfillment_set`. The operation anchor is locked with `FOR UPDATE` semantics for the duration of one transaction; existing child identities are inspected under the same transaction, child order/customer/plan identity is reconciled with the anchor, any persisted index outside the requested set is rejected, and only missing requested indices are inserted before one commit. The checkout port now builds all inputs first and delegates the complete set to that owner transaction instead of running per-index create/adopt operations.
@@ -4399,6 +4399,7 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Regression coverage:** added a focused unit case for duplicate cart-line identity rejection; exact-set and contention behavior remains a migrated-database/concurrency evidence gate because the current runtime has no Rust toolchain or database execution environment.
 - **Documentation/contract:** updated the Fulfillment README, implementation plan, machine-readable checkout contract, and typed-identity verifier.
 - **Verification:** the active agent runtime has no `cargo`, `rustc`, or repository checkout, so scoped Cargo tests/gatekeeper execution cannot be performed and no compile/runtime result is claimed. Repository-level evidence remains maintainer/CI-owned for compile, migrated DB, process-exit, restart, and contention.
-- **Status:** `FS-22.06.100` implementation ready for integration on `main`; runtime verification remains open.
+- **Post-merge verification:** re-read the integrated `main` diff and confirmed the owner method is present, the checkout adapter calls only the aggregate ensure path, the operation anchor is locked, the exact-set guard is documented, and the verifier no longer expects retired per-index markers.
+- **Status:** `FS-22.06.100` complete and integrated on `main`; compile/runtime verification remains open.
 - **Next primary module iteration:** refresh the integrated `main` and continue the next concrete Fulfillment checkout replay boundary.
 
