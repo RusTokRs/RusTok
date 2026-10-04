@@ -106,6 +106,12 @@ const selectBody = functionBodyAfter(
   "select_shipping_option",
 );
 for (const marker of [
+  "if !option.active",
+  '"fulfillment.shipping_option_inactive"',
+  "PortErrorKind::Conflict",
+  '"shipping option is not active"',
+]) requireText(selectBody, marker, `${paths.owner}: inactive-option guard`);
+for (const marker of [
   'parse_port_tenant_id(&context, "select_shipping_option")?',
   ".get_shipping_option(",
   "ShippingOptionProjection::from_response(option)",
