@@ -188,6 +188,7 @@ if (
       ": shipping-option validation must execute before update_storefront_context",
   );
 }
+assertContains(commerceCheckoutRuntime, "selected_shipping_option_id.is_none()", commerceCheckoutRuntimePath + ": native selection must preserve clearing selections without owner validation lookup");
 assertContains(commerceCheckoutRuntime, "validate_storefront_shipping_option_selection(", commerceCheckoutRuntimePath + ": native selection must validate shipping options before cart mutation");
 assertContains(commerceCheckoutRuntime, ".update_storefront_context(", commerceCheckoutRuntimePath + ": native selection must retain cart context mutation");
 assertContains(commerceShippingPolicy, "pub(crate) async fn validate_storefront_shipping_option_selection(", commerceShippingPolicyPath + ": shared shipping-selection policy must exist");
