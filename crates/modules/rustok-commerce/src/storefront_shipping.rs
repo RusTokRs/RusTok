@@ -5,9 +5,11 @@ use uuid::Uuid;
 
 use crate::{
     CommerceResult,
-    dto::{CartResponse, CartShippingOptionSummary, CartShippingSelectionInput, ShippingOptionResponse},
+    dto::{
+        CartResponse, CartShippingOptionSummary, CartShippingSelectionInput, ShippingOptionResponse,
+    },
 };
-use rustok_api::PortContext;
+use rustok_api::{PortContext, PortError};
 use rustok_fulfillment::{
     FulfillmentError, FulfillmentResult, FulfillmentService, ReadShippingOptionProjectionRequest,
     ShippingOptionReadPort,
@@ -81,7 +83,6 @@ pub fn effective_shipping_profile_slug(
         })
 }
 
-#[derive(Clone)]
 pub(crate) enum StorefrontShippingSelectionValidationError {
     MissingDeliveryGroup {
         shipping_option_id: Uuid,
@@ -90,7 +91,7 @@ pub(crate) enum StorefrontShippingSelectionValidationError {
     },
     Owner {
         shipping_option_id: Uuid,
-        error: rustok_api::PortError,
+        error: PortError,
     },
     Inactive {
         shipping_option_id: Uuid,
