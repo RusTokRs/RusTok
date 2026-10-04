@@ -18,6 +18,8 @@ const paths = {
   plan: "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
   evidence:
     "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json",
+  nativeClient:
+    "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
   review:
     "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json",
 };
@@ -26,6 +28,7 @@ const owner = read(paths.owner);
 const errorSource = read(paths.error);
 const doc = read(paths.doc);
 const plan = read(paths.plan);
+const nativeClient = read(paths.nativeClient);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 
@@ -133,6 +136,50 @@ if (!selectOrder.every((value, index) => value >= 0 && (index === 0 || selectOrd
   failures.push(`${paths.owner}: select admission/delegation order changed`);
 }
 
+for (const [content, value, label] of [
+  [
+    nativeClient,
+    "return ShippingSelectionTransportError::Validation(message.clone());",
+    paths.nativeClient + ": preserve validation messages",
+  ],
+  [
+    nativeClient,
+    "ShippingSelectionTransportError::ServerFn(",
+    paths.nativeClient + ": stable transport failure envelope",
+  ],
+  [
+    nativeClient,
+    "pub(super) fn map_error(",
+    paths.nativeClient + ": map_error",
+  ],
+  [
+    nativeClient,
+    "error_kind,",
+    paths.nativeClient + ": bounded error kind",
+  ],
+  [
+    nativeClient,
+    "raw_message_present",
+    paths.nativeClient + ": raw message presence shape",
+  ],
+  [
+    nativeClient,
+    "raw_message_length",
+    paths.nativeClient + ": raw message length",
+  ],
+  [
+    nativeClient,
+    "FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE",
+    paths.nativeClient + ": stable public message",
+  ],
+]) requireText(content, value, label);
+
+for (const forbidden of [
+  "raw_error = ?error",
+  "error = ?error",
+  "message = %message",
+]) forbidText(nativeClient, forbidden, paths.nativeClient + ": raw transport error payload");
+
 for (const marker of [
   "struct FulfillmentPortContextFacts",
   "struct FulfillmentOwnerErrorFacts",
@@ -196,6 +243,17 @@ for (const forbidden of [
   "to = %to",
   "tenant_id = %context.tenant_id",
 ]) forbidText(mapper, forbidden, `${paths.owner}: complete owner payload`);
+
+for (const [key, expected] of Object.entries({
+  native_client_diagnostic_redaction_closed: true,
+  native_client_raw_error_payload_logged: false,
+  native_client_error_shape_logged: true,
+  native_client_validation_message_preserved: true,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(paths.evidence + ": source_contract." + key + " must be " + expected);
+  }
+}
 
 for (const [key, expected] of Object.entries({
   shared_storefront_selection_policy_present: true,
