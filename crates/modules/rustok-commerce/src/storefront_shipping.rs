@@ -591,6 +591,25 @@ mod tests {
     }
 
     #[test]
+    fn selection_validation_error_debug_is_redacted() {
+        let error = StorefrontShippingSelectionValidationError::Owner {
+            shipping_option_id: Uuid::new_v4(),
+            error: PortError::validation(
+                "fulfillment.internal_validation",
+                "internal owner detail must stay diagnostic-only",
+            ),
+        };
+
+        let debug = format!("{error:?}");
+        assert_eq!(
+            debug,
+            "StorefrontShippingSelectionValidationError { kind: \"owner\" }"
+        );
+        assert!(!debug.contains("fulfillment.internal_validation"));
+        assert!(!debug.contains("internal owner detail"));
+    }
+
+    #[test]
     fn effective_shipping_profile_prefers_variant_then_product_then_default() {
         let product_metadata = serde_json::json!({
             "shipping_profile": { "slug": "bulky" }
