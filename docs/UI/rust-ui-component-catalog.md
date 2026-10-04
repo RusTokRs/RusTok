@@ -33,31 +33,68 @@ App-local complex components remain inside specific host applications and are no
 ## Shared Design Contract
 
 - All host applications use a unified theming contract based on shared tokens and shadcn-compatible CSS variables.
-- Leptos and Next.js components must maintain parity in purpose, visual result, and basic API, but are not required to have a literal one-to-one implementation.
+- Rust adapters must maintain functional parity with the corresponding components used by `apps/next-admin`, including their meaningful props, controlled/uncontrolled state, accessibility semantics, and user interactions. Matching purpose, visuals, or only the basic props is not sufficient.
+- The Rust API may use framework-idiomatic types and composition rather than copying React/Radix signatures verbatim, but every user-facing capability in the Next wrapper must have an equivalent, documented Rust path or be recorded as an explicit parity gap.
 - Shared UI packages remain a presentational layer and do not own transport, auth, routing, or domain behavior.
 
-## Shared Primitives: `crates/ui/rustok-ui/leptos` ↔ `UI/next/components`
+## Functional Reference: Leptos ↔ `apps/next-admin`
 
-Current set of components with an explicit shared surface:
+Components with an explicit shared surface. Historical `parity` labels are not
+acceptance evidence: functional parity means the actual exposed props, state
+transitions, accessibility behavior, and interactions have been compared and
+covered. Components not yet given that feature audit remain provisional.
 
 | Primitive | Leptos | Next.js | Status |
 |-----------|--------|---------|--------|
-| Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | app-local / shadcn path | Leptos canonical |
-| Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `UI/next/components/Badge.tsx` | parity |
-| Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `UI/next/components/Button.tsx` | parity |
-| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `UI/next/components/Checkbox.tsx` | parity |
-| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `UI/next/components/Input.tsx` | parity |
-| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `UI/next/components/Select.tsx` | parity |
-| Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `UI/next/components/Spinner.tsx` | parity |
-| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `UI/next/components/Switch.tsx` | parity |
-| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `UI/next/components/Textarea.tsx` | parity |
-| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `UI/next/components/Avatar.tsx` | parity |
-| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `UI/next/components/Skeleton.tsx` | parity |
-| Card / Tabs / Dialog / Label / Separator | `crates/ui/rustok-ui/leptos/src/{card,tabs,dialog,label,separator}.rs` | app-local / shadcn path | Leptos canonical |
+| Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | `apps/next-admin/src/shared/ui/shadcn/alert.tsx` | functional audit pending |
+| Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `apps/next-admin/src/shared/ui/shadcn/badge.tsx` | functional audit pending |
+| Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `apps/next-admin/src/shared/ui/shadcn/button.tsx` | functional audit pending |
+| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `apps/next-admin/src/shared/ui/shadcn/checkbox.tsx` | functional audit pending |
+| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `apps/next-admin/src/shared/ui/shadcn/input.tsx` | functional audit pending |
+| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | functional audit pending |
+| Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `apps/next-admin/src/shared/ui/icons.tsx` (spinner icon only) | no shared component counterpart identified |
+| Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | range/orientation/ARIA behavior implemented; generic DOM-prop forwarding and validation pending |
+| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | functional audit pending |
+| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | functional audit pending |
+| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | functional audit pending |
+| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | functional audit pending |
+| Dialog | `crates/ui/rustok-ui/leptos/src/dialog.rs` | `apps/next-admin/src/shared/ui/shadcn/dialog.tsx` (`@radix-ui/react-dialog`) | feature parity in progress; see current gaps below |
+| Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | functional audit pending |
+| Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | functional audit pending |
+| Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | functional audit pending |
+| Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | functional audit pending |
 
-`crates/ui/rustok-ui/leptos/src/lib.rs` and `UI/next/components/index.ts` are the entry
-points for this shared primitive layer. The legacy `UI/leptos/src/*` implementations
-remain available through the `iu-leptos` workspace crate only.
+`crates/ui/rustok-ui/leptos/src/lib.rs` and
+`apps/next-admin/src/shared/ui/shadcn/index.ts` are the component entry points being
+compared. `UI/next/components/*` is a separate legacy Next component set;
+`UI/leptos/src/*` remains available through the `iu-leptos` workspace crate.
+
+### Dialog feature-parity checklist
+
+The Next reference is a shadcn wrapper around Radix Dialog, not a single styled
+`<div>`. The Leptos adapter now exposes `Dialog`, `DialogTrigger`, `DialogPortal`,
+`DialogClose`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogFooter`,
+`DialogTitle`, and `DialogDescription`; it supports controlled/uncontrolled open
+state, modal/non-modal content, a body portal, Escape/backdrop/close-button
+closure, focus on open, modal Tab trapping, and trigger focus restoration.
+Accessible name/description references are explicit through `aria_label`,
+`aria_labelledby`, `aria_describedby`, and IDs on title/description. Set
+`DialogTrigger aria_controls` manually to match `DialogContent id`.
+
+This is **not yet declared full parity**: Radix's `asChild` slot behavior,
+background isolation/inertness, full outside-interaction semantics
+(especially non-modal dialogs), Radix-managed IDs, and mount/exit
+animation lifecycle still need equivalent implementations and browser-level
+verification. Keep the status as in progress until those gaps are implemented or
+explicitly resolved and tested against the Next wrapper. The Dioxus `Dialog`
+adapter remains a single host-managed wrapper and is also a known parity gap; the
+Leptos adapter is the web path being aligned with `apps/next-admin` here.
+
+Progress work currently covers the wrapper's value/max range, orientation, ARIA
+naming and text, state/data attributes, and normalized visual percentage;
+generic DOM-prop forwarding and runtime validation are still pending. Keep
+shared component status evidence-based: do not mark a component `parity` solely
+because its base markup or class names match.
 
 ## Leptos-Specific Package Boundary: `crates/ui/leptos-ui`
 

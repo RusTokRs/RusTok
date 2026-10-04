@@ -281,6 +281,7 @@ users-create-creating = Creating...
 users-create-cancel = Cancel
 users-create-errorRequired = Email and password are required.
 modules-title = Modules
+modules-build-progress = Platform build progress
 modules-eyebrow = Platform
 modules-subtitle = Manage platform modules. Core modules are always active and cannot be disabled.
 modules-section-core = Core Modules

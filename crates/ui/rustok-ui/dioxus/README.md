@@ -9,31 +9,35 @@ Dioxus 0.6 design system component adapter for the RusToK platform.
 ## Components
 
 - **Actions & Controls**: `Button`, `Checkbox`, `Switch`, `Input`, `Textarea`, `Select`.
-- **Feedback & Status**: `Alert`, `Badge`, `Spinner`, `Skeleton`.
+- **Feedback & Status**: `Alert`, `Badge`, `Progress`, `Spinner`, `Skeleton`.
 - **Layout & Structure**: `Card`, `Label`, `Separator`, `Tabs`.
 - **Overlays**: `Dialog` (Modal).
 - **Data Display**: `Avatar`.
 
 ## Behaviour notes
 
-- The component surface, class resolvers, and `ui_*` aliases mirror
-  `rustok-ui-leptos` so a host can switch renderers without changing markup
-  decisions.
+- The framework-neutral class resolvers and core contracts are shared with
+  `rustok-ui-leptos`; component APIs are renderer-specific where required, and
+  dialog interaction parity is not yet complete in this adapter.
 - `Checkbox` has no `indeterminate` prop: HTML defines no `indeterminate`
   attribute (it is a DOM property) and `dioxus-html` 0.6 declares no such
   constant, so a tri-state checkbox has to be driven from host JavaScript.
-- `Dialog` closes through the backdrop; keyboard `Escape`/focus management is
-  host-provided in this adapter.
+- `Dialog` closes through the backdrop; provide an accessible name with
+  `aria_label` or `aria_labelledby` and give `DialogTitle` the matching `id`.
+  Keyboard `Escape`/focus management is host-provided in this adapter.
 - `Spinner` exposes an optional `aria_label` (default `Loading`) for localized
   accessible names, and the `value` prop of `Select` is rendered on the
   `<select>` element in addition to per-option selection state.
 - `TabsList` and `Separator` announce their `aria-orientation`.
+- `Progress` defaults `value` to zero and `max` to `100`, supports orientation,
+  `aria_labelledby`, and `aria_value_text`, clamps values to `0..=max`, and uses
+  the normalized value for `aria-valuenow` and the corresponding bar percentage.
 
 ## Usage
 
 ```rust
 use dioxus::prelude::*;
-use rustok_ui_dioxus::{Button, ButtonVariant, Size, Alert, AlertVariant};
+use rustok_ui_dioxus::{Alert, AlertVariant, Button, ButtonVariant, Progress, Size};
 
 #[component]
 pub fn MyDioxusView() -> Element {
@@ -45,6 +49,10 @@ pub fn MyDioxusView() -> Element {
             variant: ButtonVariant::Default,
             size: Size::Md,
             "Submit"
+        }
+        Progress {
+            value: 62.5,
+            aria_label: Some("Upload progress".to_string()),
         }
     }
 }

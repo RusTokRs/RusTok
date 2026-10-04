@@ -8,7 +8,8 @@ Framework-agnostic design system primitives, variants, contracts, and styling re
 
 - Component variants, sizes, and states (`ButtonVariant`, `AlertVariant`, `BadgeVariant`, `CardVariant`, `AvatarSize`, `SkeletonVariant`, `Size`, `SwitchSize`, `Orientation`, `InputType`).
 - Deterministic CSS class generation for Tailwind CSS / shadcn styling.
-- Headless state models and contracts (`SelectOption`, `TabItem`, `DialogState`, `TabsState`, `extract_initials`).
+- Headless state models and contracts (`SelectOption`, `TabItem`, `DialogState`, `TabsState`, `extract_initials`)
+  plus shared progress-percentage normalization.
 - Design system tokens (focus rings, disabled states, elevation, border radiuses, transitions) in `tokens`.
 
 All class resolvers are pure functions: the same input always produces the same
@@ -43,6 +44,11 @@ signature: adapters emit the native `disabled` attribute (styled by the
 `disabled:` utilities inside every resolver), `aria-invalid` for validation
 errors, and `aria-checked` for switches/tabs. That keeps a single class list per
 variant/size combination and avoids class churn on state transitions.
+
+The `Progress` adapters accept an optional value (default `0`) and a maximum
+(default `100`). The core normalization helpers clamp finite values to
+`0..=max`, map non-finite values to zero, and derive the visual percentage from
+the normalized value so the bar and `aria-valuenow` stay consistent.
 
 ## Guarantees
 
