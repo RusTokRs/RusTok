@@ -2,6 +2,8 @@
 
 Status: **source-ready / unvalidated**
 
+The native storefront selection path now shares Commerce shipping-option eligibility validation with the mounted GraphQL selection path and injects the host-selected Fulfillment shipping read port. Inactive shipping options are rejected at both the Commerce selection policy and Fulfillment owner-selection boundary. Runtime parity, restart, and remote-adapter evidence remain unvalidated.
+
 ## Scope
 
 This source slice closes the currently identified payload-diagnostic gap in the
