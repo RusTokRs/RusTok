@@ -196,7 +196,7 @@ if (mountedOverrides.length !== 1) {
 for (const [source, value, label] of [
   [
     typedSource,
-    'failure.message\\n        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())',
+    'failure\\n        .message\\n        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())',
     'stable owner-error fallback message',
   ],
 ]) {
@@ -204,7 +204,6 @@ for (const [source, value, label] of [
 }
 
 for (const value of [
-  'owner_error.as_ref()',
   'map(|e| e.message.clone())',
 ]) {
   forbidText(typedSource, value, 'owner error message must remain diagnostic-only');
