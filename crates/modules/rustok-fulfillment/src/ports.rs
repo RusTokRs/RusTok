@@ -145,6 +145,15 @@ impl ShippingSelectionPort for crate::FulfillmentService {
                 fulfillment_error_to_port_error(&context, "select_shipping_option", error)
             })?;
 
+        if !option.active {
+            return Err(PortError::new(
+                PortErrorKind::Conflict,
+                "fulfillment.shipping_option_inactive",
+                "shipping option is not active",
+                false,
+            ));
+        }
+
         Ok(SelectedShippingOptionSnapshot {
             cart_id: request.cart_id,
             seller_id: request.seller_id,
