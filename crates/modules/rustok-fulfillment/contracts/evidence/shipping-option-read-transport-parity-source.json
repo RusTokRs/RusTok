@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-07-28",
+  "generated_at": "2026-10-04",
   "status": "source_cutover_ready_unvalidated",
-  "source_base_revision": "862291c0f0b8bcf869c444c49c2681c5a36349ca",
+  "source_base_revision": "5d43657c9e5803d69421d7d625b243e41ec89704",
   "scope": "shipping-option projection reads across mounted commerce transports",
   "shared_runtime": {
     "composition": "application_host",
@@ -77,5 +77,16 @@
     "verifiers_run": false,
     "workflow_checks_run": false,
     "ci_run": false
+  },
+  "runtime_capture": {
+    "contract": "crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-execution-contract.json",
+    "runner": "scripts/evidence/capture-shipping-option-read-transport-parity.mjs",
+    "verifier": "scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs",
+    "contract_published": true,
+    "capture_executed": false,
+    "transport_projection_parity_proven": false,
+    "deadline_failure_proven": false,
+    "restart_proven": false,
+    "remote_adapter_proven": false
   }
 }

@@ -133,6 +133,14 @@ resource UUID, and database payloads are not recorded. Read/write admission,
 seller/profile filtering, owner delegation, severity, and public `PortError`
 envelopes are unchanged. `list_seller_shipping_options` is a read operation and therefore requires canonical deadline semantics but not write idempotency; `select_shipping_option` remains the write operation and requires idempotency plus deadline semantics. Shipping-option projection and fulfillment lifecycle
 read diagnostic payloads remain separate open slices.
+The mounted native storefront selection path now reuses the Commerce
+shipping-selection eligibility policy used by GraphQL: it performs a fresh
+Fulfillment owner projection read and validates active state, currency, public
+channel visibility, and shipping-profile compatibility before Cart mutation.
+The native server-function adapter injects the host-selected
+`CommerceShippingOptionReadRuntime`; the owner `ShippingSelectionPort` also
+rejects inactive options as a conflict. This closes the stale-client/native
+selection bypass without moving Commerce channel/profile policy into Fulfillment.
 
 ## Accepted conditional capability cutover
 
@@ -196,6 +204,15 @@ disable/reconciliation matrix in
   severity.
 - [x] Retain focused evidence and broad ecommerce guard coverage without claiming
   compile or runtime validation.
+- [x] Share shipping-option eligibility validation between mounted GraphQL
+  selection and native storefront selection; preserve one Commerce policy for
+  active state, currency, channel visibility, and shipping-profile compatibility.
+- [x] Inject the host-selected shipping-option read runtime into native storefront
+  selection and validate before `update_storefront_context`.
+- [x] Add an owner-level inactive shipping-option conflict guard to
+  `ShippingSelectionPort::select_shipping_option`.
+- [x] Remove raw transport error payloads from native client structured logs while
+  preserving local validation messages and the stable transport failure envelope.
 - [ ] Execute the focused verifier, broad verifier/self-test, fulfillment compile,
   native/GraphQL selection parity, restart, and remote-adapter evidence.
 
@@ -233,6 +250,11 @@ disable/reconciliation matrix in
   validation, enrichment, listing, lookup, and admin list-all.
 - [x] Inject both owner ports through application-host composition and resolver
   scope; keep standalone fallback outside the private facade.
+- [x] Cut mounted GraphQL storefront list plus admin lookup/list-all over
+  the host-selected shipping-option owner runtime; preserve filters, pagination,
+  optional lookup-not-found, tenant binding, and authenticated admin actors.
+- [x] Map mounted GraphQL shipping-option `PortError` values through the typed
+  query error boundary so owner messages remain diagnostic-only.
 - [x] Retain a source inventory that distinguishes complete projection reads from
   seller/cart selection without claiming runtime parity.
 - [x] Add the shared runtime to `CommerceHttpRuntime` and cut REST storefront
@@ -241,8 +263,13 @@ disable/reconciliation matrix in
   inactive-before-filter plus active/currency/provider/search/pagination behavior.
 - [x] Preserve existing REST status/code/message policy through typed
   `PortErrorKind` mapping without owner-message control flow.
+- [x] Keep mounted GraphQL shipping-option owner failures on a stable
+  public message envelope; owner `PortError` messages remain diagnostic-only
+  and never become client response text.
 - [x] Propagate REST tenant, actor, locale, effective channel, correlation, and
   two-second deadline context.
+- [x] Publish the mounted shipping-option projection-parity execution contract,
+  capture runner, fail-closed verifier, and operator runbook.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
@@ -364,6 +391,8 @@ disable/reconciliation matrix in
 - `node scripts/verify/verify-fulfillment-lifecycle-read-failure-contract.mjs`
 - `node scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs`
 - `node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
+- `node scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs`
+- `node scripts/evidence/capture-shipping-option-read-transport-parity.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
 - `node scripts/verify/verify-commerce-storefront-auxiliary-http-error-safety.mjs`

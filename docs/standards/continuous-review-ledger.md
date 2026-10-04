@@ -4424,3 +4424,92 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 
+
+### FS-22.06.103 Assessment — rustok-fulfillment checkout execution empty ensure guard
+
+- Base: 7f6ede4978bda882d852060502902ad460b09757; refreshed integrated main before implementation.
+- Primary scope: one production Fulfillment checkout execution boundary — aggregate ensure admission versus read recovery semantics.
+- Confirmed finding FULFILLMENT-22.06.103-01: the checkout ensure port accepted an empty fulfillment-plan set and could cross into owner persistence even though an empty set is a no-op aggregate and should be represented by skipping the Fulfillment boundary.
+- Production remediation: split ensure validation from read validation; ensure requests now fail closed with `fulfillment.checkout_plan_invalid` before owner mutation when the requested plan set is empty, while checkout read keeps empty expected plans valid for digital-only/no-fulfillment recovery. Commerce skips the Fulfillment write boundary for checkout plans without fulfillment work.
+- Regression coverage: added focused source tests for empty ensure rejection and empty read acceptance; the static checkout owner-boundary verifier now locks the distinction.
+- Status: FS-22.06.103 complete and integrated on main; compile/runtime verification remains open.
+- Next primary module iteration: shipping-option read/selection mounted boundary audit.
+
+### FS-22.06.104 Assessment — Commerce mounted shipping-option GraphQL owner-error boundary
+
+- Base: eaccb135db92b669e436ab4412b03702a241dcb2; fresh main was re-read at 766de039472f2fb8c394f61e4068f5fdc824fb11 immediately before integration.
+- Primary scope: one mounted Commerce GraphQL shipping-option read/selection boundary — owner `PortError` to public GraphQL error mapping.
+- Confirmed finding FULFILLMENT-22.06.104-01: `ShippingOptionFailure` retained the owner `PortError`, but `shipping_option_graphql_error` used `owner_error.message` as response text whenever no local message existed. This allowed owner-controlled internal diagnostics to cross the public GraphQL boundary and contradicted the documented stable/redacted envelope.
+- Verification finding FULFILLMENT-22.06.104-02: the focused GraphQL shipping-option verifier used a stale public-envelope source marker and did not guard the owner-message mapping, so the intended boundary assertion was ineffective against this defect.
+- Production remediation: owner failures now fall back to the stable public message `Selected shipping option is invalid`; owner messages remain diagnostic-only. Added a regression test that invokes the production mapper and asserts the internal owner detail is absent from the GraphQL response.
+- Verification remediation: aligned the focused verifier with the current `public_graphql_error(message)` signature, required the stable owner-error fallback, and explicitly forbade the owner-message mapping expression.
+- Integration: merged as squash commit `675605858308ccaebf40789ddf9465ba069440c9` via PR #4490 after a fresh-main overlap check.
+- Status: FS-22.06.104 complete and integrated on main; compile/runtime verification remains open and user-owned test execution is still outstanding.
+- Next primary module iteration: continue the mounted shipping-option transport parity/recovery audit without widening into unrelated modules.
+
+
+### FS-22.06.105 Assessment — mounted Commerce shipping-option GraphQL projection reads
+
+- Base: 2a3adefc1b01588979d430a7b132f81c733caa03; fresh integrated main was re-read immediately before implementation.
+- Primary scope: one production Commerce GraphQL query boundary covering storefront shipping-option list plus authenticated admin shipping-option lookup and list-all.
+- Confirmed finding FULFILLMENT-22.06.105-01: mounted `CommerceQuery` still constructed `FulfillmentService` directly for all three shipping-option projection reads despite the owner port/runtime already being composed for REST and GraphQL compatibility consumers. This made the documented shipping-option source cutover incomplete and bypassed the host-selected owner adapter.
+- Confirmed finding FULFILLMENT-22.06.105-02: storefront accepted an optional `tenant_id` without binding it to `TenantContext`; admin lookup/list-all likewise trusted their caller-supplied tenant UUID. The same query boundary therefore lacked an explicit tenant binding despite owner storage being tenant-scoped.
+- Confirmed finding FULFILLMENT-22.06.105-03: direct owner errors were converted through dynamic GraphQL error paths, allowing owner messages to cross the query boundary instead of using the stable typed public envelope.
+- Production remediation: storefront list, admin lookup, and admin list-all now use the host-selected `CommerceShippingOptionReadRuntime` and the canonical `ShippingOptionReadPort` / `ShippingOptionAdminReadPort`; requested tenant IDs are bound to the current tenant; inconsistent authenticated storefront actors are rejected; admin owner contexts carry the authenticated user actor, request channel, effective locale, correlation identity and two-second deadline; all owner failures map through a dedicated typed/redacted `ShippingOptionGraphqlMessage` boundary.
+- Regression/guard remediation: the mounted shipping-option transport verifier now isolates all three GraphQL operations, requires tenant binding/runtime/owner operations, requires the shared two-second context helper, and forbids direct `FulfillmentService` construction or owner dynamic-error conversion in these blocks. The query error boundary has a focused redaction test.
+- Integration: production source cutover merged as squash commit `5d43657c9e5803d69421d7d625b243e41ec89704` via PR #4491; post-merge verifier/evidence cleanup was reviewed on top of that merge and is included in this maintenance change.
+- Status: FS-22.06.105 source remediation complete; compile, mounted GraphQL/REST parity execution, deadline/failure runtime evidence, restart, and remote-adapter evidence remain open.
+- Next primary module iteration: execute/inspect the mounted shipping-option parity contract where tooling permits; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.
+
+### FS-22.06.106 Assessment — mounted shipping-option GraphQL/REST parity evidence tooling
+
+- Base: f0815df16d8612c2ca8097e5905fd3823c597f0d; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment evidence boundary — executable parity capture for mounted shipping-option GraphQL and REST projections.
+- Confirmed finding FULFILLMENT-22.06.106-01: source cutover was complete, but the repository had no dedicated executable capture contract/runner/verifier for the three mounted shipping-option projection reads plus optional-not-found behavior. The existing source inventory therefore could not produce immutable transport-parity evidence without ad-hoc tooling.
+- Production/evidence remediation: added a locked execution contract, fail-closed capture runner, dedicated verifier, and operator runbook. The runner compares storefront active-list, admin lookup, admin list-all and optional-not-found behavior; normalizes timestamps/translation arrays; retains hashes and bounded request facts; and excludes bearer tokens, raw response bodies and shipping-option metadata.
+- Non-promotion boundary: capture packets may prove only `transport_projection_parity_proven=true`. `runtime_parity_proven` remains false, while deadline/failure injection, process restart, external adapter identity, and remote adapter behavior remain separate evidence gates.
+- Source evidence now links the execution contract/runner/verifier and remains explicitly unvalidated until the capture is executed against real mounted endpoints.
+- Integration: squash-merged as `ccc34abe3d5b872c7bb293e98a4297b70e32126d` via PR #4493.
+- Status: FS-22.06.106 source/evidence tooling complete and integrated; compile, runtime capture, parity execution, failure/deadline injection, restart, and remote-adapter evidence remain open and are not claimed.
+- Next primary module iteration: execute the shipping-option parity capture when mounted endpoints and a valid token/fixtures are available; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.
+
+### FS-22.06.107 Assessment — ShippingSelectionPort idempotency/FBA contract drift
+
+- Base: bd2fa0b2792db2785bc5e0508dfd1735a428de2e; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment owner boundary — mixed `ShippingSelectionPort` read/write context semantics and its FBA registry contract.
+- Confirmed finding FULFILLMENT-22.06.107-01: `select_shipping_option` is implemented under `PortCallPolicy::write()`, and the shared `PortContext` write policy requires both a non-empty idempotency key and a deadline, while `fulfillment-fba-registry.json` declared `idempotency_required: false`. The registry therefore under-described the actual write contract.
+- Confirmed finding FULFILLMENT-22.06.107-02: the mixed-port registry did not explicitly declare `list_seller_shipping_options` as a read operation. The canonical FBA verifier already supports `read_operations` for this mixed-port shape, so the source contract was missing the declaration needed to express its actual semantics.
+- Confirmed finding FULFILLMENT-22.06.107-03: the FBA and shipping-selection diagnostic verifiers required the lower-level `require_write_semantics()` marker even though the canonical `require_policy(PortCallPolicy::write())` already expands to the same deadline + idempotency checks. This made the verifier stricter than the shared API contract and could reject a correct implementation.
+- Remediation: set `idempotency_required=true`, declare `read_operations=["list_seller_shipping_options"]`, and update both verifiers to accept the canonical shared write-policy admission without adding redundant production checks.
+- Production runtime behavior was intentionally unchanged because it already enforced the stricter correct policy.
+- Integration: squash-merged as `fafd31644fd0191a4eaa891cf1783c15f8244740` via PR #4494.
+- Status: FS-22.06.107 source/contract remediation complete and integrated; compile/runtime/FBA execution evidence remains unvalidated and is not claimed.
+- Next primary module iteration: continue the single Fulfillment owner-boundary audit, then execute the locked runtime evidence when the mounted environment becomes available.
+
+### FS-22.06.108 Assessment — native storefront shipping-selection policy parity
+
+- Base: 637ddfbfc3bcd8d0bbacd7e0b60b15c59053c9dd; fresh main was re-read before implementation.
+- Primary scope: one production Fulfillment/Commerce storefront boundary — native Leptos shipping selection versus the already-validated GraphQL selection path.
+- Confirmed finding FULFILLMENT-22.06.108-01: the mounted native storefront selection path called Cart `update_storefront_context` without first validating the selected shipping option against the current Fulfillment owner projection. This allowed stale/inactive/wrong-currency/wrong-channel/wrong-profile selections to cross the cart mutation boundary.
+- Confirmed finding FULFILLMENT-22.06.108-02: the Fulfillment `ShippingSelectionPort::select_shipping_option` read path could return an inactive shipping option because it used `get_shipping_option` without an active-state guard.
+- Confirmed finding FULFILLMENT-22.06.108-03: mounted GraphQL selection validation constructed the in-process shipping-option read port directly instead of using the resolver-scoped host-selected runtime.
+- Confirmed finding FULFILLMENT-22.06.108-04: native selection initially also sent selection records with `selected_shipping_option_id = None` through the new validator, while GraphQL intentionally treats such records as clearing/unselected entries.
+- Remediation: introduced one Commerce-owned `validate_storefront_shipping_option_selection` policy used by GraphQL and native selection; native checkout now receives the host-selected `CommerceShippingOptionReadRuntime`, validates a fresh owner projection before Cart mutation, skips unselected records, and Fulfillment rejects inactive owner selections as a non-retryable conflict.
+- Diagnostic hardening: the shared selection validation error has a redacted `Debug` representation; GraphQL maps the typed shared outcome into its existing stable envelope.
+- Verification: JS verifier sources were parser-checked without execution; focused/broad runtime and Cargo verification remain open because `cargo`, `rustc`, and `rustfmt` are unavailable in the active environment.
+- Integration: source remediation was squash-merged as `6115195e92acaa6ab5804129b152674bccd22483` via PR #4496.
+- Status: FS-22.06.108 complete and integrated; native/GraphQL runtime parity, failure/deadline injection, restart, and remote-adapter evidence remain open and unvalidated.
+- Next primary module iteration: audit the native storefront shipping-selection error mapping itself so business validation/conflict errors do not collapse into the generic temporary-unavailable transport response.
+
+
+### FS-22.06.109 Assessment — native shipping-selection client diagnostic redaction
+
+- Base: 648f00ea6d667e735faffe98ac5ad5dce13e85d7; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment storefront transport boundary — native client error mapping for shipping selection.
+- Confirmed finding FULFILLMENT-22.06.109-01: `NativeClientErrorContext::map_error` logged the complete `ShippingSelectionTransportError` through `raw_error = ?error`. GraphQL and ServerFn variants contain raw remote/server messages, so the structured log path could retain internal transport details.
+- Remediation: GraphQL/ServerFn failures now log only static error variant plus raw-message presence/length and return the stable generic transport message. Local Validation messages remain preserved for the caller because they are part of the request-builder validation contract.
+- Regression coverage: added a focused unit test proving raw GraphQL transport detail cannot reach the returned native transport error.
+- Verification: updated the shipping-selection diagnostic verifier and machine evidence with the native-client redaction contract. JS verifier was parser-checked without execution; Rust/Cargo/runtime verification remains open.
+- Integration: squash-merged as `b6b0860653caa68d30b569ffdaa04517fc412741` via PR #4497.
+- Status: FS-22.06.109 complete and integrated; compile/runtime, restart, and remote-adapter evidence remain unvalidated.
+- Next primary module iteration: continue the next single Fulfillment storefront owner boundary audit.

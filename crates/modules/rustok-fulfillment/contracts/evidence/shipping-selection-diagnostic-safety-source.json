@@ -9,7 +9,11 @@
     ],
     "documentation": "crates/modules/rustok-fulfillment/docs/shipping-selection-diagnostic-safety.md",
     "focused_verifier": "scripts/verify/verify-fulfillment-shipping-selection-diagnostic-safety.mjs",
-    "broad_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs"
+    "broad_verifier": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+    "commerce_selection_policy_source": "crates/modules/rustok-commerce/src/storefront_shipping.rs",
+    "native_selection_runtime_source": "crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs",
+    "native_selection_server_adapter": "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/server_functions.rs",
+    "native_client_error_safety_source": "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs"
   },
   "source_contract": {
     "owner_error_variant_count": 5,
@@ -55,7 +59,19 @@
     "public_retryability_changed": false,
     "shipping_option_read_diagnostic_cleanup_closed": false,
     "fulfillment_lifecycle_read_diagnostic_cleanup_closed": false,
-    "broad_ecommerce_cleanup_closed": false
+    "broad_ecommerce_cleanup_closed": false,
+    "shared_storefront_selection_policy_present": true,
+    "shared_selection_active_state_enforced": true,
+    "shared_selection_currency_enforced": true,
+    "shared_selection_channel_enforced": true,
+    "shared_selection_profile_compatibility_enforced": true,
+    "native_selection_uses_host_selected_shipping_read_port": true,
+    "native_selection_validates_before_cart_mutation": true,
+    "owner_inactive_selection_rejected": true,
+    "native_client_diagnostic_redaction_closed": true,
+    "native_client_raw_error_payload_logged": false,
+    "native_client_error_shape_logged": true,
+    "native_client_validation_message_preserved": true
   },
   "validation": {
     "tests_run": false,
@@ -73,6 +89,11 @@
     "The shipping-selection owner records only static FulfillmentError variant and aggregate text, UUID, and opaque-payload shape.",
     "Tenant UUID parse rejection records a static failure flag and bounded PortContext shape without parser or raw tenant payload.",
     "The exact public PortError code, message, kind, retryability, operation ordering, and owner delegation remain unchanged.",
-    "Shipping-option projection reads, fulfillment lifecycle reads, remaining ecommerce owners/adapters, and runtime evidence remain open."
+    "Shipping-option projection reads, fulfillment lifecycle reads, remaining ecommerce owners/adapters, and runtime evidence remain open.",
+    "The mounted native storefront selection path now reuses the Commerce storefront shipping-selection eligibility policy and the host-selected Fulfillment shipping read port before Cart mutation.",
+    "Selection policy rejects inactive options, currency mismatches, public-channel-incompatible options, and shipping-profile-incompatible options from a fresh owner projection.",
+    "The owner ShippingSelectionPort also rejects inactive shipping options as a non-retryable conflict; runtime and cross-transport execution evidence remain unvalidated.",
+    "Native client transport error mapping no longer logs raw GraphQL/ServerFn error payloads; it retains only error variant and bounded message presence/length.",
+    "Client-side Validation messages are preserved unchanged because they originate from the local request-builder validation contract; transport/ServerFn failures retain the stable generic public message."
   ]
 }

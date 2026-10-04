@@ -135,10 +135,17 @@ async fn storefront_fulfillment_select_shipping_option_native(
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
-        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            runtime_ctx.db_clone(),
-            event_bus,
-        );
+        let shipping_option_read_runtime = runtime_ctx
+            .shared_get::<rustok_commerce::graphql_runtime::CommerceShippingOptionReadRuntime>()
+            .ok_or_else(|| {
+                map_runtime_dependency_error("CommerceShippingOptionReadRuntime")
+            })?;
+        let runtime =
+            storefront_checkout_runtime::StorefrontCheckoutRuntime::with_shipping_option_read_port(
+                runtime_ctx.db_clone(),
+                event_bus,
+                shipping_option_read_runtime.shipping_option_read_port(),
+            );
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(map_tenant_context_error)?;

@@ -18,6 +18,8 @@ const paths = {
   plan: "crates/modules/rustok-fulfillment/docs/implementation-plan.md",
   evidence:
     "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source.json",
+  nativeClient:
+    "crates/modules/rustok-fulfillment/storefront/src/transport/native_server_adapter/native_client_error_safety.rs",
   review:
     "crates/modules/rustok-fulfillment/contracts/evidence/shipping-selection-diagnostic-safety-source-review.json",
 };
@@ -26,6 +28,7 @@ const owner = read(paths.owner);
 const errorSource = read(paths.error);
 const doc = read(paths.doc);
 const plan = read(paths.plan);
+const nativeClient = read(paths.nativeClient);
 const evidence = JSON.parse(read(paths.evidence));
 const review = JSON.parse(read(paths.review));
 
@@ -106,21 +109,76 @@ const selectBody = functionBodyAfter(
   "select_shipping_option",
 );
 for (const marker of [
-  "context.require_policy(PortCallPolicy::write())?",
-  "context.require_write_semantics()?",
+  "if !option.active",
+  '"fulfillment.shipping_option_inactive"',
+  "PortErrorKind::Conflict",
+  '"shipping option is not active"',
+]) requireText(selectBody, marker, `${paths.owner}: inactive-option guard`);
+for (const marker of [
   'parse_port_tenant_id(&context, "select_shipping_option")?',
   ".get_shipping_option(",
   "ShippingOptionProjection::from_response(option)",
 ]) requireText(selectBody, marker, `${paths.owner}: select flow`);
-const selectOrder = [
+
+const selectWriteAdmission = [
   "context.require_policy(PortCallPolicy::write())?",
   "context.require_write_semantics()?",
+].find((marker) => selectBody.includes(marker));
+if (!selectWriteAdmission) {
+  failures.push(`${paths.owner}: select flow must enforce write idempotency/deadline semantics`);
+}
+const selectOrder = [
+  selectWriteAdmission,
   "parse_port_tenant_id(",
   ".get_shipping_option(",
-].map((marker) => selectBody.indexOf(marker));
+].map((marker) => marker === undefined ? -1 : selectBody.indexOf(marker));
 if (!selectOrder.every((value, index) => value >= 0 && (index === 0 || selectOrder[index - 1] < value))) {
   failures.push(`${paths.owner}: select admission/delegation order changed`);
 }
+
+for (const [content, value, label] of [
+  [
+    nativeClient,
+    "return ShippingSelectionTransportError::Validation(message.clone());",
+    paths.nativeClient + ": preserve validation messages",
+  ],
+  [
+    nativeClient,
+    "ShippingSelectionTransportError::ServerFn(",
+    paths.nativeClient + ": stable transport failure envelope",
+  ],
+  [
+    nativeClient,
+    "pub(super) fn map_error(",
+    paths.nativeClient + ": map_error",
+  ],
+  [
+    nativeClient,
+    "error_kind,",
+    paths.nativeClient + ": bounded error kind",
+  ],
+  [
+    nativeClient,
+    "raw_message_present",
+    paths.nativeClient + ": raw message presence shape",
+  ],
+  [
+    nativeClient,
+    "raw_message_length",
+    paths.nativeClient + ": raw message length",
+  ],
+  [
+    nativeClient,
+    "FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE",
+    paths.nativeClient + ": stable public message",
+  ],
+]) requireText(content, value, label);
+
+for (const forbidden of [
+  "raw_error = ?error",
+  "error = ?error",
+  "message = %message",
+]) forbidText(nativeClient, forbidden, paths.nativeClient + ": raw transport error payload");
 
 for (const marker of [
   "struct FulfillmentPortContextFacts",
@@ -185,6 +243,32 @@ for (const forbidden of [
   "to = %to",
   "tenant_id = %context.tenant_id",
 ]) forbidText(mapper, forbidden, `${paths.owner}: complete owner payload`);
+
+for (const [key, expected] of Object.entries({
+  native_client_diagnostic_redaction_closed: true,
+  native_client_raw_error_payload_logged: false,
+  native_client_error_shape_logged: true,
+  native_client_validation_message_preserved: true,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(paths.evidence + ": source_contract." + key + " must be " + expected);
+  }
+}
+
+for (const [key, expected] of Object.entries({
+  shared_storefront_selection_policy_present: true,
+  shared_selection_active_state_enforced: true,
+  shared_selection_currency_enforced: true,
+  shared_selection_channel_enforced: true,
+  shared_selection_profile_compatibility_enforced: true,
+  native_selection_uses_host_selected_shipping_read_port: true,
+  native_selection_validates_before_cart_mutation: true,
+  owner_inactive_selection_rejected: true,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(paths.evidence + ": source_contract." + key + " must be " + expected);
+  }
+}
 
 for (const [key, expected] of Object.entries({
   complete_fulfillment_error_logged: false,

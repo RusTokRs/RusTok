@@ -12,6 +12,7 @@
 - Prepare a stable shipping boundary for checkout orchestration.
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
 - Provide a built-in manual/default fulfillment flow for the current stage.
+- Shipping-selection owner reads reject inactive shipping options at the owner boundary; Commerce storefront selection additionally validates currency, channel, and shipping-profile compatibility against a fresh owner projection before cart mutation.
 - Expose a fulfillment-owned provider SPI registry with external carrier registration validation and side-effect-free runtime-mode guardrails before adapter invocation.
 - Own storefront shipping handoff and seller-aware shipping selection presentation through `rustok-fulfillment/storefront`; commerce composes it through the aggregate checkout workspace and the explicit checkout runtime API.
 - Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the metadata-backed compatibility shape while older stored rows are still read.

@@ -5,7 +5,9 @@ use rustok_cart::{
     in_process_cart_storefront_port,
 };
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
+use rustok_fulfillment::ShippingOptionReadPort;
 use rustok_outbox::TransactionalEventBus;
+use std::sync::Arc;
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
@@ -16,11 +18,28 @@ use uuid::Uuid;
 pub struct StorefrontCheckoutRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
 }
 
 impl StorefrontCheckoutRuntime {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self::with_shipping_option_read_port(
+            db.clone(),
+            event_bus,
+            rustok_fulfillment::in_process_shipping_option_read_port(db),
+        )
+    }
+
+    pub fn with_shipping_option_read_port(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
+    ) -> Self {
+        Self {
+            db,
+            event_bus,
+            shipping_option_read_port,
+        }
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -34,7 +53,12 @@ impl StorefrontCheckoutRuntime {
     pub fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
     }
+
+    fn shipping_option_read_port(&self) -> &dyn ShippingOptionReadPort {
+        self.shipping_option_read_port.as_ref()
+    }
 }
+
 
 #[derive(Clone, Debug)]
 pub struct StorefrontPaymentCollectionCommand {
@@ -259,9 +283,30 @@ pub async fn select_storefront_shipping_option(
         )
         .await
         .map_err(runtime_error)?;
+    let auth_context = auth.0.clone();
     let storefront_customer_id =
         resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+
+    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(
+        || request_context.and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref())),
+    );
+    let owner_locale = request_context
+        .map(|context| context.locale.as_str())
+        .filter(|locale| !locale.trim().is_empty())
+        .or(cart.locale_code.as_deref())
+        .unwrap_or(tenant.default_locale.as_str());
+    let owner_actor = auth_context
+        .as_ref()
+        .map(|context| PortActor::user(context.user_id.to_string()))
+        .unwrap_or_else(|| PortActor::service("rustok-commerce.storefront-shipping"));
+    let owner_context = storefront_shipping_option_selection_port_context(
+        tenant.id,
+        command.cart_id,
+        owner_locale,
+        public_channel_slug.as_deref(),
+        owner_actor,
+    );
 
     let shipping_selections = command
         .shipping_selections
@@ -273,6 +318,27 @@ pub async fn select_storefront_shipping_option(
             selected_shipping_option_id: selection.selected_shipping_option_id,
         })
         .collect::<Vec<_>>();
+
+    for selection in &shipping_selections {
+        if selection.selected_shipping_option_id.is_none() {
+            continue;
+        }
+
+        crate::storefront_shipping::validate_storefront_shipping_option_selection(
+            &cart,
+            selection,
+            cart.currency_code.as_str(),
+            public_channel_slug.as_deref(),
+            Some(owner_locale),
+            Some(tenant.default_locale.as_str()),
+            &owner_context,
+            runtime.shipping_option_read_port(),
+        )
+        .await
+        .map_err(|_| StorefrontCheckoutRuntimeError::new(
+            "storefront shipping selection validation failed",
+        ))?;
+    }
 
     let updated_cart = cart_storefront_port
         .update_storefront_context(
@@ -352,6 +418,25 @@ fn storefront_cart_port_context(tenant_id: Uuid, cart_id: Uuid) -> PortContext {
         format!("storefront-cart:{cart_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2))
+}
+
+fn storefront_shipping_option_selection_port_context(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    locale: &str,
+    public_channel_slug: Option<&str>,
+    actor: PortActor,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        locale,
+        format!("storefront-shipping:selection:{cart_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    public_channel_slug
+        .map(|channel| context.clone().with_channel(channel))
+        .unwrap_or(context)
 }
 
 fn storefront_cart_storefront_port_context(

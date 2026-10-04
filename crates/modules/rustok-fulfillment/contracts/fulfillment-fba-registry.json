@@ -14,8 +14,11 @@
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
-      "idempotency_required": false,
-      "deadline_required": true
+      "idempotency_required": true,
+      "deadline_required": true,
+      "read_operations": [
+        "list_seller_shipping_options"
+      ]
     }
   ],
   "consumers": [

@@ -25,6 +25,7 @@ const safeSource = read('crates/modules/rustok-commerce/src/graphql/mutations/sa
 const legacySource = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
 const ownerSource = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
 const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
+const selectionPolicySource = read('crates/modules/rustok-commerce/src/storefront_shipping.rs');
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -44,7 +45,7 @@ const between = (source, start, end, label) => {
 
 const publicEnvelope = between(
   typedSource,
-  'fn public_graphql_error()',
+  'fn public_graphql_error(message: impl Into<String>) -> async_graphql::Error {',
   '#[allow(clippy::too_many_arguments)]\nfn shipping_option_graphql_error(',
   'public GraphQL envelope',
 );
@@ -99,8 +100,8 @@ for (const [value, label] of [
   ['.with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
   ['context.clone().with_channel(channel)', 'channel propagation'],
   [
-    'rustok_fulfillment::in_process_shipping_option_read_port(db)',
-    'canonical owner factory delegation',
+    'crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(db)',
+    'resolver-scoped owner runtime delegation',
   ],
 ]) {
   requireText(contextSource, value, label);
@@ -118,6 +119,7 @@ for (const [value, label] of [
   ['CurrencyMismatch,', 'currency outcome'],
   ['ChannelUnavailable,', 'channel outcome'],
   ['ProfileIncompatible,', 'profile outcome'],
+  ['Inactive,', 'inactive outcome'],
   ['owner_error: Option<PortError>', 'typed owner cause'],
   ['PortErrorKind::Validation', 'validation mapping'],
   ['PortErrorKind::NotFound', 'not-found mapping'],
@@ -126,12 +128,14 @@ for (const [value, label] of [
   ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'availability mapping'],
   ['PortErrorKind::InvariantViolation', 'invariant mapping'],
   ['source_operation: "read_shipping_option_projection"', 'owner operation'],
+  ['fn inactive(shipping_option_id: Uuid) -> Self', 'inactive mapper'],
+  ['fn from_selection_validation_error(', 'shared-policy outcome mapper'],
 ]) {
   requireText(typedSource, value, label);
 }
 
 for (const [value, label] of [
-  ['async_graphql::Error::new("Selected shipping option is invalid")', 'stable public message'],
+  ['async_graphql::Error::new(message)', 'public GraphQL envelope message'],
   ['extensions.set("code", "SHIPPING_OPTION_INVALID")', 'stable public code'],
   ['extensions.set("retryable", false)', 'stable public retryability'],
 ]) {
@@ -157,9 +161,19 @@ for (const [value, label] of [
   ['error = ?technical_owner_error', 'technical owner cause'],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
-  ['public_graphql_error()', 'single stable envelope return'],
+  ['public_graphql_error(message)', 'single stable envelope return'],
 ]) {
   requireText(mapper, value, label);
+}
+
+for (const [source, value, label] of [
+  [selectionPolicySource, 'pub(crate) async fn validate_storefront_shipping_option_selection(', 'shared selection policy'],
+  [selectionPolicySource, 'if !option.active', 'active-state policy'],
+  [selectionPolicySource, 'is_metadata_visible_for_public_channel(', 'channel visibility policy'],
+  [selectionPolicySource, 'is_shipping_option_compatible_with_profiles(', 'shipping-profile compatibility policy'],
+  [selectionPolicySource, 'StorefrontShippingSelectionValidationError::Inactive', 'inactive shared-policy outcome'],
+]) {
+  requireText(source, value, label);
 }
 
 for (const [value, label] of [
@@ -171,8 +185,7 @@ for (const [value, label] of [
     'storefront_shipping_option_read_port(db.clone())',
     'owner read port construction',
   ],
-  ['ReadShippingOptionProjectionRequest {', 'typed read request'],
-  ['.read_shipping_option_projection(', 'owner projection read'],
+  ['validate_storefront_shipping_option_selection(', 'shared selection policy'],
   ['owner_context.clone(),', 'delegated owner context'],
   ['ShippingOptionFailure::owner(shipping_option_id, error)', 'typed owner mapping'],
   ['ShippingOptionFailure::currency_mismatch(', 'currency mapping'],
@@ -184,9 +197,27 @@ for (const [value, label] of [
   requireText(mountedValidator, value, label);
 }
 
+for (const [source, value, label] of [
+  [
+    typedSource,
+    `failure
+        .message
+        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())`,
+    'stable owner-error fallback message',
+  ],
+]) {
+  requireText(source, value, label);
+}
+
+for (const value of [
+  'map(|e| e.message.clone())',
+]) {
+  forbidText(typedSource, value, 'owner error message must remain diagnostic-only');
+}
+
 const ownerLookups = mountedValidator.match(/\.read_shipping_option_projection\(/g) ?? [];
-if (ownerLookups.length !== 1) {
-  failures.push(`expected one fulfillment owner projection call, found ${ownerLookups.length}`);
+if (ownerLookups.length !== 0) {
+  failures.push(`typed GraphQL shipping selection helper must not call the owner port directly; found ${ownerLookups.length}`);
 }
 const mountedOverrides = layeredSource.match(/validate_selected_shipping_option/g) ?? [];
 if (mountedOverrides.length !== 1) {
@@ -204,7 +235,6 @@ for (const value of [
   'async_graphql::Error::new(format!("{error}"))',
   'format!("{error:?}")',
   'detail.contains(',
-  'error.message',
   'currency_code = %',
   'currency_code = ?',
   'public_channel_slug = %',
