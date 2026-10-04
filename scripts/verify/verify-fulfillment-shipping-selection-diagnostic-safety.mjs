@@ -198,6 +198,21 @@ for (const forbidden of [
 ]) forbidText(mapper, forbidden, `${paths.owner}: complete owner payload`);
 
 for (const [key, expected] of Object.entries({
+  shared_storefront_selection_policy_present: true,
+  shared_selection_active_state_enforced: true,
+  shared_selection_currency_enforced: true,
+  shared_selection_channel_enforced: true,
+  shared_selection_profile_compatibility_enforced: true,
+  native_selection_uses_host_selected_shipping_read_port: true,
+  native_selection_validates_before_cart_mutation: true,
+  owner_inactive_selection_rejected: true,
+})) {
+  if (evidence.source_contract?.[key] !== expected) {
+    failures.push(paths.evidence + ": source_contract." + key + " must be " + expected);
+  }
+}
+
+for (const [key, expected] of Object.entries({
   complete_fulfillment_error_logged: false,
   database_error_payload_logged: false,
   uuid_parser_payload_logged: false,
