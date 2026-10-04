@@ -26,6 +26,7 @@
     "fulfillment persistence and lifecycle remain inside fulfillment owner",
     "commerce sends typed order-line commands derived from the immutable checkout plan",
     "owner atomically ensures the exact typed checkout fulfillment set under the operation anchor",
+    "checkout fulfillment ensure requests must contain at least one fulfillment plan; read requests may be empty for no-fulfillment checkout operations",
     "checkout fulfillment request indexes must form the dense zero-based set derived from the immutable Commerce plan",
     "owner reads fulfillment recovery state through FulfillmentService rather than consumer SQL",
     "duplicate checkout fulfillment identity fails closed",

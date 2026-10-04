@@ -214,7 +214,7 @@ disable/reconciliation matrix in
 - [x] Replace metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint, including an operation-level anchor
   for immutable order, customer, and plan-hash coherence.
-- [x] Require checkout execution request indices to form the dense zero-based set produced by the immutable Commerce fulfillment plan.
+- [x] Require checkout execution write requests to be non-empty and to form the dense zero-based set produced by the immutable Commerce fulfillment plan; preserve empty read recovery for no-fulfillment operations.
 - [x] Serialize checkout fulfillment-set ensure on the operation identity anchor, reject persisted indices outside the immutable request set, and create only missing indices in one transaction.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
   process-exit, restart, contention, and remote-profile evidence.

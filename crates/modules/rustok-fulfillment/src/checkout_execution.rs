@@ -90,7 +90,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
         tenant_id: Uuid,
         request: EnsureCheckoutFulfillmentsRequest,
     ) -> Result<Vec<FulfillmentResponse>, PortError> {
-        let order_plan_hash = validate_request(
+        let order_plan_hash = validate_ensure_request(
             request.checkout_operation_id,
             request.order_id,
             request.order_plan_hash.as_str(),
@@ -100,7 +100,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             map_checkout_fulfillment_local_port_error(
                 context,
                 ENSURE_OPERATION,
-                "validate_request",
+                "validate_ensure_request",
                 error,
             )
         })?;
@@ -576,6 +576,21 @@ impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionP
         require_operation_context(&context, READ_OPERATION, request.checkout_operation_id)?;
         self.read(&context, tenant_id, request).await
     }
+}
+
+fn validate_ensure_request(
+    checkout_operation_id: Uuid,
+    order_id: Uuid,
+    plan_hash: &str,
+    plans: &[CheckoutFulfillmentCommand],
+) -> Result<String, PortError> {
+    if plans.is_empty() {
+        return Err(PortError::validation(
+            "fulfillment.checkout_plan_invalid",
+            "checkout fulfillment ensure requires at least one plan",
+        ));
+    }
+    validate_request(checkout_operation_id, order_id, plan_hash, plans)
 }
 
 fn validate_request(
@@ -1335,6 +1350,29 @@ mod tests {
         let canonical = validate_request(operation_id, order_id, &"A".repeat(64), &[plan])
             .expect("uppercase hexadecimal plan hash should canonicalize");
         assert_eq!(canonical, "a".repeat(64));
+    }
+
+    #[test]
+    fn checkout_ensure_request_rejects_empty_plan_set() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+
+        let error = validate_ensure_request(operation_id, order_id, &hash, &[])
+            .expect_err("empty ensure request must fail before owner writes");
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.checkout_plan_invalid");
+    }
+
+    #[test]
+    fn checkout_read_request_allows_empty_plan_set() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+
+        let canonical = validate_request(operation_id, order_id, &hash, &[])
+            .expect("empty read request must remain valid");
+        assert_eq!(canonical, hash);
     }
 
     #[test]
