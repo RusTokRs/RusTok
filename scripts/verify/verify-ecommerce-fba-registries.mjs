@@ -96,10 +96,14 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
     isReadOnlyOperation(operation) || (port.read_operations ?? []).includes(operation);
   if (!readOperation) {
     if (port.idempotency_required === true) {
-      // Idempotent write: context must carry write semantics (write policy +
-      // idempotency key binding).
-      if (!body.includes('require_write_semantics()?')) {
-        fail(`${module}.${operation} write operation must enforce require_write_semantics`);
+      // Idempotent write: the shared policy helper is canonical and already
+      // expands to write semantics (idempotency key + deadline). An adapter may
+      // call require_write_semantics directly as an equivalent explicit gate.
+      if (
+        !body.includes('require_write_semantics()?') &&
+        !body.includes('require_policy(PortCallPolicy::write())?')
+      ) {
+        fail(`${module}.${operation} write operation must enforce write idempotency/deadline semantics`);
       }
     } else if (!body.includes('require_policy(PortCallPolicy::write())?')) {
       // Non-idempotent write: must still be admitted under a write policy.

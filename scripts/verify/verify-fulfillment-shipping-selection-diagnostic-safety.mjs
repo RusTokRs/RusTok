@@ -106,18 +106,23 @@ const selectBody = functionBodyAfter(
   "select_shipping_option",
 );
 for (const marker of [
-  "context.require_policy(PortCallPolicy::write())?",
-  "context.require_write_semantics()?",
   'parse_port_tenant_id(&context, "select_shipping_option")?',
   ".get_shipping_option(",
   "ShippingOptionProjection::from_response(option)",
 ]) requireText(selectBody, marker, `${paths.owner}: select flow`);
-const selectOrder = [
+
+const selectWriteAdmission = [
   "context.require_policy(PortCallPolicy::write())?",
   "context.require_write_semantics()?",
+].find((marker) => selectBody.includes(marker));
+if (!selectWriteAdmission) {
+  failures.push(`${paths.owner}: select flow must enforce write idempotency/deadline semantics`);
+}
+const selectOrder = [
+  selectWriteAdmission,
   "parse_port_tenant_id(",
   ".get_shipping_option(",
-].map((marker) => selectBody.indexOf(marker));
+].map((marker) => marker === undefined ? -1 : selectBody.indexOf(marker));
 if (!selectOrder.every((value, index) => value >= 0 && (index === 0 || selectOrder[index - 1] < value))) {
   failures.push(`${paths.owner}: select admission/delegation order changed`);
 }
