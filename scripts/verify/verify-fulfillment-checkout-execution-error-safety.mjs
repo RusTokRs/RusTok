@@ -57,12 +57,6 @@ const readHelper = between(
   'async fn list_checkout_fulfillments(',
   'checkout fulfillment read helper',
 );
-const findHelper = between(
-  source,
-  'async fn find_checkout_fulfillment(',
-  'pub fn in_process_checkout_fulfillment_execution_port(',
-  'checkout fulfillment lookup helper',
-);
 const portImpl = between(
   source,
   'impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort {',
@@ -105,19 +99,12 @@ for (const value of [
 
 for (const [content, value, label] of [
   [ensure, 'context: &PortContext', 'ensure context input'],
-  [ensure, '"find_checkout_fulfillment_before_create"', 'pre-create lookup operation'],
-  [ensure, '"adopt_checkout_fulfillment_after_create_error"', 'post-error adoption operation'],
-  [ensure, '"create_checkout_fulfillment"', 'create operation'],
-  [ensure, 'fulfillment_error_to_port_error(', 'create mapper handoff'],
+  [ensure, 'ensure_checkout_fulfillment_set(', 'aggregate ensure operation'],
+  [ensure, 'fulfillment_error_to_port_error(', 'aggregate ensure mapper handoff'],
   [readHelper, 'context: &PortContext', 'read context input'],
   [readHelper, 'list_checkout_fulfillments_for_read', 'typed read operation'],
   [readHelper, '"list_checkout_fulfillments_for_read"', 'read owner operation'],
   [readHelper, 'fulfillment_error_to_port_error(', 'read mapper handoff'],
-  [findHelper, 'context: &PortContext', 'lookup context input'],
-  [findHelper, 'self.service\n            .find_checkout_fulfillment(', 'typed lookup owner service'],
-  [findHelper, "owner_operation: &'static str", 'lookup operation input'],
-  [findHelper, "service_operation: &'static str", 'lookup service operation input'],
-  [findHelper, 'fulfillment_error_to_port_error(context, service_operation, error)', 'lookup mapper handoff'],
   [portImpl, 'parse_tenant_id(&context, ENSURE_OPERATION)', 'ensure tenant validation'],
   [portImpl, 'require_operation_context(&context, ENSURE_OPERATION', 'ensure causation validation'],
   [portImpl, 'self.ensure(&context, tenant_id, request).await', 'ensure context propagation'],
@@ -244,14 +231,12 @@ for (const marker of [
 }
 
 const mapperUses = source.match(/fulfillment_error_to_port_error\(/g) ?? [];
-if (mapperUses.length !== 4) {
-  failures.push(`expected mapper definition plus three service mappings, found ${mapperUses.length}`);
+if (mapperUses.length !== 3) {
+  failures.push(`expected mapper definition plus two service mappings, found ${mapperUses.length}`);
 }
 for (const [value, label] of [
-  ['"create_checkout_fulfillment"', 'create service operation'],
+  ['"ensure_checkout_fulfillment_set"', 'aggregate ensure service operation'],
   ['"list_checkout_fulfillments_for_read"', 'read service operation'],
-  ['"find_checkout_fulfillment_before_create"', 'pre-create lookup service operation'],
-  ['"adopt_checkout_fulfillment_after_create_error"', 'post-error lookup service operation'],
 ]) requireText(source, value, label);
 
 for (const value of [
