@@ -139,6 +139,16 @@ if (!selectOrder.every((value, index) => value >= 0 && (index === 0 || selectOrd
 for (const [content, value, label] of [
   [
     nativeClient,
+    "return ShippingSelectionTransportError::Validation(message.clone());",
+    paths.nativeClient + ": preserve validation messages",
+  ],
+  [
+    nativeClient,
+    "ShippingSelectionTransportError::ServerFn(",
+    paths.nativeClient + ": stable transport failure envelope",
+  ],
+  [
+    nativeClient,
     "pub(super) fn map_error(",
     paths.nativeClient + ": map_error",
   ],
