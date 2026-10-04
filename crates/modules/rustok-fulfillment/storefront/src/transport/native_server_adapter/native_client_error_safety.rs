@@ -106,3 +106,37 @@ impl NativeClientErrorContext {
         )
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE, NativeClientErrorContext,
+    };
+    use crate::transport::ShippingSelectionTransportError;
+
+    #[test]
+    fn native_client_error_does_not_return_raw_transport_detail() {
+        let context = NativeClientErrorContext {
+            correlation_id: "test-correlation".to_string(),
+            cart_id_length: 36,
+            delivery_group_count: 1,
+            shipping_profile_slug_length: 7,
+            seller_id_present: false,
+            shipping_option_id_present: true,
+            available_shipping_option_count: 1,
+        };
+
+        let error = context.map_error(ShippingSelectionTransportError::Graphql(
+            "database password: do-not-return".to_string(),
+        ));
+
+        assert_eq!(
+            error,
+            ShippingSelectionTransportError::ServerFn(
+                FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE.to_string()
+            )
+        );
+        assert!(!error.message().contains("database password"));
+    }
+}
