@@ -8,7 +8,7 @@ This bounded source slice hardens only `fulfillment_error_to_port_error` in
 `crates/modules/rustok-fulfillment/src/checkout_execution.rs`.
 
 The mapper still translates the same five `FulfillmentError` variants into the same typed
-`PortError` envelopes for checkout fulfillment create, lookup, adoption, and read operations.
+`PortError` envelopes for checkout fulfillment aggregate ensure and read operations.
 Only structured diagnostics change.
 
 ## Bounded diagnostic policy
@@ -63,10 +63,9 @@ message.
 This slice does not change:
 
 - the mapper signature or `FulfillmentError` variant matching;
-- create-failure mapping through `create_checkout_fulfillment`;
+- aggregate ensure mapping through `ensure_checkout_fulfillment_set`;
 - read-list mapping through `list_checkout_fulfillments_for_read`;
-- lookup mapping through the caller-selected service operation;
-- fulfillment create, post-error adoption, lookup, read, validation, or sorting behavior;
+- aggregate fulfillment create/adopt and read validation behavior;
 - admission, tenant, causation, or local-`PortError` mappers;
 - request/response DTOs, metadata, Commerce orchestration, FFA, or FBA status.
 
@@ -88,7 +87,7 @@ The focused guard is:
 - `scripts/verify/verify-fulfillment-checkout-execution-error-safety.mjs`.
 
 It requires all five closed owner-error-kind branches, bounded context and variant facts, exact
-public envelopes, four warning paths, one error path, and all three existing service mappings.
+public envelopes, four warning paths, one error path, and both existing service mappings.
 It forbids raw causes, UUIDs, transition values, database errors, and delegated context inside
 the covered mapper.
 
