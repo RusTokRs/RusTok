@@ -278,14 +278,42 @@ fn shipping_option_graphql_error(
         );
     }
 
-    let message = failure.message.unwrap_or_else(|| {
-        failure
-            .owner_error
-            .as_ref()
-            .map(|e| e.message.clone())
-            .unwrap_or_else(|| "Selected shipping option is invalid".to_string())
-    });
+    let message = failure
+        .message
+        .unwrap_or_else(|| "Selected shipping option is invalid".to_string());
     public_graphql_error(message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ShippingOptionFailure, public_graphql_error};
+    use rustok_api::PortError;
+    use uuid::Uuid;
+
+    #[test]
+    fn owner_error_message_never_reaches_graphql_response() {
+        let failure = ShippingOptionFailure::owner(
+            Uuid::new_v4(),
+            PortError::validation(
+                "fulfillment.internal_validation",
+                "internal owner detail must stay diagnostic-only",
+            ),
+        );
+
+        let error = {
+            let message = failure
+                .message
+                .clone()
+                .unwrap_or_else(|| "Selected shipping option is invalid".to_string());
+            public_graphql_error(message)
+        };
+
+        assert_eq!(error.message, "Selected shipping option is invalid");
+        assert_ne!(
+            error.message,
+            "internal owner detail must stay diagnostic-only"
+        );
+    }
 }
 
 fn current_shipping_selections(
