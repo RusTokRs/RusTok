@@ -2,6 +2,8 @@
 
 Status: **source-ready / unvalidated**
 
+Native client transport diagnostics are also source-safe: GraphQL/ServerFn error payloads are reduced to variant and message shape/length in logs, while local Validation messages are preserved for the caller. Runtime verification remains unvalidated.
+
 The native storefront selection path now shares Commerce shipping-option eligibility validation with the mounted GraphQL selection path and injects the host-selected Fulfillment shipping read port. Inactive shipping options are rejected at both the Commerce selection policy and Fulfillment owner-selection boundary. Runtime parity, restart, and remote-adapter evidence remain unvalidated.
 
 ## Scope
