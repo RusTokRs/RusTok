@@ -23,3 +23,5 @@ rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+rustok-grid.workspace = true
+rustok-grid-leptos.workspace = true

@@ -21,6 +21,11 @@ export const commerceNavItems: NavItem[] = [
     isActive: false,
     items: [
       {
+        title: 'Orders',
+        url: '/dashboard/commerce/orders',
+        i18nKey: 'orders'
+      },
+      {
         title: 'Shipping Profiles',
         url: '/dashboard/commerce/shipping-profiles',
         i18nKey: 'shippingProfiles'
@@ -57,3 +62,5 @@ export * from './components/ShippingProfilesTemplate';
 export * from './components/CartPromotionsTemplate';
 export * from './components/OrderChangesTemplate';
 export * from './components/ReturnDecisionsTemplate';
+export * from './components/orders-table';
+

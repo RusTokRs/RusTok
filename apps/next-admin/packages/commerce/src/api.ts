@@ -10,7 +10,10 @@ import type {
   OrderChangeList,
   ExchangeDifferenceRefundInput,
   CreateReturnDecisionInput,
-  ReturnDecisionResponse
+  ReturnDecisionResponse,
+  OrderListItem,
+  OrderList,
+  OrdersFilter
 } from './types';
 
 import {
@@ -239,6 +242,45 @@ mutation CommerceAdminCancelOrderChange($tenantId: UUID!, $id: UUID!, $input: Ca
     id
     status
     updatedAt
+  }
+}`;
+
+const ORDERS_QUERY = `
+query CommerceAdminOrders($tenantId: UUID!, $filter: OrdersFilter) {
+  orders(tenantId: $tenantId, filter: $filter) {
+    total
+    page
+    perPage
+    hasNext
+    items {
+      id
+      customerId
+      status
+      currencyCode
+      totalAmount
+      trackingNumber
+      carrier
+      createdAt
+      confirmedAt
+      paidAt
+      shippedAt
+      deliveredAt
+      cancelledAt
+      lineItems {
+        id
+        orderId
+        productId
+        variantId
+        shippingProfileSlug
+        sku
+        title
+        quantity
+        unitPrice
+        totalPrice
+        currencyCode
+        createdAt
+      }
+    }
   }
 }`;
 
@@ -546,3 +588,25 @@ export async function createOrderReturnDecision(
 
   return response.createOrderReturnDecision;
 }
+
+export async function listOrders(
+  opts: GqlOpts,
+  filter?: OrdersFilter
+): Promise<OrderList> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to view orders.');
+  }
+
+  const response = await (opts.graphql ?? graphqlRequest)<
+    { tenantId: string; filter?: OrdersFilter },
+    { orders: OrderList }
+  >(
+    ORDERS_QUERY,
+    { tenantId: opts.tenantId, filter },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return response.orders;
+}
+

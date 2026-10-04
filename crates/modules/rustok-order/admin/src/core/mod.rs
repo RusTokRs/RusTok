@@ -1,5 +1,6 @@
 mod commands;
 mod detail_form;
+mod grid;
 mod presentation;
 mod requests;
 
@@ -8,6 +9,7 @@ pub use commands::{
     prepare_mark_paid_command, prepare_ship_order_command,
 };
 pub use detail_form::{OrderAdminDetailFormState, order_detail_form_state};
+pub use grid::{filter_orders, matches_order_filter, order_grid_columns};
 pub use presentation::{
     action_hint, format_order_caption, localized_order_status, order_status_badge, short_order_id,
     summarize_order_header, summarize_order_lines, summarize_order_timeline, text_or_dash,

@@ -17,6 +17,7 @@ use crate::badge::*;
 use crate::button::*;
 use crate::card::*;
 use crate::dialog::*;
+use crate::input::*;
 use crate::progress::*;
 use crate::skeleton::*;
 use crate::tabs::*;
@@ -118,6 +119,23 @@ fn test_dioxus_card_and_tabs_and_dialog() {
                     id: Some("dialog-title".to_string()),
                     "Dialog Title"
                 }
+            }
+        }
+    });
+    dom.rebuild_in_place();
+}
+
+#[test]
+fn test_dioxus_input_instantiation() {
+    let mut dom = VirtualDom::new(|| {
+        rsx! {
+            Input {
+                placeholder: "Enter value...".to_string(),
+            }
+            Input {
+                placeholder: "Search".to_string(),
+                prefix: rsx! { span { "🔍" } },
+                suffix: rsx! { span { "Clear" } },
             }
         }
     });

@@ -16,7 +16,9 @@ use crate::avatar::*;
 use crate::badge::*;
 use crate::button::*;
 use crate::card::*;
+use crate::checkbox::*;
 use crate::dialog::*;
+use crate::input::*;
 use crate::progress::*;
 use crate::skeleton::*;
 use crate::tabs::*;
@@ -183,36 +185,80 @@ fn test_render_tabs_ssr() {
 
 #[test]
 fn test_dialog_root_and_trigger_render_ssr_state() {
-    let view_closed = view! {
-        <Dialog default_open=false>
-            <DialogTrigger aria_controls="dialog-panel">"Open dialog"</DialogTrigger>
-            <DialogContent id="dialog-panel" aria_labelledby="dialog-title">
-                <DialogTitle id="dialog-title">"Title"</DialogTitle>
-                <DialogDescription id="dialog-description">"Details"</DialogDescription>
-                <DialogClose>"Done"</DialogClose>
-            </DialogContent>
-        </Dialog>
-    };
-    let html_closed = view_closed.to_html();
+    let html_closed = Owner::new().with(|| {
+        let view_closed = view! {
+            <Dialog default_open=false>
+                <DialogTrigger aria_controls="dialog-panel">"Open dialog"</DialogTrigger>
+                <DialogContent id="dialog-panel" aria_labelledby="dialog-title">
+                    <DialogTitle id="dialog-title">"Title"</DialogTitle>
+                    <DialogDescription id="dialog-description">"Details"</DialogDescription>
+                    <DialogClose>"Done"</DialogClose>
+                </DialogContent>
+            </Dialog>
+        };
+        view_closed.to_html()
+    });
     assert!(html_closed.contains("data-slot=\"dialog-trigger\""));
     assert!(html_closed.contains("aria-haspopup=\"dialog\""));
     assert!(html_closed.contains("aria-controls=\"dialog-panel\""));
     assert!(html_closed.contains("aria-expanded=\"false\""));
     assert!(html_closed.contains("data-state=\"closed\""));
 
-    let view_open = view! {
-        <Dialog default_open=true>
-            <DialogTrigger>"Open dialog"</DialogTrigger>
-            <DialogContent aria_label="Accessible dialog">
-                <DialogTitle>"Title"</DialogTitle>
-            </DialogContent>
-        </Dialog>
-    };
-    let html_open = view_open.to_html();
+    let html_open = Owner::new().with(|| {
+        let view_open = view! {
+            <Dialog default_open=true>
+                <DialogTrigger>"Open dialog"</DialogTrigger>
+                <DialogContent aria_label="Accessible dialog">
+                    <DialogTitle>"Title"</DialogTitle>
+                </DialogContent>
+            </Dialog>
+        };
+        view_open.to_html()
+    });
     assert!(html_open.contains("aria-expanded=\"true\""));
     assert!(html_open.contains("data-state=\"open\""));
 
     // Leptos Portal, like Radix's client portal, mounts overlay/content only in
     // the browser; the server output retains the trigger but no dialog panel.
     assert!(!html_open.contains("role=\"dialog\""));
+}
+
+#[test]
+fn test_render_checkbox_ssr() {
+    let view_static = view! {
+        <Checkbox id="terms" indeterminate=true />
+    };
+    let html_static = view_static.to_html();
+    assert!(html_static.contains("type=\"checkbox\""));
+    assert!(html_static.contains("id=\"terms\""));
+
+    let is_ind = Signal::derive(|| true);
+    let view_reactive = view! {
+        <Checkbox indeterminate=is_ind />
+    };
+    let html_reactive = view_reactive.to_html();
+    assert!(html_reactive.contains("type=\"checkbox\""));
+}
+
+#[test]
+fn test_render_input_ssr() {
+    let view_plain = view! {
+        <Input placeholder="Enter username" />
+    };
+    let html_plain = view_plain.to_html();
+    assert!(html_plain.contains("placeholder=\"Enter username\""));
+    assert!(!html_plain.contains("pl-9"));
+
+    let view_adorned = view! {
+        <Input
+            placeholder="Search..."
+            prefix=view! { <span>"🔍"</span> }.into_any()
+            suffix=view! { <span>"Clear"</span> }.into_any()
+        />
+    };
+    let html_adorned = view_adorned.to_html();
+    assert!(html_adorned.contains("pl-9"));
+    assert!(html_adorned.contains("pr-9"));
+    assert!(html_adorned.contains("🔍"));
+    assert!(html_adorned.contains("Clear"));
 }

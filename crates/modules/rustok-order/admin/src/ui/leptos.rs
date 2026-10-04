@@ -3,17 +3,20 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    action_hint, format_order_caption, localized_order_status, order_list_request,
-    order_status_badge, prepare_cancel_order_command, prepare_deliver_order_command,
-    prepare_mark_paid_command, prepare_ship_order_command, short_order_id, summarize_order_header,
-    summarize_order_lines, summarize_order_timeline, text_or_dash,
+    action_hint, filter_orders, localized_order_status, order_grid_columns,
+    order_list_request, order_status_badge, prepare_cancel_order_command,
+    prepare_deliver_order_command, prepare_mark_paid_command, prepare_ship_order_command,
+    short_order_id, summarize_order_header, summarize_order_lines, summarize_order_timeline,
+    text_or_dash,
 };
 use crate::helpers::{apply_order_detail, clear_order_detail, handle_action_result};
 use crate::i18n::t;
-use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
+use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope, OrderListItem};
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -40,7 +43,7 @@ pub fn OrderAdmin() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (selected_id, set_selected_id) = signal(Option::<String>::None);
     let (selected, set_selected) = signal(Option::<OrderDetailEnvelope>::None);
-    let (status_filter, set_status_filter) = signal(String::new());
+    let (search_query, set_search_query) = signal(String::new());
     let (payment_id, set_payment_id) = signal(String::new());
     let (payment_method, set_payment_method) = signal("manual".to_string());
     let (tracking_number, set_tracking_number) = signal(String::new());
@@ -50,6 +53,11 @@ pub fn OrderAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
+    let columns = order_grid_columns(ui_locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
     let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
@@ -58,18 +66,11 @@ pub fn OrderAdmin() -> impl IntoView {
     );
 
     let orders = local_resource(
-        move || {
-            (
-                token.get(),
-                tenant.get(),
-                refresh_nonce.get(),
-                status_filter.get(),
-            )
-        },
-        move |(token_value, tenant_value, _, status_value)| async move {
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
             let bootstrap =
                 transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
-            let request = order_list_request(status_value);
+            let request = order_list_request(String::new());
             transport::fetch_orders(
                 token_value,
                 tenant_value,
@@ -96,11 +97,6 @@ pub fn OrderAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "order.error.orderNotFound",
         "Order not found.",
-    );
-    let load_orders_error_label = t(
-        ui_locale.as_deref(),
-        "order.error.loadOrders",
-        "Failed to load orders",
     );
     let mark_paid_requirements_label = t(
         ui_locale.as_deref(),
@@ -142,18 +138,12 @@ pub fn OrderAdmin() -> impl IntoView {
         "order.detail.empty",
         "Open an order to inspect line items, payment state and fulfillment progress.",
     );
-    let all_statuses_label = t(
-        ui_locale.as_deref(),
-        "order.filter.allStatuses",
-        "All statuses",
-    );
     let refresh_label = t(ui_locale.as_deref(), "order.action.refresh", "Refresh");
     let open_label = t(ui_locale.as_deref(), "order.action.open", "Open");
     let mark_paid_label = t(ui_locale.as_deref(), "order.action.markPaid", "Mark paid");
     let ship_label = t(ui_locale.as_deref(), "order.action.ship", "Ship");
     let deliver_label = t(ui_locale.as_deref(), "order.action.deliver", "Deliver");
     let cancel_label = t(ui_locale.as_deref(), "order.action.cancel", "Cancel");
-    let loading_label = t(ui_locale.as_deref(), "order.loading", "Loading...");
     let no_orders_label = t(
         ui_locale.as_deref(),
         "order.list.empty",
@@ -526,14 +516,11 @@ pub fn OrderAdmin() -> impl IntoView {
         });
     });
 
-    let ui_locale_for_status_options = ui_locale.clone();
-    let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_payment = ui_locale.clone();
     let ui_locale_for_fulfillment = ui_locale.clone();
     let ui_locale_for_actions = ui_locale.clone();
     let initial_open_order = open_order;
-    let list_query_writer = query_writer.clone();
     Effect::new(move |_| match selected_order_query.get() {
         Some(order_id) if !order_id.trim().is_empty() => {
             if bootstrap.get().and_then(Result::ok).is_none() {
@@ -555,6 +542,135 @@ pub fn OrderAdmin() -> impl IntoView {
         }
     });
 
+    let filtered_orders = Memo::new(move |_| {
+        let raw = orders.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let query = search_query.get().trim().to_lowercase();
+        let current_filters = filters.get();
+        let filtered = filter_orders(&raw, &current_filters);
+        if query.is_empty() {
+            filtered
+        } else {
+            filtered
+                .into_iter()
+                .filter(|item| {
+                    item.id.to_lowercase().contains(&query)
+                        || item.customer_id.as_deref().map(|c| c.to_lowercase().contains(&query)).unwrap_or(false)
+                        || item.status.to_lowercase().contains(&query)
+                        || item.line_items.iter().any(|li| li.title.to_lowercase().contains(&query))
+                })
+                .collect()
+        }
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = ui_locale.clone();
+    let cell_selected_id = selected_id;
+    let cell_action_writer = query_writer.clone();
+    let cell_open_label = open_label.clone();
+    let cell_renderer = Callback::new(move |(item, col_id): (OrderListItem, String)| {
+        match col_id.as_str() {
+            "id" => {
+                let id_short = short_order_id(&item.id);
+                let is_sel = cell_selected_id.get().as_deref() == Some(&item.id);
+                view! {
+                    <div class="flex items-center gap-1.5">
+                        <span class=if is_sel {
+                            "font-mono text-xs font-semibold text-primary underline"
+                        } else {
+                            "font-mono text-xs font-medium text-foreground hover:text-primary transition"
+                        }>
+                            {id_short}
+                        </span>
+                    </div>
+                }
+                .into_any()
+            }
+            "created_at" => {
+                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
+                view! {
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                        {date_str.to_string()}
+                    </span>
+                }
+                .into_any()
+            }
+            "customer" => {
+                let display = item
+                    .customer_id
+                    .as_deref()
+                    .map(short_order_id)
+                    .unwrap_or_else(|| "—".to_string());
+                view! {
+                    <span class="text-xs text-foreground/90 font-mono truncate" title=item.customer_id.clone().unwrap_or_default()>
+                        {display}
+                    </span>
+                }
+                .into_any()
+            }
+            "status" => {
+                let badge_cls = order_status_badge(item.status.as_str());
+                let label = localized_order_status(cell_locale.as_deref(), item.status.as_str());
+                view! {
+                    <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
+                        {label}
+                    </span>
+                }
+                .into_any()
+            }
+            "items" => {
+                let summary = summarize_order_lines(cell_locale.as_deref(), item.line_items.as_slice());
+                let summary_title = summary.clone();
+                view! {
+                    <span class="text-xs text-muted-foreground truncate block max-w-[220px]" title=summary_title>
+                        {summary}
+                    </span>
+                }
+                .into_any()
+            }
+            "total" => {
+                view! {
+                    <span class="text-xs font-semibold text-foreground whitespace-nowrap">
+                        {format!("{} {}", item.total_amount, item.currency_code)}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let open_id = item.id.clone();
+                let item_writer = cell_action_writer.clone();
+                let btn_label = cell_open_label.clone();
+                view! {
+                    <div class="flex items-center justify-center">
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center h-6 px-2.5 rounded-md text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent transition"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                item_writer.push_value(AdminQueryKey::OrderId.as_str(), open_id.clone());
+                            }
+                        >
+                            {btn_label}
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    let on_row_click = {
+        let click_writer = query_writer.clone();
+        Callback::new(move |item: OrderListItem| {
+            click_writer.push_value(AdminQueryKey::OrderId.as_str(), item.id);
+        })
+    };
+
+    let is_ru = ui_locale.as_deref() == Some("ru");
+
     view! {
         <section class="space-y-6">
             <header class="rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -565,54 +681,72 @@ pub fn OrderAdmin() -> impl IntoView {
                 </div>
             </header>
 
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)]">
-                <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+                <section class="rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col gap-4">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.list.title", "Orders")}</h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-lg font-semibold text-card-foreground">{t(ui_locale.as_deref(), "order.list.title", "Orders")}</h3>
+                                <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                    {move || filtered_orders.get().len()}
+                                </span>
+                            </div>
                             <p class="text-sm text-muted-foreground">{t(ui_locale.as_deref(), "order.list.subtitle", "Inspect checkout-created orders and jump into operational state transitions.")}</p>
                         </div>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <select class="min-w-52 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || status_filter.get() on:change=move |ev| set_status_filter.set(event_target_value(&ev))>
-                                <option value="">{all_statuses_label.clone()}</option>
-                                {["pending", "confirmed", "paid", "shipped", "delivered", "cancelled"].into_iter().map(|status| {
-                                    let value = status.to_string();
-                                    let label = localized_order_status(ui_locale_for_status_options.as_deref(), status);
-                                    view! { <option value=value.clone()>{label}</option> }
-                                }).collect_view()}
-                            </select>
-                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| set_refresh_nonce.update(|value| *value += 1)>{refresh_label.clone()}</button>
+                        <div class="flex flex-wrap items-center gap-2.5">
+                            <input
+                                type="text"
+                                placeholder=if is_ru { "Быстрый поиск..." } else { "Quick search..." }
+                                prop:value=move || search_query.get()
+                                on:input=move |ev| {
+                                    set_search_query.set(event_target_value(&ev));
+                                    pagination.update(|p| p.set_page(1));
+                                }
+                                class="min-w-44 rounded-xl border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
+                            />
+                            <button
+                                type="button"
+                                class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                disabled=move || busy.get()
+                                on:click=move |_| set_refresh_nonce.update(|value| *value += 1)
+                            >
+                                {refresh_label.clone()}
+                            </button>
                         </div>
                     </div>
 
-                    <div class="mt-5 space-y-4">
-                        {move || match orders.get() {
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_orders_label.clone()}</div> }.into_any(),
-                            Some(Ok(list)) => list.items.into_iter().map(|order| {
-                                let open_id = order.id.clone();
-                                let item_query_writer = list_query_writer.clone();
-                                let status_label = localized_order_status(ui_locale_for_list.as_deref(), order.status.as_str());
-                                let order_lines = summarize_order_lines(ui_locale_for_list.as_deref(), order.line_items.as_slice());
-                                view! {
-                                    <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div class="space-y-2">
-                                                <div class="flex flex-wrap items-center gap-2">
-                                                    <h4 class="font-medium text-card-foreground">{short_order_id(order.id.as_str())}</h4>
-                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", order_status_badge(order.status.as_str()))>{status_label}</span>
-                                                </div>
-                                                <p class="text-sm text-muted-foreground">{format_order_caption(ui_locale_for_list.as_deref(), &order)}</p>
-                                                <p class="text-xs text-muted-foreground">{order_lines}</p>
-                                            </div>
-                                            <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::OrderId.as_str(), open_id.clone())>{open_label.clone()}</button>
-                                        </div>
-                                    </article>
-                                }
-                            }).collect_view().into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_orders_error_label}: {err}")}</div> }.into_any(),
-                            None => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{loading_label.clone()}</div> }.into_any(),
-                        }}
-                    </div>
+                    // Selection toolbar when items selected
+                    <Show when=move || !selection.get().is_empty()>
+                        <div class="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                <span class="text-xs font-semibold text-foreground">
+                                    {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                on:click=move |_| selection.update(|s| s.clear())
+                            >
+                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                            </button>
+                        </div>
+                    </Show>
+
+                    <DataGrid
+                        columns=columns
+                        data=Signal::derive(move || filtered_orders.get())
+                        key_fn=|item: &OrderListItem| item.id.clone()
+                        cell_renderer=cell_renderer
+                        is_loading=Signal::derive(move || busy.get() || orders.get().is_none())
+                        empty_message=no_orders_label.clone()
+                        selection=selection
+                        pagination=pagination
+                        filters=filters
+                        on_filter_change=on_filters_change
+                        on_row_click=on_row_click
+                    />
                 </section>
 
                 <section class="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-sm">

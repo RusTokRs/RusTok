@@ -21,7 +21,7 @@ pub struct CustomerList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerListItem {
     pub id: String,
     pub email: String,

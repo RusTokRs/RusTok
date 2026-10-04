@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use rustok_content::available_locales_from;
-
 use crate::dto::UpdateReplyCommandInput;
 
 impl ReplyService {

@@ -342,7 +342,7 @@ pub fn DialogTrigger(
             data-state=move || if context.open.get() { "open" } else { "closed" }
             aria-haspopup="dialog"
             aria-controls=aria_controls
-            aria-expanded=move || context.open.get()
+            aria-expanded=move || if context.open.get() { "true" } else { "false" }
             disabled=disabled
             class=class
             on:click=move |_| {
@@ -362,11 +362,14 @@ pub fn DialogTrigger(
 pub fn DialogPortal(children: ChildrenFn) -> impl IntoView {
     let context = expect_dialog_context();
     view! {
-        {move || context.open.get().then(|| view! {
-            <Portal>
-                {children()}
-            </Portal>
-        })}
+        {move || {
+            let children = children.clone();
+            context.open.get().then(move || view! {
+                <Portal>
+                    {children()}
+                </Portal>
+            })
+        }}
     }
 }
 
@@ -479,44 +482,39 @@ pub fn DialogContent(
 
     view! {
         <DialogPortal>
-            {move || {
-                let overlay = context.modal.then(|| view! { <DialogOverlay /> });
-                view! {
-                    {overlay}
-                    <div
-                        node_ref=dialog_ref
-                        id=id.clone()
-                        role="dialog"
-                        data-slot="dialog-content"
-                        data-state=move || if context.open.get() { "open" } else { "closed" }
-                        aria-modal=if context.modal { Some("true") } else { None }
-                        aria-label=label_attr.clone()
-                        aria-labelledby=labelledby_attr.clone()
-                        aria-describedby=describedby_attr.clone()
-                        tabindex=tabindex
-                        class=content_class.clone()
-                        on:keydown=on_keydown
+            {context.modal.then(|| view! { <DialogOverlay /> })}
+            <div
+                node_ref=dialog_ref
+                id=id.clone()
+                role="dialog"
+                data-slot="dialog-content"
+                data-state=move || if context.open.get() { "open" } else { "closed" }
+                aria-modal=if context.modal { Some("true") } else { None }
+                aria-label=label_attr.clone()
+                aria-labelledby=labelledby_attr.clone()
+                aria-describedby=describedby_attr.clone()
+                tabindex=tabindex
+                class=content_class.clone()
+                on:keydown=on_keydown
+            >
+                {children()}
+                <DialogClose class=close_class.clone()>
+                    <svg
+                        aria-hidden="true"
+                        class="pointer-events-none size-4 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
                     >
-                        {children()}
-                        <DialogClose class=close_class.clone()>
-                            <svg
-                                aria-hidden="true"
-                                class="pointer-events-none size-4 shrink-0"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                viewBox="0 0 24 24"
-                            >
-                                <path d="M18 6 6 18" />
-                                <path d="m6 6 12 12" />
-                            </svg>
-                            <span class="sr-only">"Close"</span>
-                        </DialogClose>
-                    </div>
-                }
-            }}
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                    </svg>
+                    <span class="sr-only">"Close"</span>
+                </DialogClose>
+            </div>
         </DialogPortal>
     }
 }

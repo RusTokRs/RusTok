@@ -28,7 +28,7 @@ fn checkbox_checked(ev: &leptos::ev::Event) -> bool {
 pub fn Checkbox(
     #[prop(optional)] checked: Option<ReadSignal<bool>>,
     #[prop(optional)] set_checked: Option<WriteSignal<bool>>,
-    #[prop(default = false)] indeterminate: bool,
+    #[prop(into, default = false.into())] indeterminate: Signal<bool>,
     #[prop(default = false)] disabled: bool,
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
@@ -47,7 +47,7 @@ pub fn Checkbox(
             disabled=disabled
             class=full_class
             prop:checked=move || checked.map(|c| c.get()).unwrap_or(false)
-            prop:indeterminate=move || indeterminate
+            prop:indeterminate=move || indeterminate.get()
             on:change=move |ev| {
                 if let Some(set) = set_checked {
                     set.set(checkbox_checked(&ev));

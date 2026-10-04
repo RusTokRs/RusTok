@@ -7,25 +7,31 @@ import { cn } from '@/lib/utils';
 import { Spinner } from './Spinner';
 
 type IUButtonVariant =
+  | 'default'
   | 'primary'
   | 'secondary'
   | 'ghost'
   | 'outline'
-  | 'destructive';
-type IUButtonSize = 'sm' | 'md' | 'lg' | 'icon';
+  | 'destructive'
+  | 'link';
+type IUButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'icon';
 
 const variantMap: Record<IUButtonVariant, string> = {
+  default: 'default',
   primary: 'default',
   secondary: 'secondary',
   ghost: 'ghost',
   outline: 'outline',
-  destructive: 'destructive'
+  destructive: 'destructive',
+  link: 'link'
 };
 
 const sizeMap: Record<IUButtonSize, string> = {
+  xs: 'sm',
   sm: 'sm',
   md: 'default',
   lg: 'lg',
+  xl: 'lg',
   icon: 'icon'
 };
 

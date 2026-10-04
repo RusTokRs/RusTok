@@ -28,6 +28,44 @@ pub async fn complete_checkout_server(
         })
 }
 
+pub async fn fetch_order_server(
+    order_id: String,
+) -> Result<Option<crate::model::StorefrontOrder>, CheckoutCompletionTransportError> {
+    storefront_order_fetch_native(order_id)
+        .await
+        .map_err(|error| CheckoutCompletionTransportError::ServerFn(error.to_string()))
+}
+
+pub async fn fetch_orders_server(
+    page: Option<u64>,
+    per_page: Option<u64>,
+    status: Option<String>,
+) -> Result<crate::model::StorefrontOrdersResponse, CheckoutCompletionTransportError> {
+    storefront_orders_fetch_native(page, per_page, status)
+        .await
+        .map_err(|error| CheckoutCompletionTransportError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "order/fetch-one")]
+async fn storefront_order_fetch_native(
+    order_id: String,
+) -> Result<Option<crate::model::StorefrontOrder>, ServerFnError> {
+    super::super::graphql_adapter::fetch_storefront_order(order_id)
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "order/fetch-list")]
+async fn storefront_orders_fetch_native(
+    page: Option<u64>,
+    per_page: Option<u64>,
+    status: Option<String>,
+) -> Result<crate::model::StorefrontOrdersResponse, ServerFnError> {
+    super::super::graphql_adapter::fetch_storefront_orders(page, per_page, status)
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))
+}
+
 #[server(prefix = "/api/fn", endpoint = "order/complete-checkout")]
 async fn storefront_order_complete_checkout_native(
     request: CompleteCheckoutRequest,

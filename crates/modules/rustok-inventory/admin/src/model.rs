@@ -24,7 +24,7 @@ pub struct InventoryProductList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct InventoryProductListItem {
     pub id: String,
     pub status: String,

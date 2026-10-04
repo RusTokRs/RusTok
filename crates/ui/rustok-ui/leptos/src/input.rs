@@ -27,6 +27,8 @@ pub fn Input(
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
+    #[prop(optional, into)] prefix: Option<AnyView>,
+    #[prop(optional, into)] suffix: Option<AnyView>,
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
@@ -34,23 +36,64 @@ pub fn Input(
     let id = (!id.is_empty()).then_some(id);
     let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = input_classes(size, invalid, custom);
 
-    view! {
-        <input
-            id=id
-            type=r#type
-            class=full_class
-            disabled=disabled
-            aria-invalid=invalid
-            placeholder=placeholder
-            name=name
-            prop:value=move || value.map(|v| v.get()).unwrap_or_default()
-            on:input=move |ev| {
-                if let Some(set) = set_value {
-                    set.set(event_target_value(&ev));
+    if prefix.is_none() && suffix.is_none() {
+        let full_class = input_classes(size, invalid, custom);
+        view! {
+            <input
+                id=id
+                type=r#type
+                class=full_class
+                disabled=disabled
+                aria-invalid=invalid
+                placeholder=placeholder
+                name=name
+                prop:value=move || value.map(|v| v.get()).unwrap_or_default()
+                on:input=move |ev| {
+                    if let Some(set) = set_value {
+                        set.set(event_target_value(&ev));
+                    }
                 }
-            }
-        />
+            />
+        }
+        .into_any()
+    } else {
+        let mut full_class = input_classes(size, invalid, custom);
+        if prefix.is_some() {
+            full_class.push_str(" pl-9");
+        }
+        if suffix.is_some() {
+            full_class.push_str(" pr-9");
+        }
+        view! {
+            <div class="relative flex items-center w-full">
+                {prefix.map(|p| view! {
+                    <span class="pointer-events-none absolute left-3 flex items-center text-muted-foreground">
+                        {p}
+                    </span>
+                })}
+                <input
+                    id=id
+                    type=r#type
+                    class=full_class
+                    disabled=disabled
+                    aria-invalid=invalid
+                    placeholder=placeholder
+                    name=name
+                    prop:value=move || value.map(|v| v.get()).unwrap_or_default()
+                    on:input=move |ev| {
+                        if let Some(set) = set_value {
+                            set.set(event_target_value(&ev));
+                        }
+                    }
+                />
+                {suffix.map(|s| view! {
+                    <span class="pointer-events-none absolute right-3 flex items-center text-muted-foreground">
+                        {s}
+                    </span>
+                })}
+            </div>
+        }
+        .into_any()
     }
 }

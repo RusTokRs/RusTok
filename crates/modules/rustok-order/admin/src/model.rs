@@ -32,7 +32,7 @@ pub struct OrderList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct OrderListItem {
     pub id: String,
     #[serde(rename = "customerId")]
@@ -115,7 +115,7 @@ pub struct OrderDetail {
     pub line_items: Vec<OrderLineItem>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct OrderLineItem {
     pub id: String,
     #[serde(rename = "orderId")]

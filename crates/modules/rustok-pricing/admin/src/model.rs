@@ -56,7 +56,7 @@ pub struct PricingProductList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PricingProductListItem {
     pub id: String,
     pub status: String,

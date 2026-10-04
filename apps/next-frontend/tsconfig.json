@@ -57,6 +57,9 @@
       "@/lib/*": [
         "./src/lib/*"
       ],
+      "@rustok/blog-frontend": [
+        "./packages/rustok-blog/src/index.tsx"
+      ],
       "@rustok/cart-frontend": [
         "./packages/rustok-cart/src/index.tsx"
       ],
@@ -65,6 +68,9 @@
       ],
       "@rustok/product-frontend": [
         "./packages/rustok-product/src/index.tsx"
+      ],
+      "@rustok/search-frontend": [
+        "./packages/search/src/index.tsx"
       ]
     }
   },

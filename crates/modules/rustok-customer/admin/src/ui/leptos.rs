@@ -2,6 +2,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
@@ -11,14 +13,14 @@ use crate::core::{
     customer_admin_detail_empty_view_model, customer_admin_detail_header_view_model,
     customer_admin_detail_section_labels, customer_admin_editor_view_model,
     customer_admin_field_labels, customer_admin_list_header_view_model,
-    customer_admin_list_state_view_model, customer_admin_open_action_view_model,
-    customer_admin_refresh_action_view_model, customer_admin_shell_view_model,
-    customer_admin_submit_error_message, customer_admin_transport_error_message,
-    customer_detail_form_snapshot, customer_detail_view_model, customer_list_item_class,
-    customer_list_item_view_model, customer_list_request, empty_customer_admin_form_snapshot,
+    customer_admin_list_state_view_model, customer_admin_refresh_action_view_model,
+    customer_admin_shell_view_model, customer_admin_submit_error_message,
+    customer_admin_transport_error_message, customer_detail_form_snapshot,
+    customer_detail_view_model, customer_grid_columns, customer_list_request,
+    empty_customer_admin_form_snapshot, filter_customers,
 };
 use crate::i18n::t;
-use crate::model::{CustomerAdminBootstrap, CustomerDetail};
+use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerListItem};
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -180,11 +182,9 @@ pub fn CustomerAdmin() -> impl IntoView {
         });
     };
 
-    let list_error_labels = error_labels.clone();
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
     let display_labels = customer_admin_display_labels(ui_locale.as_deref());
-    let list_display_labels = display_labels.clone();
     let detail_display_labels = display_labels;
     let page_labels = customer_admin_page_labels(ui_locale.as_deref());
     let shell_view = customer_admin_shell_view_model(&page_labels);
@@ -205,6 +205,129 @@ pub fn CustomerAdmin() -> impl IntoView {
     let detail_section_labels = page_labels.clone();
     let detail_empty_labels = page_labels.clone();
     let field_labels = customer_admin_field_labels(&page_labels);
+
+    let is_ru = ui_locale.as_deref() == Some("ru");
+    let columns = customer_grid_columns(ui_locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_customers = Memo::new(move |_| {
+        let raw = customers.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let current_filters = filters.get();
+        filter_customers(&raw, &current_filters)
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let empty_label = customer_admin_list_state_view_model(
+        CustomerAdminListStateKind::Empty,
+        &list_state_labels,
+        None,
+    ).message;
+
+    let cell_locale = ui_locale.clone();
+    let cell_editing_id = editing_id;
+    let cell_action_writer = list_query_writer.clone();
+    let cell_open_label = open_action_labels.open_action.clone();
+    let cell_renderer = Callback::new(move |(item, col_id): (CustomerListItem, String)| {
+        let is_ru = cell_locale.as_deref() == Some("ru");
+        match col_id.as_str() {
+            "name" => {
+                let full_name = if item.full_name.trim().is_empty() {
+                    "—".to_string()
+                } else {
+                    item.full_name.clone()
+                };
+                let is_sel = cell_editing_id.get().as_deref() == Some(&item.id);
+                view! {
+                    <span class=if is_sel {
+                        "text-xs font-semibold text-primary underline"
+                    } else {
+                        "text-xs font-medium text-foreground hover:text-primary transition"
+                    }>
+                        {full_name}
+                    </span>
+                }
+                .into_any()
+            }
+            "email" => {
+                view! {
+                    <span class="text-xs text-foreground/90 font-mono truncate" title=item.email.clone()>
+                        {item.email.clone()}
+                    </span>
+                }
+                .into_any()
+            }
+            "phone" => {
+                let phone_str = item.phone.clone().unwrap_or_else(|| "—".to_string());
+                view! {
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                        {phone_str}
+                    </span>
+                }
+                .into_any()
+            }
+            "account" => {
+                let is_linked = item.user_id.is_some();
+                let badge_cls = if is_linked {
+                    "border-primary/30 bg-primary/10 text-primary"
+                } else {
+                    "border-border bg-muted text-muted-foreground"
+                };
+                let badge_label = if is_linked {
+                    if is_ru { "Привязан" } else { "Linked" }
+                } else {
+                    if is_ru { "Гость" } else { "Guest" }
+                };
+                view! {
+                    <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
+                        {badge_label}
+                    </span>
+                }
+                .into_any()
+            }
+            "created_at" => {
+                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
+                view! {
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                        {date_str.to_string()}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let open_id = item.id.clone();
+                let item_writer = cell_action_writer.clone();
+                let btn_label = cell_open_label.clone();
+                view! {
+                    <div class="flex items-center justify-center">
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center h-6 px-2.5 rounded-md text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent transition"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                item_writer.push_value(AdminQueryKey::CustomerId.as_str(), open_id.clone());
+                            }
+                        >
+                            {btn_label}
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    let on_row_click = {
+        let click_writer = query_writer.clone();
+        Callback::new(move |item: CustomerListItem| {
+            click_writer.push_value(AdminQueryKey::CustomerId.as_str(), item.id);
+        })
+    };
 
     view! {
         <section class="space-y-6">
@@ -229,15 +352,20 @@ pub fn CustomerAdmin() -> impl IntoView {
             </Show>
 
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
-                <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                <section class="rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col gap-4">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">
-                                {customer_admin_list_header_view_model(
-                                    None,
-                                    &list_header_title_labels,
-                                ).title}
-                            </h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-lg font-semibold text-card-foreground">
+                                    {customer_admin_list_header_view_model(
+                                        None,
+                                        &list_header_title_labels,
+                                    ).title}
+                                </h3>
+                                <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                    {move || filtered_customers.get().len()}
+                                </span>
+                            </div>
                             <p class="text-sm text-muted-foreground">
                                 {move || customer_admin_list_header_view_model(
                                     bootstrap
@@ -249,16 +377,19 @@ pub fn CustomerAdmin() -> impl IntoView {
                                 ).subtitle}
                             </p>
                         </div>
-                        <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex flex-wrap items-center gap-2.5">
                             <input
-                                class="min-w-64 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                                class="min-w-56 rounded-xl border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
                                 placeholder=t(ui_locale.as_deref(), "customer.list.search", "Search email, name or phone")
                                 prop:value=move || search.get()
-                                on:input=move |ev| set_search.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    set_search.set(event_target_value(&ev));
+                                    pagination.update(|p| p.set_page(1));
+                                }
                             />
                             <button
                                 type="button"
-                                class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                class="inline-flex rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                 disabled=move || customer_admin_refresh_action_view_model(
                                     busy.get(),
                                     &refresh_disabled_labels,
@@ -273,78 +404,38 @@ pub fn CustomerAdmin() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="mt-5 space-y-3">
-                        {move || match customers.get() {
-                            None => {
-                                let state = customer_admin_list_state_view_model(
-                                    CustomerAdminListStateKind::Loading,
-                                    &list_state_labels,
-                                    None,
-                                );
-                                view! { <div class=state.class>{state.message}</div> }.into_any()
-                            },
-                            Some(Err(err)) => {
-                                let message = customer_admin_transport_error_message(
-                                    &list_error_labels.load_customers,
-                                    err.to_string().as_str(),
-                                );
-                                let state = customer_admin_list_state_view_model(
-                                    CustomerAdminListStateKind::Error,
-                                    &list_state_labels,
-                                    Some(message.as_str()),
-                                );
-                                view! { <div class=state.class>{state.message}</div> }.into_any()
-                            },
-                            Some(Ok(list)) if list.items.is_empty() => {
-                                let state = customer_admin_list_state_view_model(
-                                    CustomerAdminListStateKind::Empty,
-                                    &list_state_labels,
-                                    None,
-                                );
-                                view! { <div class=state.class>{state.message}</div> }.into_any()
-                            },
-                            Some(Ok(list)) => view! {
-                                <>
-                                    {list.items.into_iter().map(|customer| {
-                                        let row = customer_list_item_view_model(&customer, &list_display_labels);
-                                        let customer_id = row.id.clone();
-                                        let customer_marker = row.id.clone();
-                                        let item_action_disabled_labels = open_action_labels.clone();
-                                        let item_action_label_labels = open_action_labels.clone();
-                                        let item_query_writer = list_query_writer.clone();
-                                        view! {
-                                            <article class=move || customer_list_item_class(editing_id.get().as_deref() == Some(customer_marker.as_str()))>
-                                                <div class="flex items-start justify-between gap-3">
-                                                    <div class="space-y-2">
-                                                        <div class="flex flex-wrap items-center gap-2">
-                                                            <h4 class="text-base font-semibold text-card-foreground">{row.full_name.clone()}</h4>
-                                                            <span class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{row.linked_badge.clone()}</span>
-                                                        </div>
-                                                        <p class="text-sm text-muted-foreground">{row.email.clone()}</p>
-                                                        <p class="text-xs text-muted-foreground">{row.meta.clone()}</p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                        disabled=move || customer_admin_open_action_view_model(
-                                                            busy.get(),
-                                                            &item_action_disabled_labels,
-                                                        ).disabled
-                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::CustomerId.as_str(), customer_id.clone())
-                                                    >
-                                                        {move || customer_admin_open_action_view_model(
-                                                            busy.get(),
-                                                            &item_action_label_labels,
-                                                        ).label}
-                                                    </button>
-                                                </div>
-                                            </article>
-                                        }
-                                    }).collect_view()}
-                                </>
-                            }.into_any(),
-                        }}
-                    </div>
+                    // Selection toolbar when items selected
+                    <Show when=move || !selection.get().is_empty()>
+                        <div class="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                <span class="text-xs font-semibold text-foreground">
+                                    {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                on:click=move |_| selection.update(|s| s.clear())
+                            >
+                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                            </button>
+                        </div>
+                    </Show>
+
+                    <DataGrid
+                        columns=columns
+                        data=Signal::derive(move || filtered_customers.get())
+                        key_fn=|item: &CustomerListItem| item.id.clone()
+                        cell_renderer=cell_renderer
+                        is_loading=Signal::derive(move || busy.get() || customers.get().is_none())
+                        empty_message=empty_label.clone()
+                        selection=selection
+                        pagination=pagination
+                        filters=filters
+                        on_filter_change=on_filters_change
+                        on_row_click=on_row_click
+                    />
                 </section>
 
                 <section class="space-y-6">

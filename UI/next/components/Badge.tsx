@@ -5,20 +5,28 @@ import { cn } from '@/lib/utils';
 type IUBadgeVariant =
   | 'default'
   | 'secondary'
+  | 'outline'
+  | 'destructive'
+  | 'danger'
   | 'success'
   | 'warning'
-  | 'danger';
+  | 'info';
 type IUBadgeSize = 'sm' | 'md';
 
 const variantClasses: Record<IUBadgeVariant, string> = {
   default: '',
   secondary: 'bg-secondary text-secondary-foreground border-transparent',
+  outline: 'bg-transparent text-foreground border-border',
+  destructive:
+    'bg-rose-100 text-rose-700 border-transparent dark:bg-rose-900/30 dark:text-rose-400',
+  danger:
+    'bg-rose-100 text-rose-700 border-transparent dark:bg-rose-900/30 dark:text-rose-400',
   success:
     'bg-emerald-100 text-emerald-700 border-transparent dark:bg-emerald-900/30 dark:text-emerald-400',
   warning:
     'bg-amber-100 text-amber-700 border-transparent dark:bg-amber-900/30 dark:text-amber-400',
-  danger:
-    'bg-rose-100 text-rose-700 border-transparent dark:bg-rose-900/30 dark:text-rose-400'
+  info:
+    'bg-blue-100 text-blue-700 border-transparent dark:bg-blue-900/30 dark:text-blue-400'
 };
 
 const sizeClasses: Record<IUBadgeSize, string> = {

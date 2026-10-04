@@ -52,6 +52,7 @@ export * from './components/products/product-relation-add-dialog';
 export * from './components/products/product-bundle-card';
 export * from './components/products/product-bundle-item-dialog';
 export * from './components/products/product-seo-card';
+export * from './components/products/product-table';
 export * from './components/bundles/bundles-table';
 export * from './components/bundles/bundle-create-dialog';
 export * from './pages/categories-page';

@@ -105,6 +105,38 @@ pub async fn complete_checkout(
     .await
 }
 
+pub async fn fetch_order(
+    order_id: String,
+) -> Result<Option<crate::model::StorefrontOrder>, UiTransportError> {
+    let native_id = order_id.clone();
+    let graphql_id = order_id;
+    execute_selected_transport(
+        "order",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_order(native_id),
+        move || async move { graphql_adapter::fetch_storefront_order(graphql_id).await },
+    )
+    .await
+}
+
+pub async fn fetch_orders(
+    page: Option<u64>,
+    per_page: Option<u64>,
+    status: Option<String>,
+) -> Result<crate::model::StorefrontOrdersResponse, UiTransportError> {
+    let native_status = status.clone();
+    let graphql_status = status;
+    execute_selected_transport(
+        "order",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_orders(page, per_page, native_status),
+        move || async move {
+            graphql_adapter::fetch_storefront_orders(page, per_page, graphql_status).await
+        },
+    )
+    .await
+}
+
 fn selected_transport_path() -> UiTransportPath {
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {

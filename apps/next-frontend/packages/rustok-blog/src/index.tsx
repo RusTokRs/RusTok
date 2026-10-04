@@ -11,6 +11,7 @@ export type {
 export { createBlogComment, fetchPublishedPost, fetchPublishedPosts } from "./api/posts";
 export { BlogSection } from "./components/blog-section";
 export { PostCard } from "./components/post-card";
+export { BlogCommentComposer } from "./components/blog-comment-composer";
 
 registerStorefrontModule({
   id: "blog-latest-posts",

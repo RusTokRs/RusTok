@@ -24,7 +24,7 @@ pub struct ShippingOptionList {
     pub has_next: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ShippingOption {
     pub id: String,
     #[serde(rename = "tenantId")]
@@ -49,7 +49,7 @@ pub struct ShippingOption {
     pub translation_revision: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ShippingOptionTranslation {
     pub locale: String,
     pub name: String,

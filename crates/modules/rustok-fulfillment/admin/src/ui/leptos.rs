@@ -3,9 +3,14 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{shipping_option_list_request, shipping_profile_list_request};
+use crate::core::{
+    filter_shipping_options, shipping_option_grid_columns, shipping_option_list_request,
+    shipping_profile_list_request,
+};
 use crate::i18n::t;
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingProfile,
@@ -42,9 +47,6 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     let (provider_id, set_provider_id) = signal("manual".to_string());
     let (allowed_profiles, set_allowed_profiles) = signal(Vec::<String>::new());
     let (metadata_json, set_metadata_json) = signal(String::new());
-    let (search, set_search) = signal(String::new());
-    let (currency_filter, set_currency_filter) = signal(String::new());
-    let (provider_filter, set_provider_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
@@ -56,21 +58,11 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     );
 
     let shipping_options = local_resource(
-        move || {
-            (
-                token.get(),
-                tenant.get(),
-                refresh_nonce.get(),
-                search.get(),
-                currency_filter.get(),
-                provider_filter.get(),
-            )
-        },
-        move |(token_value, tenant_value, _, search_value, currency_value, provider_value)| async move {
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
             let bootstrap =
                 transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
-            let request =
-                shipping_option_list_request(search_value, currency_value, provider_value);
+            let request = shipping_option_list_request("", "", "");
             transport::fetch_shipping_options(transport::FetchShippingOptionsRequest {
                 token: token_value,
                 tenant_slug: tenant_value,
@@ -141,11 +133,6 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "fulfillment.shippingOptions.subtitle",
         "Review delivery options, provider bindings and shipping-profile compatibility rules.",
-    );
-    let search_placeholder_label = t(
-        ui_locale.as_deref(),
-        "fulfillment.shippingOptions.searchPlaceholder",
-        "Search name",
     );
     let no_shipping_options_label = t(
         ui_locale.as_deref(),
@@ -417,12 +404,151 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         });
     });
 
-    let ui_locale_for_list = ui_locale.clone();
+    let is_ru = ui_locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = shipping_option_grid_columns(ui_locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_shipping_options = Memo::new(move |_| {
+        let raw = shipping_options
+            .get()
+            .and_then(Result::ok)
+            .map(|list| list.items)
+            .unwrap_or_default();
+        let current_filters = filters.get();
+        if current_filters.is_empty() {
+            raw
+        } else {
+            filter_shipping_options(&raw, &current_filters)
+        }
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let on_row_click = {
+        let click_writer = query_writer.clone();
+        Callback::new(move |item: ShippingOption| {
+            click_writer.push_value(AdminQueryKey::ShippingOptionId.as_str(), item.id);
+        })
+    };
+
+    let cell_locale = ui_locale.clone();
+    let cell_action_writer = query_writer.clone();
+    let cell_edit_label = edit_label.clone();
+    let cell_toggle_option = toggle_option;
+    let cell_busy = busy;
+
+    let cell_renderer = Callback::new(move |(item, col_id): (ShippingOption, String)| {
+        match col_id.as_str() {
+            "name" => {
+                let name = item.name.clone();
+                let id = item.id.clone();
+                view! {
+                    <div class="flex flex-col min-w-0">
+                        <span class="text-xs font-semibold text-foreground truncate">{name}</span>
+                        <span class="text-[10px] font-mono text-muted-foreground truncate">{id}</span>
+                    </div>
+                }
+                .into_any()
+            }
+            "provider_id" => {
+                let provider = item.provider_id.clone();
+                view! {
+                    <span class="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {provider}
+                    </span>
+                }
+                .into_any()
+            }
+            "price" => {
+                let price_str = format!("{} {}", item.currency_code, item.amount);
+                view! {
+                    <span class="text-xs font-medium text-foreground whitespace-nowrap text-right">
+                        {price_str}
+                    </span>
+                }
+                .into_any()
+            }
+            "profiles" => {
+                let profiles_str = format_allowed_profiles(cell_locale.as_deref(), item.allowed_shipping_profile_slugs.as_ref());
+                let title_str = profiles_str.clone();
+                view! {
+                    <span class="text-xs text-muted-foreground truncate" title=title_str>
+                        {profiles_str}
+                    </span>
+                }
+                .into_any()
+            }
+            "status" => {
+                let badge_cls = active_badge(item.active);
+                let label = localized_active_label(cell_locale.as_deref(), item.active);
+                view! {
+                    <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
+                        {label}
+                    </span>
+                }
+                .into_any()
+            }
+            "updated_at" => {
+                let date_str = item.updated_at.split('T').next().unwrap_or(&item.updated_at);
+                view! {
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                        {date_str.to_string()}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let edit_id = item.id.clone();
+                let toggle_item = item.clone();
+                let item_writer = cell_action_writer.clone();
+                let edit_btn_label = cell_edit_label.clone();
+                let toggle_btn_label = if item.active {
+                    t(cell_locale.as_deref(), "fulfillment.action.deactivate", "Deactivate")
+                } else {
+                    t(cell_locale.as_deref(), "fulfillment.action.reactivate", "Reactivate")
+                };
+                let toggle_fn = cell_toggle_option;
+                let is_busy = cell_busy;
+                view! {
+                    <div class="flex items-center justify-center gap-1.5">
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center h-6 px-2 rounded-md text-[11px] font-medium border border-border bg-background text-foreground hover:bg-accent transition disabled:opacity-50"
+                            disabled=move || is_busy.get()
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                item_writer.push_value(AdminQueryKey::ShippingOptionId.as_str(), edit_id.clone());
+                            }
+                        >
+                            {edit_btn_label}
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center h-6 px-2 rounded-md text-[11px] font-medium border border-border bg-background text-foreground hover:bg-accent transition disabled:opacity-50"
+                            disabled=move || is_busy.get()
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                toggle_fn.run(toggle_item.clone());
+                            }
+                        >
+                            {toggle_btn_label}
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
     let ui_locale_for_profiles = ui_locale.clone();
     let ui_locale_for_selected_profiles = ui_locale.clone();
     let ui_locale_for_summary = ui_locale.clone();
     let initial_edit_option = edit_option;
-    let list_query_writer = query_writer.clone();
     let reset_current_option = Callback::new(move |_| {
         query_writer.clear_key(AdminQueryKey::ShippingOptionId.as_str());
         reset_form();
@@ -454,57 +580,48 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                             <h3 class="text-lg font-semibold text-card-foreground">{shipping_options_title_label.clone()}</h3>
                             <p class="text-sm text-muted-foreground">{shipping_options_subtitle_label.clone()}</p>
                         </div>
-                        <div class="flex flex-col gap-3 md:flex-row">
-                            <input class="min-w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=search_placeholder_label.clone() prop:value=move || search.get() on:input=move |ev| set_search.set(event_target_value(&ev)) />
-                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=currency_placeholder_label.clone() prop:value=move || currency_filter.get() on:input=move |ev| set_currency_filter.set(event_target_value(&ev)) />
-                            <input class="min-w-32 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=provider_placeholder_label.clone() prop:value=move || provider_filter.get() on:input=move |ev| set_provider_filter.set(event_target_value(&ev)) />
+                    </div>
+
+                    // Selection toolbar when items selected
+                    <Show when=move || !selection.get().is_empty()>
+                        <div class="mt-4 flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                <span class="text-xs font-semibold text-foreground">
+                                    {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                on:click=move |_| selection.update(|s| s.clear())
+                            >
+                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                            </button>
                         </div>
+                    </Show>
+
+                    <div class="mt-5">
+                        <DataGrid
+                            columns=columns
+                            data=Signal::derive(move || filtered_shipping_options.get())
+                            key_fn=|item: &ShippingOption| item.id.clone()
+                            cell_renderer=cell_renderer
+                            is_loading=Signal::derive(move || busy.get() || shipping_options.get().is_none())
+                            empty_message=no_shipping_options_label.clone()
+                            selection=selection
+                            pagination=pagination
+                            filters=filters
+                            on_filter_change=on_filters_change
+                            on_row_click=on_row_click
+                        />
                     </div>
-                    <div class="mt-5 space-y-3">
-                        {move || match shipping_options.get() {
-                            None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_shipping_options_label.clone()}</div> }.into_any(),
-                            Some(Ok(list)) => list.items.into_iter().map(|option| {
-                                let item_locale = ui_locale_for_list.clone();
-                                let edit_id = option.id.clone();
-                                let toggle_item = option.clone();
-                                let item_query_writer = list_query_writer.clone();
-                                let active_label = localized_active_label(item_locale.as_deref(), option.active);
-                                let toggle_label = if option.active {
-                                    t(item_locale.as_deref(), "fulfillment.action.deactivate", "Deactivate")
-                                } else {
-                                    t(item_locale.as_deref(), "fulfillment.action.reactivate", "Reactivate")
-                                };
-                                let profiles_label = crate::i18n::format(
-                                    item_locale.as_deref(),
-                                    "fulfillment.shippingOption.profilesMeta",
-                                    Some(&rustok_ui_i18n::fluent_args!("profiles" => format_allowed_profiles(item_locale.as_deref(), option.allowed_shipping_profile_slugs.as_ref()).to_string())),
-                                    "profiles: {profiles}",
-                                );
-                                view! {
-                                    <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
-                                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                            <div class="space-y-2">
-                                                <div class="flex flex-wrap items-center gap-2">
-                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", active_badge(option.active))>{active_label}</span>
-                                                    <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{option.provider_id.clone()}</span>
-                                                    <span class="text-xs text-muted-foreground">{format!("{} {}", option.currency_code, option.amount)}</span>
-                                                </div>
-                                                <h4 class="text-base font-semibold text-card-foreground">{option.name.clone()}</h4>
-                                                <p class="text-sm text-muted-foreground">{profiles_label}</p>
-                                                <p class="text-xs text-muted-foreground">{option.updated_at.clone()}</p>
-                                            </div>
-                                            <div class="flex flex-wrap gap-2">
-                                                <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| item_query_writer.push_value(AdminQueryKey::ShippingOptionId.as_str(), edit_id.clone())>{edit_label.clone()}</button>
-                                                <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| toggle_option.run(toggle_item.clone())>{toggle_label}</button>
-                                            </div>
-                                        </div>
-                                    </article>
-                                }
-                            }).collect_view().into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_shipping_options_error_label}: {err}")}</div> }.into_any(),
-                        }}
-                    </div>
+
+                    <Show when=move || shipping_options.get().and_then(Result::err).is_some()>
+                        <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                            {format!("{load_shipping_options_error_label}: {}", shipping_options.get().and_then(Result::err).map(|e| e.to_string()).unwrap_or_default())}
+                        </div>
+                    </Show>
                 </section>
 
                 <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">

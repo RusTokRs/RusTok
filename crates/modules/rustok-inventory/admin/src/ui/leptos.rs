@@ -2,12 +2,15 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::locale_tags_match;
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 
 use crate::core::{
     InventoryHealthState, apply_variant_quantity_update, apply_variant_reservation_release_update,
-    apply_variant_reservation_update, inventory_health_state, parse_availability_quantity,
-    parse_reserve_quantity, parse_set_quantity, status_badge, summarize_inventory,
+    apply_variant_reservation_update, filter_inventory_products, inventory_grid_columns,
+    inventory_health_state, parse_availability_quantity, parse_reserve_quantity, parse_set_quantity,
+    status_badge, summarize_inventory,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -133,7 +136,6 @@ pub fn InventoryAdmin() -> impl IntoView {
     });
 
     let ui_locale_for_list = ui_locale.clone();
-    let ui_locale_for_list_status = ui_locale.clone();
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_variants = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
@@ -203,6 +205,129 @@ pub fn InventoryAdmin() -> impl IntoView {
             set_selected.set(None);
         }
     });
+    let is_ru = ui_locale.as_deref() == Some("ru");
+    let columns = inventory_grid_columns(ui_locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_products = Memo::new(move |_| {
+        let raw = products.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let current_filters = filters.get();
+        filter_inventory_products(&raw, &current_filters)
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = ui_locale.clone();
+    let cell_selected_id = selected_id;
+    let cell_action_writer = list_query_writer.clone();
+    let cell_open_label = t(ui_locale.as_deref(), "inventory.action.open", "Open");
+    let cell_renderer = Callback::new(move |(item, col_id): (InventoryProductListItem, String)| {
+        match col_id.as_str() {
+            "title" => {
+                let is_sel = cell_selected_id.get().as_deref() == Some(&item.id);
+                view! {
+                    <div class="flex flex-col">
+                        <span class=if is_sel {
+                            "text-xs font-semibold text-primary underline"
+                        } else {
+                            "text-xs font-medium text-foreground hover:text-primary transition"
+                        }>
+                            {item.title.clone()}
+                        </span>
+                        <span class="text-[11px] text-muted-foreground/80 font-mono">
+                            {item.handle.clone()}
+                        </span>
+                    </div>
+                }
+                .into_any()
+            }
+            "status" => {
+                let badge_cls = status_badge(item.status.as_str());
+                let label = localized_product_status(cell_locale.as_deref(), item.status.as_str());
+                view! {
+                    <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
+                        {label}
+                    </span>
+                }
+                .into_any()
+            }
+            "product_type" => {
+                let p_type = item.product_type.clone().unwrap_or_else(|| "—".to_string());
+                view! {
+                    <span class="text-xs text-muted-foreground truncate">
+                        {p_type}
+                    </span>
+                }
+                .into_any()
+            }
+            "vendor" => {
+                let vendor_str = item.vendor.clone().unwrap_or_else(|| "—".to_string());
+                view! {
+                    <span class="text-xs text-muted-foreground truncate">
+                        {vendor_str}
+                    </span>
+                }
+                .into_any()
+            }
+            "shipping_profile_slug" => {
+                let profile_str = item.shipping_profile_slug.clone().unwrap_or_else(|| "—".to_string());
+                view! {
+                    <span class="text-xs text-muted-foreground truncate">
+                        {profile_str}
+                    </span>
+                }
+                .into_any()
+            }
+            "created_at" => {
+                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
+                view! {
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">
+                        {date_str.to_string()}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let open_id = item.id.clone();
+                let item_writer = cell_action_writer.clone();
+                let btn_label = cell_open_label.clone();
+                view! {
+                    <div class="flex items-center justify-center">
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center h-6 px-2.5 rounded-md text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent transition"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                item_writer.push_value(AdminQueryKey::ProductId.as_str(), open_id.clone());
+                            }
+                        >
+                            {btn_label}
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    let on_row_click = {
+        let click_writer = query_writer.clone();
+        Callback::new(move |item: InventoryProductListItem| {
+            click_writer.push_value(AdminQueryKey::ProductId.as_str(), item.id);
+        })
+    };
+
+    let product_error = Memo::new(move |_| {
+        products
+            .get()
+            .and_then(|res| res.err().map(|e| e.to_string()))
+    });
+    let load_error_prefix = StoredValue::new(load_products_error_label);
 
     view! {
         <section class="space-y-6">
@@ -259,71 +384,45 @@ pub fn InventoryAdmin() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="mt-5 space-y-3">
-                        {move || match products.get() {
-                            None => view! {
-                                <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                                    {t(ui_locale_for_list.as_deref(), "inventory.loading", "Loading inventory feed...")}
-                                </div>
-                            }.into_any(),
-                            Some(Err(err)) => view! {
-                                <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                    {format!("{load_products_error_label}: {err}")}
-                                </div>
-                            }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! {
-                                <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                                    {t(ui_locale_for_list.as_deref(), "inventory.list.empty", "No products match the current filters.")}
-                                </div>
-                            }.into_any(),
-                            Some(Ok(list)) => view! {
-                                <>
-                                    {list.items.into_iter().map(|product| {
-                                        let open_id = product.id.clone();
-                                        let selected_marker = product.id.clone();
-                                        let item_query_writer = list_query_writer.clone();
-                                        let item_locale = ui_locale_for_list_status.clone();
-                                        let item_locale_for_meta = item_locale.clone();
-                                        let item_locale_for_profile = item_locale.clone();
-                                        let shipping_profile = product.shipping_profile_slug.clone();
-                                        let profile_label = shipping_profile
-                                            .unwrap_or_else(|| t(item_locale_for_profile.as_deref(), "inventory.common.unassigned", "unassigned"));
-                                        view! {
-                                            <article class=move || {
-                                                if selected_id.get().as_deref() == Some(selected_marker.as_str()) {
-                                                    "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm"
-                                                } else {
-                                                    "rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40"
-                                                }
-                                            }>
-                                                <div class="flex items-start justify-between gap-3">
-                                                    <div class="space-y-2">
-                                                        <div class="flex flex-wrap items-center gap-2">
-                                                            <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", status_badge(product.status.as_str()))>
-                                                                {localized_product_status(item_locale.as_deref(), product.status.as_str())}
-                                                            </span>
-                                                            <span class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                                                                {profile_label.clone()}
-                                                            </span>
-                                                        </div>
-                                                        <h4 class="text-base font-semibold text-card-foreground">{product.title.clone()}</h4>
-                                                        <p class="text-sm text-muted-foreground">{format_product_meta(item_locale_for_meta.as_deref(), &product)}</p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                        disabled=move || busy.get()
-                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::ProductId.as_str(), open_id.clone())
-                                                    >
-                                                        {t(item_locale.as_deref(), "inventory.action.open", "Open")}
-                                                    </button>
-                                                </div>
-                                            </article>
-                                        }
-                                    }).collect_view()}
-                                </>
-                            }.into_any(),
-                        }}
+                    <Show when=move || product_error.get().is_some()>
+                        <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                            {move || format!("{}: {}", load_error_prefix.get_value(), product_error.get().unwrap_or_default())}
+                        </div>
+                    </Show>
+
+                    // Selection toolbar when items selected
+                    <Show when=move || !selection.get().is_empty()>
+                        <div class="mt-4 flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                <span class="text-xs font-semibold text-foreground">
+                                    {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                on:click=move |_| selection.update(|s| s.clear())
+                            >
+                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                            </button>
+                        </div>
+                    </Show>
+
+                    <div class="mt-5">
+                        <DataGrid
+                            columns=columns
+                            data=Signal::derive(move || filtered_products.get())
+                            key_fn=|item: &InventoryProductListItem| item.id.clone()
+                            cell_renderer=cell_renderer
+                            is_loading=Signal::derive(move || busy.get() || products.get().is_none())
+                            empty_message=t(ui_locale_for_list.as_deref(), "inventory.list.empty", "No products match the current filters.")
+                            selection=selection
+                            pagination=pagination
+                            filters=filters
+                            on_filter_change=on_filters_change
+                            on_row_click=on_row_click
+                        />
                     </div>
                 </section>
 
@@ -823,6 +922,7 @@ fn localized_product_status(locale: Option<&str>, status: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn format_product_meta(locale: Option<&str>, product: &InventoryProductListItem) -> String {
     let vendor = product
         .vendor

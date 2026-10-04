@@ -1,4 +1,8 @@
-use crate::model::CustomerDraft;
+use rustok_grid::{
+    ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
+};
+
+use crate::model::{CustomerDraft, CustomerListItem};
 
 pub const DEFAULT_CUSTOMER_PAGE: u64 = 1;
 pub const DEFAULT_CUSTOMER_PER_PAGE: u64 = 24;
@@ -506,6 +510,152 @@ pub fn customer_admin_editor_view_model(
     }
 }
 
+pub fn customer_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale == Some("ru");
+    vec![
+        GridColumnDef::checkbox(),
+        GridColumnDef::new("name", if is_ru { "Клиент" } else { "Customer" })
+            .width(180)
+            .min_width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Поиск по имени...".to_string()
+                } else {
+                    "Search name...".to_string()
+                }),
+            }),
+        GridColumnDef::new("email", "Email")
+            .width(200)
+            .min_width(150)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр email...".to_string()
+                } else {
+                    "Filter email...".to_string()
+                }),
+            }),
+        GridColumnDef::new("phone", if is_ru { "Телефон" } else { "Phone" })
+            .width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр телефона...".to_string()
+                } else {
+                    "Filter phone...".to_string()
+                }),
+            }),
+        GridColumnDef::new("account", if is_ru { "Аккаунт" } else { "Account" })
+            .width(130)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption {
+                        value: "".to_string(),
+                        label: if is_ru { "Все аккаунты".to_string() } else { "All accounts".to_string() },
+                    },
+                    FilterOption {
+                        value: "linked".to_string(),
+                        label: if is_ru { "Привязан".to_string() } else { "Linked".to_string() },
+                    },
+                    FilterOption {
+                        value: "guest".to_string(),
+                        label: if is_ru { "Гость".to_string() } else { "Guest".to_string() },
+                    },
+                ],
+                placeholder: Some(if is_ru { "Все аккаунты".to_string() } else { "All accounts".to_string() }),
+            }),
+        GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
+            .width(130)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::DateRange {
+                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
+                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+            }),
+        GridColumnDef::new("actions", "")
+            .width(90)
+            .align(ColumnAlign::Center)
+            .not_sortable()
+            .not_resizable()
+            .not_filterable(),
+    ]
+}
+
+pub fn matches_customer_filter(
+    item: &CustomerListItem,
+    col_id: &str,
+    filter_val: &FilterValue,
+) -> bool {
+    match (col_id, filter_val) {
+        ("name", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty() || item.full_name.to_lowercase().contains(&q)
+        }
+        ("email", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty() || item.email.to_lowercase().contains(&q)
+        }
+        ("phone", FilterValue::Text(query)) => {
+            let q = query.trim().to_lowercase();
+            q.is_empty()
+                || item
+                    .phone
+                    .as_deref()
+                    .map(|p| p.to_lowercase().contains(&q))
+                    .unwrap_or(false)
+        }
+        ("account", FilterValue::Select(val)) => {
+            if val.is_empty() {
+                true
+            } else if val == "linked" {
+                item.user_id.is_some()
+            } else if val == "guest" {
+                item.user_id.is_none()
+            } else {
+                true
+            }
+        }
+        ("created_at", FilterValue::DateRange { from, to }) => {
+            let item_date = item
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&item.created_at);
+            if let Some(f) = from {
+                if !f.trim().is_empty() && item_date < f.as_str() {
+                    return false;
+                }
+            }
+            if let Some(t) = to {
+                if !t.trim().is_empty() && item_date > t.as_str() {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => true,
+    }
+}
+
+pub fn filter_customers(items: &[CustomerListItem], filters: &ColumnFilters) -> Vec<CustomerListItem> {
+    if filters.is_empty() {
+        return items.to_vec();
+    }
+    items
+        .iter()
+        .filter(|item| {
+            for (col_id, filter_val) in filters.iter() {
+                if !matches_customer_filter(item, col_id, filter_val) {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -839,5 +989,55 @@ mod tests {
         .expect_err("host locale is required");
 
         assert_eq!(error, CustomerAdminSubmitCommandError::LocaleUnavailable);
+    }
+
+    #[test]
+    fn customer_grid_columns_localization() {
+        let cols_en = customer_grid_columns(Some("en"));
+        let cols_ru = customer_grid_columns(Some("ru"));
+        assert_eq!(cols_en.len(), cols_ru.len());
+        assert!(cols_en[0].is_checkbox());
+        assert_eq!(cols_en[1].title, "Customer");
+        assert_eq!(cols_ru[1].title, "Клиент");
+        assert_eq!(cols_en[4].title, "Account");
+        assert_eq!(cols_ru[4].title, "Аккаунт");
+    }
+
+    #[test]
+    fn filter_customers_by_name_and_account() {
+        let customers = vec![
+            CustomerListItem {
+                id: "c-1".to_string(),
+                email: "alice@example.com".to_string(),
+                full_name: "Alice Smith".to_string(),
+                phone: Some("+123456789".to_string()),
+                locale: Some("en".to_string()),
+                user_id: Some("u-1".to_string()),
+                created_at: "2026-05-01T10:00:00Z".to_string(),
+                updated_at: "2026-05-01T10:00:00Z".to_string(),
+            },
+            CustomerListItem {
+                id: "c-2".to_string(),
+                email: "bob@example.com".to_string(),
+                full_name: "Bob Jones".to_string(),
+                phone: None,
+                locale: Some("ru".to_string()),
+                user_id: None,
+                created_at: "2026-05-05T10:00:00Z".to_string(),
+                updated_at: "2026-05-05T10:00:00Z".to_string(),
+            },
+        ];
+
+        let mut filters = ColumnFilters::new();
+        filters.set("account", FilterValue::Select("linked".to_string()));
+        let filtered = filter_customers(&customers, &filters);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "c-1");
+
+        let mut name_filters = ColumnFilters::new();
+        name_filters.set("name", FilterValue::Text("bob".to_string()));
+        let filtered_name = filter_customers(&customers, &name_filters);
+        assert_eq!(filtered_name.len(), 1);
+        assert_eq!(filtered_name[0].id, "c-2");
     }
 }

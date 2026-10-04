@@ -167,3 +167,50 @@ export type ReturnDecisionResponse = {
   orderChange: OrderChange | null;
   metadata: string;
 };
+
+export type OrderLineItem = {
+  id: string;
+  orderId: string;
+  productId: string;
+  variantId: string;
+  shippingProfileSlug: string | null;
+  sku: string | null;
+  title: string;
+  quantity: number;
+  unitPrice: string;
+  totalPrice: string;
+  currencyCode: string;
+  createdAt: string;
+};
+
+export type OrderListItem = {
+  id: string;
+  customerId: string;
+  status: string;
+  currencyCode: string;
+  totalAmount: string;
+  trackingNumber: string | null;
+  carrier: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  paidAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  lineItems: OrderLineItem[];
+};
+
+export type OrderList = {
+  items: OrderListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+};
+
+export type OrdersFilter = {
+  status?: string;
+  page?: number;
+  perPage?: number;
+};
+

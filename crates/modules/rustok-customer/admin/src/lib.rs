@@ -1,7 +1,8 @@
-mod core;
+pub mod core;
 mod i18n;
-mod model;
+pub mod model;
 mod transport;
-mod ui;
+pub mod ui;
 
+pub use core::{customer_grid_columns, filter_customers};
 pub use ui::CustomerAdmin;
