@@ -411,6 +411,129 @@ impl FulfillmentService {
             .await
     }
 
+    pub(crate) async fn ensure_checkout_fulfillment_set(
+        &self,
+        tenant_id: Uuid,
+        checkout_operation_id: Uuid,
+        order_id: Uuid,
+        customer_id: Option<Uuid>,
+        checkout_plan_hash: &str,
+        plans: Vec<(u32, CreateFulfillmentInput)>,
+    ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
+        validate_tenant_id(tenant_id)?;
+        let checkout_plan_hash =
+            validate_checkout_identity(checkout_operation_id, 0, checkout_plan_hash)?;
+
+        let mut requested_indices = BTreeSet::new();
+        for (index, input) in &plans {
+            if !requested_indices.insert(*index) {
+                return Err(FulfillmentError::Validation(
+                    "checkout fulfillment plan indexes must be unique".to_string(),
+                ));
+            }
+            if input.order_id != order_id || input.customer_id != customer_id {
+                return Err(FulfillmentError::Validation(
+                    "checkout fulfillment input does not match the checkout identity".to_string(),
+                ));
+            }
+            self.validate_create_fulfillment_input(tenant_id, input)
+                .await?;
+        }
+
+        let txn = self.db.begin().await?;
+        let anchor = CheckoutFulfillmentIdentity {
+            operation_id: checkout_operation_id,
+            index: 0,
+            plan_hash: checkout_plan_hash.clone(),
+        };
+        self.ensure_checkout_identity_anchor(
+            &txn,
+            tenant_id,
+            order_id,
+            customer_id,
+            &anchor,
+        )
+        .await?;
+
+        let existing_rows = entities::fulfillment::Entity::find()
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
+            .filter(
+                entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id),
+            )
+            .lock_exclusive()
+            .all(&txn)
+            .await?;
+
+        let mut existing_indices = BTreeSet::new();
+        for row in &existing_rows {
+            let raw_index = row.checkout_fulfillment_index.ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "checkout fulfillment identity index is missing".to_string(),
+                )
+            })?;
+            let index = u32::try_from(raw_index).map_err(|_| {
+                FulfillmentError::Validation(
+                    "checkout fulfillment identity index is out of range".to_string(),
+                )
+            })?;
+            if !existing_indices.insert(index) {
+                return Err(FulfillmentError::Validation(
+                    "checkout fulfillment identity contains duplicate indexes".to_string(),
+                ));
+            }
+            let persisted_plan_hash = row
+                .checkout_plan_hash
+                .as_deref()
+                .map(normalize_checkout_plan_hash)
+                .transpose()?;
+            if row.order_id != order_id
+                || row.customer_id != customer_id
+                || persisted_plan_hash.as_deref() != Some(checkout_plan_hash.as_str())
+            {
+                return Err(FulfillmentError::Validation(
+                    "checkout fulfillment child identity does not match the operation anchor"
+                        .to_string(),
+                ));
+            }
+        }
+
+        if existing_indices
+            .iter()
+            .any(|index| !requested_indices.contains(index))
+        {
+            return Err(FulfillmentError::Validation(
+                "checkout fulfillment set already contains an index outside the requested immutable plan"
+                    .to_string(),
+            ));
+        }
+
+        let now = Utc::now();
+        for (index, input) in plans {
+            if existing_indices.contains(&index) {
+                continue;
+            }
+            let identity = CheckoutFulfillmentIdentity {
+                operation_id: checkout_operation_id,
+                index,
+                plan_hash: checkout_plan_hash.clone(),
+            };
+            self.insert_fulfillment_in_txn(
+                &txn,
+                tenant_id,
+                generate_id(),
+                input,
+                Some(&identity),
+                now,
+            )
+            .await?;
+        }
+
+        txn.commit().await?;
+
+        self.list_checkout_fulfillments(tenant_id, checkout_operation_id)
+            .await
+    }
+
     async fn create_fulfillment_with_identity_and_id(
         &self,
         tenant_id: Uuid,
@@ -418,6 +541,43 @@ impl FulfillmentService {
         identity: Option<CheckoutFulfillmentIdentity>,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        self.validate_create_fulfillment_input(tenant_id, &input)
+            .await?;
+
+        let now = Utc::now();
+        let txn = self.db.begin().await?;
+
+        if let Some(identity) = identity.as_ref() {
+            self.ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                input.order_id,
+                input.customer_id,
+                identity,
+            )
+            .await?;
+        }
+
+        self.insert_fulfillment_in_txn(
+            &txn,
+            tenant_id,
+            fulfillment_id,
+            input,
+            identity.as_ref(),
+            now,
+        )
+        .await?;
+
+        txn.commit().await?;
+
+        self.get_fulfillment(tenant_id, fulfillment_id).await
+    }
+
+    async fn validate_create_fulfillment_input(
+        &self,
+        tenant_id: Uuid,
+        input: &CreateFulfillmentInput,
+    ) -> FulfillmentResult<()> {
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
@@ -434,6 +594,18 @@ impl FulfillmentService {
             }
         }
 
+        Ok(())
+    }
+
+    async fn insert_fulfillment_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CreateFulfillmentInput,
+        identity: Option<&CheckoutFulfillmentIdentity>,
+        now: chrono::DateTime<Utc>,
+    ) -> FulfillmentResult<()> {
         let CreateFulfillmentInput {
             order_id,
             shipping_option_id,
@@ -443,22 +615,10 @@ impl FulfillmentService {
             items,
             metadata,
         } = input;
-        let now = Utc::now();
-        let txn = self.db.begin().await?;
-        let checkout_operation_id = identity.as_ref().map(|value| value.operation_id);
-        let checkout_fulfillment_index = identity.as_ref().map(|value| i64::from(value.index));
-        let checkout_plan_hash = identity.as_ref().map(|value| value.plan_hash.clone());
 
-        if let Some(identity) = identity.as_ref() {
-            self.ensure_checkout_identity_anchor(
-                &txn,
-                tenant_id,
-                order_id,
-                customer_id,
-                identity,
-            )
-            .await?;
-        }
+        let checkout_operation_id = identity.map(|value| value.operation_id);
+        let checkout_fulfillment_index = identity.map(|value| i64::from(value.index));
+        let checkout_plan_hash = identity.map(|value| value.plan_hash.clone());
 
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
@@ -481,7 +641,7 @@ impl FulfillmentService {
             delivered_at: Set(None),
             cancelled_at: Set(None),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         if let Some(items) = items {
@@ -497,14 +657,12 @@ impl FulfillmentService {
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
-                .insert(&txn)
+                .insert(txn)
                 .await?;
             }
         }
 
-        txn.commit().await?;
-
-        self.get_fulfillment(tenant_id, fulfillment_id).await
+        Ok(())
     }
 
     pub async fn get_fulfillment(
