@@ -4501,3 +4501,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Status: FS-22.06.108 complete and integrated; native/GraphQL runtime parity, failure/deadline injection, restart, and remote-adapter evidence remain open and unvalidated.
 - Next primary module iteration: audit the native storefront shipping-selection error mapping itself so business validation/conflict errors do not collapse into the generic temporary-unavailable transport response.
 
+
+### FS-22.06.109 Assessment — native shipping-selection client diagnostic redaction
+
+- Base: 648f00ea6d667e735faffe98ac5ad5dce13e85d7; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment storefront transport boundary — native client error mapping for shipping selection.
+- Confirmed finding FULFILLMENT-22.06.109-01: `NativeClientErrorContext::map_error` logged the complete `ShippingSelectionTransportError` through `raw_error = ?error`. GraphQL and ServerFn variants contain raw remote/server messages, so the structured log path could retain internal transport details.
+- Remediation: GraphQL/ServerFn failures now log only static error variant plus raw-message presence/length and return the stable generic transport message. Local Validation messages remain preserved for the caller because they are part of the request-builder validation contract.
+- Regression coverage: added a focused unit test proving raw GraphQL transport detail cannot reach the returned native transport error.
+- Verification: updated the shipping-selection diagnostic verifier and machine evidence with the native-client redaction contract. JS verifier was parser-checked without execution; Rust/Cargo/runtime verification remains open.
+- Integration: squash-merged as `b6b0860653caa68d30b569ffdaa04517fc412741` via PR #4497.
+- Status: FS-22.06.109 complete and integrated; compile/runtime, restart, and remote-adapter evidence remain unvalidated.
+- Next primary module iteration: continue the next single Fulfillment storefront owner boundary audit.
