@@ -200,4 +200,24 @@ Order-statusDelivered = Доставлен
 Order-statusDeliveredDesc = Вручен получателю
 Order-statusCancelled = Отменен
 
+Account-title = Личный кабинет
+Account-ordersTitle = История заказов
+Account-ordersSubtitle = Отслеживайте статус активных доставок и просматривайте историю предыдущих покупок
+Account-searchPlaceholder = Поиск по номеру или товару...
+Account-tabAll = Все заказы
+Account-tabActive = В пути / Сборка
+Account-tabDelivered = Доставленные
+Account-tabCancelled = Отмененные
+Account-tabLookup = Поиск по номеру
+Account-lookupTitle = Отследить заказ по номеру
+Account-lookupSubtitle = Введите номер заказа или UUID из чека / письма подтверждения, чтобы перейти к странице статуса.
+Account-lookupPlaceholder = Например: a1b2c3d4-e5f6-7890-...
+Account-lookupSubmit = Перейти к отслеживанию
+Account-lookupEmptyError = Пожалуйста, введите номер заказа
+Account-emptyOrders = Заказы не найдены
+Account-emptyOrdersDesc = У вас пока нет оформленных заказов. Выберите товары в каталоге и оформите первый заказ!
+Account-emptySearch = По вашему поисковому запросу ничего не найдено. Попробуйте изменить параметры.
+Account-trackOrder = Трекер заказа
+
+
 

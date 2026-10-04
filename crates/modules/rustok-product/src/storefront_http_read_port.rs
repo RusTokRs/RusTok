@@ -217,13 +217,14 @@ async fn list_legacy_storefront_http_products(
         })
         .collect::<Vec<_>>();
 
+    let items_len = items.len() as u64;
     Ok(LegacyStorefrontProductList {
         items,
         total,
         page,
         per_page,
         has_next: offset
-            .checked_add(items.len() as u64)
+            .checked_add(items_len)
             .is_some_and(|through| through < total),
     })
 }

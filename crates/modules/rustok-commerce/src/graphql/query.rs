@@ -735,6 +735,68 @@ impl CommerceQuery {
         Ok(order.map(Into::into))
     }
 
+    async fn storefront_orders(
+        &self,
+        ctx: &Context<'_>,
+        page: Option<u64>,
+        per_page: Option<u64>,
+        status: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlOrderList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let customer = in_process_customer_read_port(db.clone())
+            .read_customer_projection_by_user(
+                graphql_customer_port_context(tenant_id, auth.user_id),
+                CustomerUserProjectionRequest {
+                    user_id: auth.user_id,
+                },
+            )
+            .await
+            .map_err(|error| match error.code.as_str() {
+                "customer.customer_by_user_not_found" => {
+                    <FieldError as GraphQLError>::unauthenticated()
+                }
+                _ => async_graphql::Error::new(error.message),
+            })?;
+
+        let page = page.unwrap_or(1).max(1);
+        let per_page = per_page.unwrap_or(20).clamp(1, 100);
+
+        let (orders, total) = OrderService::new(db.clone(), event_bus.clone())
+            .list_orders_with_locale_fallback(
+                tenant_id,
+                crate::dto::ListOrdersInput {
+                    page,
+                    per_page,
+                    status,
+                    customer_id: Some(customer.id),
+                },
+                locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(GqlOrderList {
+            items: orders.into_iter().map(Into::into).collect(),
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+
     async fn storefront_cart(
         &self,
         ctx: &Context<'_>,

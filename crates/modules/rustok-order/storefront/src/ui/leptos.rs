@@ -14,7 +14,7 @@ pub fn OrderView() -> impl IntoView {
     let locale = route_context.locale.clone();
     let locale_ref = locale.as_deref();
 
-    let order_id = route_context
+    let initial_order_id = route_context
         .subpath
         .as_deref()
         .map(str::trim)
@@ -24,15 +24,14 @@ pub fn OrderView() -> impl IntoView {
         .unwrap_or("pending")
         .to_string();
 
+    let (order_id, set_order_id) = signal(initial_order_id);
+    let (search_input, set_search_input) = signal(String::new());
+
     let order_status = route_context
         .query_value("status")
         .unwrap_or("PROCESSING")
         .to_string();
 
-    let result = OrderCheckoutResultData {
-        order_id,
-        order_status,
-    };
     let labels = OrderCheckoutResultLabels {
         badge: t(locale_ref, "order.checkout.badge", "Order"),
         module_ownership: t(
@@ -43,11 +42,45 @@ pub fn OrderView() -> impl IntoView {
         order_status_label: t(locale_ref, "order.checkout.orderStatus", "Order status"),
     };
 
+    let is_ru = locale_ref.map(|l| l.starts_with("ru")).unwrap_or(false);
+
     view! {
-        <OrderCheckoutResultCard
-            result
-            labels
-        />
+        <section class="mx-auto max-w-4xl px-4 py-8">
+            <div class="mb-6 rounded-2xl border border-border bg-card p-5 shadow-xs">
+                <form
+                    class="flex flex-col sm:flex-row items-center gap-3"
+                    on:submit=move |ev| {
+                        ev.prevent_default();
+                        let clean = search_input.get().trim().to_string();
+                        if !clean.is_empty() {
+                            set_order_id.set(clean);
+                        }
+                    }
+                >
+                    <input
+                        type="text"
+                        class="h-10 w-full flex-1 rounded-xl border border-border bg-background px-4 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        placeholder=if is_ru { "Введите номер заказа (например: a1b2c3d4...)" } else { "Enter order ID or UUID (e.g. a1b2c3d4...)" }
+                        prop:value=move || search_input.get()
+                        on:input=move |ev| set_search_input.set(event_target_value(&ev))
+                    />
+                    <button
+                        type="submit"
+                        class="w-full sm:w-auto inline-flex h-10 items-center justify-center rounded-xl bg-primary px-5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs cursor-pointer"
+                    >
+                        {if is_ru { "Отследить" } else { "Track" }}
+                    </button>
+                </form>
+            </div>
+
+            <OrderCheckoutResultCard
+                result=OrderCheckoutResultData {
+                    order_id: order_id.get(),
+                    order_status: order_status.clone(),
+                }
+                labels=labels.clone()
+            />
+        </section>
     }
 }
 

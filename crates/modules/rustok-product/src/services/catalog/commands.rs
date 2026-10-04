@@ -1749,7 +1749,7 @@ async fn persist_product_image_order_in_tx(
             )
             .exec(txn)
             .await?;
-        if result.rows_affected() != 1 {
+        if result.rows_affected != 1 {
             return Err(CommerceError::ImageNotFound(*image_id));
         }
     }

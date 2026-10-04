@@ -245,6 +245,17 @@ export function CheckoutView({
       if (result) {
         setCompletedOrder(result);
         clearCart();
+        try {
+          if (typeof window !== "undefined") {
+            const raw = localStorage.getItem("rustok_customer_recent_orders");
+            const current = raw ? JSON.parse(raw) : [];
+            const list = Array.isArray(current) ? current : [];
+            const updated = [result.order.id, ...list.filter((id) => id !== result.order.id)].slice(0, 25);
+            localStorage.setItem("rustok_customer_recent_orders", JSON.stringify(updated));
+          }
+        } catch {
+          // ignore localStorage error
+        }
       } else {
         setErrorMessage(
           isRu

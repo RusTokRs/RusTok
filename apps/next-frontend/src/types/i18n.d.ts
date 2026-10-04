@@ -2,6 +2,42 @@
 /* eslint-disable */
 
 export type AppMessageKey =
+  | 'Account-emptyOrders'
+  | 'Account.emptyOrders'
+  | 'Account-emptyOrdersDesc'
+  | 'Account.emptyOrdersDesc'
+  | 'Account-emptySearch'
+  | 'Account.emptySearch'
+  | 'Account-lookupEmptyError'
+  | 'Account.lookupEmptyError'
+  | 'Account-lookupPlaceholder'
+  | 'Account.lookupPlaceholder'
+  | 'Account-lookupSubmit'
+  | 'Account.lookupSubmit'
+  | 'Account-lookupSubtitle'
+  | 'Account.lookupSubtitle'
+  | 'Account-lookupTitle'
+  | 'Account.lookupTitle'
+  | 'Account-ordersSubtitle'
+  | 'Account.ordersSubtitle'
+  | 'Account-ordersTitle'
+  | 'Account.ordersTitle'
+  | 'Account-searchPlaceholder'
+  | 'Account.searchPlaceholder'
+  | 'Account-tabActive'
+  | 'Account.tabActive'
+  | 'Account-tabAll'
+  | 'Account.tabAll'
+  | 'Account-tabCancelled'
+  | 'Account.tabCancelled'
+  | 'Account-tabDelivered'
+  | 'Account.tabDelivered'
+  | 'Account-tabLookup'
+  | 'Account.tabLookup'
+  | 'Account-title'
+  | 'Account.title'
+  | 'Account-trackOrder'
+  | 'Account.trackOrder'
   | 'Blog-comments-empty'
   | 'Blog.comments.empty'
   | 'Blog-comments-timeout'
@@ -358,6 +394,42 @@ export type AppMessageKey =
   | 'Storefront.title';
 
 export interface AppMessageArgs {
+  'Account.emptyOrders'?: Record<string, never>;
+  'Account-emptyOrders'?: Record<string, never>;
+  'Account.emptyOrdersDesc'?: Record<string, never>;
+  'Account-emptyOrdersDesc'?: Record<string, never>;
+  'Account.emptySearch'?: Record<string, never>;
+  'Account-emptySearch'?: Record<string, never>;
+  'Account.lookupEmptyError'?: Record<string, never>;
+  'Account-lookupEmptyError'?: Record<string, never>;
+  'Account.lookupPlaceholder'?: Record<string, never>;
+  'Account-lookupPlaceholder'?: Record<string, never>;
+  'Account.lookupSubmit'?: Record<string, never>;
+  'Account-lookupSubmit'?: Record<string, never>;
+  'Account.lookupSubtitle'?: Record<string, never>;
+  'Account-lookupSubtitle'?: Record<string, never>;
+  'Account.lookupTitle'?: Record<string, never>;
+  'Account-lookupTitle'?: Record<string, never>;
+  'Account.ordersSubtitle'?: Record<string, never>;
+  'Account-ordersSubtitle'?: Record<string, never>;
+  'Account.ordersTitle'?: Record<string, never>;
+  'Account-ordersTitle'?: Record<string, never>;
+  'Account.searchPlaceholder'?: Record<string, never>;
+  'Account-searchPlaceholder'?: Record<string, never>;
+  'Account.tabActive'?: Record<string, never>;
+  'Account-tabActive'?: Record<string, never>;
+  'Account.tabAll'?: Record<string, never>;
+  'Account-tabAll'?: Record<string, never>;
+  'Account.tabCancelled'?: Record<string, never>;
+  'Account-tabCancelled'?: Record<string, never>;
+  'Account.tabDelivered'?: Record<string, never>;
+  'Account-tabDelivered'?: Record<string, never>;
+  'Account.tabLookup'?: Record<string, never>;
+  'Account-tabLookup'?: Record<string, never>;
+  'Account.title'?: Record<string, never>;
+  'Account-title'?: Record<string, never>;
+  'Account.trackOrder'?: Record<string, never>;
+  'Account-trackOrder'?: Record<string, never>;
   'Blog.comments.empty'?: Record<string, never>;
   'Blog-comments-empty'?: Record<string, never>;
   'Blog.comments.timeout'?: Record<string, never>;

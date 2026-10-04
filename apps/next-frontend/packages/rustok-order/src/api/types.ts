@@ -90,3 +90,19 @@ export interface Order {
   lineItems: OrderLineItem[];
   adjustments?: OrderAdjustment[];
 }
+
+export interface OrderListResponse {
+  items: Order[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasNext: boolean;
+}
+
+export interface OrdersFilterParams {
+  page?: number;
+  perPage?: number;
+  status?: string;
+  token?: string;
+}
+

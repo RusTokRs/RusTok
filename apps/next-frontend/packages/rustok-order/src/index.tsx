@@ -11,3 +11,5 @@
 export * from "./api/types";
 export * from "./api/order";
 export * from "./components/order-view";
+export * from "./components/orders-history-view";
+

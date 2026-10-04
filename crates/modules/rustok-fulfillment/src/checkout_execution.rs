@@ -293,7 +293,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 );
             })
     }
-
+}
 
 fn map_checkout_fulfillment_local_port_error(
     context: &PortContext,

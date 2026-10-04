@@ -198,4 +198,24 @@ Order-statusDelivered = Delivered
 Order-statusDeliveredDesc = Successfully delivered
 Order-statusCancelled = Cancelled
 
+Account-title = Customer Portal
+Account-ordersTitle = Order History
+Account-ordersSubtitle = Track active shipments, verify delivery status, and review past orders
+Account-searchPlaceholder = Search orders or items...
+Account-tabAll = All Orders
+Account-tabActive = In Progress
+Account-tabDelivered = Delivered
+Account-tabCancelled = Cancelled
+Account-tabLookup = Lookup by ID
+Account-lookupTitle = Track Order by ID
+Account-lookupSubtitle = Enter your order ID or UUID received in your confirmation email to open live tracking.
+Account-lookupPlaceholder = e.g. a1b2c3d4-e5f6-7890-...
+Account-lookupSubmit = Open Tracking Page
+Account-lookupEmptyError = Please enter an order ID
+Account-emptyOrders = No Orders Found
+Account-emptyOrdersDesc = You haven't placed any orders yet. Browse our catalog to place your first order!
+Account-emptySearch = No orders match your search criteria. Try a different keyword.
+Account-trackOrder = Track Order
+
+
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::checkout_execution::{
     CheckoutFulfillmentExecutionPort, EnsureCheckoutFulfillmentsRequest,

@@ -392,28 +392,6 @@ fn command_context_for(
     Ok(context)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn explicit_refund_collection_must_be_attached_to_target_order() {
-        let collection_id = Uuid::new_v4();
-        let order_id = Uuid::new_v4();
-
-        assert!(validate_return_payment_collection_order(None, collection_id, order_id).is_err());
-        assert!(
-            validate_return_payment_collection_order(Some(Uuid::new_v4()), collection_id, order_id)
-                .is_err()
-        );
-        assert_eq!(
-            validate_return_payment_collection_order(Some(order_id), collection_id, order_id)
-                .unwrap(),
-            collection_id
-        );
-    }
-}
-
 fn normalize_decision_action(action: &str) -> PostOrderOrchestrationResult<String> {
     let normalized = action.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
@@ -545,3 +523,26 @@ fn decimal_from_json_value(value: &Value, field: &str) -> PostOrderOrchestration
         ))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_refund_collection_must_be_attached_to_target_order() {
+        let collection_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+
+        assert!(validate_return_payment_collection_order(None, collection_id, order_id).is_err());
+        assert!(
+            validate_return_payment_collection_order(Some(Uuid::new_v4()), collection_id, order_id)
+                .is_err()
+        );
+        assert_eq!(
+            validate_return_payment_collection_order(Some(order_id), collection_id, order_id)
+                .unwrap(),
+            collection_id
+        );
+    }
+}
+
