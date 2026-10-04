@@ -126,7 +126,10 @@
     "graphql_compatibility_facade": true,
     "admin_rest_list_show": true,
     "concrete_delegate_removed": true,
-    "next_slice": "execute the mounted projection-parity capture and deterministic deadline/failure harness, retain immutable evidence, then prove process restart and remote-adapter behavior separately"
+    "next_slice": "execute mounted lifecycle projection-parity capture and deterministic deadline/failure harness",
+    "graphql_tenant_binding": true,
+    "graphql_order_embedded_fulfillment_tenant_binding": true,
+    "graphql_error_boundary_preserved": true
   },
   "validation": {
     "tests_run": false,
