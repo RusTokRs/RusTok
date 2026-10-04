@@ -87,8 +87,8 @@ mod rustok_pricing_shim;
 // Query implementation dependencies are re-exported from this source boundary so the
 // implementation module can consume the same scoped aliases without textual inclusion.
 pub(crate) use super::{
-    MODULE_SLUG, PRODUCT_MODULE_SLUG, product_query_tenant, require_commerce_permission,
-    require_storefront_channel_enabled, types,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, current_tenant_scope, product_query_tenant,
+    require_commerce_permission, require_storefront_channel_enabled, types,
 };
 
 #[path = "../query.rs"]
