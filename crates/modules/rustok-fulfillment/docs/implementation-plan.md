@@ -211,6 +211,8 @@ disable/reconciliation matrix in
   selection and validate before `update_storefront_context`.
 - [x] Add an owner-level inactive shipping-option conflict guard to
   `ShippingSelectionPort::select_shipping_option`.
+- [x] Remove raw transport error payloads from native client structured logs while
+  preserving local validation messages and the stable transport failure envelope.
 - [ ] Execute the focused verifier, broad verifier/self-test, fulfillment compile,
   native/GraphQL selection parity, restart, and remote-adapter evidence.
 
