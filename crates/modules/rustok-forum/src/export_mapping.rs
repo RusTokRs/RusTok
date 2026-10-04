@@ -312,6 +312,7 @@ mod tests {
             requested_locale: "en".to_owned(),
             locale: "en".to_owned(),
             effective_locale: "en".to_owned(),
+            available_locales: vec!["en".to_owned()],
             topic_id,
             author_id: Some(author_id),
             content: RichTextView {
