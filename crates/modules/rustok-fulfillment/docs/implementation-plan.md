@@ -33,8 +33,8 @@ The root in-process checkout factory mounts
 `TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
 `Pending`, `Shipped`, and `Delivered`. `Cancelled` and unknown lifecycle values
 fail closed with typed manual reconciliation. Typed checkout creation/adoption now
-uses `FulfillmentService::create_checkout_fulfillment` and typed lookup uses
-`find_checkout_fulfillment` / `list_checkout_fulfillments`; the owner also binds
+uses the aggregate `FulfillmentService::ensure_checkout_fulfillment_set` and typed
+set recovery reads through `list_checkout_fulfillments`; the owner also binds
 each checkout operation to one order, customer, and normalized plan hash through a
 concurrency-safe identity anchor. Durable typed checkout fulfillment identity,
 the operation-level anchor, and the uniqueness constraint are source-complete;
