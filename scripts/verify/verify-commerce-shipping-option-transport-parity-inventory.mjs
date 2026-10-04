@@ -52,6 +52,25 @@ const adminList = between(
   '/// Create admin shipping option',
   'admin shipping-option list',
 );
+const graphqlShippingOptionList = between(
+  safeQuery,
+  'async fn storefront_shipping_options(',
+  'async fn storefront_me',
+  'GraphQL storefront shipping-option list',
+);
+const graphqlShippingOptionLookup = between(
+  safeQuery,
+  'async fn shipping_option(',
+  'async fn shipping_options(',
+  'GraphQL admin shipping-option lookup',
+);
+const graphqlShippingOptionAdminList = between(
+  safeQuery,
+  'async fn shipping_options(',
+  'async fn fulfillment(',
+  'GraphQL admin shipping-option list-all',
+);
+
 const adminLookup = between(
   adminRest,
   'pub async fn show_shipping_option(',
@@ -62,6 +81,44 @@ const storefrontList = storefrontRest.slice(
   storefrontRest.indexOf('pub async fn list_shipping_options('),
 );
 if (!storefrontList) failures.push('storefront shipping-option list: unable to isolate source block');
+
+for (const [source, value, label] of [
+  [graphqlShippingOptionList, 'tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id)', 'GraphQL storefront tenant binding'],
+  [graphqlShippingOptionList, 'shipping_option_read_runtime_for_current_graphql_scope(', 'GraphQL storefront host-selected runtime'],
+  [graphqlShippingOptionList, 'list_shipping_option_projections(', 'GraphQL storefront owner list operation'],
+  [graphqlShippingOptionList, 'requested_locale: Some(context.locale.clone())', 'GraphQL storefront effective locale'],
+  [graphqlShippingOptionList, 'tenant_default_locale: Some(context.default_locale.clone())', 'GraphQL storefront tenant fallback locale'],
+  [graphqlShippingOptionList, 'shipping_option_graphql_read_port_context(', 'GraphQL storefront owner context'],
+  [graphqlShippingOptionLookup, 'if tenant_id != tenant.id', 'GraphQL shipping-option lookup tenant binding'],
+  [graphqlShippingOptionLookup, 'shipping_option_read_runtime_for_current_graphql_scope(', 'GraphQL lookup host-selected runtime'],
+  [graphqlShippingOptionLookup, 'read_shipping_option_projection(', 'GraphQL lookup owner operation'],
+  [graphqlShippingOptionLookup, 'requested_locale: Some(locale)', 'GraphQL lookup effective locale'],
+  [graphqlShippingOptionLookup, 'tenant_default_locale: Some(tenant.default_locale.clone())', 'GraphQL lookup tenant fallback locale'],
+  [graphqlShippingOptionAdminList, 'if tenant_id != tenant.id', 'GraphQL admin list tenant binding'],
+  [graphqlShippingOptionAdminList, 'shipping_option_read_runtime_for_current_graphql_scope(', 'GraphQL admin host-selected runtime'],
+  [graphqlShippingOptionAdminList, 'shipping_option_admin_read_port()', 'GraphQL admin owner read port'],
+  [graphqlShippingOptionAdminList, 'list_all_shipping_option_projections(', 'GraphQL admin list-all owner operation'],
+  [graphqlShippingOptionAdminList, 'requested_locale: Some(locale)', 'GraphQL admin effective locale'],
+  [graphqlShippingOptionAdminList, 'tenant_default_locale: Some(tenant.default_locale.clone())', 'GraphQL admin tenant fallback locale'],
+]) {
+  requireText(source, value, label);
+}
+
+for (const source of [
+  graphqlShippingOptionList,
+  graphqlShippingOptionLookup,
+  graphqlShippingOptionAdminList,
+]) {
+  for (const value of [
+    'FulfillmentService::new(',
+    '.list_shipping_options(',
+    '.get_shipping_option(',
+    '.list_all_shipping_options(',
+    'async_graphql::Error::new(error.to_string())',
+  ]) {
+    forbidText(source, value, 'mounted GraphQL shipping-option reads must not bypass owner ports');
+  }
+}
 
 for (const [source, value, label] of [
   [serverRuntime, 'CommerceShippingOptionReadRuntime::in_process(', 'host read runtime factory'],
