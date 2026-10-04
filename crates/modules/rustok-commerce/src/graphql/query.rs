@@ -14,7 +14,10 @@ use rustok_api::{
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_fulfillment::{FulfillmentService, ListShippingOptionProjectionsRequest, ListAllShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest};
+use rustok_fulfillment::{
+    FulfillmentService, ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
+    ReadShippingOptionProjectionRequest,
+};
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
