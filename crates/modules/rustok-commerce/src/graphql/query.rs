@@ -60,8 +60,8 @@ fn shipping_option_graphql_read_port_context(
     locale: &str,
     channel: Option<&str>,
     resource_id: Option<Uuid>,
+    actor: rustok_api::PortActor,
 ) -> rustok_api::PortContext {
-    let actor = rustok_api::PortActor::service("commerce-storefront-graphql");
     let resource = resource_id
         .map(|id| id.to_string())
         .unwrap_or_else(|| tenant_id.to_string());
@@ -485,12 +485,17 @@ impl CommerceQuery {
                 )
             };
 
+        let actor = ctx
+            .data_opt::<AuthContext>()
+            .map(|auth| rustok_api::PortActor::user(auth.user_id.to_string()))
+            .unwrap_or_else(|| rustok_api::PortActor::service("commerce-storefront-graphql"));
         let owner_context = shipping_option_graphql_read_port_context(
             tenant_id,
             "storefront_shipping_options",
             context.locale.as_str(),
             public_channel_slug.as_deref(),
             None,
+            actor,
         );
         let shipping_option_read_runtime =
             crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
@@ -1329,6 +1334,11 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_READ],
+            "Permission denied: fulfillments:read required",
+        )?;
         if tenant_id != tenant.id {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Shipping-option reads must use the current tenant",
@@ -1344,6 +1354,7 @@ impl CommerceQuery {
             ctx.data_opt::<RequestContext>()
                 .and_then(|request| request.channel_slug.as_deref()),
             Some(id),
+            rustok_api::PortActor::user(auth.user_id.to_string()),
         );
         let shipping_option_read_runtime =
             crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
@@ -1411,6 +1422,7 @@ impl CommerceQuery {
             ctx.data_opt::<RequestContext>()
                 .and_then(|request| request.channel_slug.as_deref()),
             None,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
         );
         let shipping_option_read_runtime =
             crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
