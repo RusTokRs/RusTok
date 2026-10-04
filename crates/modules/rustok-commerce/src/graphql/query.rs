@@ -14,7 +14,7 @@ use rustok_api::{
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentService, ListShippingOptionProjectionsRequest, ListAllShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest};
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
@@ -52,6 +52,31 @@ fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
         .into_iter()
         .find(|value| !value.trim().is_empty())
         .unwrap_or_default()
+}
+
+fn shipping_option_graphql_read_port_context(
+    tenant_id: Uuid,
+    operation: &'static str,
+    locale: &str,
+    channel: Option<&str>,
+    resource_id: Option<Uuid>,
+    actor: rustok_api::PortActor,
+) -> rustok_api::PortContext {
+    let resource = resource_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| tenant_id.to_string());
+    let context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        locale,
+        format!("commerce-graphql-shipping-options:{operation}:{resource}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    channel
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| context.clone().with_channel(value))
+        .unwrap_or(context)
 }
 
 fn product_schema_read_port_context(
@@ -401,7 +426,19 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            if auth.tenant_id != tenant.id {
+                return Err(<FieldError as GraphQLError>::permission_denied(
+                    "Authenticated actor is not bound to the current tenant",
+                ));
+            }
+        }
+        if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Storefront shipping-option reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
@@ -455,13 +492,39 @@ impl CommerceQuery {
                 )
             };
 
-        let mut options = FulfillmentService::new(db.clone())
-            .list_shipping_options(
-                tenant_id,
-                Some(context.locale.as_str()),
-                Some(context.default_locale.as_str()),
+        let actor = ctx
+            .data_opt::<AuthContext>()
+            .map(|auth| rustok_api::PortActor::user(auth.user_id.to_string()))
+            .unwrap_or_else(|| rustok_api::PortActor::service("commerce-storefront-graphql"));
+        let owner_context = shipping_option_graphql_read_port_context(
+            tenant_id,
+            "storefront_shipping_options",
+            context.locale.as_str(),
+            public_channel_slug.as_deref(),
+            None,
+            actor,
+        );
+        let shipping_option_read_runtime =
+            crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
+                db.clone(),
+            );
+        let mut options = shipping_option_read_runtime
+            .shipping_option_read_port()
+            .list_shipping_option_projections(
+                owner_context.clone(),
+                ListShippingOptionProjectionsRequest {
+                    requested_locale: Some(context.locale.clone()),
+                    tenant_default_locale: Some(context.default_locale.clone()),
+                },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                super::super::query_error_boundary::shipping_option_port_error(
+                    &owner_context,
+                    error,
+                )
+            })?;
+
         if let Some(currency_code) = context.currency_code.as_deref() {
             options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
         }
@@ -1270,7 +1333,7 @@ impl CommerceQuery {
         id: Uuid,
     ) -> Result<Option<GqlShippingOption>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
@@ -1278,58 +1341,48 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
-        let option = match FulfillmentService::new(db.clone())
-            .get_shipping_option(
-                tenant_id,
-                id,
-                Some(locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+        if tenant_id != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Shipping-option reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
+        let locale =
+            resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+        let owner_context = shipping_option_graphql_read_port_context(
+            tenant_id,
+            "shipping_option",
+            locale.as_str(),
+            ctx.data_opt::<RequestContext>()
+                .and_then(|request| request.channel_slug.as_deref()),
+            Some(id),
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+        );
+        let shipping_option_read_runtime =
+            crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
+                db.clone(),
+            );
+        match shipping_option_read_runtime
+            .shipping_option_read_port()
+            .read_shipping_option_projection(
+                owner_context.clone(),
+                ReadShippingOptionProjectionRequest {
+                    shipping_option_id: id,
+                    requested_locale: Some(locale),
+                    tenant_default_locale: Some(tenant.default_locale.clone()),
+                },
             )
             .await
         {
-            Ok(option) => option,
-            Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_)) => {
-                return Ok(None);
-            }
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
-        };
-
-        Ok(Some(option.into()))
+            Ok(option) => Ok(Some(option.into())),
+            Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => Ok(None),
+            Err(error) => Err(super::super::query_error_boundary::shipping_option_port_error(
+                &owner_context,
+                error,
+            )),
+        }
     }
 
-    async fn shipping_profile(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<Option<GqlShippingProfile>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_READ],
-            "Permission denied: fulfillments:read required",
-        )?;
-
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
-        let profile = match ShippingProfileService::new(db.clone())
-            .get_shipping_profile(
-                tenant_id,
-                id,
-                Some(locale.as_str()),
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-        {
-            Ok(profile) => profile,
-            Err(CommerceError::ShippingProfileNotFound(_)) => return Ok(None),
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
-        };
-
-        Ok(Some(profile.into()))
-    }
 
     async fn shipping_options(
         &self,
@@ -1338,7 +1391,7 @@ impl CommerceQuery {
         filter: Option<ShippingOptionsFilter>,
     ) -> Result<GqlShippingOptionList> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
@@ -1346,7 +1399,14 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+        if tenant_id != tenant.id {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Shipping-option reads must use the current tenant",
+            ));
+        }
+        let tenant_id = tenant.id;
+        let locale =
+            resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let filter = filter.unwrap_or(ShippingOptionsFilter {
             active: None,
             currency_code: None,
@@ -1357,14 +1417,35 @@ impl CommerceQuery {
         });
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
-        let mut items = FulfillmentService::new(db.clone())
-            .list_all_shipping_options(
-                tenant_id,
-                Some(locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+        let owner_context = shipping_option_graphql_read_port_context(
+            tenant_id,
+            "shipping_options",
+            locale.as_str(),
+            ctx.data_opt::<RequestContext>()
+                .and_then(|request| request.channel_slug.as_deref()),
+            None,
+            rustok_api::PortActor::user(auth.user_id.to_string()),
+        );
+        let shipping_option_read_runtime =
+            crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
+                db.clone(),
+            );
+        let mut items = shipping_option_read_runtime
+            .shipping_option_admin_read_port()
+            .list_all_shipping_option_projections(
+                owner_context.clone(),
+                ListAllShippingOptionProjectionsRequest {
+                    requested_locale: Some(locale),
+                    tenant_default_locale: Some(tenant.default_locale.clone()),
+                },
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| {
+                super::super::query_error_boundary::shipping_option_port_error(
+                    &owner_context,
+                    error,
+                )
+            })?;
         if let Some(active) = filter.active {
             items.retain(|option| option.active == active);
         }
@@ -1398,54 +1479,6 @@ impl CommerceQuery {
         })
     }
 
-    async fn shipping_profiles(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        filter: Option<ShippingProfilesFilter>,
-    ) -> Result<GqlShippingProfileList> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_READ],
-            "Permission denied: fulfillments:read required",
-        )?;
-
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
-        let filter = filter.unwrap_or(ShippingProfilesFilter {
-            active: None,
-            search: None,
-            page: Some(1),
-            per_page: Some(20),
-        });
-        let page = filter.page.unwrap_or(1).max(1);
-        let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
-        let (items, total) = ShippingProfileService::new(db.clone())
-            .list_shipping_profiles(
-                tenant_id,
-                crate::dto::ListShippingProfilesInput {
-                    page,
-                    per_page,
-                    active: filter.active,
-                    search: filter.search,
-                    locale: Some(locale.clone()),
-                },
-                Some(locale.as_str()),
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-        Ok(GqlShippingProfileList {
-            items: items.into_iter().map(Into::into).collect(),
-            total,
-            page,
-            per_page,
-            has_next: page * per_page < total,
-        })
-    }
 
     async fn fulfillment(
         &self,

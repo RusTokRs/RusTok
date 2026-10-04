@@ -233,6 +233,11 @@ disable/reconciliation matrix in
   validation, enrichment, listing, lookup, and admin list-all.
 - [x] Inject both owner ports through application-host composition and resolver
   scope; keep standalone fallback outside the private facade.
+- [x] Cut mounted GraphQL storefront list plus admin lookup/list-all over
+  the host-selected shipping-option owner runtime; preserve filters, pagination,
+  optional lookup-not-found, tenant binding, and authenticated admin actors.
+- [x] Map mounted GraphQL shipping-option `PortError` values through the typed
+  query error boundary so owner messages remain diagnostic-only.
 - [x] Retain a source inventory that distinguishes complete projection reads from
   seller/cart selection without claiming runtime parity.
 - [x] Add the shared runtime to `CommerceHttpRuntime` and cut REST storefront
