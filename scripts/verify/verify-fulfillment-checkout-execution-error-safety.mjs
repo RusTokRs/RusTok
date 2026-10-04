@@ -57,6 +57,12 @@ const readHelper = between(
   'async fn list_checkout_fulfillments(',
   'checkout fulfillment read helper',
 );
+const ensureValidation = between(
+  source,
+  'fn validate_ensure_request(',
+  'fn validate_request(',
+  'checkout fulfillment ensure validator',
+);
 const portImpl = between(
   source,
   'impl CheckoutFulfillmentExecutionPort for InProcessCheckoutFulfillmentExecutionPort {',
@@ -101,6 +107,10 @@ for (const [content, value, label] of [
   [ensure, 'context: &PortContext', 'ensure context input'],
   [ensure, 'ensure_checkout_fulfillment_set(', 'aggregate ensure operation'],
   [ensure, 'validate_ensure_request(', 'non-empty ensure validation'],
+  [ensureValidation, 'plans.is_empty()', 'empty ensure guard'],
+  [ensureValidation, '"fulfillment.checkout_plan_invalid"', 'empty ensure stable code'],
+  [ensureValidation, '"checkout fulfillment ensure requires at least one plan"', 'empty ensure stable message'],
+  [readHelper, 'validate_request(', 'read uses permissive shared validation'],
   [ensure, 'fulfillment_error_to_port_error(', 'aggregate ensure mapper handoff'],
   [readHelper, 'context: &PortContext', 'read context input'],
   [readHelper, 'list_checkout_fulfillments_for_read', 'typed read operation'],
