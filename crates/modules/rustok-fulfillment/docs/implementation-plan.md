@@ -133,6 +133,14 @@ resource UUID, and database payloads are not recorded. Read/write admission,
 seller/profile filtering, owner delegation, severity, and public `PortError`
 envelopes are unchanged. `list_seller_shipping_options` is a read operation and therefore requires canonical deadline semantics but not write idempotency; `select_shipping_option` remains the write operation and requires idempotency plus deadline semantics. Shipping-option projection and fulfillment lifecycle
 read diagnostic payloads remain separate open slices.
+The mounted native storefront selection path now reuses the Commerce
+shipping-selection eligibility policy used by GraphQL: it performs a fresh
+Fulfillment owner projection read and validates active state, currency, public
+channel visibility, and shipping-profile compatibility before Cart mutation.
+The native server-function adapter injects the host-selected
+`CommerceShippingOptionReadRuntime`; the owner `ShippingSelectionPort` also
+rejects inactive options as a conflict. This closes the stale-client/native
+selection bypass without moving Commerce channel/profile policy into Fulfillment.
 
 ## Accepted conditional capability cutover
 
@@ -196,6 +204,13 @@ disable/reconciliation matrix in
   severity.
 - [x] Retain focused evidence and broad ecommerce guard coverage without claiming
   compile or runtime validation.
+- [x] Share shipping-option eligibility validation between mounted GraphQL
+  selection and native storefront selection; preserve one Commerce policy for
+  active state, currency, channel visibility, and shipping-profile compatibility.
+- [x] Inject the host-selected shipping-option read runtime into native storefront
+  selection and validate before `update_storefront_context`.
+- [x] Add an owner-level inactive shipping-option conflict guard to
+  `ShippingSelectionPort::select_shipping_option`.
 - [ ] Execute the focused verifier, broad verifier/self-test, fulfillment compile,
   native/GraphQL selection parity, restart, and remote-adapter evidence.
 
