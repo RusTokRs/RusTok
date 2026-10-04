@@ -105,18 +105,27 @@ for (const [value, label] of [
   ["cause: &'static str", 'mapper internal cause input'],
   ['owner = "rustok_fulfillment.checkout_execution"', 'owner log'],
   ['correlation_id = %context.correlation_id', 'correlation log'],
-  ['tenant_id = %context.tenant_id', 'tenant log'],
-  ['channel = ?context.channel', 'channel log'],
+  ['tenant_id_shape = context_facts.tenant_id_shape', 'bounded tenant shape log'],
+  ['channel_shape = context_facts.channel_shape', 'bounded channel shape log'],
   ['operation,', 'operation log'],
-  ['fulfillment_id = %fulfillment.id', 'fulfillment log'],
-  ['order_id = %fulfillment.order_id', 'order log'],
-  ['owner_status = %fulfillment.status', 'raw owner status internal log'],
+  ['fulfillment_id_non_nil = resource_facts.fulfillment_id_non_nil', 'bounded fulfillment identity log'],
+  ['order_id_non_nil = resource_facts.order_id_non_nil', 'bounded order identity log'],
+  ['owner_status_kind = resource_facts.owner_status_kind', 'bounded owner status log'],
+  ['owner_status_length = resource_facts.owner_status_length', 'bounded owner status length log'],
   ['cause,', 'internal cause log'],
   ['code = MANUAL_RECONCILIATION_CODE', 'stable code log'],
   ['PortError::conflict(', 'typed conflict envelope'],
   ['MANUAL_RECONCILIATION_CODE,', 'public code use'],
   ['MANUAL_RECONCILIATION_MESSAGE,', 'static public message use'],
 ]) requireText(reconciliationMapper, value, label);
+
+for (const value of [
+  'tenant_id = %context.tenant_id',
+  'channel = ?context.channel',
+  'fulfillment_id = %fulfillment.id',
+  'order_id = %fulfillment.order_id',
+  'owner_status = %fulfillment.status',
+]) forbidText(reconciliationMapper, value, 'unsafe raw lifecycle diagnostic payload');
 
 for (const value of [
   'PortError::new(',
