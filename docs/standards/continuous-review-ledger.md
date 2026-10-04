@@ -4460,3 +4460,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: production source cutover merged as squash commit `5d43657c9e5803d69421d7d625b243e41ec89704` via PR #4491; post-merge verifier/evidence cleanup was reviewed on top of that merge and is included in this maintenance change.
 - Status: FS-22.06.105 source remediation complete; compile, mounted GraphQL/REST parity execution, deadline/failure runtime evidence, restart, and remote-adapter evidence remain open.
 - Next primary module iteration: execute/inspect the mounted shipping-option parity contract where tooling permits; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.
+
+### FS-22.06.106 Assessment — mounted shipping-option GraphQL/REST parity evidence tooling
+
+- Base: f0815df16d8612c2ca8097e5905fd3823c597f0d; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment evidence boundary — executable parity capture for mounted shipping-option GraphQL and REST projections.
+- Confirmed finding FULFILLMENT-22.06.106-01: source cutover was complete, but the repository had no dedicated executable capture contract/runner/verifier for the three mounted shipping-option projection reads plus optional-not-found behavior. The existing source inventory therefore could not produce immutable transport-parity evidence without ad-hoc tooling.
+- Production/evidence remediation: added a locked execution contract, fail-closed capture runner, dedicated verifier, and operator runbook. The runner compares storefront active-list, admin lookup, admin list-all and optional-not-found behavior; normalizes timestamps/translation arrays; retains hashes and bounded request facts; and excludes bearer tokens, raw response bodies and shipping-option metadata.
+- Non-promotion boundary: capture packets may prove only `transport_projection_parity_proven=true`. `runtime_parity_proven` remains false, while deadline/failure injection, process restart, external adapter identity, and remote adapter behavior remain separate evidence gates.
+- Source evidence now links the execution contract/runner/verifier and remains explicitly unvalidated until the capture is executed against real mounted endpoints.
+- Integration: squash-merged as `ccc34abe3d5b872c7bb293e98a4297b70e32126d` via PR #4493.
+- Status: FS-22.06.106 source/evidence tooling complete and integrated; compile, runtime capture, parity execution, failure/deadline injection, restart, and remote-adapter evidence remain open and are not claimed.
+- Next primary module iteration: execute the shipping-option parity capture when mounted endpoints and a valid token/fixtures are available; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.
