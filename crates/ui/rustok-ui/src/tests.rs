@@ -148,6 +148,31 @@ fn avatar_spinner_skeleton_label_and_separator_classes() {
 }
 
 #[test]
+fn progress_class_and_percentage_normalization_are_consistent() {
+    let classes = progress_classes(Some("max-w-sm"));
+    assert!(classes.contains("h-2 w-full"));
+    assert!(classes.contains("bg-primary/20"));
+    assert!(classes.contains("max-w-sm"));
+    assert!(!classes.contains("  "));
+
+    assert_eq!(normalize_progress_value(-1.0), 0.0);
+    assert_eq!(normalize_progress_value(-0.0).to_bits(), 0.0_f64.to_bits());
+    assert_eq!(normalize_progress_value(37.5), 37.5);
+    assert_eq!(normalize_progress_value(101.0), 100.0);
+    assert_eq!(normalize_progress_value(f64::NAN), 0.0);
+    assert_eq!(normalize_progress_value(f64::INFINITY), 0.0);
+    assert_eq!(normalize_progress_value(f64::NEG_INFINITY), 0.0);
+
+    assert_eq!(normalize_progress_max(5.0), 5.0);
+    assert_eq!(normalize_progress_max(0.0), 100.0);
+    assert_eq!(normalize_progress_max(f64::NAN), 100.0);
+    assert_eq!(normalize_progress_value_for_max(-1.0, 5.0), 0.0);
+    assert_eq!(normalize_progress_value_for_max(2.5, 5.0), 2.5);
+    assert_eq!(normalize_progress_value_for_max(8.0, 5.0), 5.0);
+    assert_eq!(progress_value_percentage(2.5, 5.0), 50.0);
+}
+
+#[test]
 fn dialog_and_tabs_classes_track_open_and_active_state() {
     let open_backdrop = dialog_backdrop_classes(true);
     assert!(open_backdrop.contains("opacity-100"));
@@ -157,6 +182,10 @@ fn dialog_and_tabs_classes_track_open_and_active_state() {
     assert!(open_content.contains("scale-100"));
     assert!(open_content.contains("modal-x"));
     assert!(dialog_content_classes(false, None).contains("scale-95"));
+
+    let close_control = dialog_close_classes(None);
+    assert!(close_control.contains("absolute right-4 top-4"));
+    assert!(close_control.contains("hover:opacity-100"));
 
     let vertical_list = tabs_list_classes(Orientation::Vertical, None);
     assert!(vertical_list.contains("flex-col"));

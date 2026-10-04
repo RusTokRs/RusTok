@@ -21,5 +21,13 @@ mod tests {
         );
         assert_eq!(t(Some("en"), "app.nav.dashboard", "fallback"), "Dashboard");
         assert_eq!(t(Some("ru"), "app.nav.dashboard", "fallback"), "Дашборд");
+        assert_eq!(
+            t(Some("en"), "modules.build.progress", "fallback"),
+            "Platform build progress"
+        );
+        assert_eq!(
+            t(Some("ru"), "modules.build.progress", "fallback"),
+            "Прогресс сборки платформы"
+        );
     }
 }

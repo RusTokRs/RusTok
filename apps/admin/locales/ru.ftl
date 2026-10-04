@@ -281,6 +281,7 @@ users-create-creating = Создание...
 users-create-cancel = Отмена
 users-create-errorRequired = Email и пароль обязательны для заполнения.
 modules-title = Модули
+modules-build-progress = Прогресс сборки платформы
 modules-eyebrow = Платформа
 modules-subtitle = Управление модулями платформы. Базовые модули всегда активны и не могут быть отключены.
 modules-section-core = Базовые модули

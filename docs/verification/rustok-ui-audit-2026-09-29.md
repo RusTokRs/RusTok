@@ -39,7 +39,7 @@ document).
 | UI-CORE-05 | Low | Public contracts (`SelectOption`, `TabItem`, `DialogState`, `TabsState`) and most token constants/functions had no documentation, and the crate had no lint floor. | Full rustdoc on public items, `#![forbid(unsafe_code)]` and `#![warn(missing_docs)]` added (same floor as `rustok-forms` / `rustok-grid`). | Fixed |
 | UI-LEPTOS-01 | High | After the core signature change, all seven arity call sites in the Leptos adapter still passed the removed parameters — the adapter could not compile. | Call sites updated (`button`, `input`, `textarea`, `select`, `checkbox`, `switch`, `label`). | Fixed |
 | UI-LEPTOS-02 | High | `Tabs` built its wrapper class with `format!("w-full {}", class)`, emitting a trailing space (and a dangling separator with no custom class). | Wrapper now uses `merge_classes`. | Fixed |
-| UI-LEPTOS-03 | High | `Dialog` marked its **clickable** backdrop `aria-hidden="true"`, never moved focus into the modal, and had no `Escape` handling. | Backdrop no longer hidden from assistive tech; dialog receives focus on open (`NodeRef` + `Effect`) and closes on `Escape`. Focus trap/`aria-labelledby` remain a follow-up. | Fixed (partial, documented) |
+| UI-LEPTOS-03 | High | `Dialog` marked its **clickable** backdrop `aria-hidden="true"`, never moved focus into the modal, and had no `Escape` handling. | Replaced with a compound portal dialog; it moves focus on open, traps Tab/Shift+Tab, closes on `Escape`/backdrop/close control, supports controlled and uncontrolled state, locks body scrolling for modal dialogs, and restores focus to the last mounted trigger. Full Radix parity remains tracked in the catalog. | Fixed (original finding) |
 | UI-LEPTOS-04 | Medium | `Spinner` hardcoded `aria-label="Loading"`, so localized hosts announced English. | `aria_label` prop with `Loading` fallback, documented for localized callers. | Fixed |
 | UI-LEPTOS-05 | Medium | `Separator` and `TabsList` never announced their orientation; screen readers assumed horizontal. | `aria-orientation` rendered from `Orientation::as_str()`. | Fixed |
 | UI-LEPTOS-06 | Medium | `Select` rendered initial `selected` attributes only; programmatic value changes did not update the DOM selection. | `prop:value` binding added (mirrors the raw `<select prop:value=…>` idiom already used by consumers). | Fixed |
@@ -67,8 +67,11 @@ document).
   raw HTML `type` string (no in-tree caller passes `r#type`), which keeps room
   for `file`, `color`, `datetime-local`, …; `InputType` remains a host-facing
   contract.
-- **Dialog focus trap / `aria-labelledby`** require a focus-manager and id
-  plumbing; only focus-on-open + `Escape` were implemented.
+- **Dialog focus restoration** returns to the most recent mounted
+  `DialogTrigger`; programmatically opened dialogs without such a trigger remain
+  host-owned. Full parity with Next's Radix Dialog is still pending (slot/asChild,
+  background isolation, complete outside-interaction behavior, generated title/
+  description IDs, and mount/exit animation lifecycle).
 - **Legacy `UI/leptos` (`iu-leptos`)** is a diverged twin of
   `crates/ui/rustok-ui/leptos` still referenced by the root manifest; it is
   outside this audit's scope and should be handled in a dedicated round.

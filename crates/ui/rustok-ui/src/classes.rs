@@ -435,6 +435,15 @@ pub fn skeleton_classes(variant: SkeletonVariant, custom: Option<&str>) -> Strin
     ])
 }
 
+/// Generates a CSS class string for determinate progress bars.
+#[must_use = "the resolved class list has no effect unless it is applied to an element"]
+pub fn progress_classes(custom: Option<&str>) -> String {
+    merge_classes(&[
+        "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
+        custom.unwrap_or(""),
+    ])
+}
+
 /// Generates a CSS class string for spinner progress indicators.
 #[must_use = "the resolved class list has no effect unless it is applied to an element"]
 pub fn spinner_classes(size: Size, custom: Option<&str>) -> String {
@@ -508,6 +517,15 @@ pub fn dialog_content_classes(open: bool, custom: Option<&str>) -> String {
         radius::LG,
         shadow::LG,
         state_cls,
+        custom.unwrap_or(""),
+    ])
+}
+
+/// Generates a CSS class string for the dialog's built-in close control.
+#[must_use = "the resolved class list has no effect unless it is applied to an element"]
+pub fn dialog_close_classes(custom: Option<&str>) -> String {
+    merge_classes(&[
+        "ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         custom.unwrap_or(""),
     ])
 }

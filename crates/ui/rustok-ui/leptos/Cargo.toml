@@ -19,3 +19,18 @@ csr = ["leptos/csr"]
 leptos = { workspace = true }
 rustok-ui = { path = ".." }
 serde = { workspace = true, features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "DomRectList",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlElement",
+    "KeyboardEvent",
+    "Node",
+    "NodeList",
+    "Window",
+] }

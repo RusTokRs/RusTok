@@ -44,6 +44,53 @@ impl SelectOption {
     }
 }
 
+/// Normalizes the maximum value for a progress indicator.
+///
+/// A finite, positive maximum is preserved. Invalid values fall back to `100`
+/// so the component can keep its ARIA range and visual percentage well-defined.
+#[must_use]
+pub fn normalize_progress_max(max: f64) -> f64 {
+    if max.is_finite() && max > 0.0 {
+        max
+    } else {
+        100.0
+    }
+}
+
+/// Normalizes a progress value against an explicit maximum.
+///
+/// Finite values are clamped to `0..=max`. Non-finite values, including `NaN`
+/// and infinities, become `0` so the rendered width and accessible value remain
+/// valid.
+#[must_use]
+pub fn normalize_progress_value_for_max(value: f64, max: f64) -> f64 {
+    let max = normalize_progress_max(max);
+    if !value.is_finite() || value <= 0.0 {
+        0.0
+    } else if value >= max {
+        max
+    } else {
+        value
+    }
+}
+
+/// Converts a normalized progress value to the percentage used by its visual bar.
+#[must_use]
+pub fn progress_value_percentage(value: f64, max: f64) -> f64 {
+    let max = normalize_progress_max(max);
+    normalize_progress_value_for_max(value, max) / max * 100.0
+}
+
+/// Normalizes a progress percentage for both its visual bar and ARIA value.
+///
+/// Finite values are clamped to the inclusive range `0..=100`. Non-finite
+/// values, including `NaN` and infinities, become `0` so the rendered width
+/// and accessible value always remain valid percentages.
+#[must_use]
+pub fn normalize_progress_value(value: f64) -> f64 {
+    normalize_progress_value_for_max(value, 100.0)
+}
+
 /// Headless tab definition for tab bars.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabItem {

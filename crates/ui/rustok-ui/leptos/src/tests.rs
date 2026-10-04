@@ -17,6 +17,7 @@ use crate::badge::*;
 use crate::button::*;
 use crate::card::*;
 use crate::dialog::*;
+use crate::progress::*;
 use crate::skeleton::*;
 use crate::tabs::*;
 
@@ -92,6 +93,58 @@ fn test_render_skeleton_ssr() {
 }
 
 #[test]
+fn test_render_progress_ssr() {
+    let value = Signal::derive(|| 37.5);
+    let html = view! {
+        <Progress value=value aria_label="Upload progress" class="max-w-sm" />
+    }
+    .to_html();
+
+    assert!(html.contains("role=\"progressbar\""));
+    assert!(html.contains("aria-label=\"Upload progress\""));
+    assert!(html.contains("aria-valuemin=\"0\""));
+    assert!(html.contains("aria-valuemax=\"100\""));
+    assert!(html.contains("aria-valuenow=\"37.5\""));
+    assert!(html.contains("width=\"37.5\""));
+    assert!(html.contains("max-w-sm"));
+    assert!(html.contains("aria-hidden=\"true\""));
+
+    let overrun = Signal::derive(|| 125.0);
+    let overrun_html = view! {
+        <Progress value=overrun aria_label="Upload progress" />
+    }
+    .to_html();
+    assert!(overrun_html.contains("aria-valuenow=\"100\""));
+    assert!(overrun_html.contains("data-state=\"complete\""));
+    assert!(overrun_html.contains("width=\"100\""));
+
+    let custom_range = Signal::derive(|| 25.0);
+    let custom_max = Signal::derive(|| 50.0);
+    let custom_range_html = view! {
+        <Progress
+            value=custom_range
+            max=custom_max
+            aria_labelledby="upload-label"
+            aria_value_text="Half complete"
+            orientation=Orientation::Vertical
+        />
+    }
+    .to_html();
+    assert!(custom_range_html.contains("aria-labelledby=\"upload-label\""));
+    assert!(custom_range_html.contains("aria-valuetext=\"Half complete\""));
+    assert!(custom_range_html.contains("aria-valuemax=\"50\""));
+    assert!(custom_range_html.contains("aria-valuenow=\"25\""));
+    assert!(custom_range_html.contains("aria-orientation=\"vertical\""));
+    assert!(custom_range_html.contains("data-state=\"loading\""));
+    assert!(custom_range_html.contains("data-max=\"50\""));
+    assert!(custom_range_html.contains("width=\"50\""));
+
+    let empty_html = view! { <Progress aria_label="Pending task" /> }.to_html();
+    assert!(empty_html.contains("aria-valuenow=\"0\""));
+    assert!(empty_html.contains("width=\"0\""));
+}
+
+#[test]
 fn test_render_card_ssr() {
     let view = view! {
         <Card>
@@ -129,20 +182,37 @@ fn test_render_tabs_ssr() {
 }
 
 #[test]
-fn test_render_dialog_ssr() {
+fn test_dialog_root_and_trigger_render_ssr_state() {
     let view_closed = view! {
-        <Dialog open=false>
-            <DialogTitle>"Closed"</DialogTitle>
+        <Dialog default_open=false>
+            <DialogTrigger aria_controls="dialog-panel">"Open dialog"</DialogTrigger>
+            <DialogContent id="dialog-panel" aria_labelledby="dialog-title">
+                <DialogTitle id="dialog-title">"Title"</DialogTitle>
+                <DialogDescription id="dialog-description">"Details"</DialogDescription>
+                <DialogClose>"Done"</DialogClose>
+            </DialogContent>
         </Dialog>
     };
-    assert!(!view_closed.to_html().contains("role=\"dialog\""));
+    let html_closed = view_closed.to_html();
+    assert!(html_closed.contains("data-slot=\"dialog-trigger\""));
+    assert!(html_closed.contains("aria-haspopup=\"dialog\""));
+    assert!(html_closed.contains("aria-controls=\"dialog-panel\""));
+    assert!(html_closed.contains("aria-expanded=\"false\""));
+    assert!(html_closed.contains("data-state=\"closed\""));
 
     let view_open = view! {
-        <Dialog open=true>
-            <DialogTitle>"Title Open"</DialogTitle>
+        <Dialog default_open=true>
+            <DialogTrigger>"Open dialog"</DialogTrigger>
+            <DialogContent aria_label="Accessible dialog">
+                <DialogTitle>"Title"</DialogTitle>
+            </DialogContent>
         </Dialog>
     };
     let html_open = view_open.to_html();
-    assert!(html_open.contains("role=\"dialog\""));
-    assert!(html_open.contains("Title Open"));
+    assert!(html_open.contains("aria-expanded=\"true\""));
+    assert!(html_open.contains("data-state=\"open\""));
+
+    // Leptos Portal, like Radix's client portal, mounts overlay/content only in
+    // the browser; the server output retains the trigger but no dialog panel.
+    assert!(!html_open.contains("role=\"dialog\""));
 }

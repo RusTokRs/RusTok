@@ -14,11 +14,16 @@ use rustok_ui::{
     dialog_footer_classes, dialog_header_classes, dialog_title_classes,
 };
 
+/// Modal dialog. Provide an accessible name with `aria_label` or
+/// `aria_labelledby`; the latter should reference a [`DialogTitle`] id.
+/// Keyboard focus management and Escape handling remain host responsibilities.
 #[component]
 pub fn Dialog(
     #[props(default = false)] open: bool,
     #[props(default)] on_close: Option<EventHandler<()>>,
     #[props(default)] class: Option<String>,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
     children: Element,
 ) -> Element {
     let custom = class.as_deref();
@@ -38,6 +43,8 @@ pub fn Dialog(
             div {
                 role: "dialog",
                 "aria-modal": "true",
+                "aria-label": aria_label.as_deref(),
+                "aria-labelledby": aria_labelledby.as_deref(),
                 tabindex: "-1",
                 class: "{content_class}",
                 {children}
@@ -56,11 +63,18 @@ pub fn DialogHeader(#[props(default)] class: Option<String>, children: Element) 
     }
 }
 
+/// Heading for a dialog; set `id` when the parent uses `aria_labelledby`.
 #[component]
-pub fn DialogTitle(#[props(default)] class: Option<String>, children: Element) -> Element {
+pub fn DialogTitle(
+    #[props(default)] id: Option<String>,
+    #[props(default)] class: Option<String>,
+    children: Element,
+) -> Element {
     let custom = class.as_deref();
     rsx! {
-        h2 { class: "{dialog_title_classes(custom)}",
+        h2 {
+            id: id.as_deref(),
+            class: "{dialog_title_classes(custom)}",
             {children}
         }
     }
