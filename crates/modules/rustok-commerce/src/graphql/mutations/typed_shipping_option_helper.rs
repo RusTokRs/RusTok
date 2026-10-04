@@ -1,15 +1,10 @@
-use std::collections::BTreeSet;
-
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError, PortErrorKind};
-use rustok_fulfillment::ReadShippingOptionProjectionRequest;
 use uuid::Uuid;
 
-use crate::{
-    storefront_channel::is_metadata_visible_for_public_channel,
-    storefront_shipping::{
-        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
-    },
+use crate::storefront_shipping::{
+    StorefrontShippingSelectionValidationError,
+    validate_storefront_shipping_option_selection,
 };
 
 const STOREFRONT_SHIPPING_OPTION_GRAPHQL_BOUNDARY: &str =
@@ -28,6 +23,7 @@ enum ShippingOptionFailureKind {
     CurrencyMismatch,
     ChannelUnavailable,
     ProfileIncompatible,
+    Inactive,
 }
 
 #[derive(Debug)]
@@ -154,6 +150,59 @@ impl ShippingOptionFailure {
                 "validation",
                 Some(shipping_option_id),
             )
+        }
+    }
+
+    fn inactive(shipping_option_id: Uuid) -> Self {
+        Self {
+            message: Some(format!(
+                "Shipping option {shipping_option_id} is not active"
+            )),
+            ..Self::local(
+                ShippingOptionFailureKind::Inactive,
+                "validate_active_state",
+                "shipping_selection.inactive",
+                "conflict",
+                Some(shipping_option_id),
+            )
+        }
+    }
+
+    fn from_selection_validation_error(
+        error: StorefrontShippingSelectionValidationError,
+    ) -> Self {
+        match error {
+            StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
+                shipping_option_id,
+                shipping_profile_slug,
+                ..
+            } => Self::profile_incompatible(shipping_option_id, shipping_profile_slug.as_str()),
+            StorefrontShippingSelectionValidationError::Owner {
+                shipping_option_id,
+                error,
+            } => Self::owner(shipping_option_id, error),
+            StorefrontShippingSelectionValidationError::Inactive { shipping_option_id } => {
+                Self::inactive(shipping_option_id)
+            }
+            StorefrontShippingSelectionValidationError::CurrencyMismatch {
+                shipping_option_id,
+                option_currency_code,
+                expected_currency_code,
+            } => Self::currency_mismatch(
+                shipping_option_id,
+                option_currency_code.as_str(),
+                expected_currency_code.as_str(),
+            ),
+            StorefrontShippingSelectionValidationError::ChannelUnavailable {
+                shipping_option_id,
+            } => Self::channel_unavailable(shipping_option_id),
+            StorefrontShippingSelectionValidationError::ProfileIncompatible {
+                shipping_option_id,
+                shipping_profile_slug,
+            } => Self::profile_incompatible(
+                shipping_option_id,
+                shipping_profile_slug.as_str(),
+            ),
         }
     }
 
@@ -439,7 +488,7 @@ pub(crate) async fn validate_selected_shipping_option(
     let selection_count = selections.len();
 
     for selection in selections {
-        let Some(shipping_option_id) = selection.selected_shipping_option_id else {
+        let Some(_shipping_option_id) = selection.selected_shipping_option_id else {
             continue;
         };
 
@@ -467,8 +516,6 @@ pub(crate) async fn validate_selected_shipping_option(
                 tenant_default_locale,
             )
         })?;
-
-        let _ = shipping_option_id;
     }
 
     Ok(())
