@@ -105,73 +105,60 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             )
         })?;
 
-        let mut records = Vec::with_capacity(request.plans.len());
-        for plan in &request.plans {
-            let input = build_input(&request, plan).map_err(|error| {
+        let mut ordered_plans = request.plans.iter().collect::<Vec<_>>();
+        ordered_plans.sort_by_key(|plan| plan.index);
+
+        let mut inputs = Vec::with_capacity(ordered_plans.len());
+        for plan in &ordered_plans {
+            inputs.push(build_input(&request, plan).map_err(|error| {
                 map_checkout_fulfillment_local_port_error(
                     context,
                     ENSURE_OPERATION,
                     "build_input",
                     error,
                 )
-            })?;
-            let existing = self
-                .find_checkout_fulfillment(
+            })?);
+        }
+
+        let records = self
+            .service
+            .ensure_checkout_fulfillment_set(
+                tenant_id,
+                request.checkout_operation_id,
+                request.order_id,
+                request.customer_id,
+                order_plan_hash.as_str(),
+                ordered_plans
+                    .iter()
+                    .copied()
+                    .zip(inputs)
+                    .map(|(plan, input)| (plan.index, input))
+                    .collect(),
+            )
+            .await
+            .map_err(|error| {
+                fulfillment_error_to_port_error(
                     context,
-                    ENSURE_OPERATION,
-                    "find_checkout_fulfillment_before_create",
-                    tenant_id,
-                    request.checkout_operation_id,
-                    plan.index,
+                    "ensure_checkout_fulfillment_set",
+                    error,
                 )
-                .await?;
+            })?;
 
-            let record = match existing {
-                Some(existing) => existing,
-                None => match self
-                    .service
-                    .create_checkout_fulfillment(
-                        tenant_id,
-                        input,
-                        request.checkout_operation_id,
-                        plan.index,
-                        order_plan_hash.as_str(),
-                    )
-                    .await
-                {
-                    Ok(created) => CheckoutFulfillmentRecord {
-                        index: plan.index,
-                        order_id: created.order_id,
-                        plan_hash: Some(order_plan_hash.clone()),
-                        fulfillment: created,
-                    },
-                    Err(error) => {
-                        let adopted = self
-                            .find_checkout_fulfillment(
-                                context,
-                                ENSURE_OPERATION,
-                                "adopt_checkout_fulfillment_after_create_error",
-                                tenant_id,
-                                request.checkout_operation_id,
-                                plan.index,
-                            )
-                            .await?;
-                        match adopted {
-                            Some(adopted) => adopted,
-                            None => {
-                                return Err(fulfillment_error_to_port_error(
-                                    context,
-                                    "create_checkout_fulfillment",
-                                    error,
-                                ));
-                            }
-                        }
-                    }
-                },
-            };
+        if records.len() != request.plans.len() {
+            return Err(map_checkout_fulfillment_local_port_error(
+                context,
+                ENSURE_OPERATION,
+                "verify_exact_checkout_fulfillment_set",
+                PortError::conflict(
+                    "fulfillment.checkout_set_incomplete",
+                    "checkout fulfillment set is incomplete",
+                ),
+            ));
+        }
 
+        for (record, plan) in records.iter().zip(ordered_plans) {
             validate_fulfillment(
-                &record,
+                record,
                 FulfillmentExpectation {
                     tenant_id,
                     order_id: request.order_id,
@@ -188,14 +175,9 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                     error,
                 )
             })?;
-            records.push(record);
         }
 
-        records.sort_by_key(|record| record.index);
-        Ok(records
-            .into_iter()
-            .map(|record| record.fulfillment)
-            .collect())
+        Ok(records.into_iter().map(|record| record.fulfillment).collect())
     }
 
     async fn read(
@@ -639,6 +621,7 @@ fn validate_request(
     })?;
     let mut indexes = HashSet::new();
     let mut line_ids = HashSet::new();
+    let mut cart_line_ids = HashSet::new();
     for plan in plans {
         if !indexes.insert(plan.index) || plan.items.is_empty() {
             return Err(PortError::validation(
@@ -651,6 +634,7 @@ fn validate_request(
                 || item.cart_line_item_id.is_nil()
                 || item.quantity <= 0
                 || !line_ids.insert(item.order_line_item_id)
+                || !cart_line_ids.insert(item.cart_line_item_id)
             {
                 return Err(PortError::validation(
                     "fulfillment.checkout_item_invalid",
@@ -1409,6 +1393,44 @@ mod tests {
             .expect_err("sparse checkout plan indexes must fail");
         assert!(matches!(error.kind, PortErrorKind::Validation));
         assert_eq!(error.code, "fulfillment.checkout_plan_invalid");
+    }
+
+    #[test]
+    fn checkout_request_rejects_duplicate_cart_line_identity() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+        let line_one = Uuid::new_v4();
+        let line_two = Uuid::new_v4();
+        let cart_id = Uuid::new_v4();
+        let item = |order_line_item_id| CheckoutFulfillmentItemCommand {
+            order_line_item_id,
+            cart_line_item_id: cart_id,
+            quantity: 1,
+            metadata: Value::Null,
+        };
+        let plans = vec![
+            CheckoutFulfillmentCommand {
+                index: 0,
+                shipping_option_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: vec![item(line_one)],
+                metadata: Value::Null,
+            },
+            CheckoutFulfillmentCommand {
+                index: 1,
+                shipping_option_id: None,
+                carrier: None,
+                tracking_number: None,
+                items: vec![item(line_two)],
+                metadata: Value::Null,
+            },
+        ];
+        let error = validate_request(operation_id, order_id, &hash, &plans)
+            .expect_err("duplicate cart-line identities must fail");
+        assert!(matches!(error.kind, PortErrorKind::Validation));
+        assert_eq!(error.code, "fulfillment.checkout_item_invalid");
     }
 
     #[test]

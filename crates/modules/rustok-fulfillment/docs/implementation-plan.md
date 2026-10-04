@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-fulfillment`
 
-Last reviewed: 2026-10-03
+Last reviewed: 2026-10-04
 
 ## Current state
 
@@ -19,9 +19,13 @@ call, while `FulfillmentService` remains the lifecycle owner.
 Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
 the immutable checkout plan and receives normalized owner projections. The owner
-uses typed `FulfillmentService::create_checkout_fulfillment`,
-`find_checkout_fulfillment`, and `list_checkout_fulfillments`; mounted Commerce
-checkout no longer queries fulfillment persistence or constructs the service.
+uses the aggregate `FulfillmentService::ensure_checkout_fulfillment_set` for checkout
+creation/adoption and `list_checkout_fulfillments` for reads; mounted Commerce
+checkout no longer queries fulfillment persistence or constructs the service. The
+aggregate ensure locks the operation anchor for its transaction, rejects persisted
+child indices outside the requested dense plan, and creates only missing indices,
+making same-operation retries and concurrent callers converge on one exact
+fulfillment set.
 
 Before the typed checkout-identity cutover, the legacy checkout metadata identity is storage-validated consistently across PostgreSQL, SQLite, and MySQL: a non-null `checkout.fulfillment_key` requires a non-empty `checkout.operation_id` on both insertion and metadata updates. The stronger typed identity contract is owned by `m20260925_000119_type_checkout_fulfillment_identity`, with `m20261003_000120_create_checkout_identity_anchor` adding one owner-owned operation anchor that binds the typed fulfillment set to a single order, customer, and normalized plan hash.
 
@@ -211,6 +215,7 @@ disable/reconciliation matrix in
   concurrency-safe uniqueness constraint, including an operation-level anchor
   for immutable order, customer, and plan-hash coherence.
 - [x] Require checkout execution request indices to form the dense zero-based set produced by the immutable Commerce fulfillment plan.
+- [x] Serialize checkout fulfillment-set ensure on the operation identity anchor, reject persisted indices outside the immutable request set, and create only missing indices in one transaction.
 - [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
   process-exit, restart, contention, and remote-profile evidence.
 

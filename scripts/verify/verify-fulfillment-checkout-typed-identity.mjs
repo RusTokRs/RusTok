@@ -53,7 +53,7 @@ for (const [content, values, label] of [
   [
     checkout,
     [
-      'create_checkout_fulfillment(',
+      'ensure_checkout_fulfillment_set(',
       'find_checkout_fulfillment(',
       'list_checkout_fulfillments(',
       '"find_checkout_fulfillment_before_create"',
@@ -158,6 +158,11 @@ const uniquenessCount = (migration.match(/ux_fulfillments_checkout_identity/g) |
 if (uniquenessCount < 2) {
   failures.push('typed identity migration must create and restore the canonical unique index');
 }
+
+requireText(service, 'pub(crate) async fn ensure_checkout_fulfillment_set(', 'aggregate checkout ensure service');
+requireText(service, '.lock_exclusive()', 'operation anchor is locked during checkout ensure');
+requireText(service, 'index outside the requested immutable plan', 'aggregate checkout ensure rejects extra indices');
+forbidText(checkout, 'create_checkout_fulfillment(', 'checkout execution no longer performs per-index create/adopt loops');
 
 if (failures.length > 0) {
   console.error('Fulfillment typed checkout identity verification failed:');

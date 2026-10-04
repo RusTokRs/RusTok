@@ -557,6 +557,7 @@ impl FulfillmentService {
             .filter(
                 entities::checkout_identity::Column::CheckoutOperationId.eq(identity.operation_id),
             )
+            .lock_exclusive()
             .one(txn)
             .await?
             .ok_or_else(|| {
