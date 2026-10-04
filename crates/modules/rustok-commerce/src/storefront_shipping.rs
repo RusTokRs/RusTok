@@ -5,9 +5,13 @@ use uuid::Uuid;
 
 use crate::{
     CommerceResult,
-    dto::{CartResponse, CartShippingOptionSummary, ShippingOptionResponse},
+    dto::{CartResponse, CartShippingOptionSummary, CartShippingSelectionInput, ShippingOptionResponse},
 };
-use rustok_fulfillment::{FulfillmentError, FulfillmentResult, FulfillmentService};
+use rustok_api::PortContext;
+use rustok_fulfillment::{
+    FulfillmentError, FulfillmentResult, FulfillmentService, ReadShippingOptionProjectionRequest,
+    ShippingOptionReadPort,
+};
 
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
 const STOREFRONT_SHIPPING_ENRICHMENT_BOUNDARY: &str = "commerce_storefront_shipping_enrichment";
@@ -75,6 +79,137 @@ pub fn effective_shipping_profile_slug(
         .unwrap_or_else(|| {
             product_shipping_profile_slug(product_default_shipping_profile_slug, product_metadata)
         })
+}
+
+#[derive(Clone)]
+pub(crate) enum StorefrontShippingSelectionValidationError {
+    MissingDeliveryGroup {
+        shipping_option_id: Uuid,
+        shipping_profile_slug: String,
+        seller_id: Option<String>,
+    },
+    Owner {
+        shipping_option_id: Uuid,
+        error: rustok_api::PortError,
+    },
+    Inactive {
+        shipping_option_id: Uuid,
+    },
+    CurrencyMismatch {
+        shipping_option_id: Uuid,
+        option_currency_code: String,
+        expected_currency_code: String,
+    },
+    ChannelUnavailable {
+        shipping_option_id: Uuid,
+    },
+    ProfileIncompatible {
+        shipping_option_id: Uuid,
+        shipping_profile_slug: String,
+    },
+}
+
+impl std::fmt::Debug for StorefrontShippingSelectionValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match self {
+            Self::MissingDeliveryGroup { .. } => "missing_delivery_group",
+            Self::Owner { .. } => "owner",
+            Self::Inactive { .. } => "inactive",
+            Self::CurrencyMismatch { .. } => "currency_mismatch",
+            Self::ChannelUnavailable { .. } => "channel_unavailable",
+            Self::ProfileIncompatible { .. } => "profile_incompatible",
+        };
+        formatter.debug_struct("StorefrontShippingSelectionValidationError")
+            .field("kind", &kind)
+            .finish()
+    }
+}
+
+pub(crate) async fn validate_storefront_shipping_option_selection(
+    cart: &CartResponse,
+    selection: &CartShippingSelectionInput,
+    currency_code: &str,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+    owner_context: &PortContext,
+    shipping_option_read_port: &dyn ShippingOptionReadPort,
+) -> Result<ShippingOptionResponse, StorefrontShippingSelectionValidationError> {
+    let Some(shipping_option_id) = selection.selected_shipping_option_id else {
+        return Err(StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
+            shipping_option_id: Uuid::nil(),
+            shipping_profile_slug: selection.shipping_profile_slug.clone(),
+            seller_id: selection.seller_id.clone(),
+        });
+    };
+
+    let normalized_profile =
+        normalize_shipping_profile_slug(selection.shipping_profile_slug.as_str())
+            .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string());
+
+    if !cart.delivery_groups.iter().any(|group| {
+        group.shipping_profile_slug == normalized_profile && group.seller_id == selection.seller_id
+    }) {
+        return Err(
+            StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
+                shipping_option_id,
+                shipping_profile_slug: selection.shipping_profile_slug.clone(),
+                seller_id: selection.seller_id.clone(),
+            },
+        );
+    }
+
+    let option = shipping_option_read_port
+        .read_shipping_option_projection(
+            owner_context.clone(),
+            ReadShippingOptionProjectionRequest {
+                shipping_option_id,
+                requested_locale: requested_locale.map(str::to_owned),
+                tenant_default_locale: tenant_default_locale.map(str::to_owned),
+            },
+        )
+        .await
+        .map_err(|error| StorefrontShippingSelectionValidationError::Owner {
+            shipping_option_id,
+            error,
+        })?;
+
+    if !option.active {
+        return Err(StorefrontShippingSelectionValidationError::Inactive {
+            shipping_option_id,
+        });
+    }
+    if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+        return Err(
+            StorefrontShippingSelectionValidationError::CurrencyMismatch {
+                shipping_option_id,
+                option_currency_code: option.currency_code.clone(),
+                expected_currency_code: currency_code.to_string(),
+            },
+        );
+    }
+    if !crate::storefront_channel::is_metadata_visible_for_public_channel(
+        &option.metadata,
+        public_channel_slug,
+    ) {
+        return Err(
+            StorefrontShippingSelectionValidationError::ChannelUnavailable {
+                shipping_option_id,
+            },
+        );
+    }
+
+    let required_profiles = BTreeSet::from([normalized_profile.clone()]);
+    if !is_shipping_option_compatible_with_profiles(&option, &required_profiles) {
+        return Err(
+            StorefrontShippingSelectionValidationError::ProfileIncompatible {
+                shipping_option_id,
+                shipping_profile_slug: selection.shipping_profile_slug.clone(),
+            },
+        );
+    }
+
+    Ok(option)
 }
 
 pub fn is_shipping_option_compatible_with_profiles(
@@ -338,7 +473,10 @@ fn extract_allowed_shipping_profile_slugs_from_metadata(
 
 #[cfg(test)]
 mod tests {
-    use super::{effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles};
+    use super::{
+        effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
+        StorefrontShippingSelectionValidationError,
+    };
     use crate::dto::ShippingOptionResponse;
     use chrono::Utc;
     use rust_decimal::Decimal;
