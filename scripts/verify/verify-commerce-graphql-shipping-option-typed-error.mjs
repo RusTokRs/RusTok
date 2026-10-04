@@ -95,6 +95,87 @@ for (const [source, value, label] of [
 }
 
 for (const [value, label] of [
+  ['PortActor::service("rustok-commerce.storefront-shipping")', 'service actor'],
+  ['format!("storefront-shipping:{operation}:{cart_id}")', 'correlation identity'],
+  ['.with_deadline(std::time::Duration::from_secs(2))', 'read deadline'],
+  ['context.clone().with_channel(channel)', 'channel propagation'],
+  [
+    'crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(db)',
+    'resolver-scoped owner runtime delegation',
+  ],
+]) {
+  requireText(contextSource, value, label);
+}
+
+for (const [value, label] of [
+  ['enum ShippingOptionFailureKind {', 'typed outcome enum'],
+  ['MultipleDeliveryGroups,', 'multiple-group outcome'],
+  ['OwnerValidation,', 'owner validation outcome'],
+  ['OwnerNotFound,', 'owner not-found outcome'],
+  ['OwnerConflict,', 'owner conflict outcome'],
+  ['OwnerForbidden,', 'owner forbidden outcome'],
+  ['StorageUnavailable,', 'availability outcome'],
+  ['OwnerInvariant,', 'invariant outcome'],
+  ['CurrencyMismatch,', 'currency outcome'],
+  ['ChannelUnavailable,', 'channel outcome'],
+  ['ProfileIncompatible,', 'profile outcome'],
+  ['Inactive,', 'inactive outcome'],
+  ['owner_error: Option<PortError>', 'typed owner cause'],
+  ['PortErrorKind::Validation', 'validation mapping'],
+  ['PortErrorKind::NotFound', 'not-found mapping'],
+  ['PortErrorKind::Conflict', 'conflict mapping'],
+  ['PortErrorKind::Forbidden', 'forbidden mapping'],
+  ['PortErrorKind::Unavailable | PortErrorKind::Timeout', 'availability mapping'],
+  ['PortErrorKind::InvariantViolation', 'invariant mapping'],
+  ['source_operation: "read_shipping_option_projection"', 'owner operation'],
+  ['fn inactive(shipping_option_id: Uuid) -> Self', 'inactive mapper'],
+  ['fn from_selection_validation_error(', 'shared-policy outcome mapper'],
+]) {
+  requireText(typedSource, value, label);
+}
+
+for (const [value, label] of [
+  ['async_graphql::Error::new(message)', 'public GraphQL envelope message'],
+  ['extensions.set("code", "SHIPPING_OPTION_INVALID")', 'stable public code'],
+  ['extensions.set("retryable", false)', 'stable public retryability'],
+]) {
+  requireText(publicEnvelope, value, label);
+}
+
+for (const [value, label] of [
+  ['context: &PortContext', 'retained owner context'],
+  ['correlation_id = %context.correlation_id', 'correlation context'],
+  ['tenant_id = %context.tenant_id', 'tenant context'],
+  ['actor = ?context.actor', 'actor context'],
+  ['context_channel_length = context.channel.as_deref().map(str::len)', 'bounded channel context'],
+  ['context_locale_length = context.locale.len()', 'bounded locale context'],
+  ['deadline_ms = ?context.deadline_ms', 'deadline context'],
+  ['owner = failure.source_owner', 'truthful source owner'],
+  ['owner_operation = failure.source_operation', 'truthful source operation'],
+  ['internal_code = %failure.internal_code', 'internal code'],
+  ['internal_kind = failure.internal_kind', 'internal kind'],
+  ['internal_retryable = failure.internal_retryable', 'internal retryability'],
+  ['shipping_option_id = ?failure.shipping_option_id', 'option identity'],
+  ['public_code = "SHIPPING_OPTION_INVALID"', 'public code diagnostic'],
+  ['public_retryable = false', 'public retryability diagnostic'],
+  ['error = ?technical_owner_error', 'technical owner cause'],
+  ['tracing::error!(', 'technical severity'],
+  ['tracing::warn!(', 'ordinary severity'],
+  ['public_graphql_error(message)', 'single stable envelope return'],
+]) {
+  requireText(mapper, value, label);
+}
+
+for (const [source, value, label] of [
+  [selectionPolicySource, 'pub(crate) async fn validate_storefront_shipping_option_selection(', 'shared selection policy'],
+  [selectionPolicySource, 'if !option.active', 'active-state policy'],
+  [selectionPolicySource, 'is_metadata_visible_for_public_channel(', 'channel visibility policy'],
+  [selectionPolicySource, 'is_shipping_option_compatible_with_profiles(', 'shipping-profile compatibility policy'],
+]) {
+  requireText(source, value, label);
+}
+
+for (const [value, label] of [
   [
     'storefront_shipping_option_read_context(',
     'owner context construction',
@@ -109,18 +190,10 @@ for (const [value, label] of [
   ['ShippingOptionFailure::currency_mismatch(', 'currency mapping'],
   ['ShippingOptionFailure::channel_unavailable(option.id)', 'channel mapping'],
   ['ShippingOptionFailure::profile_incompatible(', 'profile mapping'],
+  ['is_shipping_option_compatible_with_profiles', 'profile compatibility policy'],
+  ['is_metadata_visible_for_public_channel', 'channel visibility policy'],
 ]) {
   requireText(mountedValidator, value, label);
-}
-
-for (const [source, value, label] of [
-  [selectionPolicySource, 'pub(crate) async fn validate_storefront_shipping_option_selection(', 'shared selection policy'],
-  [selectionPolicySource, 'is_shipping_option_compatible_with_profiles', 'profile compatibility policy'],
-  [selectionPolicySource, 'is_metadata_visible_for_public_channel', 'channel visibility policy'],
-  [selectionPolicySource, 'if !option.active', 'active-state policy'],
-  [selectionPolicySource, 'StorefrontShippingSelectionValidationError::Inactive', 'inactive shared-policy outcome'],
-]) {
-  requireText(source, value, label);
 }
 
 for (const [source, value, label] of [
