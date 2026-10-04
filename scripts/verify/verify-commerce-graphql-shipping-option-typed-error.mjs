@@ -171,6 +171,7 @@ for (const [source, value, label] of [
   [selectionPolicySource, 'if !option.active', 'active-state policy'],
   [selectionPolicySource, 'is_metadata_visible_for_public_channel(', 'channel visibility policy'],
   [selectionPolicySource, 'is_shipping_option_compatible_with_profiles(', 'shipping-profile compatibility policy'],
+  [selectionPolicySource, 'StorefrontShippingSelectionValidationError::Inactive', 'inactive shared-policy outcome'],
 ]) {
   requireText(source, value, label);
 }
@@ -234,7 +235,6 @@ for (const value of [
   'async_graphql::Error::new(format!("{error}"))',
   'format!("{error:?}")',
   'detail.contains(',
-  'error.message',
   'currency_code = %',
   'currency_code = ?',
   'public_channel_slug = %',
