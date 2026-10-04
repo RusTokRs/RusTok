@@ -17,6 +17,9 @@ const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs'
 const adminRest = read('crates/modules/rustok-commerce/src/controllers/admin/shipping.rs');
 const storefrontRest = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
+const graphqlQueryErrorBoundary = read(
+  'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
+);
 const safeQuery = readCommerceSafeQuerySource(read);
 const commerceStorefrontTransport = read('crates/modules/rustok-commerce/storefront/src/transport/mod.rs');
 const commerceNativeAdapter = read(
@@ -84,6 +87,9 @@ if (!storefrontList) failures.push('storefront shipping-option list: unable to i
 
 for (const [source, value, label] of [
   [graphqlShippingOptionList, 'tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id)', 'GraphQL storefront tenant binding'],
+  [graphqlShippingOptionList, 'auth.tenant_id != tenant.id', 'GraphQL storefront authenticated-actor binding'],
+  [graphqlShippingOptionList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL storefront authenticated actor'],
+  [graphqlShippingOptionList, 'PortActor::service("commerce-storefront-graphql")', 'GraphQL storefront anonymous actor'],
   [graphqlShippingOptionList, 'shipping_option_read_runtime_for_current_graphql_scope(', 'GraphQL storefront host-selected runtime'],
   [graphqlShippingOptionList, 'list_shipping_option_projections(', 'GraphQL storefront owner list operation'],
   [graphqlShippingOptionList, 'requested_locale: Some(context.locale.clone())', 'GraphQL storefront effective locale'],
@@ -100,6 +106,16 @@ for (const [source, value, label] of [
   [graphqlShippingOptionAdminList, 'list_all_shipping_option_projections(', 'GraphQL admin list-all owner operation'],
   [graphqlShippingOptionAdminList, 'requested_locale: Some(locale)', 'GraphQL admin effective locale'],
   [graphqlShippingOptionAdminList, 'tenant_default_locale: Some(tenant.default_locale.clone())', 'GraphQL admin tenant fallback locale'],
+  [graphqlShippingOptionLookup, 'PortActor::user(auth.user_id.to_string())', 'GraphQL lookup authenticated actor'],
+  [graphqlShippingOptionAdminList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL admin authenticated actor'],
+  [graphqlShippingOptionList, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL storefront read deadline'],
+  [graphqlShippingOptionLookup, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL lookup read deadline'],
+  [graphqlShippingOptionAdminList, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL admin read deadline'],
+  [graphqlErrorBoundary, 'pub(crate) fn shipping_option_port_error(', 'GraphQL shipping-option typed error boundary'],
+  [graphqlErrorBoundary, 'SHIPPING_OPTION_REQUEST_INVALID', 'GraphQL shipping-option stable validation code'],
+  [graphqlErrorBoundary, 'SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE', 'GraphQL shipping-option stable availability code'],
+  [graphqlErrorBoundary, 'BoundaryError::public(message, code, retryable)', 'GraphQL shipping-option stable envelope'],
+  [graphqlErrorBoundary, 'owner_message_presence', 'GraphQL shipping-option bounded owner diagnostics'],
 ]) {
   requireText(source, value, label);
 }
