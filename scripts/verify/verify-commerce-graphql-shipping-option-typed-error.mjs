@@ -157,7 +157,7 @@ for (const [value, label] of [
   ['error = ?technical_owner_error', 'technical owner cause'],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
-  ['public_graphql_error()', 'single stable envelope return'],
+  ['public_graphql_error(message)', 'single stable envelope return'],
 ]) {
   requireText(mapper, value, label);
 }
@@ -196,7 +196,9 @@ if (mountedOverrides.length !== 1) {
 for (const [source, value, label] of [
   [
     typedSource,
-    'failure\\n        .message\\n        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())',
+    `failure
+        .message
+        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())`,
     'stable owner-error fallback message',
   ],
 ]) {
