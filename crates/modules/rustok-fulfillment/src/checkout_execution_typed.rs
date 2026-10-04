@@ -107,28 +107,89 @@ fn validate_checkout_fulfillment_lifecycle(
     Ok(())
 }
 
+struct CheckoutFulfillmentLifecycleDiagnosticContextFacts {
+    tenant_id_shape: &'static str,
+    channel_shape: &'static str,
+}
+
+impl From<&PortContext> for CheckoutFulfillmentLifecycleDiagnosticContextFacts {
+    fn from(context: &PortContext) -> Self {
+        Self {
+            tenant_id_shape: identity_shape(context.tenant_id.as_str()),
+            channel_shape: optional_shape(context.channel.as_deref()),
+        }
+    }
+}
+
+struct CheckoutFulfillmentLifecycleDiagnosticResourceFacts {
+    fulfillment_id_non_nil: bool,
+    order_id_non_nil: bool,
+    owner_status_kind: &'static str,
+    owner_status_length: usize,
+}
+
+impl From<&FulfillmentResponse> for CheckoutFulfillmentLifecycleDiagnosticResourceFacts {
+    fn from(fulfillment: &FulfillmentResponse) -> Self {
+        let owner_status_kind = match fulfillment.status_kind() {
+            FulfillmentStatusKind::Pending => "pending",
+            FulfillmentStatusKind::Shipped => "shipped",
+            FulfillmentStatusKind::Delivered => "delivered",
+            FulfillmentStatusKind::Cancelled => "cancelled",
+            FulfillmentStatusKind::Unknown => "unknown",
+        };
+        Self {
+            fulfillment_id_non_nil: !fulfillment.id.is_nil(),
+            order_id_non_nil: !fulfillment.order_id.is_nil(),
+            owner_status_kind,
+            owner_status_length: fulfillment.status.chars().count(),
+        }
+    }
+}
+
+fn identity_shape(value: &str) -> &'static str {
+    if value.is_empty() {
+        return "empty";
+    }
+    match Uuid::parse_str(value) {
+        Ok(value) if value.is_nil() => "uuid_nil",
+        Ok(_) => "uuid_non_nil",
+        Err(_) => "opaque",
+    }
+}
+
+fn optional_shape(value: Option<&str>) -> &'static str {
+    match value {
+        None => "absent",
+        Some("") => "empty",
+        Some(_) => "present",
+    }
+}
+
 fn manual_reconciliation(
     context: &PortContext,
     operation: &'static str,
     fulfillment: &FulfillmentResponse,
     cause: &'static str,
 ) -> PortError {
+    let context_facts = CheckoutFulfillmentLifecycleDiagnosticContextFacts::from(context);
+    let resource_facts = CheckoutFulfillmentLifecycleDiagnosticResourceFacts::from(fulfillment);
+
     tracing::error!(
         owner = "rustok_fulfillment.checkout_execution",
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        channel = ?context.channel,
+        tenant_id_shape = context_facts.tenant_id_shape,
+        channel_shape = context_facts.channel_shape,
         operation,
-        fulfillment_id = %fulfillment.id,
-        order_id = %fulfillment.order_id,
-        owner_status = %fulfillment.status,
+        fulfillment_id_non_nil = resource_facts.fulfillment_id_non_nil,
+        order_id_non_nil = resource_facts.order_id_non_nil,
+        owner_status_kind = resource_facts.owner_status_kind,
+        owner_status_length = resource_facts.owner_status_length,
         cause,
         code = MANUAL_RECONCILIATION_CODE,
         "checkout fulfillment lifecycle requires manual reconciliation"
     );
     PortError::conflict(MANUAL_RECONCILIATION_CODE, MANUAL_RECONCILIATION_MESSAGE)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
