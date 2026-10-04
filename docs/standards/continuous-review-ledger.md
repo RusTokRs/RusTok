@@ -4513,3 +4513,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `b6b0860653caa68d30b569ffdaa04517fc412741` via PR #4497.
 - Status: FS-22.06.109 complete and integrated; compile/runtime, restart, and remote-adapter evidence remain unvalidated.
 - Next primary module iteration: continue the next single Fulfillment storefront owner boundary audit.
+
+### FS-22.06.110 Assessment — mounted Commerce fulfillment GraphQL tenant binding
+
+- Base: d7f2d33bdba95b7b3c88c2a91d1e172f05e0ce71; fresh main was re-read before implementation.
+- Primary scope: one mounted Commerce GraphQL fulfillment lifecycle read boundary covering `fulfillment`, `fulfillments`, and the fulfillment subread embedded in admin `order`.
+- Confirmed finding FULFILLMENT-22.06.110-01: the resolvers accepted caller-supplied `tenant_id` and passed it through without explicit binding to `TenantContext`. Owner persistence is tenant-scoped, but the mounted resolver admission itself did not fail closed on a cross-tenant UUID.
+- Confirmed finding FULFILLMENT-22.06.110-02: the existing Fulfillment GraphQL compatibility facade already resolves `CommerceFulfillmentLifecycleReadRuntime`, injects `FulfillmentReadPort`, preserves typed `BoundaryError` mapping, optional not-found behavior, pagination, and latest-by-order semantics. The production correction therefore belongs at resolver tenant admission rather than by duplicating owner logic.
+- Remediation: exposed the canonical Commerce `current_tenant_scope` helper through the safe-query source boundary and applied it immediately after permission admission in all three mounted consumers. The validated `TenantContext.id` now replaces the caller-supplied UUID for fulfillment reads.
+- Verification: `verify-commerce-graphql-query-fulfillment-context.mjs` now isolates the three consumer blocks and requires the tenant binding while continuing to enforce the existing host-selected lifecycle runtime/facade contract. JS verifier source was parser-checked without execution.
+- Evidence: lifecycle source evidence now records both direct lifecycle GraphQL tenant binding and the embedded order fulfillment binding as proven source facts; runtime parity remains false.
+- Status: source remediation complete; compile/runtime/cross-tenant execution evidence remains unvalidated.
+- Next primary module iteration: continue the Fulfillment lifecycle read boundary with mounted REST consumer/failure-envelope parity.
