@@ -4424,3 +4424,26 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 
+
+### FS-22.06.103 Assessment — rustok-fulfillment checkout execution empty ensure guard
+
+- Base: 7f6ede4978bda882d852060502902ad460b09757; refreshed integrated main before implementation.
+- Primary scope: one production Fulfillment checkout execution boundary — aggregate ensure admission versus read recovery semantics.
+- Confirmed finding FULFILLMENT-22.06.103-01: the checkout ensure port accepted an empty fulfillment-plan set and could cross into owner persistence even though an empty set is a no-op aggregate and should be represented by skipping the Fulfillment boundary.
+- Production remediation: split ensure validation from read validation; ensure requests now fail closed with `fulfillment.checkout_plan_invalid` before owner mutation when the requested plan set is empty, while checkout read keeps empty expected plans valid for digital-only/no-fulfillment recovery. Commerce skips the Fulfillment write boundary for checkout plans without fulfillment work.
+- Regression coverage: added focused source tests for empty ensure rejection and empty read acceptance; the static checkout owner-boundary verifier now locks the distinction.
+- Status: FS-22.06.103 complete and integrated on main; compile/runtime verification remains open.
+- Next primary module iteration: shipping-option read/selection mounted boundary audit.
+
+### FS-22.06.104 Assessment — Commerce mounted shipping-option GraphQL owner-error boundary
+
+- Base: eaccb135db92b669e436ab4412b03702a241dcb2; fresh main was re-read at 766de039472f2fb8c394f61e4068f5fdc824fb11 immediately before integration.
+- Primary scope: one mounted Commerce GraphQL shipping-option read/selection boundary — owner `PortError` to public GraphQL error mapping.
+- Confirmed finding FULFILLMENT-22.06.104-01: `ShippingOptionFailure` retained the owner `PortError`, but `shipping_option_graphql_error` used `owner_error.message` as response text whenever no local message existed. This allowed owner-controlled internal diagnostics to cross the public GraphQL boundary and contradicted the documented stable/redacted envelope.
+- Verification finding FULFILLMENT-22.06.104-02: the focused GraphQL shipping-option verifier used a stale public-envelope source marker and did not guard the owner-message mapping, so the intended boundary assertion was ineffective against this defect.
+- Production remediation: owner failures now fall back to the stable public message `Selected shipping option is invalid`; owner messages remain diagnostic-only. Added a regression test that invokes the production mapper and asserts the internal owner detail is absent from the GraphQL response.
+- Verification remediation: aligned the focused verifier with the current `public_graphql_error(message)` signature, required the stable owner-error fallback, and explicitly forbade the owner-message mapping expression.
+- Integration: merged as squash commit `675605858308ccaebf40789ddf9465ba069440c9` via PR #4490 after a fresh-main overlap check.
+- Status: FS-22.06.104 complete and integrated on main; compile/runtime verification remains open and user-owned test execution is still outstanding.
+- Next primary module iteration: continue the mounted shipping-option transport parity/recovery audit without widening into unrelated modules.
+
