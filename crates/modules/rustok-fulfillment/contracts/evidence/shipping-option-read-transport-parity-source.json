@@ -77,5 +77,16 @@
     "verifiers_run": false,
     "workflow_checks_run": false,
     "ci_run": false
+  },
+  "runtime_capture": {
+    "contract": "crates/modules/rustok-fulfillment/contracts/evidence/shipping-option-read-transport-parity-execution-contract.json",
+    "runner": "scripts/evidence/capture-shipping-option-read-transport-parity.mjs",
+    "verifier": "scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs",
+    "contract_published": true,
+    "capture_executed": false,
+    "transport_projection_parity_proven": false,
+    "deadline_failure_proven": false,
+    "restart_proven": false,
+    "remote_adapter_proven": false
   }
 }
