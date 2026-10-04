@@ -4447,3 +4447,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Status: FS-22.06.104 complete and integrated on main; compile/runtime verification remains open and user-owned test execution is still outstanding.
 - Next primary module iteration: continue the mounted shipping-option transport parity/recovery audit without widening into unrelated modules.
 
+
+### FS-22.06.105 Assessment — mounted Commerce shipping-option GraphQL projection reads
+
+- Base: 2a3adefc1b01588979d430a7b132f81c733caa03; fresh integrated main was re-read immediately before implementation.
+- Primary scope: one production Commerce GraphQL query boundary covering storefront shipping-option list plus authenticated admin shipping-option lookup and list-all.
+- Confirmed finding FULFILLMENT-22.06.105-01: mounted `CommerceQuery` still constructed `FulfillmentService` directly for all three shipping-option projection reads despite the owner port/runtime already being composed for REST and GraphQL compatibility consumers. This made the documented shipping-option source cutover incomplete and bypassed the host-selected owner adapter.
+- Confirmed finding FULFILLMENT-22.06.105-02: storefront accepted an optional `tenant_id` without binding it to `TenantContext`; admin lookup/list-all likewise trusted their caller-supplied tenant UUID. The same query boundary therefore lacked an explicit tenant binding despite owner storage being tenant-scoped.
+- Confirmed finding FULFILLMENT-22.06.105-03: direct owner errors were converted through dynamic GraphQL error paths, allowing owner messages to cross the query boundary instead of using the stable typed public envelope.
+- Production remediation: storefront list, admin lookup, and admin list-all now use the host-selected `CommerceShippingOptionReadRuntime` and the canonical `ShippingOptionReadPort` / `ShippingOptionAdminReadPort`; requested tenant IDs are bound to the current tenant; inconsistent authenticated storefront actors are rejected; admin owner contexts carry the authenticated user actor, request channel, effective locale, correlation identity and two-second deadline; all owner failures map through a dedicated typed/redacted `ShippingOptionGraphqlMessage` boundary.
+- Regression/guard remediation: the mounted shipping-option transport verifier now isolates all three GraphQL operations, requires tenant binding/runtime/owner operations, requires the shared two-second context helper, and forbids direct `FulfillmentService` construction or owner dynamic-error conversion in these blocks. The query error boundary has a focused redaction test.
+- Integration: production source cutover merged as squash commit `5d43657c9e5803d69421d7d625b243e41ec89704` via PR #4491; post-merge verifier/evidence cleanup was reviewed on top of that merge and is included in this maintenance change.
+- Status: FS-22.06.105 source remediation complete; compile, mounted GraphQL/REST parity execution, deadline/failure runtime evidence, restart, and remote-adapter evidence remain open.
+- Next primary module iteration: execute/inspect the mounted shipping-option parity contract where tooling permits; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.

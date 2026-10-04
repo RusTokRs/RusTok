@@ -86,6 +86,13 @@ const storefrontList = storefrontRest.slice(
 if (!storefrontList) failures.push('storefront shipping-option list: unable to isolate source block');
 
 for (const [source, value, label] of [
+  [safeQuery, 'shipping_option_graphql_read_port_context(', 'shared GraphQL shipping-option owner context helper'],
+  [safeQuery, '.with_deadline(std::time::Duration::from_secs(2))', 'shared GraphQL shipping-option read deadline'],
+]) {
+  requireText(source, value, label);
+}
+
+for (const [source, value, label] of [
   [graphqlShippingOptionList, 'tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id)', 'GraphQL storefront tenant binding'],
   [graphqlShippingOptionList, 'auth.tenant_id != tenant.id', 'GraphQL storefront authenticated-actor binding'],
   [graphqlShippingOptionList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL storefront authenticated actor'],
@@ -108,9 +115,6 @@ for (const [source, value, label] of [
   [graphqlShippingOptionAdminList, 'tenant_default_locale: Some(tenant.default_locale.clone())', 'GraphQL admin tenant fallback locale'],
   [graphqlShippingOptionLookup, 'PortActor::user(auth.user_id.to_string())', 'GraphQL lookup authenticated actor'],
   [graphqlShippingOptionAdminList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL admin authenticated actor'],
-  [graphqlShippingOptionList, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL storefront read deadline'],
-  [graphqlShippingOptionLookup, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL lookup read deadline'],
-  [graphqlShippingOptionAdminList, '.with_deadline(std::time::Duration::from_secs(2))', 'GraphQL admin read deadline'],
   [graphqlErrorBoundary, 'pub(crate) fn shipping_option_port_error(', 'GraphQL shipping-option typed error boundary'],
   [graphqlErrorBoundary, 'SHIPPING_OPTION_REQUEST_INVALID', 'GraphQL shipping-option stable validation code'],
   [graphqlErrorBoundary, 'SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE', 'GraphQL shipping-option stable availability code'],
