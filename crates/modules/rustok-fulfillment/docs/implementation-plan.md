@@ -251,6 +251,8 @@ disable/reconciliation matrix in
   and never become client response text.
 - [x] Propagate REST tenant, actor, locale, effective channel, correlation, and
   two-second deadline context.
+- [x] Publish the mounted shipping-option projection-parity execution contract,
+  capture runner, fail-closed verifier, and operator runbook.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
@@ -372,6 +374,8 @@ disable/reconciliation matrix in
 - `node scripts/verify/verify-fulfillment-lifecycle-read-failure-contract.mjs`
 - `node scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs`
 - `node scripts/verify/verify-commerce-shipping-option-transport-parity-inventory.mjs`
+- `node scripts/verify/verify-shipping-option-read-transport-parity-capture.mjs`
+- `node scripts/evidence/capture-shipping-option-read-transport-parity.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-option-error-context.mjs`
 - `node scripts/verify/verify-commerce-admin-shipping-http-error-safety.mjs`
 - `node scripts/verify/verify-commerce-storefront-auxiliary-http-error-safety.mjs`
