@@ -377,29 +377,6 @@ impl FulfillmentService {
             .await
     }
 
-    pub(crate) async fn create_checkout_fulfillment(
-        &self,
-        tenant_id: Uuid,
-        input: CreateFulfillmentInput,
-        checkout_operation_id: Uuid,
-        checkout_fulfillment_index: u32,
-        checkout_plan_hash: &str,
-    ) -> FulfillmentResult<FulfillmentResponse> {
-        validate_tenant_id(tenant_id)?;
-        let checkout_plan_hash = validate_checkout_identity(
-            checkout_operation_id,
-            checkout_fulfillment_index,
-            checkout_plan_hash,
-        )?;
-        let identity = CheckoutFulfillmentIdentity {
-            operation_id: checkout_operation_id,
-            index: checkout_fulfillment_index,
-            plan_hash: checkout_plan_hash,
-        };
-        self.create_fulfillment_with_identity(tenant_id, input, Some(identity))
-            .await
-    }
-
     async fn create_fulfillment_with_identity(
         &self,
         tenant_id: Uuid,
@@ -734,39 +711,6 @@ impl FulfillmentService {
                 "checkout operation identity is already bound to a different order, customer, or plan"
                     .to_string(),
             ))
-        }
-    }
-
-    pub(crate) async fn find_checkout_fulfillment(
-        &self,
-        tenant_id: Uuid,
-        checkout_operation_id: Uuid,
-        checkout_fulfillment_index: u32,
-    ) -> FulfillmentResult<Option<CheckoutFulfillmentRecord>> {
-        validate_tenant_id(tenant_id)?;
-        let row = entities::fulfillment::Entity::find()
-            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
-            .filter(
-                entities::fulfillment::Column::CheckoutFulfillmentIndex
-                    .eq(i64::from(checkout_fulfillment_index)),
-            )
-            .one(&self.db)
-            .await?;
-
-        match row {
-            Some(row) => {
-                let order_id = row.order_id;
-                let plan_hash = row.checkout_plan_hash.clone();
-                let fulfillment = self.build_fulfillment_response(row).await?;
-                Ok(Some(CheckoutFulfillmentRecord {
-                    index: checkout_fulfillment_index,
-                    order_id,
-                    plan_hash,
-                    fulfillment,
-                }))
-            }
-            None => Ok(None),
         }
     }
 
