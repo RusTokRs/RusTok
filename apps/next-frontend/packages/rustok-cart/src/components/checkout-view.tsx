@@ -346,10 +346,16 @@ export function CheckoutView({
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              href={`/${locale}/products`}
+              href={`/${locale}/orders/${order.id}`}
               className="w-full sm:w-auto inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-xs"
             >
-              {isRu ? "Вернуться в каталог" : "Continue Shopping"}
+              {isRu ? "Отследить заказ" : "Track Order Status"}
+            </Link>
+            <Link
+              href={`/${locale}/products`}
+              className="w-full sm:w-auto inline-flex h-11 items-center justify-center rounded-xl border border-border px-6 text-sm font-semibold text-foreground hover:bg-muted transition"
+            >
+              {isRu ? "Продолжить покупки" : "Continue Shopping"}
             </Link>
             <Link
               href={`/${locale}`}
