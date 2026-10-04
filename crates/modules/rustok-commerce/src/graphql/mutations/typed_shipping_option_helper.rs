@@ -1,6 +1,5 @@
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError, PortErrorKind};
-use rustok_fulfillment::ShippingOptionReadPort;
 use uuid::Uuid;
 
 use crate::storefront_shipping::{
