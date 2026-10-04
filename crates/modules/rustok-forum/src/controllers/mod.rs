@@ -163,15 +163,30 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::TopicNotFound(_)
         | ForumError::ReplyNotFound(_)
         | ForumError::SolutionNotFound(_)
-        | ForumError::TopicRouteNotFound => {
+        | ForumError::TopicRouteNotFound
+        | ForumError::CategoryRouteNotFound => {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
         ForumError::RelationRevisionConflict
-        | ForumError::AttachmentSourceRevisionConflict { .. } => HttpError::new(
+        | ForumError::RelationRevisionUnavailable
+        | ForumError::AttachmentSourceRevisionConflict { .. }
+        | ForumError::TopicUpdateConflict(_)
+        | ForumError::TopicMoveOperationConflict(_)
+        | ForumError::TopicMergeOperationConflict(_)
+        | ForumError::TopicForkOperationConflict(_)
+        | ForumError::TopicReplyRangeMoveOperationConflict(_)
+        | ForumError::TopicReplyRangeMoveSolutionConflict(_)
+        | ForumError::TopicMergeSolutionConflict(_)
+        | ForumError::TopicMergeAudienceReconciliationConflict(_)
+        | ForumError::TopicMergeAudiencePolicyConflict(_)
+        | ForumError::TopicMergeReadStateReconciliationConflict(_)
+        | ForumError::TopicMergeSubscriptionReconciliationConflict(_)
+        | ForumError::TopicMergeTagReconciliationConflict(_)
+        | ForumError::TopicMergeVoteReconciliationConflict(_) => HttpError::new(
             StatusCode::CONFLICT,
             code,
-            "Forum attachment/content revision changed concurrently",
+            "The forum resource changed concurrently or requires explicit resolution",
         ),
         ForumError::TopicClosed
         | ForumError::TopicArchived
@@ -180,7 +195,9 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::TopicRestoreUnavailable(_)
         | ForumError::ReplyDeleted
         | ForumError::ReplyRestoreUnavailable(_)
-        | ForumError::InternalVotingDisabled => HttpError::new(
+        | ForumError::InternalVotingDisabled
+        | ForumError::InvalidTopicTransition(_)
+        | ForumError::InvalidReplyTransition(_) => HttpError::new(
             StatusCode::CONFLICT,
             code,
             "The forum resource state does not allow this operation",
@@ -195,8 +212,11 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         ForumError::Database(_)
         | ForumError::Content(_)
         | ForumError::Internal(_)
+        | ForumError::AttachmentRelationInvariant
+        | ForumError::AttachmentRelationRevisionExhausted
         | ForumError::TopicCanonicalResolutionConflict(_)
-        | ForumError::TopicRouteResolutionConflict => HttpError::new(
+        | ForumError::TopicRouteResolutionConflict
+        | ForumError::CategoryRouteResolutionConflict => HttpError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             code,
             "The forum operation could not be completed",

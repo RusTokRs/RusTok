@@ -117,6 +117,7 @@ pub struct ReplyResponse {
     pub requested_locale: String,
     pub locale: String,
     pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
     pub content: RichTextView,
@@ -136,6 +137,7 @@ pub struct ReplyListItem {
     pub id: Uuid,
     pub locale: String,
     pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
     pub content_preview: String,
@@ -162,6 +164,7 @@ mod tests {
             requested_locale: "en".into(),
             locale: "en".into(),
             effective_locale: "en".into(),
+            available_locales: vec!["en".into()],
             topic_id: Uuid::new_v4(),
             author_id: None,
             content: RichTextView {

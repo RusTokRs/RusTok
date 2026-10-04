@@ -76,6 +76,10 @@
 - `ReplyResponse` exposes `content: RichTextView` and `content_plain_text: String`.
 - `ReplyListItem` exposes only the bounded server-derived plain-text preview required by list surfaces.
 - Locale, author, parent, vote, and solution state remain explicit.
+- Both reply surfaces return the shared multilingual contract fields
+  `requested_locale`, `effective_locale`, and `available_locales` computed
+  from the stored reply bodies, matching the topic/category/tree/read-model
+  surfaces. `GqlForumReply` mirrors the same fields.
 ### CategoryResponse
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem

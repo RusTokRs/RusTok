@@ -854,6 +854,7 @@ fn map_reply_response(
         requested_locale: reply.requested_locale,
         locale: reply.locale,
         effective_locale: reply.effective_locale,
+        available_locales: reply.available_locales,
         topic_id: reply.topic_id,
         author_id: reply.author_id,
         author_profile,

@@ -10,7 +10,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
-use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_content::{
+    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -132,6 +134,9 @@ impl ReplyService {
                     id: reply.id,
                     locale: locale.clone(),
                     effective_locale: resolved.effective_locale,
+                    available_locales: available_locales_from(&bodies, |body| {
+                        body.locale.as_str()
+                    }),
                     topic_id: reply.topic_id,
                     author_id: reply.author_id,
                     content_preview: preview,
@@ -397,6 +402,7 @@ fn to_reply_response(
         requested_locale: locale.to_string(),
         locale: locale.to_string(),
         effective_locale: resolved.effective_locale,
+        available_locales: available_locales_from(&bodies, |body| body.locale.as_str()),
         topic_id: reply.topic_id,
         author_id: reply.author_id,
         content: content.view,

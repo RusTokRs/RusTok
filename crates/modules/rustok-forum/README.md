@@ -88,6 +88,11 @@
   when the host passes the matching request channel slug into the shared SEO contract.
 - Depends on `rustok-channel` for public channel module gating and topic/reply/SEO visibility filtering with host-provided request channel slugs.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
+- Declares the runtime module dependency set `content`, `media`, `taxonomy` in
+  `rustok-module.toml`, `modules.toml`, and `RusToKModule::dependencies()`; the
+  xtask manifest-parity validator keeps the three artifacts aligned (`tenant` is
+  intentionally not a module dependency: the tenant module is a required core
+  module and Forum reaches tenant data only through `rustok-api` host seams).
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - `apps/admin` consumes `rustok-forum-admin` through manifest-driven `build.rs` code generation, with a NodeBB-inspired moderation workspace mounted under `/modules/forum`.
