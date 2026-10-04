@@ -1,5 +1,6 @@
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_fulfillment::ShippingOptionReadPort;
 use uuid::Uuid;
 
 use crate::storefront_shipping::{
@@ -375,7 +376,36 @@ mod tests {
             "internal owner detail must stay diagnostic-only"
         );
     }
+    #[test]
+    fn inactive_shipping_option_uses_stable_public_message() {
+        let failure = ShippingOptionFailure::inactive(Uuid::new_v4());
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("rustok-commerce.graphql-test"),
+            "en",
+            "test:inactive-shipping-option",
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+
+        let error = shipping_option_graphql_error(
+            failure,
+            &context,
+            Uuid::new_v4(),
+            1,
+            1,
+            3,
+            None,
+            Some("en"),
+            Some("en"),
+        );
+
+        assert_eq!(
+            error.message,
+            "Shipping option is not active"
+        );
+    }
 }
+
 
 fn current_shipping_selections(
     cart: &crate::dto::CartResponse,
