@@ -31,7 +31,8 @@
     "duplicate checkout fulfillment identity fails closed",
     "an existing child index outside the immutable request set fails closed",
     "same-operation ensure calls serialize on the operation anchor and create only missing indices",
-    "raw storage errors never cross the port"
+    "raw storage errors never cross the port",
+    "checkout lifecycle reconciliation diagnostics use bounded context and resource shapes only"
   ],
   "identity": {
     "source": "fulfillments.checkout_operation_id + checkout_fulfillment_index + checkout_plan_hash",
