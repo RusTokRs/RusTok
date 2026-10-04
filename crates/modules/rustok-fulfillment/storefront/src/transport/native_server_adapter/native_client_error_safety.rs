@@ -67,31 +67,42 @@ impl NativeClientErrorContext {
         &self,
         error: ShippingSelectionTransportError,
     ) -> ShippingSelectionTransportError {
-        match error {
+        let (error_kind, raw_message_present, raw_message_length) = match &error {
             ShippingSelectionTransportError::Validation(message) => {
-                ShippingSelectionTransportError::Validation(message)
+                return ShippingSelectionTransportError::Validation(message.clone());
             }
-            error => {
-                tracing::error!(
-                    raw_error = ?error,
-                    owner = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OWNER,
-                    owner_operation = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OPERATION,
-                    correlation_id = %self.correlation_id,
-                    cart_id_length = self.cart_id_length,
-                    delivery_group_count = self.delivery_group_count,
-                    shipping_profile_slug_length = self.shipping_profile_slug_length,
-                    seller_id_present = self.seller_id_present,
-                    shipping_option_id_present = self.shipping_option_id_present,
-                    available_shipping_option_count = self.available_shipping_option_count,
-                    code = "fulfillment.storefront_native_client_transport_failed",
-                    boundary = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_BOUNDARY,
-                    "fulfillment storefront native client transport request failed"
-                );
+            ShippingSelectionTransportError::Graphql(message) => (
+                "graphql",
+                !message.trim().is_empty(),
+                message.chars().count(),
+            ),
+            ShippingSelectionTransportError::ServerFn(message) => (
+                "server_fn",
+                !message.trim().is_empty(),
+                message.chars().count(),
+            ),
+        };
 
-                ShippingSelectionTransportError::ServerFn(
-                    FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE.to_string(),
-                )
-            }
-        }
+        tracing::error!(
+            error_kind,
+            raw_message_present,
+            raw_message_length,
+            owner = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OWNER,
+            owner_operation = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OPERATION,
+            correlation_id = %self.correlation_id,
+            cart_id_length = self.cart_id_length,
+            delivery_group_count = self.delivery_group_count,
+            shipping_profile_slug_length = self.shipping_profile_slug_length,
+            seller_id_present = self.seller_id_present,
+            shipping_option_id_present = self.shipping_option_id_present,
+            available_shipping_option_count = self.available_shipping_option_count,
+            code = "fulfillment.storefront_native_client_transport_failed",
+            boundary = FULFILLMENT_STOREFRONT_NATIVE_CLIENT_BOUNDARY,
+            "fulfillment storefront native client transport request failed"
+        );
+
+        ShippingSelectionTransportError::ServerFn(
+            FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE.to_string(),
+        )
     }
 }
