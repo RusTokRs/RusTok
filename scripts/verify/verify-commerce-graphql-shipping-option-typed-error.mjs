@@ -120,6 +120,7 @@ for (const [value, label] of [
   ['ChannelUnavailable,', 'channel outcome'],
   ['ProfileIncompatible,', 'profile outcome'],
   ['Inactive,', 'inactive outcome'],
+  ['fn inactive(shipping_option_id: Uuid) -> Self', 'inactive mapper'],
   ['owner_error: Option<PortError>', 'typed owner cause'],
   ['PortErrorKind::Validation', 'validation mapping'],
   ['PortErrorKind::NotFound', 'not-found mapping'],
@@ -184,6 +185,7 @@ for (const [value, label] of [
   [selectionPolicySource, 'is_shipping_option_compatible_with_profiles', 'profile compatibility policy'],
   [selectionPolicySource, 'is_metadata_visible_for_public_channel', 'channel visibility policy'],
   [selectionPolicySource, 'if !option.active', 'active-state policy'],
+  [selectionPolicySource, 'StorefrontShippingSelectionValidationError::Inactive', 'inactive shared-policy outcome'],
 ]) {
   requireText(mountedValidator, value, label);
 }
