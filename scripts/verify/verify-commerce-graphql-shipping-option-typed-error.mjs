@@ -44,7 +44,7 @@ const between = (source, start, end, label) => {
 
 const publicEnvelope = between(
   typedSource,
-  'fn public_graphql_error()',
+  'fn public_graphql_error(message: impl Into<String>) -> async_graphql::Error {',
   '#[allow(clippy::too_many_arguments)]\nfn shipping_option_graphql_error(',
   'public GraphQL envelope',
 );
@@ -131,7 +131,7 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['async_graphql::Error::new("Selected shipping option is invalid")', 'stable public message'],
+  ['async_graphql::Error::new(message)', 'public GraphQL envelope message'],
   ['extensions.set("code", "SHIPPING_OPTION_INVALID")', 'stable public code'],
   ['extensions.set("retryable", false)', 'stable public retryability'],
 ]) {
@@ -191,6 +191,23 @@ if (ownerLookups.length !== 1) {
 const mountedOverrides = layeredSource.match(/validate_selected_shipping_option/g) ?? [];
 if (mountedOverrides.length !== 1) {
   failures.push(`expected one mounted typed shipping-option override, found ${mountedOverrides.length}`);
+}
+
+for (const [source, value, label] of [
+  [
+    typedSource,
+    'failure.message\\n        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())',
+    'stable owner-error fallback message',
+  ],
+]) {
+  requireText(source, value, label);
+}
+
+for (const value of [
+  'owner_error.as_ref()',
+  'map(|e| e.message.clone())',
+]) {
+  forbidText(typedSource, value, 'owner error message must remain diagnostic-only');
 }
 
 for (const value of [
