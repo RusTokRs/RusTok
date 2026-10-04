@@ -1,5 +1,5 @@
 use ::async_graphql::{Error, ErrorExtensions};
-use ::rustok_api::{PortError, PortErrorKind};
+use ::rustok_api::{PortContext, PortError, PortErrorKind};
 use ::rustok_fulfillment::error::FulfillmentError;
 use ::rustok_order::error::OrderError;
 use ::rustok_payment::error::PaymentError;
@@ -57,6 +57,118 @@ impl BoundaryError {
             code,
             retryable,
         }
+    }
+}
+
+pub(crate) struct ShippingOptionGraphqlMessage {
+    context: PortContext,
+    error: PortError,
+}
+
+impl ShippingOptionGraphqlMessage {
+    pub(crate) fn new(context: &PortContext, error: PortError) -> Self {
+        Self {
+            context: context.clone(),
+            error,
+        }
+    }
+}
+
+pub(crate) fn shipping_option_port_error(
+    context: &PortContext,
+    error: PortError,
+) -> BoundaryError {
+    BoundaryError::new(ShippingOptionGraphqlMessage::new(context, error))
+}
+
+impl QueryGraphqlMessage for ShippingOptionGraphqlMessage {
+    fn into_query_boundary(self) -> BoundaryError {
+        let (message, code, retryable, error_kind, technical) = match &self.error.kind {
+            PortErrorKind::Validation => (
+                "Shipping option query is invalid",
+                "SHIPPING_OPTION_REQUEST_INVALID",
+                false,
+                "validation",
+                false,
+            ),
+            PortErrorKind::NotFound => (
+                "Shipping option was not found",
+                "SHIPPING_OPTION_RESOURCE_NOT_FOUND",
+                false,
+                "not_found",
+                false,
+            ),
+            PortErrorKind::Conflict => (
+                "Shipping option state conflicts with this query",
+                "SHIPPING_OPTION_STATE_CONFLICT",
+                false,
+                "conflict",
+                false,
+            ),
+            PortErrorKind::Forbidden => (
+                "Shipping option query is not permitted",
+                "SHIPPING_OPTION_ACCESS_DENIED",
+                false,
+                "forbidden",
+                false,
+            ),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                "Shipping options are temporarily unavailable",
+                "SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE",
+                true,
+                "unavailable",
+                true,
+            ),
+            PortErrorKind::InvariantViolation => (
+                "Shipping option query could not be completed safely",
+                "SHIPPING_OPTION_OPERATION_FAILED",
+                false,
+                "invariant_violation",
+                true,
+            ),
+        };
+
+        let owner_message_presence = text_presence_shape(&self.error.message);
+        let owner_message_len = self.error.message.chars().count();
+        let diagnostic_error = QueryDiagnosticError;
+
+        if technical {
+            tracing::error!(
+                error = ?diagnostic_error,
+                owner = "rustok_fulfillment",
+                operation = "shipping_option_projection_read",
+                correlation_id = %self.context.correlation_id,
+                tenant_id = %self.context.tenant_id,
+                owner_code = %self.error.code,
+                owner_kind = error_kind,
+                owner_message_presence,
+                owner_message_len,
+                owner_retryable = self.error.retryable,
+                public_code = code,
+                retryable,
+                boundary = "commerce_graphql_shipping_option",
+                "commerce GraphQL shipping-option owner read failed"
+            );
+        } else {
+            tracing::warn!(
+                error = ?diagnostic_error,
+                owner = "rustok_fulfillment",
+                operation = "shipping_option_projection_read",
+                correlation_id = %self.context.correlation_id,
+                tenant_id = %self.context.tenant_id,
+                owner_code = %self.error.code,
+                owner_kind = error_kind,
+                owner_message_presence,
+                owner_message_len,
+                owner_retryable = self.error.retryable,
+                public_code = code,
+                retryable,
+                boundary = "commerce_graphql_shipping_option",
+                "commerce GraphQL shipping-option owner read was rejected"
+            );
+        }
+
+        BoundaryError::public(message, code, retryable)
     }
 }
 
@@ -432,5 +544,40 @@ impl From<BoundaryError> for Error {
                 extensions.set("retryable", retryable);
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ShippingOptionGraphqlMessage, shipping_option_port_error};
+    use ::async_graphql::Error;
+    use ::rustok_api::{PortActor, PortContext, PortError};
+
+    #[test]
+    fn shipping_option_owner_message_is_redacted() {
+        let context = PortContext::new(
+            "00000000-0000-0000-0000-000000000001",
+            PortActor::service("commerce-graphql-test"),
+            "en",
+            "shipping-options:test",
+        );
+        let boundary = shipping_option_port_error(
+            &context,
+            PortError::validation(
+                "fulfillment.internal",
+                "database stack detail must stay internal",
+            ),
+        );
+        let error: Error = boundary.into();
+        assert_eq!(error.message, "Shipping option query is invalid");
+        assert!(!error.message.contains("database stack detail"));
+        assert_eq!(
+            error.extensions.get("code").and_then(|value| value.as_str()),
+            Some("SHIPPING_OPTION_REQUEST_INVALID")
+        );
+        let _ = ShippingOptionGraphqlMessage::new(
+            &context,
+            PortError::validation("fulfillment.internal", "another internal detail"),
+        );
     }
 }
