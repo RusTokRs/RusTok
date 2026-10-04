@@ -545,6 +545,7 @@ pub async fn find_published_product_id_for_locale(
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<Option<Uuid>> {
     let translations = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
         .filter(entities::product_translation::Column::Handle.eq(handle))
         .all(db)
         .await?
@@ -562,6 +563,7 @@ pub async fn find_published_product_id_any_locale(
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<Option<Uuid>> {
     let translations = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
         .filter(entities::product_translation::Column::Handle.eq(handle))
         .all(db)
         .await?;
@@ -595,6 +597,7 @@ pub async fn find_first_published_product(
 
 pub async fn resolve_tag_locale_for_update<C>(
     conn: &C,
+    tenant_id: Uuid,
     product_id: Uuid,
     translations: Option<&[ProductTranslationInput]>,
 ) -> CommerceResult<String>
@@ -608,6 +611,7 @@ where
     }
 
     let existing = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
         .filter(entities::product_translation::Column::ProductId.eq(product_id))
         .all(conn)
         .await?;

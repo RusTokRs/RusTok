@@ -47,7 +47,12 @@ impl CatalogService {
                 "page must be at least 1 and per_page must be between 1 and 100".to_owned(),
             ));
         }
-        let offset = (page.saturating_sub(1)) * per_page;
+        let offset = page
+            .checked_sub(1)
+            .and_then(|page| page.checked_mul(per_page))
+            .ok_or_else(|| {
+                CommerceError::Validation("page and per_page are too large".to_owned())
+            })?;
 
         let mut query = entities::product::Entity::find()
             .filter(entities::product::Column::TenantId.eq(tenant_id));
@@ -112,6 +117,7 @@ impl CatalogService {
             Vec::new()
         } else {
             entities::product_translation::Entity::find()
+                .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
                 .filter(entities::product_translation::Column::ProductId.is_in(product_ids))
                 .all(&self.db)
                 .await?
@@ -173,12 +179,16 @@ impl CatalogService {
             })
             .collect::<Vec<_>>();
 
+        let has_next = offset
+            .checked_add(items.len() as u64)
+            .is_some_and(|through| through < total);
+
         Ok(AdminProductList {
             items,
             total,
             page,
             per_page,
-            has_next: page * per_page < total,
+            has_next,
         })
     }
 }

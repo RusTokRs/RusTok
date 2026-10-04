@@ -78,7 +78,7 @@ async fn ensure_unowned_alt_fits_canonical_storage(txn: &DatabaseTransaction) ->
                   SELECT 1
                   FROM product_image_translations translation
                   WHERE translation.image_id = image.id
-                    AND translation.locale = 'und'
+                    AND translation.locale = 'en'
               )
         "#,
     ))
@@ -105,17 +105,17 @@ async fn ensure_deterministic_translation_ids_are_available(
             SELECT COUNT(*)::BIGINT AS count
             FROM product_images image
             JOIN product_image_translations collision
-              ON collision.id = md5('product-image-alt-und:' || image.id::text)::uuid
+              ON collision.id = md5('product-image-alt-en:' || image.id::text)::uuid
             WHERE image.alt_text IS NOT NULL
               AND NOT EXISTS (
                   SELECT 1
                   FROM product_image_translations existing
                   WHERE existing.image_id = image.id
-                    AND existing.locale = 'und'
+                    AND existing.locale = 'en'
               )
               AND (
                   collision.image_id IS DISTINCT FROM image.id
-                  OR collision.locale IS DISTINCT FROM 'und'
+                  OR collision.locale IS DISTINCT FROM 'en'
               )
         "#,
     ))
@@ -134,14 +134,17 @@ async fn ensure_deterministic_translation_ids_are_available(
 }
 
 async fn preserve_unowned_alt_copy(txn: &DatabaseTransaction) -> Result<(), DbErr> {
+    // The retired column has no locale provenance. Store its copy under the platform fallback
+    // locale rather than the syntactically valid but Product-rejected `und` tag, so the exact
+    // locale translation target can read every row produced by this migration.
     txn.execute_raw(Statement::from_string(
         DatabaseBackend::Postgres,
         r#"
             INSERT INTO product_image_translations (id, image_id, locale, alt_text)
             SELECT
-                md5('product-image-alt-und:' || image.id::text)::uuid,
+                md5('product-image-alt-en:' || image.id::text)::uuid,
                 image.id,
-                'und',
+                'en',
                 image.alt_text
             FROM product_images image
             WHERE image.alt_text IS NOT NULL
@@ -149,7 +152,7 @@ async fn preserve_unowned_alt_copy(txn: &DatabaseTransaction) -> Result<(), DbEr
                   SELECT 1
                   FROM product_image_translations existing
                   WHERE existing.image_id = image.id
-                    AND existing.locale = 'und'
+                    AND existing.locale = 'en'
               )
             ON CONFLICT (image_id, locale) DO NOTHING
         "#

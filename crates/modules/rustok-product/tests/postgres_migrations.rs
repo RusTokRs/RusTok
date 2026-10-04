@@ -519,5 +519,131 @@ VALUES (
     if !error.to_string().contains("media_id") {
         return Err(format!("missing media_id returned an unexpected error: {error}").into());
     }
+
+    db.execute_unprepared(
+        r#"
+INSERT INTO product_images (id, product_id, media_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000132',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000133',
+    0
+)
+"#,
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        r#"
+INSERT INTO product_images (id, product_id, media_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000134',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000135',
+    -1
+)
+"#,
+        "chk_product_images_position_nonnegative",
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        r#"
+INSERT INTO product_images (id, product_id, media_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000136',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000137',
+    0
+)
+"#,
+        "uq_product_images_product_position",
+    )
+    .await?;
+
+    // Build one configured axis through raw storage writes, then prove the deferred state
+    // trigger also protects direct changes to product_variant_attribute_values. This closes the
+    // gap where only option-row writes were previously observed by the invariant trigger.
+    db.execute_unprepared(
+        r#"
+BEGIN;
+INSERT INTO product_attributes (id, tenant_id, code, value_type, scope)
+VALUES (
+    '00000000-0000-0000-0000-000000000141',
+    '00000000-0000-0000-0000-000000000001',
+    'size',
+    'select',
+    'variant'
+);
+INSERT INTO product_attributes (id, tenant_id, code, value_type, scope)
+VALUES (
+    '00000000-0000-0000-0000-000000000146',
+    '00000000-0000-0000-0000-000000000001',
+    'color',
+    'select',
+    'variant'
+);
+INSERT INTO product_attribute_options (id, tenant_id, attribute_id, code)
+VALUES (
+    '00000000-0000-0000-0000-000000000142',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000141',
+    'small'
+);
+INSERT INTO product_variant_axes (id, tenant_id, product_id, attribute_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000143',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000101',
+    '00000000-0000-0000-0000-000000000141',
+    0
+);
+INSERT INTO product_variant_axis_values (id, tenant_id, axis_id, option_id, position)
+VALUES (
+    '00000000-0000-0000-0000-000000000144',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000143',
+    '00000000-0000-0000-0000-000000000142',
+    0
+);
+INSERT INTO product_variant_attribute_values (id, tenant_id, variant_id, attribute_id)
+VALUES (
+    '00000000-0000-0000-0000-000000000145',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000121',
+    '00000000-0000-0000-0000-000000000141'
+);
+INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000145',
+    '00000000-0000-0000-0000-000000000142'
+);
+COMMIT;
+"#,
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        "UPDATE product_variant_attribute_values \
+         SET attribute_id = '00000000-0000-0000-0000-000000000146' \
+         WHERE id = '00000000-0000-0000-0000-000000000145'",
+        "does not have exactly one active allowed assignment",
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        "UPDATE product_attribute_options SET archived_at = now() \
+         WHERE id = '00000000-0000-0000-0000-000000000142'",
+        "inactive or mismatched variant axis option",
+    )
+    .await?;
+    assert_constraint_rejection(
+        db,
+        "DELETE FROM product_variant_attribute_values \
+         WHERE id = '00000000-0000-0000-0000-000000000145'",
+        "does not have exactly one active allowed assignment",
+    )
+    .await?;
     Ok(())
 }

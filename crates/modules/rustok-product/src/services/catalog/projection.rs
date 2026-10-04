@@ -122,12 +122,19 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
         r#"
         SELECT pvav.variant_id, pvav.attribute_id, pvao.option_id, a.code as attribute_code, paot.label
         FROM product_variant_attribute_values pvav
-        JOIN product_variant_attribute_value_options pvao ON pvao.tenant_id = pvav.tenant_id AND pvao.value_id = pvav.id
+        JOIN product_variants pv
+          ON pv.id = pvav.variant_id AND pv.tenant_id = pvav.tenant_id
+        JOIN product_variant_axes axis
+          ON axis.tenant_id = pv.tenant_id
+         AND axis.product_id = pv.product_id
+         AND axis.attribute_id = pvav.attribute_id
+        JOIN product_variant_attribute_value_options pvao
+          ON pvao.tenant_id = pvav.tenant_id AND pvao.value_id = pvav.id
         JOIN product_attributes a ON a.id = pvav.attribute_id AND a.tenant_id = pvav.tenant_id
         JOIN product_attribute_options pao ON pao.id = pvao.option_id AND pao.tenant_id = pvao.tenant_id
         LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $2
         WHERE pvav.tenant_id = $1 AND pvav.detached_at IS NULL AND pvav.variant_id IN ({placeholders})
-        ORDER BY pvav.attribute_id ASC
+        ORDER BY pvav.variant_id ASC, pvav.attribute_id ASC
         "#
     );
 
@@ -222,6 +229,7 @@ impl CatalogService {
             async {
                 Ok::<_, CommerceError>(
                     entities::product_translation::Entity::find()
+                        .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
                         .filter(entities::product_translation::Column::ProductId.eq(product_id))
                         .all(&self.db)
                         .await?,
@@ -231,6 +239,7 @@ impl CatalogService {
             async {
                 Ok::<_, CommerceError>(
                     entities::product_variant::Entity::find()
+                        .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
                         .filter(entities::product_variant::Column::ProductId.eq(product_id))
                         .order_by_asc(entities::product_variant::Column::Position)
                         .all(&self.db)
