@@ -1365,6 +1365,17 @@ mod tests {
     }
 
     #[test]
+    fn checkout_read_request_allows_empty_plan_set() {
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let hash = "a".repeat(64);
+
+        let canonical = validate_request(operation_id, order_id, &hash, &[])
+            .expect("empty read request must remain valid");
+        assert_eq!(canonical, hash);
+    }
+
+    #[test]
     fn checkout_request_rejects_sparse_indexes() {
         let operation_id = Uuid::new_v4();
         let order_id = Uuid::new_v4();
