@@ -114,6 +114,24 @@ const adminQuery = between(
   'async fn shipping_profiles(',
   'admin shipping query',
 );
+const fulfillmentLookupQuery = between(
+  query,
+  'async fn fulfillment(',
+  'async fn fulfillments(',
+  'mounted fulfillment lookup query',
+);
+const fulfillmentListQuery = between(
+  query,
+  'async fn fulfillments(',
+  '/// Catalog-authoritative admin product detail.',
+  'mounted fulfillment list query',
+);
+const orderQuery = between(
+  query,
+  'async fn order(',
+  'async fn orders(',
+  'mounted admin order query',
+);
 const portBoundary = shim.slice(shim.indexOf('fn map_shipping_option_lookup_port_error('));
 if (!portBoundary) failures.push('unable to isolate fulfillment port boundary');
 
@@ -260,6 +278,18 @@ forbidText(
   'un-normalized fulfillment request channel',
 );
 
+for (const [source, value, label] of [
+  [fulfillmentLookupQuery, 'current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?', 'fulfillment lookup tenant binding'],
+  [fulfillmentListQuery, 'current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?', 'fulfillment list tenant binding'],
+  [orderQuery, 'current_tenant_scope(ctx, Some(tenant_id), "Order fulfillment reads")?', 'order fulfillment tenant binding'],
+]) requireText(source, value, label);
+
+for (const source of [fulfillmentLookupQuery, fulfillmentListQuery, orderQuery]) {
+  forbidText(source, '.get_fulfillment(tenant_id,', 'mounted fulfillment read must use validated tenant');
+  forbidText(source, '.list_fulfillments(\n                tenant_id,', 'mounted fulfillment list must use validated tenant');
+  forbidText(source, '.find_by_order(tenant_id,', 'mounted latest fulfillment read must use validated tenant');
+}
+
 for (const [value, label] of [
   ['use rustok_fulfillment::FulfillmentService;', 'unchanged facade import'],
   ['.get_fulfillment(tenant_id, id)', 'query lookup facade call'],
@@ -275,6 +305,9 @@ for (const [value, label] of [
   ['items.retain(|option| option.active == active);', 'admin filtering'],
 ]) requireText(adminQuery, value, label);
 forbidText(query, '::rustok_fulfillment::FulfillmentService', 'query concrete service path');
+for (const source of [fulfillmentLookupQuery, fulfillmentListQuery, orderQuery]) {
+  requireText(source, 'let tenant_id =', 'validated tenant local binding');
+}
 
 if ((facade.match(/::rustok_fulfillment::FulfillmentService::new\(db\)/g) ?? []).length !== 0) {
   failures.push('facade must not construct concrete fulfillment service');
