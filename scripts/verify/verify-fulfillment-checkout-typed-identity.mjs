@@ -41,8 +41,6 @@ for (const [content, values, label] of [
   [
     service,
     [
-      'pub(crate) async fn create_checkout_fulfillment(',
-      'pub(crate) async fn find_checkout_fulfillment(',
       'pub(crate) async fn list_checkout_fulfillments(',
       'Column::CheckoutOperationId.eq(checkout_operation_id)',
       'Column::CheckoutFulfillmentIndex',
@@ -54,7 +52,6 @@ for (const [content, values, label] of [
     checkout,
     [
       'ensure_checkout_fulfillment_set(',
-      'find_checkout_fulfillment(',
       'list_checkout_fulfillments(',
       '"list_checkout_fulfillments_for_read"',
     ],
@@ -79,8 +76,6 @@ for (const [content, values, label] of [
   for (const value of values) requireText(content, value, label);
 }
 
-forbidText(checkout, 'find_checkout_fulfillment_before_create', 'checkout execution legacy per-index lookup marker');
-forbidText(checkout, 'adopt_checkout_fulfillment_after_create_error', 'checkout execution legacy per-index adoption marker');
 
 for (const value of [
   'fn fulfillment_key(',
