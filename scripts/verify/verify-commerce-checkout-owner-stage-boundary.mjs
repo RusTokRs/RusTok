@@ -176,7 +176,7 @@ for (const [source, label, port, operation] of [
     fulfillmentOwner,
     'fulfillment owner',
     'CheckoutFulfillmentExecutionPort',
-    'create_checkout_fulfillment(',
+    'ensure_checkout_fulfillment_set(',
   ],
   [
     orderSettlementOwner,
