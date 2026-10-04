@@ -442,91 +442,21 @@ pub(crate) async fn validate_selected_shipping_option(
         let Some(shipping_option_id) = selection.selected_shipping_option_id else {
             continue;
         };
-        let normalized_profile =
-            normalize_shipping_profile_slug(selection.shipping_profile_slug.as_str())
-                .unwrap_or_else(|| "default".to_string());
-        if !cart.delivery_groups.iter().any(|group| {
-            group.shipping_profile_slug == normalized_profile
-                && group.seller_id == selection.seller_id
-        }) {
-            return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::profile_incompatible(
-                    shipping_option_id,
-                    selection.shipping_profile_slug.as_str(),
-                ),
-                &owner_context,
-                cart.id,
-                selection_count,
-                cart.delivery_groups.len(),
-                requested_currency_code_length,
-                public_channel_slug,
-                requested_locale,
-                tenant_default_locale,
-            ));
-        }
-        let option = shipping_option_read_port
-            .read_shipping_option_projection(
-                owner_context.clone(),
-                ReadShippingOptionProjectionRequest {
-                    shipping_option_id,
-                    requested_locale: requested_locale.map(str::to_owned),
-                    tenant_default_locale: tenant_default_locale.map(str::to_owned),
-                },
-            )
-            .await
-            .map_err(|error| {
-                shipping_option_graphql_error(
-                    ShippingOptionFailure::owner(shipping_option_id, error),
-                    &owner_context,
-                    cart.id,
-                    selection_count,
-                    cart.delivery_groups.len(),
-                    requested_currency_code_length,
-                    public_channel_slug,
-                    requested_locale,
-                    tenant_default_locale,
-                )
-            })?;
-        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
-            return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::currency_mismatch(
-                    option.id,
-                    &option.currency_code,
-                    currency_code,
-                ),
-                &owner_context,
-                cart.id,
-                selection_count,
-                cart.delivery_groups.len(),
-                requested_currency_code_length,
-                public_channel_slug,
-                requested_locale,
-                tenant_default_locale,
-            ));
-        }
-        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
-            return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::channel_unavailable(option.id),
-                &owner_context,
-                cart.id,
-                selection_count,
-                cart.delivery_groups.len(),
-                requested_currency_code_length,
-                public_channel_slug,
-                requested_locale,
-                tenant_default_locale,
-            ));
-        }
-        let required_shipping_profiles = BTreeSet::from([normalize_shipping_profile_slug(
-            selection.shipping_profile_slug.as_str(),
+
+        validate_storefront_shipping_option_selection(
+            cart,
+            &selection,
+            currency_code,
+            public_channel_slug,
+            requested_locale,
+            tenant_default_locale,
+            &owner_context,
+            shipping_option_read_port.as_ref(),
         )
-        .unwrap_or_else(|| "default".to_string())]);
-        if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
-            return Err(shipping_option_graphql_error(
-                ShippingOptionFailure::profile_incompatible(
-                    option.id,
-                    &selection.shipping_profile_slug,
-                ),
+        .await
+        .map_err(|error| {
+            shipping_option_graphql_error(
+                ShippingOptionFailure::from_selection_validation_error(error),
                 &owner_context,
                 cart.id,
                 selection_count,
@@ -535,8 +465,10 @@ pub(crate) async fn validate_selected_shipping_option(
                 public_channel_slug,
                 requested_locale,
                 tenant_default_locale,
-            ));
-        }
+            )
+        })?;
+
+        let _ = shipping_option_id;
     }
 
     Ok(())
