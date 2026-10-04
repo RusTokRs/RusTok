@@ -151,3 +151,53 @@ Checkout-orderCustomer = Получатель
 Checkout-orderDestination = Адрес доставки
 Checkout-orderTotal = Итого к оплате
 
+Order-title = Заказ #{ $id }
+Order-backToCatalog = Вернуться в каталог
+Order-printReceipt = Печать квитанции
+Order-tracking = Трек-номер:
+Order-copied = Скопировано!
+Order-copy = Скопировать
+Order-progressTitle = Статус выполнения заказа
+Order-itemsTitle = Состав заказа
+Order-itemsCount =
+    { $count ->
+        [one] 1 позиция
+        [few] { $count } позиции
+       *[other] { $count } позиций
+    }
+Order-sku = Арт:
+Order-deliveryAddress = Адрес доставки
+Order-fulfillment = Служба доставки
+Order-carrier = Перевозчик
+Order-estimatedArrival = Ориентировочный срок
+Order-estimatedDays = 1–3 рабочих дня
+Order-financialSummary = Финансовая сводка
+Order-subtotal = Товары
+Order-discount = Скидка
+Order-shipping = Доставка
+Order-free = Бесплатно
+Order-tax = НДС / Налог
+Order-total = Итого к оплате
+Order-paymentMethod = Способ оплаты
+Order-paymentStatus = Статус оплаты:
+Order-paid = Оплачено
+Order-pending = Ожидает оплаты
+Order-supportHint = Возникли вопросы по заказу? Наша поддержка работает 24/7.
+Order-guaranteeQuality = Гарантия подлинности и качества
+Order-guaranteeReturn = 14 дней на возврат товара
+Order-notFoundTitle = Заказ не найден
+Order-notFoundSubtitle = Заказ с номером { $id } не найден в текущей системе или требует авторизации владельца.
+Order-browseCatalog = Перейти в каталог
+Order-statusPlaced = Оформлен
+Order-statusPlacedDesc = Заказ получен системой
+Order-statusPaid = Оплачен
+Order-statusPaidDesc = Оплата подтверждена
+Order-statusProcessing = Сборка
+Order-statusProcessingDesc = Комплектуется на складе
+Order-statusShipped = В пути
+Order-statusShippedDesc = Передан в службу доставки
+Order-statusDelivered = Доставлен
+Order-statusDeliveredDesc = Вручен получателю
+Order-statusCancelled = Отменен
+
+

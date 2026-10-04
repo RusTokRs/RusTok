@@ -184,6 +184,92 @@ export type AppMessageKey =
   | 'Comments.composer.success'
   | 'Comments-composer-title'
   | 'Comments.composer.title'
+  | 'Order-backToCatalog'
+  | 'Order.backToCatalog'
+  | 'Order-browseCatalog'
+  | 'Order.browseCatalog'
+  | 'Order-carrier'
+  | 'Order.carrier'
+  | 'Order-copied'
+  | 'Order.copied'
+  | 'Order-copy'
+  | 'Order.copy'
+  | 'Order-deliveryAddress'
+  | 'Order.deliveryAddress'
+  | 'Order-discount'
+  | 'Order.discount'
+  | 'Order-estimatedArrival'
+  | 'Order.estimatedArrival'
+  | 'Order-estimatedDays'
+  | 'Order.estimatedDays'
+  | 'Order-financialSummary'
+  | 'Order.financialSummary'
+  | 'Order-free'
+  | 'Order.free'
+  | 'Order-fulfillment'
+  | 'Order.fulfillment'
+  | 'Order-guaranteeQuality'
+  | 'Order.guaranteeQuality'
+  | 'Order-guaranteeReturn'
+  | 'Order.guaranteeReturn'
+  | 'Order-itemsCount'
+  | 'Order.itemsCount'
+  | 'Order-itemsTitle'
+  | 'Order.itemsTitle'
+  | 'Order-notFoundSubtitle'
+  | 'Order.notFoundSubtitle'
+  | 'Order-notFoundTitle'
+  | 'Order.notFoundTitle'
+  | 'Order-paid'
+  | 'Order.paid'
+  | 'Order-paymentMethod'
+  | 'Order.paymentMethod'
+  | 'Order-paymentStatus'
+  | 'Order.paymentStatus'
+  | 'Order-pending'
+  | 'Order.pending'
+  | 'Order-printReceipt'
+  | 'Order.printReceipt'
+  | 'Order-progressTitle'
+  | 'Order.progressTitle'
+  | 'Order-shipping'
+  | 'Order.shipping'
+  | 'Order-sku'
+  | 'Order.sku'
+  | 'Order-statusCancelled'
+  | 'Order.statusCancelled'
+  | 'Order-statusDelivered'
+  | 'Order.statusDelivered'
+  | 'Order-statusDeliveredDesc'
+  | 'Order.statusDeliveredDesc'
+  | 'Order-statusPaid'
+  | 'Order.statusPaid'
+  | 'Order-statusPaidDesc'
+  | 'Order.statusPaidDesc'
+  | 'Order-statusPlaced'
+  | 'Order.statusPlaced'
+  | 'Order-statusPlacedDesc'
+  | 'Order.statusPlacedDesc'
+  | 'Order-statusProcessing'
+  | 'Order.statusProcessing'
+  | 'Order-statusProcessingDesc'
+  | 'Order.statusProcessingDesc'
+  | 'Order-statusShipped'
+  | 'Order.statusShipped'
+  | 'Order-statusShippedDesc'
+  | 'Order.statusShippedDesc'
+  | 'Order-subtotal'
+  | 'Order.subtotal'
+  | 'Order-supportHint'
+  | 'Order.supportHint'
+  | 'Order-tax'
+  | 'Order.tax'
+  | 'Order-title'
+  | 'Order.title'
+  | 'Order-total'
+  | 'Order.total'
+  | 'Order-tracking'
+  | 'Order.tracking'
   | 'Product-addedToCart'
   | 'Product.addedToCart'
   | 'Product-addToCart'
@@ -454,6 +540,92 @@ export interface AppMessageArgs {
   'Comments-composer-success'?: Record<string, never>;
   'Comments.composer.title'?: Record<string, never>;
   'Comments-composer-title'?: Record<string, never>;
+  'Order.backToCatalog'?: Record<string, never>;
+  'Order-backToCatalog'?: Record<string, never>;
+  'Order.browseCatalog'?: Record<string, never>;
+  'Order-browseCatalog'?: Record<string, never>;
+  'Order.carrier'?: Record<string, never>;
+  'Order-carrier'?: Record<string, never>;
+  'Order.copied'?: Record<string, never>;
+  'Order-copied'?: Record<string, never>;
+  'Order.copy'?: Record<string, never>;
+  'Order-copy'?: Record<string, never>;
+  'Order.deliveryAddress'?: Record<string, never>;
+  'Order-deliveryAddress'?: Record<string, never>;
+  'Order.discount'?: Record<string, never>;
+  'Order-discount'?: Record<string, never>;
+  'Order.estimatedArrival'?: Record<string, never>;
+  'Order-estimatedArrival'?: Record<string, never>;
+  'Order.estimatedDays'?: Record<string, never>;
+  'Order-estimatedDays'?: Record<string, never>;
+  'Order.financialSummary'?: Record<string, never>;
+  'Order-financialSummary'?: Record<string, never>;
+  'Order.free'?: Record<string, never>;
+  'Order-free'?: Record<string, never>;
+  'Order.fulfillment'?: Record<string, never>;
+  'Order-fulfillment'?: Record<string, never>;
+  'Order.guaranteeQuality'?: Record<string, never>;
+  'Order-guaranteeQuality'?: Record<string, never>;
+  'Order.guaranteeReturn'?: Record<string, never>;
+  'Order-guaranteeReturn'?: Record<string, never>;
+  'Order.itemsCount': { 'count': string | number | Date };
+  'Order-itemsCount': { 'count': string | number | Date };
+  'Order.itemsTitle'?: Record<string, never>;
+  'Order-itemsTitle'?: Record<string, never>;
+  'Order.notFoundSubtitle': { 'id': string | number | Date };
+  'Order-notFoundSubtitle': { 'id': string | number | Date };
+  'Order.notFoundTitle'?: Record<string, never>;
+  'Order-notFoundTitle'?: Record<string, never>;
+  'Order.paid'?: Record<string, never>;
+  'Order-paid'?: Record<string, never>;
+  'Order.paymentMethod'?: Record<string, never>;
+  'Order-paymentMethod'?: Record<string, never>;
+  'Order.paymentStatus'?: Record<string, never>;
+  'Order-paymentStatus'?: Record<string, never>;
+  'Order.pending'?: Record<string, never>;
+  'Order-pending'?: Record<string, never>;
+  'Order.printReceipt'?: Record<string, never>;
+  'Order-printReceipt'?: Record<string, never>;
+  'Order.progressTitle'?: Record<string, never>;
+  'Order-progressTitle'?: Record<string, never>;
+  'Order.shipping'?: Record<string, never>;
+  'Order-shipping'?: Record<string, never>;
+  'Order.sku'?: Record<string, never>;
+  'Order-sku'?: Record<string, never>;
+  'Order.statusCancelled'?: Record<string, never>;
+  'Order-statusCancelled'?: Record<string, never>;
+  'Order.statusDelivered'?: Record<string, never>;
+  'Order-statusDelivered'?: Record<string, never>;
+  'Order.statusDeliveredDesc'?: Record<string, never>;
+  'Order-statusDeliveredDesc'?: Record<string, never>;
+  'Order.statusPaid'?: Record<string, never>;
+  'Order-statusPaid'?: Record<string, never>;
+  'Order.statusPaidDesc'?: Record<string, never>;
+  'Order-statusPaidDesc'?: Record<string, never>;
+  'Order.statusPlaced'?: Record<string, never>;
+  'Order-statusPlaced'?: Record<string, never>;
+  'Order.statusPlacedDesc'?: Record<string, never>;
+  'Order-statusPlacedDesc'?: Record<string, never>;
+  'Order.statusProcessing'?: Record<string, never>;
+  'Order-statusProcessing'?: Record<string, never>;
+  'Order.statusProcessingDesc'?: Record<string, never>;
+  'Order-statusProcessingDesc'?: Record<string, never>;
+  'Order.statusShipped'?: Record<string, never>;
+  'Order-statusShipped'?: Record<string, never>;
+  'Order.statusShippedDesc'?: Record<string, never>;
+  'Order-statusShippedDesc'?: Record<string, never>;
+  'Order.subtotal'?: Record<string, never>;
+  'Order-subtotal'?: Record<string, never>;
+  'Order.supportHint'?: Record<string, never>;
+  'Order-supportHint'?: Record<string, never>;
+  'Order.tax'?: Record<string, never>;
+  'Order-tax'?: Record<string, never>;
+  'Order.title': { 'id': string | number | Date };
+  'Order-title': { 'id': string | number | Date };
+  'Order.total'?: Record<string, never>;
+  'Order-total'?: Record<string, never>;
+  'Order.tracking'?: Record<string, never>;
+  'Order-tracking'?: Record<string, never>;
   'Product.addedToCart'?: Record<string, never>;
   'Product-addedToCart'?: Record<string, never>;
   'Product.addToCart'?: Record<string, never>;

@@ -150,3 +150,52 @@ Checkout-orderCustomer = Customer
 Checkout-orderDestination = Shipping Destination
 Checkout-orderTotal = Total Amount
 
+Order-title = Order #{ $id }
+Order-backToCatalog = Back to Catalog
+Order-printReceipt = Print Receipt
+Order-tracking = Tracking Number:
+Order-copied = Copied!
+Order-copy = Copy
+Order-progressTitle = Order Progress Tracking
+Order-itemsTitle = Ordered Items
+Order-itemsCount =
+    { $count ->
+        [one] 1 item
+       *[other] { $count } items
+    }
+Order-sku = SKU
+Order-deliveryAddress = Delivery Address
+Order-fulfillment = Fulfillment & Courier
+Order-carrier = Carrier
+Order-estimatedArrival = Estimated Arrival
+Order-estimatedDays = 1–3 business days
+Order-financialSummary = Payment Summary
+Order-subtotal = Subtotal
+Order-discount = Discount
+Order-shipping = Shipping
+Order-free = Free
+Order-tax = Tax
+Order-total = Total Amount
+Order-paymentMethod = Payment Method
+Order-paymentStatus = Payment Status
+Order-paid = Paid
+Order-pending = Pending
+Order-supportHint = Have questions about your order? Support is available 24/7.
+Order-guaranteeQuality = Authenticity and Quality Guarantee
+Order-guaranteeReturn = 14-day hassle-free return policy
+Order-notFoundTitle = Order Not Found
+Order-notFoundSubtitle = Order with ID { $id } was not found or requires account authorization.
+Order-browseCatalog = Browse Catalog
+Order-statusPlaced = Order Placed
+Order-statusPlacedDesc = Order received
+Order-statusPaid = Payment Confirmed
+Order-statusPaidDesc = Payment processed
+Order-statusProcessing = Processing
+Order-statusProcessingDesc = Packing items at warehouse
+Order-statusShipped = In Transit
+Order-statusShippedDesc = Handed to courier service
+Order-statusDelivered = Delivered
+Order-statusDeliveredDesc = Successfully delivered
+Order-statusCancelled = Cancelled
+
+

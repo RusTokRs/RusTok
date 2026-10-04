@@ -10,20 +10,37 @@ use crate::transport::{CompleteCheckoutRequest, build_complete_checkout_request}
 
 #[component]
 pub fn OrderView() -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let locale = locale.as_deref();
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale.clone();
+    let locale_ref = locale.as_deref();
+
+    let order_id = route_context
+        .subpath
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| route_context.query_value("order_id"))
+        .or_else(|| route_context.query_value("id"))
+        .unwrap_or("pending")
+        .to_string();
+
+    let order_status = route_context
+        .query_value("status")
+        .unwrap_or("PROCESSING")
+        .to_string();
+
     let result = OrderCheckoutResultData {
-        order_id: "pending".to_string(),
-        order_status: "not_started".to_string(),
+        order_id,
+        order_status,
     };
     let labels = OrderCheckoutResultLabels {
-        badge: t(locale, "order.checkout.badge", "Order"),
+        badge: t(locale_ref, "order.checkout.badge", "Order"),
         module_ownership: t(
-            locale,
+            locale_ref,
             "order.checkout.moduleOwnership",
             "Order status and checkout completion stay in order-owned UI.",
         ),
-        order_status_label: t(locale, "order.checkout.orderStatus", "Order status"),
+        order_status_label: t(locale_ref, "order.checkout.orderStatus", "Order status"),
     };
 
     view! {
@@ -40,25 +57,91 @@ pub fn OrderCheckoutResultCard(
     labels: OrderCheckoutResultLabels,
 ) -> impl IntoView {
     let view_model = build_order_checkout_result_view_model(result, &labels);
+    let order_id = view_model.order_id.clone();
+    let is_placeholder = order_id == "pending" || order_id.is_empty();
 
     view! {
-        <article class="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
-            <div class="text-xs font-medium uppercase tracking-[0.18em] text-primary">
-                {labels.badge}
+        <article class="mt-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xs">
+            <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border/80 pb-5">
+                <div>
+                    <div class="text-xs font-bold uppercase tracking-[0.18em] text-primary">
+                        {labels.badge}
+                    </div>
+                    <h3 class="mt-2 text-xl sm:text-2xl font-extrabold text-card-foreground">
+                        {if is_placeholder {
+                            "Order Tracking".to_string()
+                        } else {
+                            format!("#{order_id}")
+                        }}
+                    </h3>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {view_model.module_ownership}
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-primary/10 text-primary">
+                        {view_model.order_status_label.clone()}: " " {view_model.order_status.clone()}
+                    </span>
+                </div>
             </div>
-            <h4 class="mt-2 text-base font-semibold text-card-foreground">{view_model.order_id}</h4>
-            <p class="mt-2 text-sm text-muted-foreground">
-                {view_model.module_ownership}
-            </p>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <article class="rounded-2xl border border-border bg-card p-4">
-                    <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+
+            <div class="mt-6">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-5">
+                    {view_model.steps.into_iter().map(|step| {
+                        let is_active = step.active;
+                        let is_completed = step.completed;
+                        let card_class = if is_active {
+                            "flex flex-col p-4 rounded-2xl border border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
+                        } else if is_completed {
+                            "flex flex-col p-4 rounded-2xl border border-border/80 bg-background/60"
+                        } else {
+                            "flex flex-col p-4 rounded-2xl border border-border/40 bg-muted/20 opacity-60"
+                        };
+                        let badge_class = if is_completed || is_active {
+                            "flex h-7 w-7 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xs font-bold"
+                        } else {
+                            "flex h-7 w-7 items-center justify-center rounded-xl bg-muted text-muted-foreground text-xs font-bold"
+                        };
+
+                        view! {
+                            <div class=card_class>
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class=badge_class>
+                                        {if is_completed { "✓" } else { "●" }}
+                                    </div>
+                                    <span class="text-[10px] font-bold text-muted-foreground">
+                                        {format!("0{}", step.step)}
+                                    </span>
+                                </div>
+                                <div class="text-sm font-bold text-foreground">
+                                    {step.title}
+                                </div>
+                                <div class="mt-1 text-xs text-muted-foreground">
+                                    {step.description}
+                                </div>
+                            </div>
+                        }
+                    }).collect_view()}
+                </div>
+            </div>
+
+            <div class="mt-6 grid gap-4 sm:grid-cols-2">
+                <div class="rounded-2xl border border-border/70 bg-background/50 p-4">
+                    <div class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                         {view_model.order_status_label}
                     </div>
-                    <div class="mt-2 text-lg font-semibold text-card-foreground break-all">
+                    <div class="mt-2 text-base font-bold text-foreground break-all">
                         {view_model.order_status}
                     </div>
-                </article>
+                </div>
+                <div class="rounded-2xl border border-border/70 bg-background/50 p-4">
+                    <div class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        "Fulfillment & Delivery"
+                    </div>
+                    <div class="mt-2 text-sm text-foreground">
+                        "Standard Express Logistics (1–3 business days)"
+                    </div>
+                </div>
             </div>
         </article>
     }

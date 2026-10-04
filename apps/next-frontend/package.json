@@ -21,6 +21,7 @@
     "@rustok/cart-frontend": "file:./packages/rustok-cart",
     "@rustok/comments-frontend": "file:./packages/rustok-comments",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
+    "@rustok/order-frontend": "file:./packages/rustok-order",
     "@rustok/product-frontend": "file:./packages/rustok-product",
     "@rustok/richtext": "file:../../packages/richtext",
     "class-variance-authority": "^0.7.0",
