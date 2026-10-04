@@ -100,7 +100,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             map_checkout_fulfillment_local_port_error(
                 context,
                 ENSURE_OPERATION,
-                "validate_request",
+                "validate_ensure_request",
                 error,
             )
         })?;
