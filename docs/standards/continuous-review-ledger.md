@@ -4472,3 +4472,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `ccc34abe3d5b872c7bb293e98a4297b70e32126d` via PR #4493.
 - Status: FS-22.06.106 source/evidence tooling complete and integrated; compile, runtime capture, parity execution, failure/deadline injection, restart, and remote-adapter evidence remain open and are not claimed.
 - Next primary module iteration: execute the shipping-option parity capture when mounted endpoints and a valid token/fixtures are available; otherwise continue the next single Fulfillment owner boundary without promoting unexecuted evidence.
+
+### FS-22.06.107 Assessment — ShippingSelectionPort idempotency/FBA contract drift
+
+- Base: bd2fa0b2792db2785bc5e0508dfd1735a428de2e; fresh main was re-read before implementation.
+- Primary scope: one Fulfillment owner boundary — mixed `ShippingSelectionPort` read/write context semantics and its FBA registry contract.
+- Confirmed finding FULFILLMENT-22.06.107-01: `select_shipping_option` is implemented under `PortCallPolicy::write()`, and the shared `PortContext` write policy requires both a non-empty idempotency key and a deadline, while `fulfillment-fba-registry.json` declared `idempotency_required: false`. The registry therefore under-described the actual write contract.
+- Confirmed finding FULFILLMENT-22.06.107-02: the mixed-port registry did not explicitly declare `list_seller_shipping_options` as a read operation. The canonical FBA verifier already supports `read_operations` for this mixed-port shape, so the source contract was missing the declaration needed to express its actual semantics.
+- Confirmed finding FULFILLMENT-22.06.107-03: the FBA and shipping-selection diagnostic verifiers required the lower-level `require_write_semantics()` marker even though the canonical `require_policy(PortCallPolicy::write())` already expands to the same deadline + idempotency checks. This made the verifier stricter than the shared API contract and could reject a correct implementation.
+- Remediation: set `idempotency_required=true`, declare `read_operations=["list_seller_shipping_options"]`, and update both verifiers to accept the canonical shared write-policy admission without adding redundant production checks.
+- Production runtime behavior was intentionally unchanged because it already enforced the stricter correct policy.
+- Integration: squash-merged as `fafd31644fd0191a4eaa891cf1783c15f8244740` via PR #4494.
+- Status: FS-22.06.107 source/contract remediation complete and integrated; compile/runtime/FBA execution evidence remains unvalidated and is not claimed.
+- Next primary module iteration: continue the single Fulfillment owner-boundary audit, then execute the locked runtime evidence when the mounted environment becomes available.
