@@ -77,6 +77,15 @@ const commerceTransport = readRepo(commerceTransportPath);
 const commerceUi = readRepo(commerceUiPath);
 const commerceCheckoutRuntime = readRepo(commerceCheckoutRuntimePath);
 const commerceShippingPolicy = readRepo(commerceShippingPolicyPath);
+const nativeSelectionStart = commerceCheckoutRuntime.indexOf("pub async fn select_storefront_shipping_option(");
+const nativeSelectionEnd = commerceCheckoutRuntime.indexOf("\n\nasync fn resolve_storefront_customer_id(", nativeSelectionStart);
+if (nativeSelectionStart < 0 || nativeSelectionEnd < 0) {
+  fail(commerceCheckoutRuntimePath + ": unable to isolate native shipping-selection runtime");
+}
+const nativeSelectionBody =
+  nativeSelectionStart >= 0 && nativeSelectionEnd > nativeSelectionStart
+    ? commerceCheckoutRuntime.slice(nativeSelectionStart, nativeSelectionEnd)
+    : "";
 const plan = readRepo(planPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -168,6 +177,17 @@ assertContains(nativeServerFunctions, "shared_get::<rustok_commerce::graphql_run
 assertContains(nativeServerFunctions, "with_shipping_option_read_port(", nativeServerFunctionsPath + ": native selection must inject the host-selected shipping read port");
 assertContains(commerceCheckoutRuntime, "shipping_option_read_port: Arc<dyn ShippingOptionReadPort>", commerceCheckoutRuntimePath + ": checkout runtime must retain the owner read port");
 assertContains(commerceCheckoutRuntime, "pub fn with_shipping_option_read_port(", commerceCheckoutRuntimePath + ": checkout runtime must support host-selected shipping read ports");
+if (
+  nativeSelectionBody.indexOf("validate_storefront_shipping_option_selection(") < 0 ||
+  nativeSelectionBody.indexOf("update_storefront_context(") < 0 ||
+  nativeSelectionBody.indexOf("validate_storefront_shipping_option_selection(") >=
+    nativeSelectionBody.indexOf("update_storefront_context(")
+) {
+  fail(
+    commerceCheckoutRuntimePath +
+      ": shipping-option validation must execute before update_storefront_context",
+  );
+}
 assertContains(commerceCheckoutRuntime, "validate_storefront_shipping_option_selection(", commerceCheckoutRuntimePath + ": native selection must validate shipping options before cart mutation");
 assertContains(commerceCheckoutRuntime, ".update_storefront_context(", commerceCheckoutRuntimePath + ": native selection must retain cart context mutation");
 assertContains(commerceShippingPolicy, "pub(crate) async fn validate_storefront_shipping_option_selection(", commerceShippingPolicyPath + ": shared shipping-selection policy must exist");
