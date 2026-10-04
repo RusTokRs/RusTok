@@ -426,6 +426,13 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        if let Some(auth) = ctx.data_opt::<AuthContext>() {
+            if auth.tenant_id != tenant.id {
+                return Err(<FieldError as GraphQLError>::permission_denied(
+                    "Authenticated actor is not bound to the current tenant",
+                ));
+            }
+        }
         if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Storefront shipping-option reads must use the current tenant",
@@ -1326,7 +1333,7 @@ impl CommerceQuery {
         id: Uuid,
     ) -> Result<Option<GqlShippingOption>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
@@ -1334,11 +1341,6 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let auth = require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_READ],
-            "Permission denied: fulfillments:read required",
-        )?;
         if tenant_id != tenant.id {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Shipping-option reads must use the current tenant",
@@ -1389,7 +1391,7 @@ impl CommerceQuery {
         filter: Option<ShippingOptionsFilter>,
     ) -> Result<GqlShippingOptionList> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
