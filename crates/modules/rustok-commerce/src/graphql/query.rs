@@ -44,7 +44,8 @@ use crate::{
 };
 
 use super::{
-    MODULE_SLUG, PRODUCT_MODULE_SLUG, product_query_tenant, require_commerce_permission, types::*,
+    MODULE_SLUG, PRODUCT_MODULE_SLUG, current_tenant_scope, product_query_tenant,
+    require_commerce_permission, types::*,
 };
 
 #[derive(Default)]
@@ -974,8 +975,10 @@ impl CommerceQuery {
             .find_latest_collection_by_order(tenant_id, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let fulfillment_tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Order fulfillment reads")?;
         let fulfillment = FulfillmentService::new(db.clone())
-            .find_by_order(tenant_id, id)
+            .find_by_order(fulfillment_tenant_id, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
@@ -1495,6 +1498,8 @@ impl CommerceQuery {
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
         )?;
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let fulfillment = match FulfillmentService::new(db.clone())
@@ -1523,6 +1528,8 @@ impl CommerceQuery {
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
         )?;
+        let tenant_id =
+            current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let filter = filter.unwrap_or(FulfillmentsFilter {
