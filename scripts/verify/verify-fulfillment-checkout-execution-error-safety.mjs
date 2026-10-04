@@ -100,6 +100,7 @@ for (const value of [
 for (const [content, value, label] of [
   [ensure, 'context: &PortContext', 'ensure context input'],
   [ensure, 'ensure_checkout_fulfillment_set(', 'aggregate ensure operation'],
+  [ensure, 'validate_ensure_request(', 'non-empty ensure validation'],
   [ensure, 'fulfillment_error_to_port_error(', 'aggregate ensure mapper handoff'],
   [readHelper, 'context: &PortContext', 'read context input'],
   [readHelper, 'list_checkout_fulfillments_for_read', 'typed read operation'],
