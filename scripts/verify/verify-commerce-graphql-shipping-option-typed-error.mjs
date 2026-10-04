@@ -44,7 +44,7 @@ const between = (source, start, end, label) => {
 
 const publicEnvelope = between(
   typedSource,
-  'fn public_graphql_error()',
+  'fn public_graphql_error(message: impl Into<String>) -> async_graphql::Error {',
   '#[allow(clippy::too_many_arguments)]\nfn shipping_option_graphql_error(',
   'public GraphQL envelope',
 );
@@ -131,7 +131,7 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['async_graphql::Error::new("Selected shipping option is invalid")', 'stable public message'],
+  ['async_graphql::Error::new(message)', 'public GraphQL envelope message'],
   ['extensions.set("code", "SHIPPING_OPTION_INVALID")', 'stable public code'],
   ['extensions.set("retryable", false)', 'stable public retryability'],
 ]) {
@@ -157,7 +157,7 @@ for (const [value, label] of [
   ['error = ?technical_owner_error', 'technical owner cause'],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
-  ['public_graphql_error()', 'single stable envelope return'],
+  ['public_graphql_error(message)', 'single stable envelope return'],
 ]) {
   requireText(mapper, value, label);
 }
@@ -182,6 +182,24 @@ for (const [value, label] of [
   ['is_metadata_visible_for_public_channel', 'channel visibility policy'],
 ]) {
   requireText(mountedValidator, value, label);
+}
+
+for (const [source, value, label] of [
+  [
+    typedSource,
+    `failure
+        .message
+        .unwrap_or_else(|| "Selected shipping option is invalid".to_string())`,
+    'stable owner-error fallback message',
+  ],
+]) {
+  requireText(source, value, label);
+}
+
+for (const value of [
+  'map(|e| e.message.clone())',
+]) {
+  forbidText(typedSource, value, 'owner error message must remain diagnostic-only');
 }
 
 const ownerLookups = mountedValidator.match(/\.read_shipping_option_projection\(/g) ?? [];

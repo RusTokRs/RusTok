@@ -241,6 +241,9 @@ disable/reconciliation matrix in
   inactive-before-filter plus active/currency/provider/search/pagination behavior.
 - [x] Preserve existing REST status/code/message policy through typed
   `PortErrorKind` mapping without owner-message control flow.
+- [x] Keep mounted GraphQL shipping-option owner failures on a stable
+  public message envelope; owner `PortError` messages remain diagnostic-only
+  and never become client response text.
 - [x] Propagate REST tenant, actor, locale, effective channel, correlation, and
   two-second deadline context.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
