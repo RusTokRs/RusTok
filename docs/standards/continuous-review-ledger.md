@@ -4485,3 +4485,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `fafd31644fd0191a4eaa891cf1783c15f8244740` via PR #4494.
 - Status: FS-22.06.107 source/contract remediation complete and integrated; compile/runtime/FBA execution evidence remains unvalidated and is not claimed.
 - Next primary module iteration: continue the single Fulfillment owner-boundary audit, then execute the locked runtime evidence when the mounted environment becomes available.
+
+### FS-22.06.108 Assessment — native storefront shipping-selection policy parity
+
+- Base: 637ddfbfc3bcd8d0bbacd7e0b60b15c59053c9dd; fresh main was re-read before implementation.
+- Primary scope: one production Fulfillment/Commerce storefront boundary — native Leptos shipping selection versus the already-validated GraphQL selection path.
+- Confirmed finding FULFILLMENT-22.06.108-01: the mounted native storefront selection path called Cart `update_storefront_context` without first validating the selected shipping option against the current Fulfillment owner projection. This allowed stale/inactive/wrong-currency/wrong-channel/wrong-profile selections to cross the cart mutation boundary.
+- Confirmed finding FULFILLMENT-22.06.108-02: the Fulfillment `ShippingSelectionPort::select_shipping_option` read path could return an inactive shipping option because it used `get_shipping_option` without an active-state guard.
+- Confirmed finding FULFILLMENT-22.06.108-03: mounted GraphQL selection validation constructed the in-process shipping-option read port directly instead of using the resolver-scoped host-selected runtime.
+- Confirmed finding FULFILLMENT-22.06.108-04: native selection initially also sent selection records with `selected_shipping_option_id = None` through the new validator, while GraphQL intentionally treats such records as clearing/unselected entries.
+- Remediation: introduced one Commerce-owned `validate_storefront_shipping_option_selection` policy used by GraphQL and native selection; native checkout now receives the host-selected `CommerceShippingOptionReadRuntime`, validates a fresh owner projection before Cart mutation, skips unselected records, and Fulfillment rejects inactive owner selections as a non-retryable conflict.
+- Diagnostic hardening: the shared selection validation error has a redacted `Debug` representation; GraphQL maps the typed shared outcome into its existing stable envelope.
+- Verification: JS verifier sources were parser-checked without execution; focused/broad runtime and Cargo verification remain open because `cargo`, `rustc`, and `rustfmt` are unavailable in the active environment.
+- Integration: source remediation was squash-merged as `6115195e92acaa6ab5804129b152674bccd22483` via PR #4496.
+- Status: FS-22.06.108 complete and integrated; native/GraphQL runtime parity, failure/deadline injection, restart, and remote-adapter evidence remain open and unvalidated.
+- Next primary module iteration: audit the native storefront shipping-selection error mapping itself so business validation/conflict errors do not collapse into the generic temporary-unavailable transport response.
+
