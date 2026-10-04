@@ -7,7 +7,8 @@ use uuid::Uuid;
 pub(crate) fn storefront_shipping_option_read_port(
     db: sea_orm::DatabaseConnection,
 ) -> Arc<dyn ShippingOptionReadPort> {
-    rustok_fulfillment::in_process_shipping_option_read_port(db)
+    crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(db)
+        .shipping_option_read_port()
 }
 
 pub(crate) fn storefront_shipping_option_read_context(
