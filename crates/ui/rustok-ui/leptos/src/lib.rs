@@ -19,6 +19,7 @@ pub mod checkbox;
 pub mod dialog;
 pub mod input;
 pub mod label;
+pub mod progress;
 pub mod select;
 pub mod separator;
 pub mod skeleton;
@@ -38,9 +39,13 @@ pub use card::{
     Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 };
 pub use checkbox::Checkbox;
-pub use dialog::{Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle};
+pub use dialog::{
+    Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader,
+    DialogOverlay, DialogPortal, DialogTitle, DialogTrigger,
+};
 pub use input::Input;
 pub use label::Label;
+pub use progress::Progress;
 pub use select::Select;
 pub use separator::Separator;
 pub use skeleton::Skeleton;
@@ -58,9 +63,16 @@ pub use avatar::Avatar as ui_avatar;
 pub use badge::Badge as ui_badge;
 pub use button::Button as ui_button;
 pub use checkbox::Checkbox as ui_checkbox;
-pub use dialog::Dialog as ui_dialog;
+pub use dialog::{
+    Dialog as ui_dialog, DialogClose as ui_dialog_close, DialogContent as ui_dialog_content,
+    DialogDescription as ui_dialog_description, DialogFooter as ui_dialog_footer,
+    DialogHeader as ui_dialog_header, DialogOverlay as ui_dialog_overlay,
+    DialogPortal as ui_dialog_portal, DialogTitle as ui_dialog_title,
+    DialogTrigger as ui_dialog_trigger,
+};
 pub use input::Input as ui_input;
 pub use label::Label as ui_label;
+pub use progress::Progress as ui_progress;
 pub use select::Select as ui_select;
 pub use separator::Separator as ui_separator;
 pub use skeleton::Skeleton as ui_skeleton;

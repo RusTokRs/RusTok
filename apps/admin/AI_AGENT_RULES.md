@@ -44,7 +44,7 @@ suppression in files touched by the task.
 
 Before writing reusable code, check whether it already exists in shared libraries:
 
-- `leptos-ui` - Button, Input, Badge, Alert, Card, Label, Spinner, Checkbox, Switch, Textarea, Select, LanguageToggle
+- `leptos-ui` - Button, Input, Badge, Alert, Card, Label, Spinner, Progress, Checkbox, Switch, Textarea, Select, LanguageToggle
 - `leptos-ui-routing` - `UiRouteContext`, `module_route_base()`, `query_value()`
 - `rustok-graphql` - framework-agnostic GraphQL HTTP client
 - `rustok-ui-core` - framework-agnostic route, pagination, sorting, filtering, selection, and presentation contracts

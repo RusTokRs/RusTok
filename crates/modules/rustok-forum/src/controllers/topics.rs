@@ -12,13 +12,7 @@ use std::time::Instant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::topic_create_transport::{
-    ForumTopicCreateTransport, topic_create_audience_port_context,
-};
-use crate::{
-    CreateTopicInput, ListTopicsFilter, ModerationService, SubscriptionService, TopicListItem,
-    TopicResponse, UpdateTopicInput,
-};
+use crate::{ListTopicsFilter, SubscriptionService, TopicListItem, TopicResponse};
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
@@ -183,80 +177,6 @@ pub async fn get_topic(
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/forum/topics",
-    tag = "forum",
-    request_body = CreateTopicInput,
-    responses(
-        (status = 201, description = "Topic created", body = TopicResponse),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn create_topic(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Json(input): Json<CreateTopicInput>,
-) -> HttpResult<(StatusCode, Json<TopicResponse>)> {
-    ensure_forum_permission(
-        &auth,
-        &[Permission::FORUM_TOPICS_CREATE],
-        "Permission denied: forum_topics:create required",
-    )?;
-
-    let audience_context = topic_create_audience_port_context(
-        ForumTopicCreateTransport::Rest,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        tenant.default_locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let topic = runtime
-        .topic_service()
-        .create_with_audience_context(tenant.id, forum_security(&auth), audience_context, input)
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok((StatusCode::CREATED, Json(topic)))
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/forum/topics/{id}",
-    tag = "forum",
-    params(("id" = Uuid, Path, description = "Topic ID")),
-    request_body = UpdateTopicInput,
-    responses(
-        (status = 200, description = "Topic updated", body = TopicResponse),
-        (status = 404, description = "Topic not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn update_topic(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<UpdateTopicInput>,
-) -> HttpResult<Json<TopicResponse>> {
-    ensure_forum_permission(
-        &auth,
-        &[Permission::FORUM_TOPICS_UPDATE],
-        "Permission denied: forum_topics:update required",
-    )?;
-
-    let topic = runtime.topic_service()
-        .update(tenant.id, id, forum_security(&auth), input)
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
-}
-
-#[utoipa::path(
     delete,
     path = "/api/forum/topics/{id}",
     tag = "forum",
@@ -313,102 +233,6 @@ pub async fn restore_topic(
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-
-#[utoipa::path(
-    post,
-    path = "/api/forum/topics/{topic_id}/solution/{reply_id}",
-    tag = "forum",
-    params(
-        ("topic_id" = Uuid, Path, description = "Topic ID"),
-        ("reply_id" = Uuid, Path, description = "Reply ID")
-    ),
-    responses(
-        (status = 200, description = "Topic solution marked", body = TopicResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn mark_topic_solution(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Path((topic_id, reply_id)): Path<(Uuid, Uuid)>,
-) -> HttpResult<Json<TopicResponse>> {
-    ensure_forum_permission(
-        &auth,
-        &[
-            Permission::FORUM_TOPICS_UPDATE,
-            Permission::FORUM_TOPICS_MODERATE,
-        ],
-        "Permission denied: forum_topics:update or forum_topics:moderate required",
-    )?;
-
-    let event_bus = runtime.event_bus();
-    ModerationService::new(runtime.db_clone(), event_bus.clone())
-        .mark_solution(tenant.id, topic_id, reply_id, forum_security(&auth))
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-
-    let topic = runtime.topic_service()
-        .get_with_locale_fallback(
-            tenant.id,
-            forum_security(&auth),
-            topic_id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
-}
-
-#[utoipa::path(
-    delete,
-    path = "/api/forum/topics/{topic_id}/solution",
-    tag = "forum",
-    params(("topic_id" = Uuid, Path, description = "Topic ID")),
-    responses(
-        (status = 200, description = "Topic solution cleared", body = TopicResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn clear_topic_solution(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Path(topic_id): Path<Uuid>,
-) -> HttpResult<Json<TopicResponse>> {
-    ensure_forum_permission(
-        &auth,
-        &[
-            Permission::FORUM_TOPICS_UPDATE,
-            Permission::FORUM_TOPICS_MODERATE,
-        ],
-        "Permission denied: forum_topics:update or forum_topics:moderate required",
-    )?;
-
-    let event_bus = runtime.event_bus();
-    ModerationService::new(runtime.db_clone(), event_bus.clone())
-        .clear_solution(tenant.id, topic_id, forum_security(&auth))
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-
-    let topic = runtime.topic_service()
-        .get_with_locale_fallback(
-            tenant.id,
-            forum_security(&auth),
-            topic_id,
-            request_context.locale.as_str(),
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
 }
 
 #[utoipa::path(

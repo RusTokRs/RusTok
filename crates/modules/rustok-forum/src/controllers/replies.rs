@@ -10,13 +10,9 @@ use rustok_web::{HttpError, HttpResult};
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::reply_create_transport::{
-    ForumReplyCreateTransport, reply_create_audience_port_context,
-};
 use crate::{
-    CreateReplyInput, ForumReplyAudienceReadService, ForumReplyReadOperation,
-    ForumReplyReadTransport, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
-    reply_read_audience_port_context,
+    ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,
+    ListRepliesFilter, ReplyListItem, ReplyResponse, reply_read_audience_port_context,
 };
 
 fn clamp_per_page(per_page: u64) -> u64 {
@@ -175,89 +171,6 @@ pub async fn get_reply(
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/forum/topics/{id}/replies",
-    tag = "forum",
-    params(("id" = Uuid, Path, description = "Topic ID")),
-    request_body = CreateReplyInput,
-    responses(
-        (status = 201, description = "Reply created", body = ReplyResponse),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn create_reply(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Path(topic_id): Path<Uuid>,
-    Json(input): Json<CreateReplyInput>,
-) -> HttpResult<(StatusCode, Json<ReplyResponse>)> {
-    ensure_forum_permission(
-        &auth,
-        &[Permission::FORUM_REPLIES_CREATE],
-        "Permission denied: forum_replies:create required",
-    )?;
-
-    let audience_context = reply_create_audience_port_context(
-        ForumReplyCreateTransport::Rest,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        tenant.default_locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let reply = runtime
-        .reply_service()
-        .create_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            topic_id,
-            audience_context,
-            input,
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok((StatusCode::CREATED, Json(reply)))
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/forum/replies/{id}",
-    tag = "forum",
-    params(("id" = Uuid, Path, description = "Reply ID")),
-    request_body = UpdateReplyInput,
-    responses(
-        (status = 200, description = "Reply updated", body = ReplyResponse),
-        (status = 404, description = "Reply not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn update_reply(
-    State(runtime): State<crate::controllers::ForumHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<UpdateReplyInput>,
-) -> HttpResult<Json<ReplyResponse>> {
-    ensure_forum_permission(
-        &auth,
-        &[Permission::FORUM_REPLIES_UPDATE],
-        "Permission denied: forum_replies:update required",
-    )?;
-
-    let service = runtime.reply_service();
-    let reply = service
-        .update(tenant.id, id, forum_security(&auth), input)
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(reply))
-}
-
-#[utoipa::path(
     delete,
     path = "/api/forum/replies/{id}",
     tag = "forum",
@@ -315,7 +228,6 @@ pub async fn restore_reply(
         .map_err(crate::controllers::map_forum_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
-
 
 #[utoipa::path(
     post,

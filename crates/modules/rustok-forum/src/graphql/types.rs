@@ -88,6 +88,7 @@ pub struct GqlForumReply {
     pub requested_locale: String,
     pub locale: String,
     pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
     pub author_profile: Option<GqlProfileSummary>,

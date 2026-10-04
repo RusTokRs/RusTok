@@ -17,6 +17,7 @@ use crate::badge::*;
 use crate::button::*;
 use crate::card::*;
 use crate::dialog::*;
+use crate::progress::*;
 use crate::skeleton::*;
 use crate::tabs::*;
 
@@ -77,6 +78,23 @@ fn test_dioxus_avatar_and_skeleton() {
 }
 
 #[test]
+fn test_dioxus_progress_instantiation() {
+    let mut dom = VirtualDom::new(|| {
+        rsx! {
+            Progress {
+                value: 42.5,
+                max: 50.0,
+                aria_label: Some("Upload progress".to_string()),
+                aria_labelledby: Some("upload-label".to_string()),
+                aria_value_text: Some("Nearly complete".to_string()),
+                class: Some("max-w-sm".to_string()),
+            }
+        }
+    });
+    dom.rebuild_in_place();
+}
+
+#[test]
 fn test_dioxus_card_and_tabs_and_dialog() {
     let mut dom = VirtualDom::new(|| {
         rsx! {
@@ -95,7 +113,11 @@ fn test_dioxus_card_and_tabs_and_dialog() {
             }
             Dialog {
                 open: true,
-                DialogTitle { "Dialog Title" }
+                aria_labelledby: Some("dialog-title".to_string()),
+                DialogTitle {
+                    id: Some("dialog-title".to_string()),
+                    "Dialog Title"
+                }
             }
         }
     });

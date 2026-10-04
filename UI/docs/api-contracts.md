@@ -213,3 +213,33 @@ Custom component (shadcn/ui has no Spinner).
 - `size`: `sm | md | lg`
 
 **Implementation**: `border-primary border-t-transparent animate-spin rounded-full`
+
+---
+
+## 10) Progress
+
+Determinate progress over a configurable range. Both Rust adapters default `value` to `0` and `max` to `100`; Leptos accepts reactive `value`/`max`, while Dioxus accepts ordinary props. Values are clamped to `0..=max`; non-finite values render as zero, and the normalized fraction drives the indicator width and `aria-valuenow`.
+
+**Props**
+- `value`: optional `Signal<f64>` in Leptos / optional number in Dioxus and React
+- `max`: optional reactive `f64` in Leptos / number in Dioxus and React; defaults to `100`
+- `orientation`: `Horizontal` or `Vertical` in Rust; Radix orientation in React
+- `id`, `class`: optional id and CSS classes
+- `aria_label` or `aria_labelledby`: accessible name; React uses standard ARIA attributes
+- `aria_value_text`: optional human-readable current value
+
+The adapters expose `aria-valuemin="0"`, `aria-valuemax`, `aria-valuenow`,
+`aria-valuetext`, orientation, `data-state`, and normalized `data-value`/`data-max`.
+The Next.js reference is the shadcn `Progress` in
+`apps/next-admin/src/shared/ui/shadcn/progress.tsx`.
+
+**Usage (Leptos)**:
+```rust
+let upload_progress = Signal::derive(|| 62.5);
+view! { <Progress value=upload_progress aria_label="Upload progress" /> }
+```
+
+**Usage (Next.js)**:
+```tsx
+<Progress value={62.5} aria-label="Upload progress" />
+```
