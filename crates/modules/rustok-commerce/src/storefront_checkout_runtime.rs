@@ -320,6 +320,10 @@ pub async fn select_storefront_shipping_option(
         .collect::<Vec<_>>();
 
     for selection in &shipping_selections {
+        if selection.selected_shipping_option_id.is_none() {
+            continue;
+        }
+
         crate::storefront_shipping::validate_storefront_shipping_option_selection(
             &cart,
             selection,
