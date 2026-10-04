@@ -286,12 +286,20 @@ fn shipping_option_graphql_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{ShippingOptionFailure, public_graphql_error};
-    use rustok_api::PortError;
+    use super::{shipping_option_graphql_error, ShippingOptionFailure};
+    use rustok_api::{PortActor, PortContext, PortError};
     use uuid::Uuid;
 
     #[test]
     fn owner_error_message_never_reaches_graphql_response() {
+        let cart_id = Uuid::new_v4();
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("rustok-commerce.graphql-test"),
+            "en",
+            format!("test:{cart_id}"),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
         let failure = ShippingOptionFailure::owner(
             Uuid::new_v4(),
             PortError::validation(
@@ -300,13 +308,17 @@ mod tests {
             ),
         );
 
-        let error = {
-            let message = failure
-                .message
-                .clone()
-                .unwrap_or_else(|| "Selected shipping option is invalid".to_string());
-            public_graphql_error(message)
-        };
+        let error = shipping_option_graphql_error(
+            failure,
+            &context,
+            cart_id,
+            1,
+            1,
+            3,
+            None,
+            Some("en"),
+            Some("en"),
+        );
 
         assert_eq!(error.message, "Selected shipping option is invalid");
         assert_ne!(
