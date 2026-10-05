@@ -216,6 +216,7 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
     }
+}
 
 fn validate_result(
     operation: &provider_operation::Model,
@@ -248,48 +249,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn label_result_metadata_preserves_existing_fields_and_marks_operation() {
-        let operation_id = Uuid::new_v4();
-        let result = FulfillmentProviderOperationResult {
+    fn create_label_result_replay_requires_valid_provider_result() {
+        let operation = provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            operation: "create_label".to_string(),
             provider_id: "carrier".to_string(),
-            external_reference: Some("label-1".to_string()),
-            tracking_number: Some("track-1".to_string()),
-            metadata: serde_json::json!({"provider_fact": true}),
+            idempotency_key: "key".to_string(),
+            status: PROVIDER_OPERATION_SUCCEEDED.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: Some(serde_json::json!({
+                "provider_id": "carrier",
+                "external_reference": "label-1",
+                "tracking_number": "track-1",
+                "metadata": {"provider_fact": true}
+            })),
+            error_message: None,
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            provider_completed_at: Some(Utc::now().into()),
+            committed_at: None,
         };
-
-        let metadata = label_result_metadata(
-            serde_json::json!({"delivery_group": {"seller_id": "seller-1"}}),
-            &result,
-            operation_id,
-        );
-
-        assert_eq!(label_operation_id(&metadata), Some(operation_id));
-        assert_eq!(metadata["provider_operation"]["operation"], "create_label");
-        assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
-        assert_eq!(metadata["label"]["tracking_number"], "track-1");
-        assert_eq!(
-            metadata["label"]["provider_metadata"]["provider_fact"],
-            true
-        );
+        let result = validate_result(&operation).expect("provider result should validate");
+        assert_eq!(result.provider_id, "carrier");
+        assert_eq!(result.tracking_number.as_deref(), Some("track-1"));
     }
 
     #[test]
-    fn non_object_provider_metadata_cannot_replace_owner_metadata() {
-        let operation_id = Uuid::new_v4();
-        let result = FulfillmentProviderOperationResult {
+    fn create_label_result_replay_rejects_wrong_provider() {
+        let operation = provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            operation: "create_label".to_string(),
             provider_id: "carrier".to_string(),
-            external_reference: None,
-            tracking_number: None,
-            metadata: serde_json::json!(["opaque", "facts"]),
+            idempotency_key: "key".to_string(),
+            status: PROVIDER_OPERATION_SUCCEEDED.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: Some(serde_json::json!({
+                "provider_id": "other",
+                "external_reference": null,
+                "tracking_number": null,
+                "metadata": {}
+            })),
+            error_message: None,
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+            provider_completed_at: Some(Utc::now().into()),
+            committed_at: None,
         };
-
-        let metadata = label_result_metadata(
-            serde_json::json!({"delivery_group": {"seller_id": "seller-1"}}),
-            &result,
-            operation_id,
-        );
-
-        assert_eq!(metadata["delivery_group"]["seller_id"], "seller-1");
-        assert_eq!(metadata["label"]["provider_metadata"][0], "opaque");
+        assert!(validate_result(&operation).is_err());
     }
 }
