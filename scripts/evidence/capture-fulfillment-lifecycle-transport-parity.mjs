@@ -431,6 +431,36 @@ function ensureOutputBoundary() {
   }
 }
 
+async function readResponseBytes(response, operation) {
+  if (!response.body) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumResponseBytes) {
+        await reader.cancel();
+        fail(`${operation} response exceeds the retained capture boundary`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 async function requestJson(url, options, timeoutMs, operation) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -445,10 +475,7 @@ async function requestJson(url, options, timeoutMs, operation) {
     if (declaredLength && Number.parseInt(declaredLength, 10) > maximumResponseBytes) {
       fail(`${operation} response exceeds the retained capture boundary`);
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > maximumResponseBytes) {
-      fail(`${operation} response exceeds the retained capture boundary`);
-    }
+    const bytes = await readResponseBytes(response, operation);
     let body;
     try {
       body = JSON.parse(new TextDecoder().decode(bytes));
