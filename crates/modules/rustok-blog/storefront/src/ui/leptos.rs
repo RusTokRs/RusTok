@@ -228,6 +228,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         published_at.as_str(),
     );
     let author_profile = post.author_profile;
+    let category_name = post.category_name;
     let featured_image_url = post.featured_image_url;
     let share_slug = slug.clone();
     let reading_minutes = core::calculate_reading_time(&content_plain_text);
@@ -291,6 +292,10 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                {category_name.map(|name| view! {
+                    <span class="font-semibold text-foreground">{name}</span>
+                    <span>{selected_post_header.meta.separator}</span>
+                })}
                 {if let Some(author) = author_profile.as_ref() {
                     view! {
                         <span class="font-semibold text-foreground">{author.display_name.clone()}</span>
@@ -708,10 +713,17 @@ fn PublishedPostsList(
                                         class="mb-4 aspect-video w-full rounded-lg object-cover"
                                     />
                                 })}
-                                <BlogStatusBadge
-                                    status=post_card_view.status
-                                    unknown_label=unknown_status_label.clone()
-                                />
+                                <div class="flex items-center gap-2">
+                                    <BlogStatusBadge
+                                        status=post_card_view.status
+                                        unknown_label=unknown_status_label.clone()
+                                    />
+                                    {post.category_name.as_deref().map(|cat| view! {
+                                        <span class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                                            {cat.to_string()}
+                                        </span>
+                                    })}
+                                </div>
                                 {if let Some(author) = post.author_profile.as_ref() {
                                     view! {
                                         <div class="mt-1 text-xs font-medium text-muted-foreground">

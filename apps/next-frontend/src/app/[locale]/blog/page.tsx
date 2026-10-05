@@ -65,6 +65,7 @@ export default async function BlogListingPage({
   const tenantId = getStorefrontTenantId();
 
   const selectedTag = typeof query.tag === "string" ? query.tag.trim() : undefined;
+  const selectedCategory = typeof query.category === "string" ? query.category.trim() : undefined;
   const rawPage = typeof query.page === "string" ? parseInt(query.page, 10) : 1;
   const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
   const pageSize = 9;
@@ -78,7 +79,9 @@ export default async function BlogListingPage({
         tenantId,
         tenantSlug,
         page,
-        pageSize
+        pageSize,
+        selectedTag,
+        selectedCategory,
       );
       posts = res.items;
       totalPosts = res.total;
@@ -87,11 +90,7 @@ export default async function BlogListingPage({
     posts = [];
   }
 
-  const filteredPosts = selectedTag
-    ? posts.filter((p) => p.tags.includes(selectedTag))
-    : posts;
-
-  // Extract all distinct tags for filter pills
+  // Extract all distinct tags for filter pills from current results
   const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
 
   return (
@@ -114,39 +113,45 @@ export default async function BlogListingPage({
         </div>
 
         {/* Tag Filters */}
-        {allTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/${locale}/blog`}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              !selectedTag && !selectedCategory
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            {isRu ? "Все статьи" : "All Posts"}
+          </Link>
+          {selectedTag && !allTags.includes(selectedTag) && (
             <Link
-              href={`/${locale}/blog`}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                !selectedTag
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
+              href={`/${locale}/blog?tag=${encodeURIComponent(selectedTag)}`}
+              className="rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs font-medium shadow-sm transition"
             >
-              {isRu ? "Все статьи" : "All Posts"}
+              #{selectedTag}
             </Link>
-            {allTags.map((tag) => {
-              const active = selectedTag === tag;
-              return (
-                <Link
-                  key={tag}
-                  href={`/${locale}/blog?tag=${encodeURIComponent(tag)}`}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-                  }`}
-                >
-                  #{tag}
-                </Link>
-              );
-            })}
-          </div>
-        )}
+          )}
+          {allTags.map((tag) => {
+            const active = selectedTag === tag;
+            return (
+              <Link
+                key={tag}
+                href={`/${locale}/blog?tag=${encodeURIComponent(tag)}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                #{tag}
+              </Link>
+            );
+          })}
+        </div>
 
         {/* Posts Grid */}
-        {filteredPosts.length === 0 ? (
+        {posts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-12 text-center">
             <Newspaper className="mx-auto h-10 w-10 text-muted-foreground/60 mb-3" />
             <h3 className="text-base font-semibold text-foreground">
@@ -155,13 +160,13 @@ export default async function BlogListingPage({
             <p className="mt-1 text-sm text-muted-foreground">
               {isRu
                 ? "В данный момент статьи отсутствуют или не соответствуют фильтру."
-                : "Check back later or clear the selected tag filter."}
+                : "Check back later or clear the selected filter."}
             </p>
           </div>
         ) : (
           <>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredPosts.map((post) => (
+              {posts.map((post) => (
                 <PostCard
                   key={post.id}
                   post={post}
@@ -178,10 +183,11 @@ export default async function BlogListingPage({
             {/* Pagination */}
             <BlogPagination
               currentPage={page}
-              totalItems={selectedTag ? filteredPosts.length : totalPosts}
+              totalItems={totalPosts}
               pageSize={pageSize}
               baseUrl={`/${locale}/blog`}
               selectedTag={selectedTag}
+              selectedCategory={selectedCategory}
               locale={locale}
             />
           </>

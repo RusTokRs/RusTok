@@ -19,6 +19,8 @@ export interface BlogPostSummary {
   featuredImageUrl: string | null;
   authorId: string | null;
   authorProfile?: BlogPostAuthorProfile | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
   tags: string[];
   publishedAt: string | null;
 }
@@ -73,6 +75,8 @@ type PostsQueryResponse = {
       featuredImageUrl: string | null;
       authorId: string | null;
       authorProfile?: BlogPostAuthorProfile | null;
+      categoryId?: string | null;
+      categoryName?: string | null;
       tags: string[];
       publishedAt: string | null;
     }>;
@@ -84,7 +88,7 @@ const PUBLISHED_POSTS_QUERY = `
   query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
     posts(tenantId: $tenantId, filter: $filter) {
       items {
-        id title slug excerpt featuredImageUrl authorId tags publishedAt
+        id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt
         authorProfile {
           userId handle displayName tags avatarMediaId
         }
@@ -97,7 +101,7 @@ const PUBLISHED_POSTS_QUERY = `
 const PUBLISHED_POST_QUERY = `
   query PublishedPost($tenantId: UUID!, $slug: String!, $locale: String, $commentsPage: Int, $commentsPerPage: Int) {
     postBySlug(tenantId: $tenantId, slug: $slug, locale: $locale) {
-      id title slug excerpt featuredImageUrl authorId tags publishedAt effectiveLocale
+      id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt effectiveLocale
       authorProfile {
         userId handle displayName tags avatarMediaId
       }
@@ -127,13 +131,29 @@ export async function fetchPublishedPosts(
   tenantSlug: string | null,
   page = 1,
   perPage = 6,
+  tag?: string,
+  categoryId?: string,
 ): Promise<BlogPostListResponse> {
+  const filter: {
+    status: string;
+    page: number;
+    perPage: number;
+    tag?: string;
+    categoryId?: string;
+  } = {
+    status: "PUBLISHED",
+    page,
+    perPage,
+  };
+  if (tag) filter.tag = tag;
+  if (categoryId) filter.categoryId = categoryId;
+
   const response = await graphql<PostsQueryResponse, {
     tenantId: string;
-    filter: { status: string; page: number; perPage: number };
+    filter: typeof filter;
   }>({
     query: PUBLISHED_POSTS_QUERY,
-    variables: { tenantId, filter: { status: "PUBLISHED", page, perPage } },
+    variables: { tenantId, filter },
     tenant: tenantSlug ?? undefined,
   });
 

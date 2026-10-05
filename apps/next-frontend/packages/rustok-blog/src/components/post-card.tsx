@@ -69,8 +69,14 @@ export function PostCard({
       )}
 
       <div className="flex flex-1 flex-col p-5 space-y-3">
-        {/* Meta row: Author & Date */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        {/* Meta row: Category, Author & Date */}
+        <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+          {post.categoryName && (
+            <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px]">
+              {post.categoryName}
+            </span>
+          )}
+
           {post.authorProfile ? (
             <div className="inline-flex items-center gap-1.5 font-medium text-foreground">
               <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">

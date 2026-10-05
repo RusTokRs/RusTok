@@ -150,6 +150,8 @@ impl BlogQuery {
 
         let filter = filter.unwrap_or(PostsFilter {
             status: None,
+            category_id: None,
+            tag: None,
             author_id: None,
             locale: None,
             page: Some(1),
@@ -181,8 +183,8 @@ impl BlogQuery {
                 request_security_context(ctx),
                 crate::PostListQuery {
                     status: filter.status.map(Into::into),
-                    category_id: None,
-                    tag: None,
+                    category_id: filter.category_id,
+                    tag: filter.tag.clone(),
                     author_id: filter.author_id,
                     locale: Some(locale.clone()),
                     page: Some(filter.page.unwrap_or(1) as u32),
@@ -307,8 +309,8 @@ async fn list_public_visible_posts(
             tenant_id,
             crate::PostListQuery {
                 status: Some(crate::BlogPostStatus::Published),
-                category_id: None,
-                tag: None,
+                category_id: filter.category_id,
+                tag: filter.tag,
                 author_id: filter.author_id,
                 locale: Some(locale.clone()),
                 page: Some(filter.page.unwrap_or(1) as u32),

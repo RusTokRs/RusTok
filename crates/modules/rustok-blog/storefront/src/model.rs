@@ -32,6 +32,10 @@ pub struct BlogPostListItem {
     pub featured_image_url: Option<String>,
     #[serde(default, rename = "authorProfile")]
     pub author_profile: Option<BlogPostAuthorProfile>,
+    #[serde(default, rename = "categoryId")]
+    pub category_id: Option<String>,
+    #[serde(default, rename = "categoryName")]
+    pub category_name: Option<String>,
 }
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
@@ -144,6 +148,10 @@ pub struct BlogPostDetail {
     pub featured_image_url: Option<String>,
     #[serde(default, rename = "authorProfile")]
     pub author_profile: Option<BlogPostAuthorProfile>,
+    #[serde(default, rename = "categoryId")]
+    pub category_id: Option<String>,
+    #[serde(default, rename = "categoryName")]
+    pub category_name: Option<String>,
     #[serde(default, rename = "publicComments")]
     pub public_comments: BlogCommentList,
 }

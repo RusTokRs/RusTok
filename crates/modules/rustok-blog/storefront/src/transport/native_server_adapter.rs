@@ -483,6 +483,8 @@ fn map_post_detail(
         tags: post.tags,
         featured_image_url: post.featured_image_url,
         author_profile: None,
+        category_id: post.category_id.map(|v| v.to_string()),
+        category_name: post.category_name,
         public_comments,
     }
 }
@@ -517,6 +519,8 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         tags: post.tags,
         featured_image_url: post.featured_image_url,
         author_profile: None,
+        category_id: post.category_id.map(|v| v.to_string()),
+        category_name: post.category_name,
     }
 }
 

@@ -197,6 +197,12 @@ export default async function BlogPostPage({
         {/* Article Header */}
         <header className="space-y-4 border-b border-border pb-6">
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            {post.categoryName && (
+              <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-xs">
+                {post.categoryName}
+              </span>
+            )}
+
             {post.authorProfile && (
               <AuthorMiniBadge author={post.authorProfile} locale={locale} />
             )}
