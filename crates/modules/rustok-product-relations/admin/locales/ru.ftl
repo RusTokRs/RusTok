@@ -1,3 +1,4 @@
+relations-actions = Действия
 relations-add = Добавить связь
 relations-badge = Товарные связи
 relations-cancel = Отмена

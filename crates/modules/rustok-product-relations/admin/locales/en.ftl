@@ -1,3 +1,4 @@
+relations-actions = Actions
 relations-add = Add relation
 relations-badge = Product Relations
 relations-cancel = Cancel

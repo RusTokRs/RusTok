@@ -1,6 +1,7 @@
+use rustok_grid::{ColumnAlign, GridColumnDef, GridFilterType};
 use rustok_ui_core::normalize_ui_text;
 
-use crate::model::ProductRelationsPanelCopy;
+use crate::model::{ProductRelationItem, ProductRelationsPanelCopy};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProductRelationsTransportProfile {
@@ -61,6 +62,69 @@ pub fn build_product_relations_panel_copy(locale: Option<&str>) -> ProductRelati
     }
 }
 
+pub fn relation_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    use crate::i18n::t;
+
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+
+    vec![
+        GridColumnDef::new("position", t(locale, "relations.position", "Position"))
+            .width(100)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "target_product_id",
+            t(locale, "relations.targetProductId", "Target Product ID (UUID)"),
+        )
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Поиск по ID товара...".to_string()
+            } else {
+                "Filter product ID...".to_string()
+            }),
+        }),
+        GridColumnDef::new("actions", t(locale, "relations.actions", "Actions"))
+            .width(140)
+            .align(ColumnAlign::Right)
+            .not_sortable(),
+    ]
+}
+
+pub fn matches_relation_filter(
+    item: &ProductRelationItem,
+    query: Option<&str>,
+    relation_type: Option<&str>,
+) -> bool {
+    let matches_query = match normalize_ui_text(query.unwrap_or_default()) {
+        Some(q) => {
+            let q_lower = q.to_ascii_lowercase();
+            item.related_product_id.to_ascii_lowercase().contains(&q_lower)
+                || item.id.to_ascii_lowercase().contains(&q_lower)
+                || item.product_id.to_ascii_lowercase().contains(&q_lower)
+        }
+        None => true,
+    };
+
+    let matches_type = match normalize_ui_text(relation_type.unwrap_or_default()) {
+        Some(t) => item.relation_type.eq_ignore_ascii_case(&t),
+        None => true,
+    };
+
+    matches_query && matches_type
+}
+
+pub fn filter_relations(
+    items: &[ProductRelationItem],
+    query: Option<&str>,
+    relation_type: Option<&str>,
+) -> Vec<ProductRelationItem> {
+    items
+        .iter()
+        .filter(|item| matches_relation_filter(item, query, relation_type))
+        .cloned()
+        .collect()
+}
+
 pub fn validate_target_product_id(id: &str) -> Result<(), &'static str> {
     let trimmed = id.trim();
     if trimmed.is_empty() {
@@ -109,5 +173,64 @@ mod tests {
         assert!(is_valid_relation_type("accessory"));
         assert!(is_valid_relation_type("alternative"));
         assert!(!is_valid_relation_type("invalid_type"));
+    }
+
+    #[test]
+    fn test_relation_grid_columns() {
+        let cols_en = relation_grid_columns(Some("en"));
+        assert_eq!(cols_en.len(), 3);
+        assert_eq!(cols_en[0].id.as_str(), "position");
+        assert_eq!(cols_en[0].title, "Position");
+        assert!(cols_en[0].sortable);
+        assert_eq!(cols_en[1].id.as_str(), "target_product_id");
+        assert_eq!(cols_en[1].title, "Target Product ID (UUID)");
+        assert_eq!(cols_en[2].id.as_str(), "actions");
+        assert_eq!(cols_en[2].title, "Actions");
+        assert!(!cols_en[2].sortable);
+
+        let cols_ru = relation_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Позиция");
+        assert_eq!(cols_ru[1].title, "ID связанного товара (UUID)");
+        assert_eq!(cols_ru[2].title, "Действия");
+    }
+
+    #[test]
+    fn test_filter_relations() {
+        let items = vec![
+            ProductRelationItem {
+                id: "rel-1".to_string(),
+                product_id: "prod-1".to_string(),
+                related_product_id: "prod-2".to_string(),
+                relation_type: "cross_sell".to_string(),
+                position: 1,
+                metadata: serde_json::Value::Null,
+                created_at: String::new(),
+                updated_at: String::new(),
+            },
+            ProductRelationItem {
+                id: "rel-2".to_string(),
+                product_id: "prod-1".to_string(),
+                related_product_id: "prod-3".to_string(),
+                relation_type: "up_sell".to_string(),
+                position: 2,
+                metadata: serde_json::Value::Null,
+                created_at: String::new(),
+                updated_at: String::new(),
+            },
+        ];
+
+        let res = filter_relations(&items, Some("prod-2"), None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id, "rel-1");
+
+        let res_type = filter_relations(&items, None, Some("up_sell"));
+        assert_eq!(res_type.len(), 1);
+        assert_eq!(res_type[0].id, "rel-2");
+
+        let res_empty = filter_relations(&items, Some("nonexistent"), None);
+        assert_eq!(res_empty.len(), 0);
+
+        let res_all = filter_relations(&items, None, None);
+        assert_eq!(res_all.len(), 2);
     }
 }

@@ -1,9 +1,12 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use rustok_grid::{ColumnFilters, FilterValue, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
+use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    ProductRelationsTransportProfile, build_product_relations_panel_copy, selected_transport_profile,
-    validate_target_product_id,
+    ProductRelationsTransportProfile, build_product_relations_panel_copy, filter_relations,
+    relation_grid_columns, selected_transport_profile, validate_target_product_id,
 };
 use crate::model::{
     CreateProductRelationDraft, ProductRelationItem, ProductRelationsAdminCommand,
@@ -35,12 +38,22 @@ pub fn ProductRelationsPanel(
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
 ) -> impl IntoView {
-    let copy = std::sync::Arc::new(build_product_relations_panel_copy(locale.as_deref()));
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let effective_locale = locale.clone().or_else(|| route_context.locale.clone());
+    let copy = std::sync::Arc::new(build_product_relations_panel_copy(effective_locale.as_deref()));
+    let is_ru = effective_locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = relation_grid_columns(effective_locale.as_deref());
+
     let (selected_type, set_selected_type) = signal("cross_sell".to_string());
     let (show_add, set_show_add) = signal(false);
     let (target_product_id, set_target_product_id) = signal(String::new());
     let (position, set_position) = signal(0_i32);
     let (reload_seq, set_reload_seq) = signal(0_usize);
+
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 25, 0));
 
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let token_val = token.map(|t| t.get()).unwrap_or_default();
@@ -71,6 +84,34 @@ pub fn ProductRelationsPanel(
             }
         },
     );
+
+    let filtered_relations = Memo::new({
+        let relations_resource = relations_resource.clone();
+        move |_| {
+            let relations = relations_resource.get().and_then(Result::ok).unwrap_or_default();
+            let s_val = search.get();
+            let col_filters = filters.get();
+            let target_filter = col_filters.get("target_product_id").and_then(|f| match f {
+                FilterValue::Text(s) if !s.trim().is_empty() => Some(s.as_str()),
+                _ => None,
+            });
+            let query = if !s_val.trim().is_empty() {
+                Some(s_val.as_str())
+            } else {
+                target_filter
+            };
+            let list = filter_relations(&relations, query, None);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_relations = Memo::new(move |_| {
+        let list = filtered_relations.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
 
     let on_add_submit = {
         let transport = transport.clone();
@@ -144,6 +185,39 @@ pub fn ProductRelationsPanel(
         }
     };
 
+    let on_remove_selected = {
+        let transport = transport.clone();
+        move |_| {
+            let ids = selection.get().to_vec();
+            if ids.is_empty() {
+                return;
+            }
+            set_busy.set(true);
+            set_error.set(None);
+            let transport = transport.clone();
+            spawn_local(async move {
+                let mut failed = 0;
+                for id in ids {
+                    let res = execute_product_relations_command(
+                        transport.clone(),
+                        uuid::Uuid::new_v4().to_string(),
+                        ProductRelationsAdminCommand::Remove { id },
+                    )
+                    .await;
+                    if res.is_err() || !res.unwrap().is_success() {
+                        failed += 1;
+                    }
+                }
+                selection.update(|s| s.clear());
+                if failed > 0 {
+                    set_error.set(Some(format!("Failed to remove {failed} relation(s).")));
+                }
+                set_reload_seq.update(|v| *v += 1);
+                set_busy.set(false);
+            });
+        }
+    };
+
     let on_move = {
         let transport = transport.clone();
         let prod_id = product_id.clone();
@@ -182,6 +256,83 @@ pub fn ProductRelationsPanel(
             });
         }
     };
+
+    let cell_on_move = on_move.clone();
+    let cell_on_remove = on_remove.clone();
+    let cell_copy_move_up = copy.move_up.clone();
+    let cell_copy_move_down = copy.move_down.clone();
+    let cell_copy_remove = copy.remove.clone();
+
+    let cell_renderer = Callback::new(move |(item, col_id): (ProductRelationItem, String)| {
+        match col_id.as_str() {
+            "position" => {
+                view! {
+                    <span class="font-mono text-xs text-muted-foreground">{item.position}</span>
+                }
+                .into_any()
+            }
+            "target_product_id" => {
+                let target_id = item.related_product_id.clone();
+                view! {
+                    <code class="text-xs font-mono px-1.5 py-0.5 rounded bg-muted text-foreground">
+                        {target_id}
+                    </code>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let item_id = item.id.clone();
+                let all_items = relations_resource.get().and_then(Result::ok).unwrap_or_default();
+                let idx = all_items.iter().position(|r| r.id == item_id).unwrap_or(0);
+                let is_first = idx == 0;
+                let is_last = idx + 1 >= all_items.len();
+                let on_move_up = cell_on_move.clone();
+                let on_move_down = cell_on_move.clone();
+                let on_del = cell_on_remove.clone();
+                let move_up_title = cell_copy_move_up.clone();
+                let move_down_title = cell_copy_move_down.clone();
+                let remove_label = cell_copy_remove.clone();
+                let items_for_up = all_items.clone();
+                let items_for_down = all_items.clone();
+
+                view! {
+                    <div class="flex items-center justify-end gap-1">
+                        <button
+                            type="button"
+                            class="rounded p-1 text-xs text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground disabled:opacity-30"
+                            disabled=move || is_first || busy.get()
+                            title=move_up_title
+                            on:click=move |_| on_move_up(items_for_up.clone(), idx, -1)
+                        >
+                            "↑"
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded p-1 text-xs text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground disabled:opacity-30"
+                            disabled=move || is_last || busy.get()
+                            title=move_down_title
+                            on:click=move |_| on_move_down(items_for_down.clone(), idx, 1)
+                        >
+                            "↓"
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 dark:border-rose-900/40 transition disabled:opacity-50 ml-2"
+                            disabled=move || busy.get()
+                            on:click={
+                                let item_id = item_id.clone();
+                                move |_| on_del(item_id.clone())
+                            }
+                        >
+                            {remove_label}
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
 
     view! {
         <section class="rounded-3xl border border-border bg-card p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -224,6 +375,8 @@ pub fn ProductRelationsPanel(
                                 }
                                 on:click=move |_| {
                                     set_selected_type.set(rel_key_str.clone());
+                                    selection.update(|s| s.clear());
+                                    pagination.update(|p| p.page = 1);
                                 }
                             >
                                 {label}
@@ -286,102 +439,64 @@ pub fn ProductRelationsPanel(
                 }
             }
 
-            <div class="mt-4">
-                {
-                    let copy_for_list = copy.clone();
-                    move || {
-                        let copy = copy_for_list.clone();
-                        let relations = relations_resource.get().and_then(Result::ok).unwrap_or_default();
-                        if relations.is_empty() {
-                            view! {
-                                <div class="rounded-2xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground dark:border-gray-800 dark:text-gray-400">
-                                    {copy.empty.clone()}
-                                </div>
-                            }.into_any()
-                        } else {
-                            let total = relations.len();
-                            let all_items = relations.clone();
-                            let on_move = on_move.clone();
-                            let on_remove = on_remove.clone();
-                            let copy_move_up = copy.move_up.clone();
-                            let copy_move_down = copy.move_down.clone();
-                            let copy_remove = copy.remove.clone();
-                            let copy_pos = copy.position.clone();
-                            let copy_target = copy.target_product_id.clone();
-                            view! {
-                                <div class="overflow-hidden rounded-2xl border border-border dark:border-gray-800">
-                                    <table class="w-full text-left text-sm">
-                                        <thead class="bg-gray-50 dark:bg-gray-800/50 text-xs text-muted-foreground dark:text-gray-400">
-                                            <tr>
-                                                <th class="px-4 py-3 font-medium">{copy_pos}</th>
-                                                <th class="px-4 py-3 font-medium">{copy_target}</th>
-                                                <th class="px-4 py-3 text-right font-medium">"Actions"</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-border dark:divide-gray-800">
-                                            {relations.into_iter().enumerate().map(|(idx, item)| {
-                                                let item_id = item.id.clone();
-                                                let is_first = idx == 0;
-                                                let is_last = idx + 1 >= total;
-                                                let on_move_up = {
-                                                    let on_move = on_move.clone();
-                                                    let all_items = all_items.clone();
-                                                    move |_| on_move(all_items.clone(), idx, -1)
-                                                };
-                                                let on_move_down = {
-                                                    let on_move = on_move.clone();
-                                                    let all_items = all_items.clone();
-                                                    move |_| on_move(all_items.clone(), idx, 1)
-                                                };
-                                                let on_del = {
-                                                    let on_remove = on_remove.clone();
-                                                    let item_id = item_id.clone();
-                                                    move |_| on_remove(item_id.clone())
-                                                };
-                                                view! {
-                                                    <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
-                                                        <td class="px-4 py-3 font-mono text-xs text-muted-foreground dark:text-gray-400">{item.position}</td>
-                                                        <td class="px-4 py-3 font-mono text-xs text-foreground dark:text-gray-200">{item.related_product_id}</td>
-                                                        <td class="px-4 py-3 text-right">
-                                                            <div class="flex items-center justify-end gap-1">
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded p-1 text-xs text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground disabled:opacity-30"
-                                                                    disabled=move || is_first || busy.get()
-                                                                    title=copy_move_up.clone()
-                                                                    on:click=on_move_up
-                                                                >
-                                                                    "↑"
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded p-1 text-xs text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground disabled:opacity-30"
-                                                                    disabled=move || is_last || busy.get()
-                                                                    title=copy_move_down.clone()
-                                                                    on:click=on_move_down
-                                                                >
-                                                                    "↓"
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    class="rounded px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 dark:border-rose-900/40 transition disabled:opacity-50 ml-2"
-                                                                    disabled=move || busy.get()
-                                                                    on:click=on_del
-                                                                >
-                                                                    {copy_remove.clone()}
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            }).collect_view()}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            }.into_any()
-                        }
-                    }
-                }
+            <div class="mt-4 space-y-4">
+                // Search input
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <input
+                            type="text"
+                            placeholder={if is_ru { "Поиск по ID товара..." } else { "Search by product ID..." }}
+                            class="w-full px-3 py-2 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                            prop:value=move || search.get()
+                            on:input=move |ev| search.set(event_target_value(&ev))
+                        />
+                    </div>
+                </div>
+
+                // Selection toolbar
+                <Show when=move || !selection.get().is_empty()>
+                    <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-foreground">
+                                {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "связей" } else { "relations" })}
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                class="h-7 px-2.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 transition border border-destructive/30 disabled:opacity-50"
+                                disabled=move || busy.get()
+                                on:click={
+                                    let on_remove_selected = on_remove_selected.clone();
+                                    move |ev| on_remove_selected(ev)
+                                }
+                            >
+                                {if is_ru { "Удалить выбранные" } else { "Remove selected" }}
+                            </button>
+                            <button
+                                type="button"
+                                class="h-7 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                on:click=move |_| selection.update(|s| s.clear())
+                            >
+                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                            </button>
+                        </div>
+                    </div>
+                </Show>
+
+                <DataGrid
+                    columns=columns.clone()
+                    data=Signal::derive(move || paged_relations.get())
+                    key_fn=|item: &ProductRelationItem| item.id.clone()
+                    cell_renderer=cell_renderer
+                    is_loading=Signal::derive(move || busy.get() || relations_resource.get().is_none())
+                    empty_message=copy.empty.clone()
+                    selection=selection
+                    pagination=pagination
+                    filters=filters
+                    on_filter_change=Callback::new(move |f| filters.set(f))
+                    on_row_click=Callback::new(|_| ())
+                />
             </div>
         </section>
     }.into_any()
