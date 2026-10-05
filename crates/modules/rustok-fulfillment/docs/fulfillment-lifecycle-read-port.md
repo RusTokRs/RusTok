@@ -32,8 +32,9 @@ The existing owner DTO is returned unchanged. Commerce does not define a partial
 copy of fulfillment lifecycle state.
 
 For every lifecycle projection read, parent fulfillment rows and their typed items are
-read through one database transaction. PostgreSQL explicitly requests a repeatable-read,
-read-only transaction; SeaORM's SQLite adapter ignores those isolation/access-mode knobs,
+read through one database transaction. Child item queries are also explicitly tenant-scoped
+through the parent `fulfillments` relation because `fulfillment_items` has no independent
+tenant key. PostgreSQL explicitly requests a repeatable-read, read-only transaction; SeaORM's SQLite adapter ignores those isolation/access-mode knobs,
 but the transaction still spans all reads on one SQLite snapshot. For multi-row reads,
 fulfillment items are materialized in one batch query for the selected fulfillment ids,
 grouped back by fulfillment id, and mapped in the original parent-row order. Item order
