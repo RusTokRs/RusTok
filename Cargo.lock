@@ -15999,6 +15999,8 @@ dependencies = [
  "leptos_axum",
  "rustok-api",
  "rustok-core",
+ "rustok-grid",
+ "rustok-grid-leptos",
  "rustok-index",
  "rustok-ui-core",
  "rustok-ui-i18n",

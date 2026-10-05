@@ -1,3 +1,7 @@
+use rustok_grid::{
+    ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType,
+};
+
 use crate::i18n::t;
 use crate::model::{
     CancelActionResult, IndexAdminBootstrap, ReplayActionResult, RetryActionResult,
@@ -325,6 +329,100 @@ pub fn format_cancel_action_result(locale: Option<&str>, result: &CancelActionRe
     }
 }
 
+pub fn index_schema_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("name", if is_ru { "Схема / Сущность" } else { "Schema / Entity" })
+            .width(240)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр схемы...".to_string()
+                } else {
+                    "Filter schema...".to_string()
+                }),
+            }),
+        GridColumnDef::new("version", if is_ru { "Версия" } else { "Version" })
+            .width(100)
+            .align(ColumnAlign::Center),
+        GridColumnDef::new("fingerprint", if is_ru { "Контрольная сумма" } else { "Fingerprint" })
+            .width(200)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("fields", if is_ru { "Поля" } else { "Fields" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("links", if is_ru { "Связи" } else { "Links" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("owner", if is_ru { "Модуль-владелец" } else { "Owner Module" })
+            .width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр владельца...".to_string()
+                } else {
+                    "Filter owner...".to_string()
+                }),
+            }),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(120)
+            .align(ColumnAlign::Right)
+            .not_sortable(),
+    ]
+}
+
+pub fn matches_index_schema_filter(
+    schema: &IndexSchemaRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("name", FilterValue::Text(q)) => {
+                let term = q.to_lowercase();
+                if !schema.qualified_name.to_lowercase().contains(&term)
+                    && !schema.module.to_lowercase().contains(&term)
+                    && !schema.entity.to_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            ("owner", FilterValue::Text(q)) => {
+                let term = q.to_lowercase();
+                if !schema.owner_module.to_lowercase().contains(&term) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_index_schemas(
+    schemas: &[IndexSchemaRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<IndexSchemaRowViewModel> {
+    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+
+    schemas
+        .iter()
+        .filter(|schema| {
+            if let Some(ref term) = search_term {
+                let matches_global = schema.qualified_name.to_lowercase().contains(term)
+                    || schema.owner_module.to_lowercase().contains(term)
+                    || schema.fingerprint.to_lowercase().contains(term);
+                if !matches_global {
+                    return false;
+                }
+            }
+
+            matches_index_schema_filter(schema, filters)
+        })
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -600,5 +698,59 @@ mod tests {
             format_retry_action_result(Some("en"), &not_failed),
             "Job is not in a failed state"
         );
+    }
+
+    #[test]
+    fn index_schema_grid_columns_localization() {
+        let cols_en = index_schema_grid_columns(Some("en"));
+        assert_eq!(cols_en[0].title, "Schema / Entity");
+        assert_eq!(cols_en[1].title, "Version");
+        assert_eq!(cols_en[2].title, "Fingerprint");
+        assert_eq!(cols_en[6].title, "Actions");
+
+        let cols_ru = index_schema_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Схема / Сущность");
+        assert_eq!(cols_ru[1].title, "Версия");
+        assert_eq!(cols_ru[2].title, "Контрольная сумма");
+        assert_eq!(cols_ru[6].title, "Действия");
+    }
+
+    #[test]
+    fn filter_index_schemas_by_search_and_column() {
+        let s1 = IndexSchemaRowViewModel {
+            module: "catalog".into(),
+            entity: "product".into(),
+            raw_version: 1,
+            qualified_name: "catalog.product".into(),
+            version: "v1".into(),
+            fingerprint: "abcdef123".into(),
+            fields_count: "5".into(),
+            links_count: "1".into(),
+            owner_module: "rustok-catalog".into(),
+        };
+        let s2 = IndexSchemaRowViewModel {
+            module: "order".into(),
+            entity: "order_item".into(),
+            raw_version: 2,
+            qualified_name: "order.order_item".into(),
+            version: "v2".into(),
+            fingerprint: "987654321".into(),
+            fields_count: "8".into(),
+            links_count: "2".into(),
+            owner_module: "rustok-order".into(),
+        };
+        let list = vec![s1.clone(), s2.clone()];
+
+        // Search
+        let res = filter_index_schemas(&list, &ColumnFilters::new(), Some("order"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].qualified_name, "order.order_item");
+
+        // Column filter
+        let mut filters = ColumnFilters::new();
+        filters.set("name", FilterValue::Text("product".into()));
+        let res = filter_index_schemas(&list, &filters, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].qualified_name, "catalog.product");
     }
 }

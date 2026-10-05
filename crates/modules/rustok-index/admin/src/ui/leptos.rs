@@ -1,11 +1,13 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    IndexAdminOverviewViewModel, build_index_admin_overview_view_model,
-    format_cancel_action_result, format_index_admin_bootstrap_error, format_replay_action_result,
-    format_retry_action_result,
+    IndexAdminOverviewViewModel, IndexSchemaRowViewModel, build_index_admin_overview_view_model,
+    filter_index_schemas, format_cancel_action_result, format_index_admin_bootstrap_error,
+    format_replay_action_result, format_retry_action_result, index_schema_grid_columns,
 };
 use crate::i18n::t;
 use crate::model::{CancelJobInput, RetryJobInput, TriggerReplayInput};
@@ -350,103 +352,214 @@ fn view_schemas<F>(
     on_rebuild: F,
 ) -> AnyView
 where
-    F: Fn(String, String, u32) + Clone + 'static,
+    F: Fn(String, String, u32) + Clone + Send + Sync + 'static,
 {
-    let empty_locale = locale.clone();
-    view! {
-        <section class="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-            <div class="border-b border-border p-5">
-                <h2 class="text-lg font-semibold text-card-foreground">
-                    {t(locale.as_deref(), "index.tab.schemas", "Schemas Catalog")}
-                </h2>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        <tr>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.name", "Schema / Entity")}</th>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.version", "Version")}</th>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.fingerprint", "Fingerprint (SHA-256)")}</th>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.fields", "Fields")}</th>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.links", "Links")}</th>
-                            <th class="px-6 py-3">{t(locale.as_deref(), "index.schema.owner", "Owner Module")}</th>
-                            <th class="px-6 py-3 text-right">{t(locale.as_deref(), "index.schema.actions", "Actions")}</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
-                        {if vm.schemas.is_empty() {
-                            view! {
-                                <tr>
-                                    <td colspan="7" class="px-6 py-8 text-center text-sm text-muted-foreground">
-                                        {t(empty_locale.as_deref(), "index.schema.empty", "No schemas registered for this tenant yet.")}
-                                    </td>
-                                </tr>
-                            }.into_any()
-                        } else {
-                            vm.schemas
-                                .iter()
-                                .cloned()
-                                .map(|schema| {
-                                    let on_rebuild = on_rebuild.clone();
-                                    let module = schema.module.clone();
-                                    let entity = schema.entity.clone();
-                                    let version = schema.raw_version;
-                                    let row_locale = locale.clone();
-                                    view! {
-                                        <tr class="transition-colors hover:bg-muted/20">
-                                            <td class="px-6 py-4 font-semibold text-card-foreground">
-                                                {schema.qualified_name}
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <span class="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                                                    {schema.version}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 font-mono text-xs text-muted-foreground">
-                                                {schema.fingerprint}
-                                            </td>
-                                            <td class="px-6 py-4 text-card-foreground">
-                                                {schema.fields_count}
-                                            </td>
-                                            <td class="px-6 py-4 text-card-foreground">
-                                                {schema.links_count}
-                                            </td>
-                                            <td class="px-6 py-4 text-xs font-mono text-muted-foreground">
-                                                {schema.owner_module}
-                                            </td>
-                                            <td class="px-6 py-4 text-right">
-                                                <button
-                                                    type="button"
-                                                    disabled=move || is_busy.get()
-                                                    class="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                                    on:click={
-                                                        let on_rebuild = on_rebuild.clone();
-                                                        let module = module.clone();
-                                                        let entity = entity.clone();
-                                                        move |_| on_rebuild(module.clone(), entity.clone(), version)
-                                                    }
-                                                >
-                                                    {
-                                                        let btn_locale = row_locale.clone();
-                                                        move || {
-                                                            if is_busy.get() {
-                                                                t(btn_locale.as_deref(), "index.action.rebuilding", "Rebuilding...")
-                                                            } else {
-                                                                t(btn_locale.as_deref(), "index.action.rebuild", "Rebuild")
-                                                            }
-                                                        }
-                                                    }
-                                                </button>
-                                            </td>
-                                        </tr>
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
+    let columns = index_schema_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, vm.schemas.len() as u64));
+
+    let all_schemas = vm.schemas.clone();
+    let filtered_schemas = Memo::new({
+        let all_schemas = all_schemas.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = filter_index_schemas(&all_schemas, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_schemas = Memo::new(move |_| {
+        let list = filtered_schemas.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = locale.clone();
+    let cell_on_rebuild = on_rebuild.clone();
+
+    let cell_renderer = Callback::new(move |(schema, col_id): (IndexSchemaRowViewModel, String)| {
+        match col_id.as_str() {
+            "name" => {
+                let name = schema.qualified_name.clone();
+                view! {
+                    <span class="font-semibold text-card-foreground">{name}</span>
+                }
+                .into_any()
+            }
+            "version" => {
+                let version = schema.version.clone();
+                view! {
+                    <span class="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                        {version}
+                    </span>
+                }
+                .into_any()
+            }
+            "fingerprint" => {
+                let fp = schema.fingerprint.clone();
+                view! {
+                    <span class="font-mono text-xs text-muted-foreground">{fp}</span>
+                }
+                .into_any()
+            }
+            "fields" => {
+                let count = schema.fields_count.clone();
+                view! {
+                    <span class="text-card-foreground font-mono">{count}</span>
+                }
+                .into_any()
+            }
+            "links" => {
+                let count = schema.links_count.clone();
+                view! {
+                    <span class="text-card-foreground font-mono">{count}</span>
+                }
+                .into_any()
+            }
+            "owner" => {
+                let owner = schema.owner_module.clone();
+                view! {
+                    <span class="text-xs font-mono text-muted-foreground">{owner}</span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let module = schema.module.clone();
+                let entity = schema.entity.clone();
+                let version = schema.raw_version;
+                let on_rebuild = cell_on_rebuild.clone();
+                let btn_locale = cell_locale.clone();
+                view! {
+                    <div class="flex items-center justify-end">
+                        <button
+                            type="button"
+                            disabled=move || is_busy.get()
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            on:click={
+                                let on_rebuild = on_rebuild.clone();
+                                let module = module.clone();
+                                let entity = entity.clone();
+                                move |_| on_rebuild(module.clone(), entity.clone(), version)
+                            }
+                        >
+                            {
+                                let btn_locale = btn_locale.clone();
+                                move || {
+                                    if is_busy.get() {
+                                        t(btn_locale.as_deref(), "index.action.rebuilding", "Rebuilding...")
+                                    } else {
+                                        t(btn_locale.as_deref(), "index.action.rebuild", "Rebuild")
                                     }
-                                })
-                                .collect_view()
-                                .into_any()
-                        }}
-                    </tbody>
-                </table>
+                                }
+                            }
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    let empty_msg = t(locale.as_deref(), "index.schema.empty", "No schemas registered for this tenant yet.").to_string();
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card shadow-sm overflow-hidden p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-card-foreground">
+                        {t(locale.as_deref(), "index.tab.schemas", "Schemas Catalog")}
+                    </h2>
+                    <p class="text-sm text-muted-foreground mt-0.5">
+                        {if is_ru { "Каталог зарегистрированных схем сущностей для поиска и аналитики." } else { "Catalog of registered entity schemas for search and relational analytics." }}
+                    </p>
+                </div>
             </div>
+
+            // Search filter input
+            <div class="flex flex-col sm:flex-row gap-4">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по схеме, владельцу, хэшу..." } else { "Search by schema, owner, fingerprint..." }}
+                        class="w-full px-3 py-2 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            // Selection toolbar
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="font-medium text-foreground">
+                            {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "схем" } else { "schemas" })}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled=move || is_busy.get()
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                            on:click={
+                                let on_rebuild = on_rebuild.clone();
+                                let schemas_map = all_schemas.clone();
+                                move |_| {
+                                let sel = selection.get();
+                                for schema in &schemas_map {
+                                    let key = format!("{}:{}", schema.qualified_name, schema.raw_version);
+                                    if sel.is_selected(&key) {
+                                        on_rebuild(schema.module.clone(), schema.entity.clone(), schema.raw_version);
+                                    }
+                                }
+                                }
+                            }
+                        >
+                            {if is_ru { "Переиндексировать выбранные" } else { "Rebuild Selected" }}
+                        </button>
+                        <button
+                            type="button"
+                            class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                            on:click=move |_| selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </div>
+            </Show>
+
+            // Modern DataGrid
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_schemas.get())
+                key_fn=|item: &IndexSchemaRowViewModel| format!("{}:{}", item.qualified_name, item.raw_version)
+                cell_renderer=cell_renderer
+                is_loading=Signal::derive(move || is_busy.get())
+                empty_message=empty_msg
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
         </section>
     }
     .into_any()
