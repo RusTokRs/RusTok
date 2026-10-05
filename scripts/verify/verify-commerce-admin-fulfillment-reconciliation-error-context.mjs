@@ -64,7 +64,25 @@ for (const [value, label] of [
   ['mark_execution_reconciliation_required(', 'create-label recovery execution quarantine'],
   ['request.idempotency_key.as_deref().map(str::trim)', 'create-label recovery request idempotency binding'],
   ['FulfillmentOrchestrationError::ProviderAfterPersistence', 'create-label recovery reconciliation classification'],
+  ['commit_create_label_provider_result(', 'create-label recovery owner persistence boundary'],
 ]) requireText(labelRecovery, value, label);
+
+forbidText(
+  labelRecovery,
+  '.mark_committed(tenant_id, operation_id)',
+  'create-label recovery journal-only commit',
+);
+forbidText(
+  localRecovery,
+  '"create_label" => {
+                    journal.mark_committed',
+  'create-label local reconciliation journal-only commit',
+);
+requireText(
+  localRecovery,
+  'commit_create_label_provider_result(',
+  'create-label local reconciliation owner persistence boundary',
+);
 forbidText(
   labelRecovery,
   'let _ = journal',
@@ -72,7 +90,6 @@ forbidText(
 );
 
 const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(operation.request_payload.clone())');
-const claimExecution = labelRecovery.indexOf('journal');
 const providerExecute = labelRecovery.indexOf('.execute_create_label(operation.provider_id.as_str(), request)');
 if (requestDeserialize < 0 || providerExecute < 0 || requestDeserialize > providerExecute) {
   failures.push('create-label recovery request payload must be validated before provider execution');
