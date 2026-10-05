@@ -44,7 +44,8 @@ const translationChangeJournal = read(
 
 for (const marker of [
   'pub(crate) async fn record_shipping_option_translation_change_in_tx',
-  'SELECT $1, shipping_options.tenant_id, shipping_options.id, $3, $4',
+  'SELECT $1, shipping_options.tenant_id, shipping_options.id, $2, $3',
+  'WHERE shipping_options.id = $4',
   'FROM shipping_options',
   'shipping_options.tenant_id = $5',
   'result.rows_affected != 1',
