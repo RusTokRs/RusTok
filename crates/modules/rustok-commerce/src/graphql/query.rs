@@ -1560,7 +1560,7 @@ impl CommerceQuery {
             total,
             page,
             per_page,
-            has_next: page * per_page < total,
+            has_next: page < total.div_ceil(per_page),
         })
     }
 
