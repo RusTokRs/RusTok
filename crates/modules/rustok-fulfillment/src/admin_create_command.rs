@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
@@ -434,11 +435,46 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             ));
         }
 
-        let result = match self
-            .provider_registry
-            .execute_create_label(provider_id, request)
-            .await
+        let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
+        let result = match tokio::time::timeout(
+            deadline,
+            self.provider_registry.execute_create_label(provider_id, request),
+        )
+        .await
         {
+            Ok(result) => result,
+            Err(_) => {
+                if let Err(checkpoint_error) = self
+                    .operation_journal
+                    .mark_execution_reconciliation_required(
+                        operation.tenant_id,
+                        operation.id,
+                        None,
+                        None,
+                        "create_label provider operation exceeded its declared deadline; external outcome is unknown",
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        boundary = ADMIN_CREATE_BOUNDARY,
+                        owner_operation,
+                        provider_operation_id_non_nil = !operation.id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "create-label deadline reconciliation could not be checkpointed"
+                    );
+                    return Err(PortError::unavailable(
+                        "fulfillment.provider_journal_failed",
+                        "fulfillment provider operation could not be safely checkpointed",
+                    ));
+                }
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "create-label provider operation exceeded its deadline and requires reconciliation",
+                ));
+            }
+        };
+        let result = match result {
             Ok(result) => result,
             Err(FulfillmentError::ProviderResultInvalid(reason)) => {
                 if let Err(checkpoint_error) = self

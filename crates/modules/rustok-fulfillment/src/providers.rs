@@ -9,6 +9,74 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentResult};
 
+pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+
+fn normalize_provider_metadata_key(key: &str) -> String {
+    key.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+pub(crate) fn validate_provider_metadata_safety(value: &Value) -> FulfillmentResult<()> {
+    match value {
+        Value::Object(object) => {
+            for (key, child) in object {
+                let normalized = normalize_provider_metadata_key(key);
+                if [
+                    "authorization",
+                    "apikey",
+                    "accesstoken",
+                    "refreshtoken",
+                    "idtoken",
+                    "clientsecret",
+                    "secret",
+                    "password",
+                    "privatekey",
+                    "cookie",
+                    "setcookie",
+                    "rawpayload",
+                    "requestbody",
+                    "responsebody",
+                ]
+                .iter()
+                .any(|forbidden| normalized.contains(forbidden))
+                {
+                    return Err(FulfillmentError::ProviderResultInvalid(
+                        "provider metadata contains a restricted sensitive/raw field".to_string(),
+                    ));
+                }
+                validate_provider_metadata_safety(child)?;
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                validate_provider_metadata_safety(child)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_durable_provider_payload(
+    value: &Value,
+    field: &'static str,
+) -> FulfillmentResult<()> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        FulfillmentError::Validation(format!(
+            "fulfillment provider {field} could not be serialized: {error}"
+        ))
+    })?;
+    if bytes.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider {field} must not exceed {MAX_PROVIDER_OPERATION_PAYLOAD_BYTES} serialized bytes"
+        )));
+    }
+    Ok(())
+}
+
+
 /// Stable identifier of the built-in manual fulfillment provider.
 pub const MANUAL_FULFILLMENT_PROVIDER_ID: &str = "manual";
 
@@ -668,6 +736,7 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} metadata must be a JSON object"
         )));
     }
+    validate_durable_provider_payload(&request.metadata, "request metadata")?;
     Ok(())
 }
 
@@ -699,6 +768,14 @@ fn validate_operation_result(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
         )));
     }
+    let result_value = serde_json::to_value(result).map_err(|error| {
+        FulfillmentError::ProviderResultInvalid(format!(
+            "fulfillment provider {provider_id} returned {operation} result that could not be serialized: {error}"
+        ))
+    })?;
+    validate_provider_metadata_safety(&result.metadata)?;
+    validate_durable_provider_payload(&result_value, "result")
+        .map_err(provider_result_invalid)?;
     Ok(())
 }
 
@@ -866,6 +943,72 @@ mod boundary_tests {
             validate_operation_result("carrier", "ship", &result),
             Err(FulfillmentError::ProviderResultInvalid(_))
         ));
+    }
+
+    #[test]
+    fn rejects_oversized_operation_request_metadata_before_execution() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: Some("request-key".to_string()),
+            metadata: serde_json::json!({
+                "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            }),
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_operation_result_before_journal_persistence() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: Some("label-1".to_string()),
+            tracking_number: None,
+            metadata: serde_json::json!({
+                "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            }),
+        };
+        assert!(matches!(
+            validate_operation_result("carrier", "ship", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn provider_metadata_safety_rejects_restricted_fields() {
+        for key in [
+            "authorization",
+            "access_token",
+            "refresh-token",
+            "api-key",
+            "raw_payload",
+            "response_body",
+        ] {
+            let metadata = serde_json::json!({key: "sensitive"});
+            assert!(validate_provider_metadata_safety(&metadata).is_err(), "{key} must be rejected");
+        }
+    }
+
+    #[test]
+    fn provider_metadata_safety_rejects_restricted_fields_inside_arrays() {
+        let metadata = serde_json::json!({
+            "events": [
+                {"provider_event": "ok"},
+                {"debug": {"authorization": "Bearer secret"}}
+            ]
+        });
+        assert!(validate_provider_metadata_safety(&metadata).is_err());
+    }
+
+    #[test]
+    fn provider_metadata_safety_allows_normalized_non_sensitive_fields() {
+        let metadata = serde_json::json!({
+            "carrier_service": "ground",
+            "label_format": "pdf",
+            "retryable": false,
+            "nested": {"service_code": "ground"}
+        });
+        assert!(validate_provider_metadata_safety(&metadata).is_ok());
     }
 
     #[test]

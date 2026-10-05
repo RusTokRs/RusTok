@@ -170,6 +170,8 @@ const verifyProviderSpiEvidence = ({
   liveAdapterContract,
   liveAdapterEvidence,
   providerSource,
+  fulfillmentAdminCommandSource,
+  fulfillmentAdminCreateCommandSource,
   commerceCheckoutSource,
   commercePaymentOrchestrationSource,
   root,
@@ -553,6 +555,21 @@ const verifyProviderSpiEvidence = ({
     );
   }
 
+  if (module === 'fulfillment') {
+    requireMarkers(
+      providerSource,
+      [
+        'pub(crate) fn validate_provider_metadata_safety(',
+        'validate_provider_metadata_safety(&result.metadata)',
+        '"authorization"',
+        '"accesstoken"',
+        '"rawpayload"',
+        '"responsebody"',
+      ],
+      (marker) => `fulfillment provider SPI lacks durable metadata privacy guard ${marker}`,
+    );
+  }
+
   for (const marker of [
     'descriptor.provider_id',
     'descriptor.provider_id != registration.descriptor.provider_id',
@@ -595,6 +612,8 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       liveAdapterContract: readJson(root, liveAdapterContractPath),
       liveAdapterEvidence: readJson(root, liveAdapterEvidencePath),
       providerSource: readText(root, `crates/modules/rustok-${module}/src/providers.rs`),
+      fulfillmentAdminCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_command.rs'),
+      fulfillmentAdminCreateCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_create_command.rs'),
       commerceCheckoutSource,
       commercePaymentOrchestrationSource,
       root,
