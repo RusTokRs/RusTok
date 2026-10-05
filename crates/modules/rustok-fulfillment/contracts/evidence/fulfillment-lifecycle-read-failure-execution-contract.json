@@ -86,7 +86,7 @@
     },
     {
       "owner_kind": "Forbidden",
-      "status": 401,
+      "status": 403,
       "code": "commerce_permission_denied"
     },
     {
