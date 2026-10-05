@@ -1079,30 +1079,6 @@ impl FulfillmentService {
                 tenant_id,
                 fulfillment_id,
                 *operation_id,
-                "cancel",
-                provider_metadata,
-            )
-            .await?;
-        }
-
-        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
-            validate_journal_owned_provider_metadata(
-                &txn,
-                tenant_id,
-                fulfillment_id,
-                *operation_id,
-                "reship",
-                provider_metadata,
-            )
-            .await?;
-        }
-
-        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
-            validate_journal_owned_provider_metadata(
-                &txn,
-                tenant_id,
-                fulfillment_id,
-                *operation_id,
                 "ship",
                 provider_metadata,
             )
@@ -1509,6 +1485,18 @@ impl FulfillmentService {
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
 
+        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
+            validate_journal_owned_provider_metadata(
+                &txn,
+                tenant_id,
+                fulfillment_id,
+                *operation_id,
+                "reship",
+                provider_metadata,
+            )
+            .await?;
+        }
+
         if let Some((_, operation_id)) = provider_result.as_ref()
             && has_matching_provider_operation(
                 &fulfillment.metadata,
@@ -1660,6 +1648,18 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
+            validate_journal_owned_provider_metadata(
+                &txn,
+                tenant_id,
+                fulfillment_id,
+                *operation_id,
+                "cancel",
+                provider_metadata,
+            )
+            .await?;
+        }
 
         if let Some((_, operation_id)) = provider_result.as_ref()
             && has_matching_provider_operation(
