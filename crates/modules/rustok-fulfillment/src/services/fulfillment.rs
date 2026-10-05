@@ -24,7 +24,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::validate_provider_metadata_safety;
+use crate::providers::{validate_durable_provider_payload, validate_provider_metadata_safety};
 use super::provider_operation::{
     FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
@@ -922,6 +922,14 @@ impl FulfillmentService {
             ));
         }
         validate_provider_id(&result.provider_id)?;
+        validate_durable_provider_payload(
+            &serde_json::to_value(result).map_err(|error| {
+                FulfillmentError::Validation(format!(
+                    "create_label provider result could not be serialized: {error}"
+                ))
+            })?,
+            "provider result",
+        )?;
         validate_object_metadata(&result.metadata, "provider result")?;
         validate_provider_metadata_safety(&result.metadata)?;
         if let Some(reference) = result.external_reference.as_deref() {
@@ -963,6 +971,23 @@ impl FulfillmentService {
             return Err(FulfillmentError::ProviderResultInvalid(format!(
                 "create_label provider result does not match the journaled provider"
             )));
+        }
+
+        let supplied_result = serde_json::to_value(result).map_err(|error| {
+            FulfillmentError::Validation(format!(
+                "create_label provider result could not be serialized: {error}"
+            ))
+        })?;
+        let journaled_result = operation.provider_result.as_ref().ok_or_else(|| {
+            FulfillmentError::ProviderResultInvalid(
+                "create_label provider result is missing from the journal".to_string(),
+            )
+        })?;
+        if &supplied_result != journaled_result {
+            return Err(FulfillmentError::ProviderResultInvalid(
+                "create_label provider result does not match the journaled provider result"
+                    .to_string(),
+            ));
         }
 
         let fulfillment = self.load_fulfillment_for_update(&txn, tenant_id, fulfillment_id).await?;
