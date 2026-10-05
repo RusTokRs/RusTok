@@ -4937,3 +4937,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh second pass:** re-read the three provider-backed owner methods, provider-operation status/replay flow, metadata reservation helpers, and journal checkpoint path. The guard is only active when a crate-internal provider result is supplied; ordinary manual `ship` semantics remain unchanged.
 - **Status:** FS-22.06.142 complete at source level; runtime/build/restart/provider execution evidence remains unpromoted.
 - **Next primary iteration:** continue the provider lifecycle reconciliation boundary with a fresh pass over `mark_reconciliation_required` idempotency and whether an operation can become permanently stuck after repeated checkpoint failures.
+
+### FS-22.06.143 Assessment — provider reconciliation transition idempotency
+
+- **Base:** 8cca94459d48863ee7a6d2de69a540483ec155e8; fresh review of provider-operation recovery transitions.
+- **Primary scope:** mark_execution_reconciliation_required, mark_reconciliation_required, mark_committed, stale execution quarantine, and explicit unknown-outcome resolution.
+- **Transition audit:** reconciliation updates use tenant + operation identity filters and explicit source-status predicates. When a competing worker has already changed the status, the service re-reads the current row and accepts only the already-reconciled/committed terminal state; otherwise it returns a typed invalid-transition result.
+- **Unknown outcome audit:** stale executing operations are never made retryable automatically. resolve_unknown_as_failed requires an unresolved reconciliation row with no provider result, while resolve_unknown_as_succeeded validates the typed provider result and uses status/result-null CAS before changing the journal back to SUCCEEDED.
+- **Commit audit:** COMMITTED is accepted idempotently; transitions from SUCCEEDED or RECONCILIATION_REQUIRED are guarded. In the actual Admin provider flow, reconciliation_required is reached after a provider result is already persisted or after an explicit unknown-outcome recovery, so local commit recovery does not invent an external success.
+- **Finding:** no additional repository-owned production defect was confirmed in this transition slice.
+- **Fresh second pass:** re-read the transition matrix, recovery service, Admin provider replay branches, and migration lifecycle guards. No unguarded retry from unknown execution, cross-tenant transition, or repeated checkpoint loop was found.
+- **Status:** FS-22.06.143 complete as a clean source assessment; runtime/provider restart evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment provider boundary with a fresh pass over recovery operator authorization and tenant filtering of reconciliation administration.
