@@ -445,8 +445,23 @@ Hard limits for every iteration:
 - [x] **FS-22.05 — GraphQL composition:** completed through FS-22.05.28 after the GraphQL runtime composition/rate-limit ordering fix and post-merge reconciliation. Remaining maintainer-owned scoped verification is explicitly recorded on the individual iterations.
 - [ ] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
 - [x] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — auth lifecycle delegation and tenant-scoped session operations completed; public routes/DTOs unchanged. PR #4556 squash merged as `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
-- [ ] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — audit admin user REST authorization, tenant scope, pagination, mutation transactions, response projections, and lifecycle delegation.
-- [ ] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — audit OAuth token/authorize/consent/browser-session/revoke transport contracts, principal binding, CSRF/browser trust, and failure mapping.
+- [x] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — fresh one-module audit complete; tenant isolation, permission admission, bounded pagination, DB error propagation, DTO projection, and route compatibility reverified. No repository-owned production defect required remediation.
+- [ ] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — audit OAuth token/authorize/consent/browser-session/revoke transport contracts, principal binding, CSRF/browser trust, and failure mapping.### FS-22.06.02 Assessment — `apps/server/src/controllers/users.rs`
+
+- **Base:** refreshed `main` at `3aba5a3c50c4ee551ad22cbd00b99f0a0ca6e21c`; dedicated branch `codex/audit-fs-22.06.02-users-controller` was created from that exact SHA.
+- **Primary scope:** user-list/detail REST handlers, tenant and permission extractors, owner DTO projection, pagination/search/filter behavior, database error mapping, and route/OpenAPI parity.
+- **Invariant map:** the controller is a thin REST adapter; tenant scope comes from trusted `CurrentTenant`; list/detail admission requires `users:list` / `users:read`; cross-tenant targets resolve as not found; page size is bounded to 1..=100; database failures propagate instead of producing successful empty responses; password hashes and other persistence-only fields never enter the response projection; DTOs are sourced from `rustok-auth::rest`.
+- **Historical baseline:** the prior deep audit `FS-22.02.19` closed this controller after fixing swallowed list pagination database errors and a non-canonical `DbErr` mapping in `get_user`. Those invariants were rechecked rather than duplicated.
+- **Fresh finding review:** current `list_users` applies the tenant predicate before query execution, checks `users:list` before storage access, clamps `page_size`, and propagates both count and page-fetch errors. Search/status filters are parameterized SeaORM expressions. `get_user` applies the tenant predicate and returns `404 Not Found` for missing or cross-tenant IDs.
+- **Route review:** both `/api/users` and `/api/users/` map to the same bounded collection handler, while `/api/users/{id}` is distinct. The current dual collection route is compatibility behavior, not a conflicting route.
+- **Ownership review:** `rustok-auth` currently exposes user admin mutations but no equivalent read port for this collection/detail projection. The controller is therefore not duplicating an existing read contract. Introducing a new read port solely to satisfy this clean audit would be speculative and was rejected.
+- **Regression audit:** no privilege, tenant, pagination, response-schema, or database-error behavior regressed against the historical audited contract. User responses are built from explicit safe fields rather than serializing the backing model.
+- **Fresh second pass:** independently re-read the complete controller, compared its content with the historical `FS-22.02.19` baseline, traced `CurrentTenant`/`CurrentUser` and owner DTO definitions, and rechecked all query predicates and route registrations. No new repository-owned in-scope defect was confirmed.
+- **Verification:** repository source inspection, historical-audit comparison, owner-contract tracing, post-read review, and branch comparison only. No Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution was performed; the workspace is not mounted and local network resolution to GitHub is unavailable. No CI/runtime pass is claimed.
+- **Status:** `FS-22.06.02` complete without code remediation on the dedicated branch; PR/integration pending.
+- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.03 — apps/server/src/controllers/oauth.rs`.
+
+
 - [ ] **FS-22.06.04 — `apps/server/src/controllers/auth.rs` auxiliary reset/verification surface** — reserved for a separate iteration only if the primary auth audit uncovers an independent token/email lifecycle root cause.
 ### FS-22.06.01 Assessment — `apps/server/src/controllers/auth.rs`
 
