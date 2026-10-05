@@ -17,7 +17,6 @@ use crate::providers::{
 use super::provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
-    validate_durable_json_payload,
 };
 
 #[derive(Clone)]
