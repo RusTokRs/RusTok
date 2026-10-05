@@ -108,14 +108,28 @@ impl FulfillmentCreateLabelRecoveryService {
             Ok(result) => result,
             Err(source) => {
                 if let Err(journal_error) = journal
-                    .mark_provider_error(tenant_id, operation_id, source.to_string())
+                    .mark_provider_error(
+                        tenant_id,
+                        operation_id,
+                        "create_label provider execution returned an error",
+                    )
                     .await
                 {
-                    return Err(FulfillmentOrchestrationError::Validation(format!(
-                        "create_label retry failed for operation {operation_id}, and the journal could not record the failure: provider={source}; journal={journal_error}"
-                    )));
+                    tracing::error!(
+                        boundary = "commerce_fulfillment_create_label_recovery",
+                        operation_id_non_nil = !operation_id.is_nil(),
+                        fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                        checkpoint_failed = true,
+                        provider_outcome = "error",
+                        checkpoint_error = %journal_error,
+                        "create-label recovery could not checkpoint provider error"
+                    );
                 }
-                return Err(source.into());
+                return Err(FulfillmentOrchestrationError::ProviderAfterPersistence {
+                    fulfillment_id: operation.fulfillment_id,
+                    operation: "create_label",
+                    source,
+                });
             }
         };
         let payload = match serde_json::to_value(&result) {
