@@ -16,6 +16,7 @@ use crate::providers::{
 use super::provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    validate_durable_json_payload,
 };
 
 #[derive(Clone)]
@@ -156,6 +157,7 @@ impl FulfillmentProviderOperationRecovery {
                 "provider_result must be a JSON object".to_string(),
             ));
         }
+        validate_durable_json_payload(&provider_result, "provider_result")?;
         let existing = self.get(tenant_id, operation_id).await?;
         if existing.status != PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             || existing.provider_result.is_some()
@@ -289,6 +291,64 @@ fn normalize_error(value: String) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn oversized_unknown_success_result_is_rejected_before_persistence() {
+        let db = setup_test_db().await;
+        support::ensure_fulfillment_schema(&db).await;
+        let journal = FulfillmentProviderOperationJournal::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let fulfillment_id = Uuid::new_v4();
+        insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+        let operation = journal
+            .begin(BeginProviderOperation {
+                tenant_id,
+                fulfillment_id,
+                operation: "ship".to_string(),
+                provider_id: "carrier".to_string(),
+                idempotency_key: "oversized-recovery-result".to_string(),
+                request_payload: serde_json::json!({
+                    "tenant_id": tenant_id,
+                    "fulfillment_id": fulfillment_id,
+                    "idempotency_key": "oversized-recovery-result",
+                    "metadata": {}
+                }),
+            })
+            .await
+            .expect("provider operation should begin");
+        journal
+            .claim_execution(tenant_id, operation.id)
+            .await
+            .expect("claim should succeed")
+            .expect("operation should be claimable");
+        journal
+            .mark_provider_error(tenant_id, operation.id, "outcome unknown")
+            .await
+            .expect("ambiguous outcome should be quarantined");
+
+        let oversized = serde_json::json!({
+            "provider_id": "carrier",
+            "external_reference": "shipment-1",
+            "tracking_number": "TRACK-1",
+            "metadata": "x".repeat(rustok_fulfillment::MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+        });
+        let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
+        let error = recovery
+            .resolve_unknown_as_succeeded(tenant_id, operation.id, Some("shipment-1".to_string()), oversized)
+            .await
+            .expect_err("oversized provider result must be rejected");
+
+        assert!(matches!(
+            error,
+            rustok_fulfillment::error::FulfillmentError::Validation(_)
+        ));
+        let current = recovery
+            .resolve_unknown_as_failed(tenant_id, operation.id, "confirmed no shipment")
+            .await
+            .expect("recovery state must remain unchanged after rejected oversized result");
+        assert_eq!(current.status, PROVIDER_OPERATION_ERROR);
+    }
 
     #[test]
     fn provider_result_metadata_requires_object_shape() {
