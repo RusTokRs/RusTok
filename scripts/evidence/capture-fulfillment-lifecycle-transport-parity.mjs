@@ -528,9 +528,8 @@ async function main() {
   validateContract();
   ensureOutputBoundary();
 
-  const graphqlUrl = endpoint(
+  const graphqlUrl = graphqlEndpoint(
     requiredEnvironment('RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL'),
-    'RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL',
   );
   const restBaseUrl = endpoint(
     requiredEnvironment('RUSTOK_FULFILLMENT_PARITY_REST_BASE_URL'),
