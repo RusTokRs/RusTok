@@ -100,6 +100,9 @@
   "publication": {
     "atomic_exclusive_publish": true
   },
+  "capture_consistency": {
+    "contract_and_source_hashes_stable": true
+  },
   "normalization": {
     "timestamp_canonicalization": "UTC",
     "projection_strings_preserve_whitespace": true,
