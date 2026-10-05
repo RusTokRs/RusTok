@@ -947,6 +947,17 @@ mod boundary_tests {
     }
 
     #[test]
+    fn provider_json_depth_is_bounded_without_recursive_traversal() {
+        let mut nested = Value::Object(Default::default());
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+
+        assert!(validate_provider_metadata_safety(&nested).is_err());
+        assert!(validate_durable_provider_payload(&nested, "provider_result").is_err());
+    }
+
+    #[test]
     fn rejects_oversized_operation_request_metadata_before_execution() {
         let request = FulfillmentProviderOperationRequest {
             tenant_id: Uuid::new_v4(),
