@@ -4671,5 +4671,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Remediation: the verifier now isolates `fulfillment_command_error_policy` and requires each current owner-kind status/code tuple for Validation, NotFound, Conflict, Forbidden, Unavailable/Timeout, and InvariantViolation. Runtime mapping behavior is unchanged.
 - Re-audit: special owner-code branches remain in the canonical mapper and are outside this generic owner-kind matrix; the verifier's new source lock is intentionally limited to the failure contract's generic scripted error cases. REST detail/list harness coverage and the owner wall-clock timeout proof remain intact.
 - Verification: repository-content inspection only. No Cargo, test, verifier, formatting, workflow, CI, or runtime command was executed by the agent.
-- Status: source-verifier remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
-- Next primary iteration: after integration, re-read the full failure verifier and REST mapper once more, then continue only within the remaining Fulfillment lifecycle runtime-evidence source boundary.
+- Integration: squash-merged as `513ccdb09c2114000c6fbba0c5ff76c311bcc4c6` via PR #4522; post-merge main was re-read at the merge SHA and the verifier's REST policy block, runbook, and audit entry were reconciled.
+- Status: FS-22.06.123 complete and integrated.
+- Next primary iteration: continue the remaining Fulfillment lifecycle runtime-evidence source audit; do not promote deadline/failure, projection-parity, restart, or remote-adapter evidence without maintainer-owned execution.
