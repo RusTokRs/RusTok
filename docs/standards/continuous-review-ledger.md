@@ -446,7 +446,7 @@ Hard limits for every iteration:
 - [ ] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
 - [x] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — auth lifecycle delegation and tenant-scoped session operations completed; public routes/DTOs unchanged. PR #4556 squash merged as `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
 - [x] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — fresh one-module audit complete; tenant isolation, permission admission, bounded pagination, DB error propagation, DTO projection, and route compatibility reverified. No repository-owned production defect required remediation.
-- [ ] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — reopened for a post-merge composition regression: OpenAPI-registered OAuth handlers were private to the sibling `swagger` module. The runtime/protocol fixes remain merged; visibility correction is tracked as a bounded follow-up.
+- [x] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — OAuth transport/OpenAPI audit complete after bounded post-merge visibility remediation; RFC 7009 form revocation, transport-safe consent errors, complete OpenAPI registration, handler visibility, and consent security metadata are now aligned.
 
 ### FS-22.06.02 Assessment — `apps/server/src/controllers/users.rs`
 
@@ -483,8 +483,9 @@ Hard limits for every iteration:
 - **Regression audit:** JSON token clients retain their prior behavior; standard form-urlencoded token and revocation clients now have first-class transport support; consent failures remain generic; OAuth route/schema metadata now matches mounted methods without changing runtime route topology.
 - **Fresh second pass:** independently searched the controller for raw owner-error formatting, unbounded authorization parsing, redirect `expect` sites, tenant/client checks, cookie attributes, OpenAPI path coverage, and sibling-module visibility. This pass caught that the newly registered OpenAPI handlers were private to `oauth.rs`, so the generated server `ApiDoc` could not legally reference them from `swagger.rs`. The bounded hotfix makes all registered handlers `pub(crate)`; remaining redirect `expect` calls are guarded by the existing persisted redirect URI validation invariant already accepted by the earlier OAuth audit.
 - **Verification:** repository source inspection, RFC/OIDC protocol comparison, immediate re-audits, OpenAPI registration comparison, and branch diff review. Local Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution was not possible because the workspace is not mounted and local DNS cannot resolve GitHub; no CI/runtime pass is claimed.
-- **Status:** initial `FS-22.06.03` implementation merged via PR #4559 as `9b10804f276f871f8e394e712507aad378ae0125`; immediately after merge, fresh composition review found the handler-visibility regression. The bounded follow-up hotfix is pending.
-- **Next primary iteration:** after the visibility hotfix is integrated, refresh `main` and continue with `FS-22.06.05 — apps/server/src/controllers/health.rs`.
+- **Status:** initial implementation merged via PR #4559 as `9b10804f276f871f8e394e712507aad378ae0125`; post-merge fresh review found the sibling-module handler-visibility regression; bounded hotfix PR #4560 squash merged as `0fb39ced8d4b0c9e98d2a478445e3bde720927cb`.
+- **Post-merge reconciliation:** refreshed `main` at `0fb39ced8d4b0c9e98d2a478445e3bde720927cb`; confirmed all eight Swagger-registered OAuth handlers are `pub(crate)`, POST `/api/oauth/consent` advertises bearer authentication, and the merged tree is otherwise the expected OAuth hotfix scope.
+- **Next primary iteration:** `FS-22.06.05 — apps/server/src/controllers/health.rs`.
 
 
 ### FS-22.06.01 Assessment — `apps/server/src/controllers/auth.rs`
