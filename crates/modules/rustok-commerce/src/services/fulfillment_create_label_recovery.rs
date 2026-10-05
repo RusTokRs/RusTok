@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rustok_fulfillment::entities::{fulfillment, provider_operation};
+use rustok_fulfillment::entities::provider_operation;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry,
@@ -9,7 +9,7 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -55,10 +55,7 @@ impl FulfillmentCreateLabelRecoveryService {
 
         match operation.status.as_str() {
             PROVIDER_OPERATION_COMMITTED => {
-                return FulfillmentService::new(self.db.clone())
-                    .get_fulfillment(tenant_id, operation.fulfillment_id)
-                    .await
-                    .map_err(Into::into);
+                return self.commit_provider_result(&journal, operation).await;
             }
             PROVIDER_OPERATION_SUCCEEDED => {
                 return self.commit_provider_result(&journal, operation).await;
@@ -181,15 +178,23 @@ impl FulfillmentCreateLabelRecoveryService {
         operation: provider_operation::Model,
     ) -> FulfillmentOrchestrationResult<crate::dto::FulfillmentResponse> {
         let result = validate_result(&operation)?;
-        let fulfillment = match self.persist_provider_result(&operation, &result).await {
-            Ok(fulfillment) => fulfillment,
+        match FulfillmentService::new(self.db.clone())
+            .commit_create_label_provider_result(
+                operation.tenant_id,
+                operation.fulfillment_id,
+                operation.id,
+                &result,
+            )
+            .await
+        {
+            Ok(fulfillment) => Ok(fulfillment),
             Err(source) => {
                 if operation.status == PROVIDER_OPERATION_SUCCEEDED {
                     if let Err(checkpoint_error) = journal
                         .mark_reconciliation_required(
                             operation.tenant_id,
                             operation.id,
-                            "create_label provider succeeded, but local fulfillment projection failed",
+                            "create_label provider result could not be committed locally",
                         )
                         .await
                     {
@@ -199,97 +204,18 @@ impl FulfillmentCreateLabelRecoveryService {
                             fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
                             checkpoint_failed = true,
                             checkpoint_error = %checkpoint_error,
-                            "create-label recovery reconciliation checkpoint failed after local persistence error"
+                            "create-label recovery reconciliation checkpoint failed after owner persistence error"
                         );
                     }
                 }
-                return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
+                Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id: operation.fulfillment_id,
                     operation: "create_label",
                     source,
-                });
+                })
             }
-        };
-
-        if let Err(source) = journal
-            .mark_committed(operation.tenant_id, operation.id)
-            .await
-        {
-            if operation.status == PROVIDER_OPERATION_SUCCEEDED {
-                if let Err(checkpoint_error) = journal
-                    .mark_reconciliation_required(
-                        operation.tenant_id,
-                        operation.id,
-                        "create_label provider result was persisted locally, but journal commit failed",
-                    )
-                    .await
-                {
-                    tracing::error!(
-                        boundary = "commerce_fulfillment_create_label_recovery",
-                        operation_id_non_nil = !operation.id.is_nil(),
-                        fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
-                        checkpoint_failed = true,
-                        checkpoint_error = %checkpoint_error,
-                        "create-label recovery reconciliation checkpoint failed after journal commit error"
-                    );
-                }
-            }
-            return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
-                fulfillment_id: operation.fulfillment_id,
-                operation: "create_label",
-                source: rustok_fulfillment::error::FulfillmentError::Database(source),
-            });
         }
-
-        Ok(fulfillment)
     }
-
-    async fn persist_provider_result(
-        &self,
-        operation: &provider_operation::Model,
-        result: &FulfillmentProviderOperationResult,
-    ) -> Result<crate::dto::FulfillmentResponse, rustok_fulfillment::FulfillmentError> {
-        let current = fulfillment::Entity::find_by_id(operation.fulfillment_id)
-            .filter(fulfillment::Column::TenantId.eq(operation.tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(rustok_fulfillment::FulfillmentError::FulfillmentNotFound(
-                operation.fulfillment_id,
-            ))?;
-
-        if label_operation_id(&current.metadata) != Some(operation.id) {
-            let carrier_missing = current
-                .carrier
-                .as_deref()
-                .map(|carrier| carrier.trim().is_empty())
-                .unwrap_or(true);
-            let mut active: fulfillment::ActiveModel = current.into();
-            let current_metadata = active.metadata.clone().take().unwrap_or_default();
-            active.metadata = Set(label_result_metadata(
-                current_metadata,
-                result,
-                operation.id,
-            ));
-            if carrier_missing {
-                active.carrier = Set(Some(result.provider_id.clone()));
-            }
-            if let Some(tracking_number) = result
-                .tracking_number
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                active.tracking_number = Set(Some(tracking_number.to_string()));
-            }
-            active.updated_at = Set(Utc::now().into());
-            active.update(&self.db).await?;
-        }
-
-        FulfillmentService::new(self.db.clone())
-            .get_fulfillment(operation.tenant_id, operation.fulfillment_id)
-            .await
-    }
-}
 
 fn validate_result(
     operation: &provider_operation::Model,
@@ -316,55 +242,6 @@ fn validate_result(
     Ok(result)
 }
 
-fn label_operation_id(metadata: &Value) -> Option<Uuid> {
-    metadata
-        .get("provider_operation")
-        .and_then(|operation| operation.get("id"))
-        .and_then(Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .or_else(|| {
-            metadata
-                .get("label")
-                .and_then(|label| label.get("provider_operation_id"))
-                .and_then(Value::as_str)
-                .and_then(|value| Uuid::parse_str(value).ok())
-        })
-}
-
-fn label_result_metadata(
-    current: Value,
-    result: &FulfillmentProviderOperationResult,
-    operation_id: Uuid,
-) -> Value {
-    merge_metadata(
-        current,
-        serde_json::json!({
-            "provider_operation": {
-                "id": operation_id,
-                "operation": "create_label",
-            },
-            "label": {
-                "provider_operation_id": operation_id,
-                "provider_id": result.provider_id,
-                "external_reference": result.external_reference,
-                "tracking_number": result.tracking_number,
-                "provider_metadata": result.metadata,
-            }
-        }),
-    )
-}
-
-fn merge_metadata(current: Value, patch: Value) -> Value {
-    match (current, patch) {
-        (Value::Object(mut current), Value::Object(patch)) => {
-            for (key, value) in patch {
-                current.insert(key, value);
-            }
-            Value::Object(current)
-        }
-        (_, patch) => patch,
-    }
-}
 
 #[cfg(test)]
 mod tests {
