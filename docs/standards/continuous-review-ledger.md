@@ -4725,3 +4725,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Integration:** squash-merged as `e57aab13184612cf5ce6988754b5113fb4b3ebc6` via PR #4529; post-merge `main` was refreshed at the merge SHA and the runner, verifier, publication contract, runbook, and evidence ledger were re-read.
 - **Status:** `FS-22.06.127` complete and integrated; mounted projection parity, deadline/failure, restart, and remote-adapter runtime evidence remain unproven.
 - **Next primary iteration:** continue the remaining Fulfillment evidence-boundary audit with a fresh pass; do not promote mounted parity, deadline/failure, restart, or remote-adapter evidence before maintainer-owned execution.
+
+### FS-22.06.128 Assessment — fulfillment parity capture snapshot consistency
+
+- **Base:** `657af00d568f1e562b01bc65f7ae9078990afc81`; dedicated branch `codex/audit-fs-22.06.128-stable-capture-snapshot`.
+- **Primary scope:** the same Fulfillment transport-parity capture runner, focused on contract/source snapshot consistency during a live capture.
+- **Invariant map:** the evidence packet must describe the exact execution contract and source inventory observed for the requests it records; a concurrent change to those files must fail closed rather than produce a mixed-revision packet.
+- **Confirmed finding FULFILLMENT-22.06.128-01:** the runner loaded the contract at process start but calculated the retained contract/source hashes only when building the final packet. A concurrent edit could therefore change the recorded hashes after the requests had already executed, making runtime response evidence and retained source metadata refer to different revisions.
+- **Remediation:** the runner now snapshots the loaded contract text/hash and every expected source-file hash before the first mounted request, rechecks the contract hash and source hashes after all scenarios, and aborts publication if any snapshot changed. The packet records the start snapshot hashes rather than rereading mutable files at the end. The execution contract and verifier now lock this stability invariant; the runbook documents the fail-closed behavior.
+- **Immediate re-audit:** the capture still uses the same validated in-memory contract and scenario semantics; only publication admissibility changes. A source or contract edit during capture can now terminate the run before any evidence packet is published.
+- **Adjacent-boundary re-audit:** publication exclusivity from FS-22.06.127, source allowlists, secret/raw-body retention, endpoint checks, response bounds, projection normalization/order, and wider runtime-evidence limitations remain unchanged.
+- **Regression audit:** a successful capture now has a coherent contract/source snapshot; a failed stability check leaves no retained packet. No production Fulfillment runtime behavior changes.
+- **Fresh second pass:** re-read the runner initialization, snapshot timing, end-of-capture stability checks, packet construction, verifier markers, contract, and runbook. No additional repository-owned defect was confirmed in this narrow evidence-consistency boundary.
+- **Verification:** repository-content inspection and exact branch diff review only. No Node verifier, capture runner, Cargo, tests, formatting, gatekeeper, workflow, CI, or runtime command was executed by the agent.
+- **Status:** source/evidence remediation complete on the dedicated branch; pending PR integration and post-merge reconciliation.
+- **Next primary iteration:** after integration, continue the remaining Fulfillment parity evidence-boundary audit without promoting mounted parity, deadline/failure, restart, or remote-adapter evidence before maintainer-owned execution.
