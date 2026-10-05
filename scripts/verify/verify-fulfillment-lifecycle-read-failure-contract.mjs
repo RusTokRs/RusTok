@@ -13,6 +13,9 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const safeQuery = readCommerceSafeQuerySource(read);
+const adminRest = read(
+  'crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs',
+);
 const cargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const harness = read(
   'crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs',
@@ -41,6 +44,9 @@ const forbidText = (source, value, label) => {
 };
 
 for (const [source, value, label] of [
+  [adminRest, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
+  [adminRest, 'StatusCode::FORBIDDEN,', 'REST forbidden status'],
+  [adminRest, '"commerce_permission_denied"', 'REST forbidden code'],
   [safeQuery, 'pub enum FulfillmentError {', 'typed GraphQL shim error'],
   [safeQuery, 'ShippingOptionNotFound(Uuid)', 'shipping optional not-found variant'],
   [safeQuery, 'FulfillmentNotFound(Uuid)', 'fulfillment optional not-found variant'],

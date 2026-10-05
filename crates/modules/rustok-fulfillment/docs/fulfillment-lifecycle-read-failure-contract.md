@@ -62,7 +62,7 @@ The locked REST matrix is:
 | `Validation` | 400 | `commerce_admin_fulfillment_invalid` |
 | `NotFound` | 404 | `commerce_admin_not_found` |
 | `Conflict` | 409 | `commerce_admin_fulfillment_state_conflict` |
-| `Forbidden` | 401 | `commerce_permission_denied` |
+| `Forbidden` | 403 | `commerce_permission_denied` |
 | `Unavailable` | 503 | `commerce_admin_fulfillment_storage_unavailable` |
 | `Timeout` | 503 | `commerce_admin_fulfillment_storage_unavailable` |
 | `InvariantViolation` | 500 | `commerce_admin_fulfillment_failed` |
