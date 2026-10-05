@@ -64,10 +64,14 @@ for (const [source, value, label] of [
   [ownerSource, '.list_fulfillments(', 'list delegation'],
   [ownerSource, '.find_by_order(tenant_id, request.order_id)', 'latest delegation'],
   [ownerSource, 'PortError::new(kind, code, message, retryable)', 'stable owner error'],
+  [ownerService, 'async fn begin_read_transaction(&self)', 'shared lifecycle read snapshot helper'],
+  [ownerService, 'begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))', 'repeatable-read read-only snapshot'],
   [ownerService, 'async fn build_fulfillment_responses(', 'batch fulfillment item materialization'],
   [ownerService, 'FulfillmentId.is_in(fulfillment_ids)', 'batch item query'],
   [ownerService, 'order_by_asc(entities::fulfillment_item::Column::CreatedAt)', 'batch item created ordering'],
   [ownerService, 'items_by_fulfillment', 'batch item grouping'],
+  [ownerService, 'count(&txn)', 'pagination count on snapshot'],
+  [ownerService, 'all(&txn)', 'parent/page query on snapshot'],
 ]) requireText(source, value, label);
 
 for (const value of [
