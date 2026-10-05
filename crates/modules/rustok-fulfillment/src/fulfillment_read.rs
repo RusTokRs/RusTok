@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
@@ -133,17 +133,13 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
             None,
         );
 
-        self.inner
-            .get_fulfillment(tenant_id, request.fulfillment_id)
-            .await
-            .map_err(|error| {
-                map_owner_error(
-                    &context,
-                    "read_fulfillment_projection",
-                    request_facts,
-                    error,
-                )
-            })
+        execute_fulfillment_read(
+            &context,
+            "read_fulfillment_projection",
+            request_facts,
+            self.inner.get_fulfillment(tenant_id, request.fulfillment_id),
+        )
+        .await
     }
 
     async fn list_fulfillment_projections(
@@ -158,9 +154,11 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         let customer_id = request.customer_id;
         let request_facts =
             fulfillment_lifecycle_read_request_facts(None, order_id, status_length, customer_id);
-        let (items, total) = self
-            .inner
-            .list_fulfillments(
+        let (items, total) = execute_fulfillment_read(
+            &context,
+            "list_fulfillment_projections",
+            request_facts,
+            self.inner.list_fulfillments(
                 tenant_id,
                 ListFulfillmentsInput {
                     page: request.page,
@@ -169,16 +167,9 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
                     order_id,
                     customer_id,
                 },
-            )
-            .await
-            .map_err(|error| {
-                map_owner_error(
-                    &context,
-                    "list_fulfillment_projections",
-                    request_facts,
-                    error,
-                )
-            })?;
+            ),
+        )
+        .await?;
 
         Ok(FulfillmentProjectionPage { items, total })
     }
@@ -193,17 +184,68 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
         let request_facts =
             fulfillment_lifecycle_read_request_facts(None, Some(request.order_id), None, None);
 
-        self.inner
-            .find_by_order(tenant_id, request.order_id)
-            .await
-            .map_err(|error| {
-                map_owner_error(
-                    &context,
-                    "find_latest_fulfillment_by_order_projection",
-                    request_facts,
-                    error,
-                )
-            })
+        execute_fulfillment_read(
+            &context,
+            "find_latest_fulfillment_by_order_projection",
+            request_facts,
+            self.inner.find_by_order(tenant_id, request.order_id),
+        )
+        .await
+    }
+}
+
+async fn execute_fulfillment_read<T, F>(
+    context: &PortContext,
+    operation: &'static str,
+    request_facts: FulfillmentLifecycleReadRequestFacts,
+    future: F,
+) -> Result<T, PortError>
+where
+    F: Future<Output = FulfillmentResult<T>>,
+{
+    let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
+    match tokio::time::timeout(deadline, future).await {
+        Ok(result) => {
+            result.map_err(|error| map_owner_error(context, operation, request_facts, error))
+        }
+        Err(_) => {
+            let context_facts = fulfillment_lifecycle_read_context_facts(context);
+            tracing::warn!(
+                owner = FULFILLMENT_OWNER,
+                operation,
+                correlation_id = %context.correlation_id,
+                tenant_id_length = context_facts.tenant_id_length,
+                actor_kind = context_facts.actor_kind,
+                actor_id_length = context_facts.actor_id_length,
+                claim_count = context_facts.claim_count,
+                role_count = context_facts.role_count,
+                channel_present = context_facts.channel_present,
+                channel_length = ?context_facts.channel_length,
+                locale_length = context_facts.locale_length,
+                causation_id_present = context_facts.causation_id_present,
+                causation_id_length = ?context_facts.causation_id_length,
+                traceparent_present = context_facts.traceparent_present,
+                traceparent_length = ?context_facts.traceparent_length,
+                idempotency_key_present = context_facts.idempotency_key_present,
+                idempotency_key_length = ?context_facts.idempotency_key_length,
+                deadline_ms = ?context_facts.deadline_ms,
+                fulfillment_id_present = request_facts.fulfillment_id_present,
+                fulfillment_id_non_nil = request_facts.fulfillment_id_non_nil,
+                order_id_present = request_facts.order_id_present,
+                order_id_non_nil = request_facts.order_id_non_nil,
+                customer_id_present = request_facts.customer_id_present,
+                customer_id_non_nil = request_facts.customer_id_non_nil,
+                status_present = request_facts.status_present,
+                status_length = ?request_facts.status_length,
+                code = "fulfillment.deadline_exceeded",
+                boundary = FULFILLMENT_LIFECYCLE_READ_BOUNDARY,
+                "fulfillment lifecycle read exceeded its declared deadline"
+            );
+            Err(PortError::timeout(
+                "fulfillment.deadline_exceeded",
+                "fulfillment lifecycle read deadline exceeded",
+            ))
+        }
     }
 }
 
