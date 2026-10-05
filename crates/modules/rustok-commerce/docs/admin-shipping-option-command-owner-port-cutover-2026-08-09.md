@@ -38,12 +38,13 @@ The existing permissions and response envelopes remain unchanged:
 
 Each owner call now receives a bounded `PortContext` carrying the admitted tenant, authenticated
 user actor, effective request locale, optional request channel, a stable correlation identity, a
-two-second deadline, and a payload-bound deterministic idempotency identity required by the owner
-write policy.
+two-second deadline, and the caller-owned `Idempotency-Key` unchanged through the owner write policy.
 
-The deterministic transport identity is admission metadata only. This slice does **not** claim that
-shipping-option create/update/state commands have durable owner receipt/replay semantics; the owner
-capability record from the preceding slice remains authoritative on that limitation.
+All four shipping-option commands now have durable owner receipt/replay semantics. The owner admits the caller
+key through the shared tenant-scoped receipt ledger and atomically commits each mutation, required translation
+change evidence, and the completed receipt. Reusing a key with a changed request or a different command operation
+is rejected by the durable request hash/operation binding. Update/deactivate/reactivate replay their stored response
+without rerunning the state mutation.
 
 ## Error boundary
 

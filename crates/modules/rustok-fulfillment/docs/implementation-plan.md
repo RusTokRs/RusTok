@@ -15,6 +15,7 @@ GraphQL transports selected via `execute_selected_transport`. Selection identity
 seller_id`; legacy `seller_scope` is not accepted. Provider registry guards
 capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
+Provider-backed ship/reship/cancel retries are replay-safe after local persistence succeeds but journal commit is interrupted: persisted `metadata.provider_operation` identity is checked before lifecycle mutation, so recovery can complete the provider journal without duplicating the local state transition.
 
 Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
@@ -47,7 +48,9 @@ administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shippin
 responses now expose a deterministic translation-resource revision. Exact-locale TranslationTarget reads and mutations retain tenant ownership at the child-query boundary by joining/filtering the tenant-owned shipping_option parent; existing-target updates use scoped update-many with one-row cardinality guards, and new-target inserts use a tenant-filtered INSERT ... SELECT. Parent-row locking plus the unique (shipping_option_id, locale) constraint remains the concurrency boundary for exact-locale CAS. The translation change journal follows the same parent-owned integrity rule: journal INSERTs derive tenant_id and shipping_option_id from a tenant-filtered shipping_options row, with exactly-one-row admission. Every bulk translation update
 requires that revision when translations are supplied; a stale revision fails as a typed owner conflict
 before any mutation. The module-owned admin editor round-trips all loaded translations plus the revision
-so editing one locale cannot silently delete untouched locales. Storage-only `und` remains visible only
+so editing one locale cannot silently delete untouched locales.
+Shipping-option admin create/update/deactivate/reactivate are owner-idempotent: the caller key is admitted through the shared tenant-scoped receipt ledger,
+and each mutation, required translation change evidence, and completed receipt commit in one owner transaction. Storage-only `und` remains visible only
 as raw persisted provenance and is excluded from runtime locale resolution and outbound admin translation
 writes. Root
 in-process adapters own `FulfillmentService` construction, require read policy,
@@ -273,6 +276,9 @@ disable/reconciliation matrix in
   capture runner, fail-closed verifier, and operator runbook.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
+
+- [x] Make all four shipping-option admin commands (create/update/deactivate/reactivate) durable and replay-safe through the shared owner-operation receipt ledger; changed-payload and cross-operation idempotency-key reuse conflicts fail closed.
+- [x] Make provider-backed `create_label` result persistence owner-atomic: provider result facts, reserved `provider_operation` metadata, and journal `COMMITTED` transition share one Fulfillment transaction; recovery reuses the same owner boundary.
 
 ## Fulfillment lifecycle read source checklist
 

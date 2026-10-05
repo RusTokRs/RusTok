@@ -69,10 +69,24 @@ requireText(ownerCreate, "pub struct FulfillmentAdminCreateCommandRuntime", "Ful
 requireText(ownerCreate, "context.require_policy(PortCallPolicy::write())", "owner write admission");
 requireText(ownerCreate, "FulfillmentService::new(db.clone())", "owner-local Fulfillment service");
 requireText(ownerCreate, "FulfillmentProviderOperationJournal::new(db)", "owner-local provider journal");
+requireText(
+  ownerCreate,
+  "create_fulfillment_in_txn(",
+  "transaction-owned local fulfillment creation",
+);
+requireText(
+  ownerCreate,
+  "operation_journal",
+  "provider-operation journal access",
+);
+
 requireText(ownerCreate, ".execute_create_label(provider_id, request)", "owner create-label provider execution");
-requireText(ownerCreate, 'format!("fulfillment:{}:create_label", fulfillment.id)', "exact durable create-label identity");
+requireText(ownerCreate, "idempotency_key",
+ "caller-owned provider operation identity");
+
 requireText(ownerCreate, 'operation: "create_label".to_string()', "create-label journal operation");
 requireText(ownerCreate, '"operation": "create_label"', "create-label provider metadata");
+
 requireText(ownerCreate, "PROVIDER_OPERATION_COMMITTED", "committed replay adoption");
 requireText(ownerCreate, "PROVIDER_OPERATION_SUCCEEDED", "provider-succeeded replay adoption");
 requireText(ownerCreate, "PROVIDER_OPERATION_RECONCILIATION_REQUIRED", "reconciliation replay handling");
@@ -95,7 +109,7 @@ requireText(legacy, "FulfillmentOrchestrationService::new(runtime.db_clone())", 
 requireText(plan, "- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,", "canonical topology item remains open");
 requireText(plan, "Payment, and Fulfillment concrete services behind host-composed owner ports.", "canonical topology continuation remains open");
 requireText(doc, "Source-complete for the mounted `POST /admin/fulfillments` route", "focused source-complete status");
-requireText(doc, "It is **not** a newly claimed durable manual-fulfillment creation receipt", "transport/durable replay distinction");
+requireText(doc, "provider operation record remains the durable external create-label execution anchor", "durable provider-operation anchor");
 requireText(doc, "canonical broad Commerce topology P0 remains open", "broad topology remains open");
 requireText(doc, "Execution evidence remains pending and unvalidated", "execution evidence remains open");
 

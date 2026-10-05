@@ -34,6 +34,21 @@ for (const marker of [
   'service: FulfillmentService',
   'FulfillmentService::new(db)',
   'context.require_policy(PortCallPolicy::write())',
+  'idempotency::admit(',
+  'idempotency::OwnerOperationScope::Tenant(tenant_id)',
+  'Admission::Replay(value)',
+  'idempotency::complete(&txn, lease, &created)',
+  'fail_receipt(',
+  'create_shipping_option_in_txn(',
+  'enum ShippingOptionAdminCommand',
+  'async fn execute_idempotent_command(',
+  'ShippingOptionAdminCommand::Create(request)',
+  'ShippingOptionAdminCommand::Update(request)',
+  'ShippingOptionAdminCommand::Deactivate(request)',
+  'ShippingOptionAdminCommand::Reactivate(request)',
+  'self.service.update_shipping_option_in_txn(',
+  'self.service.set_shipping_option_active_in_txn(',
+  'idempotency::complete(&txn, lease, &response)',
   'Uuid::parse_str(&context.tenant_id)',
   'PortError::validation(',
   'PortError::not_found(',
@@ -48,7 +63,15 @@ for (const marker of [
   'context.require_write_semantics()',
   'error = ?error',
   'error.to_string()',
-]) forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
+]) {
+  forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
+}
+
+for (const marker of [
+  'service.create_shipping_option(tenant_id, request.input)',
+]) {
+  forbid(owner, marker, 'shipping option create must use durable owner receipt');
+}
 
 for (const marker of [
   'mod shipping_option_admin_command;',
@@ -89,14 +112,14 @@ for (const marker of [
   'Status: `source_complete_unvalidated`',
   '`ShippingOptionAdminCommandPort`',
   '`ShippingOptionAdminCommandRuntime`',
-  'does **not** claim durable idempotent replay',
-  'no tests, Cargo commands, Node verifiers, formatter',
+  'claims durable idempotent replay for shipping-option create',
+  'new create-idempotency source path is covered by a focused regression test and source verifier',
 ]) need(record, marker, 'owner capability source record');
 
 for (const marker of [
   'Status: `source_complete_unvalidated`',
   'Those handlers no longer construct `rustok_fulfillment::FulfillmentService`',
-  'does **not** claim',
+  'shipping-option create has durable owner receipt/replay semantics',
 ]) need(cutoverRecord, marker, 'consumer cutover source record');
 
 if (failures.length > 0) {
@@ -106,3 +129,11 @@ if (failures.length > 0) {
 }
 
 console.log('[verify-fulfillment-shipping-option-admin-command-owner-port] PASS');
+
+for (const marker of [
+  'self.service.update_shipping_option(tenant_id, request.shipping_option_id, request.input)',
+  'self.service.deactivate_shipping_option(tenant_id, request.shipping_option_id)',
+  'self.service.reactivate_shipping_option(tenant_id, request.shipping_option_id)',
+]) {
+  forbid(owner, marker, 'shipping option admin command must use the durable transaction owner boundary');
+}

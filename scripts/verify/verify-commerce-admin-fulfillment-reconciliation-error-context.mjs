@@ -11,6 +11,13 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read('crates/modules/rustok-commerce/src/controllers/reconciliation.rs');
+const labelRecovery = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_create_label_recovery.rs',
+);
+const localRecovery = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_reconciliation.rs',
+);
+
 const openapi = read('crates/modules/rustok-commerce/src/openapi.rs');
 const failures = [];
 
@@ -36,6 +43,66 @@ const requireBefore = (content, first, second, label) => {
     failures.push(`${label}: ${first} must precede ${second}`);
   }
 };
+
+
+
+for (const [value, label] of [
+  ['ship_fulfillment_with_provider_result(', 'local ship reconciliation must retain provider receipt'],
+  ['reship_fulfillment_with_provider_result(', 'local reship reconciliation must retain provider receipt'],
+  ['cancel_fulfillment_with_provider_result(', 'local cancel reconciliation must retain provider receipt'],
+  ['request.idempotency_key.as_deref().map(str::trim)', 'local reconciliation request identity'],
+]) requireText(localRecovery, value, label);
+
+for (const forbidden of [
+  '.ship_fulfillment(tenant_id, operation.fulfillment_id, input)',
+  '.reship_fulfillment(tenant_id, operation.fulfillment_id, input)',
+  '.cancel_fulfillment(tenant_id, operation.fulfillment_id, input)',
+]) forbidText(localRecovery, forbidden, 'local reconciliation must not strip the provider receipt');
+
+for (const [value, label] of [
+  ['mark_reconciliation_required(', 'create-label recovery reconciliation checkpoint'],
+  ['mark_execution_reconciliation_required(', 'create-label recovery execution quarantine'],
+  ['request.idempotency_key.as_deref().map(str::trim)', 'create-label recovery request idempotency binding'],
+  ['FulfillmentOrchestrationError::ProviderAfterPersistence', 'create-label recovery reconciliation classification'],
+  ['commit_create_label_provider_result(', 'create-label recovery owner persistence boundary'],
+]) requireText(labelRecovery, value, label);
+
+forbidText(
+  labelRecovery,
+  '.mark_committed(tenant_id, operation_id)',
+  'create-label recovery journal-only commit',
+);
+forbidText(
+  localRecovery,
+  '"create_label" => {
+                    journal.mark_committed',
+  'create-label local reconciliation journal-only commit',
+);
+requireText(
+  labelRecovery,
+  'commit_create_label_provider_result(',
+  'create-label recovery owner persistence boundary',
+);
+requireText(
+  localRecovery,
+  'commit_create_label_provider_result(',
+  'create-label local reconciliation owner persistence boundary',
+);
+forbidText(
+  labelRecovery,
+  'let _ = journal',
+  'create-label recovery silent reconciliation checkpoint suppression',
+);
+
+const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(operation.request_payload.clone())');
+const providerExecute = labelRecovery.indexOf('.execute_create_label(operation.provider_id.as_str(), request)');
+if (requestDeserialize < 0 || providerExecute < 0 || requestDeserialize > providerExecute) {
+  failures.push('create-label recovery request payload must be validated before provider execution');
+}
+const claimMarker = labelRecovery.indexOf('.claim_execution(tenant_id, operation_id)');
+if (claimMarker >= 0 && requestDeserialize > claimMarker) {
+  failures.push('create-label recovery request payload must be validated before claim_execution');
+}
 
 for (const [value, label] of [
   ['Json<Vec<provider_operation::Model>>', 'raw provider-operation list response'],

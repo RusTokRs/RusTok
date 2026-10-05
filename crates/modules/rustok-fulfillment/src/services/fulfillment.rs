@@ -24,6 +24,10 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use super::provider_operation::{
+    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+};
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
 };
@@ -63,11 +67,35 @@ impl FulfillmentService {
         Self { db }
     }
 
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn create_shipping_option(
         &self,
         tenant_id: Uuid,
         input: CreateShippingOptionInput,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        let txn = self.db.begin().await?;
+        let response = self
+            .create_shipping_option_in_txn(&txn, tenant_id, input, generate_id())
+            .await?;
+        txn.commit().await?;
+        Ok(response)
+    }
+
+    /// Creates a Shipping Option inside a caller-owned transaction.
+    ///
+    /// The caller supplies the durable operation identity that is written to the
+    /// translation-change journal. This lets admin idempotency receipts and the
+    /// localized-copy change evidence commit atomically with the resource itself.
+    pub(crate) async fn create_shipping_option_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        input: CreateShippingOptionInput,
+        operation_id: Uuid,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
         input
@@ -98,7 +126,6 @@ impl FulfillmentService {
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
-        let txn = self.db.begin().await?;
 
         let option = entities::shipping_option::ActiveModel {
             id: Set(shipping_option_id),
@@ -111,28 +138,26 @@ impl FulfillmentService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
-        insert_translations(&txn, shipping_option_id, &translations).await?;
+        insert_translations(txn, shipping_option_id, &translations).await?;
         let translation_rows =
-            load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
+            load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
         let resource_revision =
             shipping_option_translation_resource_revision(&option, &translation_rows);
         record_shipping_option_translation_change_in_tx(
-            &txn,
+            txn,
             tenant_id,
             shipping_option_id,
-            generate_id(),
+            operation_id,
             &resource_revision,
             ShippingOptionTranslationChangeLifecycle::Active,
         )
         .await
         .map_err(translation_change_error_to_fulfillment_error)?;
-        txn.commit().await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
-            .await
+        map_shipping_option(option, translation_rows, None, None)
     }
 
     pub async fn list_shipping_options(
@@ -191,6 +216,28 @@ impl FulfillmentService {
         shipping_option_id: Uuid,
         input: UpdateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        let txn = self.db.begin().await?;
+        let response = self
+            .update_shipping_option_in_txn(
+                &txn,
+                tenant_id,
+                shipping_option_id,
+                input,
+                generate_id(),
+            )
+            .await?;
+        txn.commit().await?;
+        Ok(response)
+    }
+
+    pub(crate) async fn update_shipping_option_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        input: UpdateShippingOptionInput,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
         input
             .validate()
@@ -231,17 +278,16 @@ impl FulfillmentService {
             (None, None) => {}
         }
 
-        let txn = self.db.begin().await?;
         let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .lock_exclusive()
-            .one(&txn)
+            .one(txn)
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
 
         if let Some(expected_revision) = expected_translation_revision.as_deref() {
             let current_translations =
-                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
+                load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
             let current_revision = shipping_option_translation_resource_revision(
                 &shipping_option,
                 &current_translations,
@@ -277,34 +323,34 @@ impl FulfillmentService {
         }
 
         active.updated_at = Set(Utc::now().into());
-        let option = active.update(&txn).await?;
+        let option = active.update(txn).await?;
 
         let localized_copy_changed = match translations.as_deref() {
             Some(translations) => {
-                synchronize_translations(&txn, tenant_id, shipping_option_id, translations).await?
+                synchronize_translations(txn, tenant_id, shipping_option_id, translations).await?
             }
             None => false,
         };
         if localized_copy_changed {
             let translation_rows =
-                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
+                load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
             let resource_revision =
                 shipping_option_translation_resource_revision(&option, &translation_rows);
             record_shipping_option_translation_change_in_tx(
-                &txn,
+                txn,
                 tenant_id,
                 shipping_option_id,
-                generate_id(),
+                operation_id,
                 &resource_revision,
                 ShippingOptionTranslationChangeLifecycle::from(option.active),
             )
             .await
             .map_err(translation_change_error_to_fulfillment_error)?;
         }
-        txn.commit().await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
-            .await
+        let translation_rows =
+            load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
+        map_shipping_option(option, translation_rows, None, None)
     }
 
     pub async fn get_shipping_option(
@@ -861,6 +907,113 @@ impl FulfillmentService {
         Ok((items, total))
     }
 
+    pub async fn commit_create_label_provider_result(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        operation_id: Uuid,
+        result: &crate::providers::FulfillmentProviderOperationResult,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
+        if operation_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "fulfillment provider operation id must not be nil".to_string(),
+            ));
+        }
+        validate_provider_id(&result.provider_id)?;
+        validate_object_metadata(&result.metadata, "provider result")?;
+        if let Some(reference) = result.external_reference.as_deref() {
+            crate::providers::validate_optional_boundary_text(
+                "external_reference",
+                Some(reference),
+                191,
+            )?;
+        }
+        if let Some(tracking_number) = result.tracking_number.as_deref() {
+            crate::providers::validate_optional_boundary_text(
+                "tracking_number",
+                Some(tracking_number),
+                100,
+            )?;
+        }
+
+        let txn = self.db.begin().await?;
+        let operation = entities::provider_operation::Entity::find_by_id(operation_id)
+            .filter(entities::provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(entities::provider_operation::Column::FulfillmentId.eq(fulfillment_id))
+            .filter(entities::provider_operation::Column::Operation.eq("create_label"))
+            .one(&txn)
+            .await?
+            .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))?;
+
+        if !matches!(
+            operation.status.as_str(),
+            PROVIDER_OPERATION_SUCCEEDED
+                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                | PROVIDER_OPERATION_COMMITTED
+        ) {
+            return Err(FulfillmentError::InvalidTransition {
+                from: operation.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
+        }
+        if operation.provider_id != result.provider_id {
+            return Err(FulfillmentError::ProviderResultInvalid(format!(
+                "create_label provider result does not match the journaled provider"
+            )));
+        }
+
+        let fulfillment = self.load_fulfillment_for_update(&txn, tenant_id, fulfillment_id).await?;
+        if let Some(stored_operation_id) = create_label_provider_operation_id(&fulfillment.metadata)
+            && stored_operation_id != operation_id
+        {
+            return Err(FulfillmentError::InvalidTransition {
+                from: format!("create_label:{stored_operation_id}"),
+                to: format!("create_label:{operation_id}"),
+            });
+        }
+
+        let updated = if create_label_provider_operation_id(&fulfillment.metadata) == Some(operation_id) {
+            fulfillment
+        } else {
+            let carrier_missing = fulfillment
+                .carrier
+                .as_deref()
+                .map(|carrier| carrier.trim().is_empty())
+                .unwrap_or(true);
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let current_metadata = active.metadata.clone().take().unwrap_or_default();
+            active.metadata = Set(prepare_create_label_result_metadata(
+                current_metadata,
+                result,
+                operation_id,
+            )?);
+            if carrier_missing {
+                active.carrier = Set(Some(result.provider_id.clone()));
+            }
+            if let Some(tracking_number) = result
+                .tracking_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                active.tracking_number = Set(Some(tracking_number.to_string()));
+            }
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?
+        };
+
+        let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
+        journal
+            .mark_committed_in_txn(&txn, tenant_id, operation_id)
+            .await?;
+        let response = self
+            .build_fulfillment_response(&txn, tenant_id, updated)
+            .await?;
+        txn.commit().await?;
+        Ok(response)
+    }
+
     pub async fn ship_fulfillment(
         &self,
         tenant_id: Uuid,
@@ -875,7 +1028,7 @@ impl FulfillmentService {
     ///
     /// The public service entrypoint strips caller-supplied provider receipts; only this
     /// crate-internal path can attach the journal-owned receipt to the lifecycle write.
-    pub(crate) async fn ship_fulfillment_with_provider_result(
+    pub async fn ship_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -917,6 +1070,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "ship",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if !matches!(fulfillment.status.as_str(), STATUS_PENDING | STATUS_SHIPPED) {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1260,7 +1428,7 @@ impl FulfillmentService {
     }
 
     /// Apply a provider-backed reship result after the provider operation has been journaled.
-    pub(crate) async fn reship_fulfillment_with_provider_result(
+    pub async fn reship_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -1302,6 +1470,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "reship",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if fulfillment.status != STATUS_DELIVERED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1398,7 +1581,7 @@ impl FulfillmentService {
     }
 
     /// Apply a provider-backed cancellation result after the provider operation has been journaled.
-    pub(crate) async fn cancel_fulfillment_with_provider_result(
+    pub async fn cancel_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -1439,6 +1622,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "cancel",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if fulfillment.status == STATUS_DELIVERED || fulfillment.status == STATUS_CANCELLED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1620,37 +1818,62 @@ impl FulfillmentService {
         active: bool,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         let txn = self.db.begin().await?;
-        let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
-            .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
-            .lock_exclusive()
-            .one(&txn)
-            .await?
-            .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
-
-        if shipping_option.active != active {
-            let mut option: entities::shipping_option::ActiveModel = shipping_option.into();
-            option.active = Set(active);
-            option.updated_at = Set(Utc::now().into());
-            let option = option.update(&txn).await?;
-            let translation_rows =
-                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
-            let resource_revision =
-                shipping_option_translation_resource_revision(&option, &translation_rows);
-            record_shipping_option_translation_change_in_tx(
+        let response = self
+            .set_shipping_option_active_in_txn(
                 &txn,
                 tenant_id,
                 shipping_option_id,
+                active,
                 generate_id(),
+            )
+            .await?;
+        txn.commit().await?;
+        Ok(response)
+    }
+
+    pub(crate) async fn set_shipping_option_active_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        shipping_option_id: Uuid,
+        active: bool,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
+        validate_tenant_id(tenant_id)?;
+        let shipping_option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
+            .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .lock_exclusive()
+            .one(txn)
+            .await?
+            .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
+
+        let option = if shipping_option.active != active {
+            let mut option: entities::shipping_option::ActiveModel = shipping_option.into();
+            option.active = Set(active);
+            option.updated_at = Set(Utc::now().into());
+            let option = option.update(txn).await?;
+            let translation_rows =
+                load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
+            let resource_revision =
+                shipping_option_translation_resource_revision(&option, &translation_rows);
+            record_shipping_option_translation_change_in_tx(
+                txn,
+                tenant_id,
+                shipping_option_id,
+                operation_id,
                 &resource_revision,
                 ShippingOptionTranslationChangeLifecycle::from(active),
             )
             .await
             .map_err(translation_change_error_to_fulfillment_error)?;
-        }
-        txn.commit().await?;
+            option
+        } else {
+            shipping_option
+        };
 
-        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
-            .await
+        let translation_rows =
+            load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
+        map_shipping_option(option, translation_rows, None, None)
     }
 }
 
@@ -1786,6 +2009,75 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
         }
         other => other,
     }
+}
+
+fn create_label_provider_operation_id(metadata: &Value) -> Option<Uuid> {
+    metadata
+        .get("provider_operation")
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .or_else(|| {
+            metadata
+                .get("label")
+                .and_then(|value| value.get("provider_operation_id"))
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+        })
+}
+
+fn prepare_create_label_result_metadata(
+    current: Value,
+    result: &crate::providers::FulfillmentProviderOperationResult,
+    operation_id: Uuid,
+) -> FulfillmentResult<Value> {
+    validate_object_metadata(&current, "fulfillment")?;
+    validate_object_metadata(&result.metadata, "provider result")?;
+    merge_fulfillment_metadata(
+        current,
+        serde_json::json!({
+            "provider_operation": {
+                "id": operation_id,
+                "operation": "create_label",
+            },
+            "label": {
+                "provider_operation_id": operation_id,
+                "provider_id": result.provider_id,
+                "external_reference": result.external_reference,
+                "tracking_number": result.tracking_number,
+                "provider_metadata": result.metadata,
+            }
+        }),
+    )
+}
+
+fn has_matching_provider_operation(
+    metadata: &Value,
+    operation_id: Uuid,
+    operation: &str,
+) -> bool {
+    if operation_id.is_nil() {
+        return false;
+    }
+
+    let Some(provider_operation) = metadata.get("provider_operation").and_then(Value::as_object)
+    else {
+        return false;
+    };
+
+    let Some(stored_id) = provider_operation
+        .get("id")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+    else {
+        return false;
+    };
+
+    stored_id == operation_id
+        && provider_operation
+            .get("operation")
+            .and_then(Value::as_str)
+            == Some(operation)
 }
 
 fn prepare_provider_lifecycle_metadata(
@@ -2885,6 +3177,43 @@ mod tests {
     }
 
     #[test]
+    fn matching_provider_operation_is_replay_safe_for_lifecycle_recovery() {
+        let operation_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "provider_operation": {
+                "id": operation_id,
+                "operation": "ship",
+            }
+        });
+
+        assert!(super::has_matching_provider_operation(
+            &metadata,
+            operation_id,
+            "ship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &metadata,
+            operation_id,
+            "reship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &metadata,
+            Uuid::new_v4(),
+            "ship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &serde_json::json!({
+                "provider_operation": {
+                    "id": "not-a-uuid",
+                    "operation": "ship",
+                }
+            }),
+            operation_id,
+            "ship"
+        ));
+    }
+
+    #[test]
     fn item_progress_validation_rejects_inconsistent_persisted_counters() {
         let now = Utc::now().into();
         let item = entities::fulfillment_item::Model {
@@ -3432,6 +3761,85 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_label_result_metadata_replaces_reserved_receipt_with_journal_operation() {
+        let caller_operation_id = Uuid::new_v4();
+        let journal_operation_id = Uuid::new_v4();
+        let result = crate::providers::FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: Some("label-1".to_string()),
+            tracking_number: Some("track-1".to_string()),
+            metadata: serde_json::json!({
+                "provider_fact": true,
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "ship"
+                }
+            }),
+        };
+
+        let metadata = super::prepare_create_label_result_metadata(
+            serde_json::json!({
+                "delivery_group": {"seller_id": "seller-1"},
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "cancel"
+                }
+            }),
+            &result,
+            journal_operation_id,
+        )
+        .expect("create-label result metadata should normalize");
+
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("id"))
+                .and_then(Value::as_str),
+            Some(journal_operation_id.to_string().as_str())
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("operation"))
+                .and_then(Value::as_str),
+            Some("create_label")
+        );
+        assert_eq!(
+            metadata
+                .get("delivery_group")
+                .and_then(|value| value.get("seller_id"))
+                .and_then(Value::as_str),
+            Some("seller-1")
+        );
+        assert_eq!(
+            metadata
+                .get("label")
+                .and_then(|value| value.get("tracking_number"))
+                .and_then(Value::as_str),
+            Some("track-1")
+        );
+    }
+
+    #[test]
+    fn create_label_result_metadata_rejects_non_object_provider_metadata() {
+        let result = crate::providers::FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: None,
+            metadata: serde_json::json!(["opaque"]),
+        };
+
+        assert!(
+            super::prepare_create_label_result_metadata(
+                serde_json::json!({"customer_note": "keep"}),
+                &result,
+                Uuid::new_v4(),
+            )
+            .is_err()
+        );
     }
 
     #[test]

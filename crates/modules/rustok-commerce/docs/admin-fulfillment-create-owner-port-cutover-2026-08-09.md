@@ -63,29 +63,25 @@ The owner does not import Commerce or Order.
 
 ## Create-label replay identity
 
-The durable provider operation identity remains exactly:
+The provider operation record remains the durable external create-label execution anchor. Its `fulfillment_id`
+points to the same local Fulfillment created in the owner transaction, while
+`(tenant_id, provider_id, idempotency_key)` is the durable provider-operation request namespace. The caller-owned
+`Idempotency-Key` is forwarded unchanged to provider execution.
 
-```text
-fulfillment:{fulfillment_id}:create_label
-```
+The local Fulfillment row and its `create_label` provider operation are inserted in one owner transaction before
+external provider execution begins. A committed pending operation therefore always has its local anchor; a
+transaction rollback removes both. Existing committed/provider-succeeded journal rows are adopted rather than
+re-executed, and reconciliation rows with a valid persisted provider result remain adoptable.
 
-The provider operation kind remains `create_label`, and provider request metadata retains:
+Provider-result serialization failure is hardened in the owner path: it explicitly records
+reconciliation-required state instead of leaving the journal in an unresolved executing state. This does not
+change the public 409 reconciliation envelope.
 
-```text
-commerce_orchestration.operation = "create_label"
-```
+## Transport write identity
 
-Existing committed/provider-succeeded journal rows are adopted rather than re-executed. Reconciliation rows with a valid persisted provider result remain adoptable; unresolved/invalid provider outcome state returns the existing reconciliation-required public family.
-
-Provider-result serialization failure is hardened in the owner path: it explicitly records reconciliation-required state instead of leaving the journal in an unresolved executing state. This does not change the public 409 reconciliation envelope.
-
-## Transport write identity is not a durable create receipt
-
-The mounted route supplies a stable input-sensitive `PortContext` idempotency key based on the public create request and the existing dual FNV-1a offset pattern. This satisfies generic write-port admission and gives host-injected adapters stable transport identity.
-
-It is **not** a newly claimed durable manual-fulfillment creation receipt. The in-process durable replay boundary in this slice remains the Fulfillment-owned create-label provider journal after the fulfillment row has been created.
-
-Retained lost-response/restart evidence for the whole create command is still required before claiming end-to-end durable command idempotency.
+The mounted route supplies the caller-owned `Idempotency-Key` through `PortContext`. The owner uses it as the
+provider-operation idempotency identity; no payload-derived or `fulfillment_id`-derived synthetic provider key
+is generated.
 
 ## Runtime composition
 

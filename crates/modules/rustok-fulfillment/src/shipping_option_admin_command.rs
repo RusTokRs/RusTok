@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
-use sea_orm::DatabaseConnection;
+use rustok_outbox::idempotency::{self, Admission};
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -98,6 +99,14 @@ impl ShippingOptionAdminCommandRuntime {
     }
 }
 
+#[derive(Serialize)]
+enum ShippingOptionAdminCommand {
+    Create(CreateAdminShippingOptionRequest),
+    Update(UpdateAdminShippingOptionRequest),
+    Deactivate(DeactivateAdminShippingOptionRequest),
+    Reactivate(ReactivateAdminShippingOptionRequest),
+}
+
 #[async_trait]
 impl ShippingOptionAdminCommandPort for InProcessShippingOptionAdminCommandPort {
     async fn create_shipping_option(
@@ -105,13 +114,12 @@ impl ShippingOptionAdminCommandPort for InProcessShippingOptionAdminCommandPort 
         context: PortContext,
         request: CreateAdminShippingOptionRequest,
     ) -> Result<ShippingOptionResponse, PortError> {
-        const OPERATION: &str = "create_admin_shipping_option";
-        require_write_admission(&context, OPERATION)?;
-        let tenant_id = parse_tenant_id(&context, OPERATION)?;
-        self.service
-            .create_shipping_option(tenant_id, request.input)
-            .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
+        self.execute_idempotent_command(
+            &context,
+            "create_admin_shipping_option",
+            ShippingOptionAdminCommand::Create(request),
+        )
+        .await
     }
 
     async fn update_shipping_option(
@@ -119,13 +127,12 @@ impl ShippingOptionAdminCommandPort for InProcessShippingOptionAdminCommandPort 
         context: PortContext,
         request: UpdateAdminShippingOptionRequest,
     ) -> Result<ShippingOptionResponse, PortError> {
-        const OPERATION: &str = "update_admin_shipping_option";
-        require_write_admission(&context, OPERATION)?;
-        let tenant_id = parse_tenant_id(&context, OPERATION)?;
-        self.service
-            .update_shipping_option(tenant_id, request.shipping_option_id, request.input)
-            .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
+        self.execute_idempotent_command(
+            &context,
+            "update_admin_shipping_option",
+            ShippingOptionAdminCommand::Update(request),
+        )
+        .await
     }
 
     async fn deactivate_shipping_option(
@@ -133,13 +140,12 @@ impl ShippingOptionAdminCommandPort for InProcessShippingOptionAdminCommandPort 
         context: PortContext,
         request: DeactivateAdminShippingOptionRequest,
     ) -> Result<ShippingOptionResponse, PortError> {
-        const OPERATION: &str = "deactivate_admin_shipping_option";
-        require_write_admission(&context, OPERATION)?;
-        let tenant_id = parse_tenant_id(&context, OPERATION)?;
-        self.service
-            .deactivate_shipping_option(tenant_id, request.shipping_option_id)
-            .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
+        self.execute_idempotent_command(
+            &context,
+            "deactivate_admin_shipping_option",
+            ShippingOptionAdminCommand::Deactivate(request),
+        )
+        .await
     }
 
     async fn reactivate_shipping_option(
@@ -147,13 +153,134 @@ impl ShippingOptionAdminCommandPort for InProcessShippingOptionAdminCommandPort 
         context: PortContext,
         request: ReactivateAdminShippingOptionRequest,
     ) -> Result<ShippingOptionResponse, PortError> {
-        const OPERATION: &str = "reactivate_admin_shipping_option";
-        require_write_admission(&context, OPERATION)?;
-        let tenant_id = parse_tenant_id(&context, OPERATION)?;
-        self.service
-            .reactivate_shipping_option(tenant_id, request.shipping_option_id)
-            .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
+        self.execute_idempotent_command(
+            &context,
+            "reactivate_admin_shipping_option",
+            ShippingOptionAdminCommand::Reactivate(request),
+        )
+        .await
+    }
+}
+
+impl InProcessShippingOptionAdminCommandPort {
+    async fn execute_idempotent_command(
+        &self,
+        context: &PortContext,
+        operation: &'static str,
+        command: ShippingOptionAdminCommand,
+    ) -> Result<ShippingOptionResponse, PortError> {
+        require_write_admission(context, operation)?;
+        let tenant_id = parse_tenant_id(context, operation)?;
+        let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
+
+        let lease = match idempotency::admit(
+            self.service.database(),
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
+            "fulfillment",
+            idempotency_key,
+            operation,
+            &command,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(value) => {
+                return serde_json::from_value(value).map_err(|_| {
+                    PortError::invariant_violation(
+                        "fulfillment.shipping_option_admin_receipt_corrupt",
+                        "stored shipping-option admin command receipt is invalid",
+                    )
+                });
+            }
+            Admission::ReplayError(error) => return Err(error),
+        };
+
+        let result = async {
+            let txn = self.service.database().begin().await.map_err(|error| {
+                map_fulfillment_error(context, operation, FulfillmentError::Database(error))
+            })?;
+
+            let response = match command {
+                ShippingOptionAdminCommand::Create(request) => {
+                    self.service
+                        .create_shipping_option_in_txn(
+                            &txn,
+                            tenant_id,
+                            request.input,
+                            lease.operation_id,
+                        )
+                        .await
+                }
+                ShippingOptionAdminCommand::Update(request) => {
+                    self.service
+                        .update_shipping_option_in_txn(
+                            &txn,
+                            tenant_id,
+                            request.shipping_option_id,
+                            request.input,
+                            lease.operation_id,
+                        )
+                        .await
+                }
+                ShippingOptionAdminCommand::Deactivate(request) => {
+                    self.service
+                        .set_shipping_option_active_in_txn(
+                            &txn,
+                            tenant_id,
+                            request.shipping_option_id,
+                            false,
+                            lease.operation_id,
+                        )
+                        .await
+                }
+                ShippingOptionAdminCommand::Reactivate(request) => {
+                    self.service
+                        .set_shipping_option_active_in_txn(
+                            &txn,
+                            tenant_id,
+                            request.shipping_option_id,
+                            true,
+                            lease.operation_id,
+                        )
+                        .await
+                }
+            }
+            .map_err(|error| map_fulfillment_error(context, operation, error))?;
+
+            idempotency::complete(&txn, lease, &response).await?;
+
+            txn.commit().await.map_err(|error| {
+                map_fulfillment_error(context, operation, FulfillmentError::Database(error))
+            })?;
+
+            Ok(response)
+        }
+        .await;
+
+        if let Err(error) = &result {
+            fail_receipt(&self.service, lease, error, context, operation).await;
+        }
+        result
+    }
+}
+
+async fn fail_receipt(
+    service: &FulfillmentService,
+    lease: idempotency::Lease,
+    error: &PortError,
+    context: &PortContext,
+    operation: &'static str,
+) {
+    if let Err(receipt_error) = idempotency::fail(service.database(), lease, error).await {
+        tracing::error!(
+            owner = "rustok_fulfillment",
+            operation,
+            correlation_id = %context.correlation_id,
+            tenant_id_length = context.tenant_id.chars().count(),
+            actor_id_length = context.actor.id.chars().count(),
+            receipt_error = %receipt_error.message,
+            "failed to persist shipping-option admin command failure receipt"
+        );
     }
 }
 

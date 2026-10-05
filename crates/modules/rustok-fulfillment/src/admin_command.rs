@@ -647,7 +647,7 @@ impl InProcessFulfillmentAdminCommandPort {
         let provider_result = match provider_result {
             Ok(result) => result,
             Err(FulfillmentError::ProviderResultInvalid(reason)) => {
-                if self
+                if let Err(checkpoint_error) = self
                     .operation_journal
                     .mark_execution_reconciliation_required(
                         tenant_id,
@@ -659,8 +659,16 @@ impl InProcessFulfillmentAdminCommandPort {
                         ),
                     )
                     .await
-                    .is_err()
                 {
+                    tracing::error!(
+                        boundary = ADMIN_COMMAND_BOUNDARY,
+                        owner_operation,
+                        operation,
+                        provider_operation_id_non_nil = !journal_operation.id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "fulfillment provider invalid-result reconciliation could not be checkpointed"
+                    );
                     return Err(PortError::unavailable(
                         "fulfillment.provider_journal_failed",
                         "fulfillment provider operation could not be safely checkpointed",
@@ -672,7 +680,7 @@ impl InProcessFulfillmentAdminCommandPort {
                 ));
             }
             Err(error) => {
-                if self
+                if let Err(checkpoint_error) = self
                     .operation_journal
                     .mark_provider_error(
                         tenant_id,
@@ -680,8 +688,16 @@ impl InProcessFulfillmentAdminCommandPort {
                         "fulfillment.provider_operation_failed",
                     )
                     .await
-                    .is_err()
                 {
+                    tracing::error!(
+                        boundary = ADMIN_COMMAND_BOUNDARY,
+                        owner_operation,
+                        operation,
+                        provider_operation_id_non_nil = !journal_operation.id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "fulfillment provider-error checkpoint could not be persisted"
+                    );
                     return Err(PortError::unavailable(
                         "fulfillment.provider_journal_failed",
                         "fulfillment provider operation could not be safely checkpointed",
@@ -776,20 +792,39 @@ impl InProcessFulfillmentAdminCommandPort {
         if current.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(());
         }
-        if self
+        if let Err(commit_error) = self
             .operation_journal
             .mark_committed(tenant_id, operation_id)
             .await
-            .is_err()
         {
-            let _ = self
+            tracing::error!(
+                boundary = ADMIN_COMMAND_BOUNDARY,
+                owner_operation,
+                operation,
+                provider_operation_id_non_nil = !operation_id.is_nil(),
+                commit_failed = true,
+                internal_code = %map_fulfillment_error_without_context(commit_error).code,
+                "fulfillment provider operation journal commit failed"
+            );
+            if let Err(checkpoint_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation_id,
                     format!("fulfillment.local_{operation}_journal_commit_failed"),
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    boundary = ADMIN_COMMAND_BOUNDARY,
+                    owner_operation,
+                    operation,
+                    provider_operation_id_non_nil = !operation_id.is_nil(),
+                    checkpoint_failed = true,
+                    internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                    "fulfillment provider journal reconciliation marker could not be persisted"
+                );
+            }
             return Err(PortError::conflict(
                 "fulfillment.reconciliation_required",
                 "fulfillment operation completed but its journal could not be committed",

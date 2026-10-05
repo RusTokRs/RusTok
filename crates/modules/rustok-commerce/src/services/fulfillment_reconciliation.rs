@@ -75,7 +75,11 @@ impl FulfillmentReconciliationService {
                     "fulfillment provider operation {operation_id} contains invalid request_payload: {error}"
                 ))
             })?;
-        if request.tenant_id != tenant_id || request.fulfillment_id != operation.fulfillment_id {
+        if request.tenant_id != tenant_id
+            || request.fulfillment_id != operation.fulfillment_id
+            || request.idempotency_key.as_deref().map(str::trim)
+                != Some(operation.idempotency_key.as_str())
+        {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment provider operation {operation_id} request identity does not match the journal"
             )));
@@ -105,12 +109,7 @@ impl FulfillmentReconciliationService {
                     "fulfillment provider operation {operation_id} lacks commerce_orchestration metadata"
                 ))
             })?;
-        let local_metadata = local_commit_metadata(
-            request.metadata.clone(),
-            provider_result.metadata,
-            operation_id,
-            operation.operation.as_str(),
-        );
+        
 
         let updated =
             match operation.operation.as_str() {
@@ -121,10 +120,16 @@ impl FulfillmentReconciliationService {
                             required_string(orchestration, "tracking_number", operation_id)?,
                         ),
                         items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .ship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .ship_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "reship" => {
@@ -134,24 +139,58 @@ impl FulfillmentReconciliationService {
                             required_string(orchestration, "tracking_number", operation_id)?,
                         ),
                         items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .reship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .reship_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "cancel" => {
                     let input = CancelFulfillmentInput {
                         reason: optional_field(orchestration, "reason", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .cancel_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .cancel_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "create_label" => {
-                    journal.mark_committed(tenant_id, operation_id).await?;
-                    return Ok(current);
+                    let provider_result: FulfillmentProviderOperationResult = operation
+                        .provider_result
+                        .clone()
+                        .ok_or_else(|| {
+                            FulfillmentOrchestrationError::Validation(format!(
+                                "fulfillment provider operation {operation_id} has no persisted provider result for local create-label reconciliation"
+                            ))
+                        })
+                        .and_then(|value| {
+                            serde_json::from_value(value).map_err(|error| {
+                                FulfillmentOrchestrationError::Validation(format!(
+                                    "fulfillment provider operation {operation_id} contains invalid provider_result: {error}"
+                                ))
+                            })
+                        })?;
+                    return service
+                        .commit_create_label_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            operation_id,
+                            &provider_result,
+                        )
+                        .await
+                        .map_err(Into::into);
                 }
                 other => {
                     return Err(FulfillmentOrchestrationError::Validation(format!(
@@ -211,34 +250,6 @@ fn metadata_operation_id(metadata: &Value) -> Option<Uuid> {
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn local_commit_metadata(
-    input_metadata: Value,
-    provider_metadata: Value,
-    operation_id: Uuid,
-    operation: &str,
-) -> Value {
-    merge_metadata(
-        merge_metadata(input_metadata, provider_metadata),
-        serde_json::json!({
-            "provider_operation": {
-                "id": operation_id,
-                "operation": operation
-            }
-        }),
-    )
-}
-
-fn merge_metadata(current: Value, patch: Value) -> Value {
-    match (current, patch) {
-        (Value::Object(mut current), Value::Object(patch)) => {
-            for (key, value) in patch {
-                current.insert(key, value);
-            }
-            Value::Object(current)
-        }
-        (_, patch) => patch,
-    }
-}
 
 #[cfg(test)]
 mod tests {

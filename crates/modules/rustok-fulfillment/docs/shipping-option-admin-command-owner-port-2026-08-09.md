@@ -23,10 +23,12 @@ an explicit in-process adapter for hosts that select the built-in Fulfillment im
 Every command requires the canonical write `PortCallPolicy`. The tenant UUID is parsed only from the
 admitted `PortContext`; the in-process adapter does not accept a separate transport tenant argument.
 
-This capability does **not** claim durable idempotent replay for shipping-option create/update/state
-writes. A caller or host may carry an idempotency identity in `PortContext`, but this source slice does
-not consume it as an owner receipt. Durable replay semantics must be added explicitly before any
-exactly-once claim is made.
+All four Shipping Option admin commands now use durable owner-operation replay. The caller-owned `Idempotency-Key`
+ is admitted through the shared tenant-scoped receipt ledger. Each command mutation and any required translation
+ change evidence commit together with the completed receipt in one transaction. A completed key replays the stored
+ `ShippingOptionResponse`; reusing the key with a changed request or a different command operation is rejected by
+ the durable request hash/operation binding. State-setting commands replay their original response instead of
+ performing the mutation a second time.
 
 The in-process implementation keeps `FulfillmentService` construction inside `rustok-fulfillment`.
 Shipping-option validation, persistence, activation state, translations, provider id, metadata, and
@@ -68,7 +70,8 @@ Fulfillment concrete services behind host-composed owner ports` remains open.
 
 ## Validation status
 
-Per maintainer instruction, no tests, Cargo commands, Node verifiers, formatter, mounted REST
+The four-command durable idempotency path is covered by a focused regression test and source verifier; scoped
+ runtime/build execution remains maintainer/CI-owned. No Cargo commands, Node verifiers, formatter, mounted REST
 scenarios, workflows, CI reruns, database scenarios, restart scenarios, or remote-adapter scenarios
 were executed for this slice. The accompanying verifier is source-only evidence for maintainer
 execution.
