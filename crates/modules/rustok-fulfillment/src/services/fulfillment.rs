@@ -642,8 +642,10 @@ impl FulfillmentService {
         Ok(())
     }
 
-    /// Read one fulfillment projection from one repeatable-read, read-only snapshot.
+    /// Read one fulfillment projection from one database transaction snapshot.
     ///
+    /// PostgreSQL uses repeatable-read/read-only settings; SQLite keeps the snapshot
+    /// within the transaction because its driver ignores those configuration knobs.
     /// Fulfillment state and its items are persisted in separate tables but form one
     /// response aggregate. The snapshot prevents a concurrent lifecycle commit from
     /// producing a parent/item combination that never existed atomically.
