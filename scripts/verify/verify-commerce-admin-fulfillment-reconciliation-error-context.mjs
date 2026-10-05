@@ -11,6 +11,10 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 
 const source = read('crates/modules/rustok-commerce/src/controllers/reconciliation.rs');
+const labelRecovery = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_create_label_recovery.rs',
+);
+
 const openapi = read('crates/modules/rustok-commerce/src/openapi.rs');
 const failures = [];
 
@@ -36,6 +40,25 @@ const requireBefore = (content, first, second, label) => {
     failures.push(`${label}: ${first} must precede ${second}`);
   }
 };
+
+
+for (const [value, label] of [
+  ['let _ = journal', 'create-label recovery silent reconciliation checkpoint suppression'],
+  ['mark_reconciliation_required(', 'create-label recovery reconciliation checkpoint'],
+  ['mark_execution_reconciliation_required(', 'create-label recovery execution quarantine'],
+  ['request.idempotency_key.as_deref().map(str::trim)', 'create-label recovery request idempotency binding'],
+]) requireText(labelRecovery, value, label);
+
+const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(operation.request_payload.clone())');
+const claimExecution = labelRecovery.indexOf('journal');
+const providerExecute = labelRecovery.indexOf('.execute_create_label(operation.provider_id.as_str(), request)');
+if (requestDeserialize < 0 || providerExecute < 0 || requestDeserialize > providerExecute) {
+  failures.push('create-label recovery request payload must be validated before provider execution');
+}
+const claimMarker = labelRecovery.indexOf('.claim_execution(tenant_id, operation_id)');
+if (claimMarker >= 0 && requestDeserialize > claimMarker) {
+  failures.push('create-label recovery request payload must be validated before claim_execution');
+}
 
 for (const [value, label] of [
   ['Json<Vec<provider_operation::Model>>', 'raw provider-operation list response'],
