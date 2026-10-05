@@ -102,6 +102,19 @@ if (
 ) {
   failures.push('execution contract request policy mismatch');
 }
+const responseReaderChecks = [
+  ['async function readResponseBytes(response, operation)', 'bounded response reader'],
+  ['response.body.getReader()', 'streaming response reader'],
+  ['await reader.read()', 'incremental response reads'],
+  ['await reader.cancel()', 'oversized response cancellation'],
+  ['reader.releaseLock()', 'response reader release'],
+  ['const bytes = new Uint8Array(totalBytes)', 'bounded response assembly'],
+];
+for (const [value, label] of responseReaderChecks) {
+  requireText(runner, value, label);
+}
+forbidText(runner, 'response.arrayBuffer()', 'unbounded full-response buffering');
+
 for (const [value, label] of [
   [contract.retained_boundary?.bearer_token_retained, 'bearer token retention'],
   [contract.retained_boundary?.raw_response_bodies_retained, 'raw response retention'],
