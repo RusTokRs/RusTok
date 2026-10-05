@@ -244,6 +244,7 @@ disable/reconciliation matrix in
 - [x] Keep storefront active listing and complete admin listing as separate traits.
 - [x] Preserve requested and tenant-default locale arguments.
 - [x] Require read policy and parse tenant identity from `PortContext`.
+- [x] Enforce the declared read deadline with a wall-clock timeout around all three in-process lifecycle read operations; map expiry to typed `Timeout`.
 - [x] Map all current `FulfillmentError` variants to stable `PortError` values.
 - [x] Export canonical root in-process factories.
 - [x] Remove direct service construction from mounted GraphQL shipping-option
@@ -279,6 +280,7 @@ disable/reconciliation matrix in
   and latest-by-order reads.
 - [x] Preserve the existing `FulfillmentResponse`, list filters, pagination total,
   latest-created ordering, and optional latest-by-order result.
+- [x] Batch-load fulfillment items for multi-row lifecycle reads while preserving fulfillment row ordering and item ordering.
 - [x] Require read policy and parse tenant identity from `PortContext`.
 - [x] Map every current `FulfillmentError` variant to stable owner `PortError`
   values without owner-message control flow.

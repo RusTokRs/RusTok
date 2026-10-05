@@ -4514,6 +4514,66 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Status: FS-22.06.109 complete and integrated; compile/runtime, restart, and remote-adapter evidence remain unvalidated.
 - Next primary module iteration: continue the next single Fulfillment storefront owner boundary audit.
 
+
+
+
+
+
+### FS-22.06.115 Assessment — lifecycle read contract documentation sync
+
+- Base: 5ae84344b91cbd5725af7d68f4dac4752137a19c; post-merge main is 9fb7e6a5bac72204393a678df1b96868fb624f28.
+- Scope: the FulfillmentReadPort contract document only; no runtime behavior changes.
+- Finding FULFILLMENT-22.06.115-01: `docs/fulfillment-lifecycle-read-port.md` lagged behind the already-merged source contract by describing the deadline only as a context requirement and omitting the new multi-row batch materialization invariant.
+- Remediation: documented wall-clock deadline enforcement and typed `fulfillment.deadline_exceeded`, plus batch item materialization/order-preservation semantics for multi-row reads. Explicitly retained the distinction that runtime deadline/failure/performance evidence is still unproven until maintainer-owned execution.
+- Re-audit: documentation now matches the source evidence/plan for deadline and batch behavior; no source files changed in this iteration.
+- Integration: squash-merged as `9fb7e6a5bac72204393a678df1b96868fb624f28` via PR #4508.
+- Status: documentation contract reconciled; no Cargo/test/runtime execution claimed.
+- Next primary iteration: continue Fulfillment owner read-path audit with fresh filtering/index/consistency review, then move to the remaining maintainer-owned runtime evidence gates.
+### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
+
+- Base: b093d073de50528a576aca07474a595a668bc8c8; fresh main was refreshed before implementation and post-merge main is 5d0f4dc18698a492dc9c13b4bd70484671b7407c.
+- Primary scope: one owner production module, `crates/modules/rustok-fulfillment/src/services/fulfillment.rs`, focused on multi-row lifecycle projection materialization.
+- Confirmed finding FULFILLMENT-22.06.114-01: `list_fulfillments`, `list_by_order`, and `list_checkout_fulfillments` loaded `fulfillment_items` by calling the single-row `build_fulfillment_response` once per parent row. With the public list page capped at 100, this created up to 100 sequential item queries after the parent query; the same pattern also affected unbounded internal multi-row readers.
+- Remediation: added one batch materialization helper that fetches all item rows for the selected fulfillment IDs in one query, groups them by `fulfillment_id`, preserves item ordering by `(created_at, id)`, and emits responses in the original parent-row order. Single-row `get_fulfillment`/latest materialization remains on the dedicated single-row helper.
+- Re-audit: tenant safety remains anchored in the parent fulfillment selection and the existing fulfillment-item foreign key; no item data is fetched by tenantless caller-supplied IDs. Parent ordering from each caller is preserved, including checkout identity ordering and lifecycle list ordering.
+- Verifier/evidence: lifecycle source verifier now reads `services/fulfillment.rs` and requires the batch helper, `IN` query, deterministic item ordering, and its use in the lifecycle list; evidence records batch item materialization and order preservation.
+- Integration: squash-merged as `5d0f4dc18698a492dc9c13b4bd70484671b7407c` via PR #4506.
+- Status: source remediation complete; Cargo/test/runtime performance evidence remains maintainer-owned and unrun. The improvement is source-proven, not benchmark-proven.
+- Next primary module iteration: continue the same owner service read path with a fresh second pass over filtering/index semantics and consistency of parent/item reads; do not promote runtime performance evidence without an actual maintainer run.
+### FS-22.06.113 Assessment — mounted Fulfillment GraphQL pagination overflow
+
+- Base: 9919d553e597cb5c34e63a97bba20c070beb4fc8; fresh main was refreshed before implementation and post-merge main is 95cb2e4e666e923e123de7b918ff9e62785e139b.
+- Primary scope: one mounted Commerce GraphQL fulfillment lifecycle-read consumer, `fulfillments`, plus its focused source verifier.
+- Confirmed finding FULFILLMENT-22.06.113-01: the GraphQL pagination envelope computed `has_next` as `page * per_page < total`. GraphQL accepts `u64` page values, so sufficiently large page values could overflow that multiplication (or panic under checked arithmetic) and produce an incorrect pagination flag even though the owner read correctly uses saturating offset arithmetic.
+- Remediation: compute `has_next` as `page < total.div_ceil(per_page)`. Because `per_page` is already clamped to 1..100, this preserves normal pagination semantics and removes the multiplication overflow path.
+- Re-audit: the change is isolated to the fulfillment list block; the lookup/latest/order consumers are unchanged; tenant binding, host-selected facade/runtime, typed error mapping, and two-second owner deadline remain intact.
+- Verifier: `verify-commerce-graphql-query-fulfillment-context.mjs` now requires the overflow-safe expression specifically in the isolated fulfillment list query; the verifier source was parser-checked.
+- Integration: squash-merged as `95cb2e4e666e923e123de7b918ff9e62785e139b` via PR #4504.
+- Status: source remediation complete; Rust/Cargo/runtime execution remains maintainer-owned and unrun.
+- Next primary module iteration: continue the same Fulfillment lifecycle-read audit with another fresh second pass over projection materialization/error semantics; mounted transport parity and runtime failure/restart/remote evidence remain separate open gates.
+### FS-22.06.112 Assessment — FulfillmentReadPort deadline enforcement
+
+- Base: f3e2bc9126848eacc49210726f12041910284eaa; fresh main was refreshed before implementation and the post-merge main is `643654d865fd9e0c12ee1d1b7a65c4eadb958fb3`.
+- Primary scope: one production owner module, `crates/modules/rustok-fulfillment/src/fulfillment_read.rs`, covering all three lifecycle projection read operations.
+- Confirmed finding FULFILLMENT-22.06.112-01: `PortContext::require_policy(PortCallPolicy::read())` required only that a non-zero `deadline_ms` be declared; the in-process Fulfillment read adapter did not enforce that duration around its database/response-assembly future. Mounted GraphQL and admin REST contexts could therefore exceed their declared two-second read budget when storage or projection assembly stalled.
+- Remediation: all three owner read operations now execute through one `tokio::time::timeout` helper using `context.deadline_ms`; expiry returns the typed `PortErrorKind::Timeout`, which remains retryable with stable code `fulfillment.deadline_exceeded`; existing owner-error redaction/mapping is unchanged. `tokio` is a runtime dependency of the fulfillment crate.
+- Re-audit: the helper is invoked exactly once by each of the three read operations, timeout diagnostics retain only bounded context/request facts, the existing tenant parser and owner error map remain intact, and GraphQL/admin REST public timeout envelopes continue to map through their existing typed policies.
+- Verifier/evidence: the lifecycle read verifier now requires the wall-clock timeout helper and three call sites; source evidence records in-process runtime deadline enforcement while keeping runtime parity/deadline-failure execution evidence unproven. The verifier was parser-checked after a second-pass regex correction.
+- Integration: squash-merged as `643654d865fd9e0c12ee1d1b7a65c4eadb958fb3` via PR #4502.
+- Status: source remediation complete; maintainer-owned Cargo/test/runtime execution remains unrun and must not be inferred from source verification.
+- Next primary module iteration: continue the same Fulfillment lifecycle-read module with a fresh second-pass audit of request validation/filter semantics and projection materialization, while keeping mounted parity/failure/restart/remote evidence separate.
+
+### FS-22.06.111 Assessment — lifecycle read verifier path reconciliation
+
+- Base: f2c37f45852bc58e343624af6647c036a3462452; fresh main was refreshed after PR #4500 merge.
+- Primary scope: one Fulfillment evidence verifier boundary for the already-cutover lifecycle read consumers.
+- Confirmed finding FULFILLMENT-22.06.111-01: `verify-fulfillment-lifecycle-read-port.mjs` still referenced the removed `crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs` path, while the mounted admin REST read consumer now lives in `fulfillments_owner_commands.rs`. The guard therefore could not execute against the current source tree.
+- Remediation: updated the verifier to read `fulfillments_owner_commands.rs`; no production runtime behavior changed.
+- Re-audit: current main contains the new controller path, the verifier references it exactly, and its source inventory remains limited to the same lifecycle read boundary.
+- Integration: squash-merged as `f2c37f45852bc58e343624af6647c036a3462452` via PR #4500.
+- Status: verifier path reconciliation complete; no runtime/test execution was claimed.
+- Next primary module iteration: continue the same Fulfillment owner lifecycle-read module with actual deadline enforcement/rejection semantics; transport parity/failure harness execution remains maintainer-environment evidence.
+
 ### FS-22.06.110 Assessment — mounted Commerce fulfillment GraphQL tenant binding
 
 - Base: d7f2d33bdba95b7b3c88c2a91d1e172f05e0ce71; fresh main was re-read before implementation.
