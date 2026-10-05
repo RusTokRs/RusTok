@@ -14,7 +14,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::services::is_post_visible_for_channel;
-use crate::{BlogError, PostService};
+use crate::{BlogError, CategoryService, PostService, TagService};
 
 use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
@@ -232,6 +232,109 @@ impl BlogQuery {
         Ok(GqlPostList {
             items,
             total: result.total,
+        })
+    }
+
+    async fn blog_category(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlBlogCategory>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_blog_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let category = service
+            .get(tenant_id, request_security_context(ctx), id, &locale)
+            .await;
+
+        match category {
+            Ok(cat) => Ok(Some(cat.into())),
+            Err(BlogError::CategoryNotFound(_)) => Ok(None),
+            Err(BlogError::Forbidden(_)) if is_public_request(ctx) => Ok(None),
+            Err(err) => Err(crate::error::public::to_graphql_error(err)),
+        }
+    }
+
+    async fn blog_categories(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<BlogCategoriesFilter>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBlogCategoryList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_blog_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
+
+        let filter = filter.unwrap_or_default();
+        let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(100).clamp(1, 100);
+
+        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let (items, total) = service
+            .list(
+                tenant_id,
+                request_security_context(ctx),
+                crate::dto::ListCategoriesFilter {
+                    locale: Some(locale),
+                    page,
+                    per_page,
+                },
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(GqlBlogCategoryList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+        })
+    }
+
+    async fn blog_tags(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<BlogTagsFilter>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBlogTagList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_blog_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
+
+        let filter = filter.unwrap_or_default();
+        let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(50).clamp(1, 100);
+
+        let service = TagService::new(db.clone());
+        let (items, total) = service
+            .list_tags(
+                tenant_id,
+                request_security_context(ctx),
+                crate::dto::ListTagsFilter {
+                    locale: Some(locale),
+                    page,
+                    per_page,
+                },
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(GqlBlogTagList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
         })
     }
 }

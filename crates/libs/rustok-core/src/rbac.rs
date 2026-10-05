@@ -529,6 +529,8 @@ impl SecurityContext {
             Permission::BLOG_POSTS_LIST,
             Permission::BLOG_CATEGORIES_READ,
             Permission::BLOG_CATEGORIES_LIST,
+            Permission::TAGS_READ,
+            Permission::TAGS_LIST,
             Permission::PAGES_READ,
             Permission::PAGES_LIST,
             Permission::NODES_READ,

@@ -356,6 +356,113 @@ impl BlogMutation {
 
         Ok(true)
     }
+
+    async fn create_blog_category(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateBlogCategoryInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_CATEGORIES_CREATE],
+            "Permission denied: blog_categories:create required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = runtime.category_service(db.clone(), event_bus.clone());
+        let category_id = service
+            .create(
+                tenant_id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                input.into(),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(category_id)
+    }
+
+    async fn update_blog_category(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateBlogCategoryInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBlogCategory> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_CATEGORIES_UPDATE],
+            "Permission denied: blog_categories:update required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = runtime.category_service(db.clone(), event_bus.clone());
+        let updated = service
+            .update(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                input.into(),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(updated.into())
+    }
+
+    async fn delete_blog_category(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_CATEGORIES_DELETE],
+            "Permission denied: blog_categories:delete required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        let service = runtime.category_service(db.clone(), event_bus.clone());
+        service
+            .delete(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+            )
+            .await
+            .map_err(crate::error::public::to_graphql_error)?;
+
+        Ok(true)
+    }
 }
 
 fn mutation_tenant_id(

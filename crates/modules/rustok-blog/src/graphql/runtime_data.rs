@@ -5,7 +5,9 @@ use rustok_comments_api::CommentsThreadPort;
 use rustok_profiles_api::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
-use crate::{CommentService, PublicCommentsSnapshotStore};
+use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
+
+use crate::{CategoryService, CommentService, PublicCommentsSnapshotStore};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
@@ -20,6 +22,7 @@ pub struct BlogGraphqlRuntimeData {
     settings_reader: Option<SharedStaticModuleSettingsReader>,
     public_comments_snapshot_store: Option<Arc<dyn PublicCommentsSnapshotStore>>,
     profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
+    category_delete_cleanup: Option<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>,
 }
 
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
@@ -28,6 +31,7 @@ pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRu
         settings_reader: inputs.shared_get::<SharedStaticModuleSettingsReader>(),
         public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
         profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
+        category_delete_cleanup: inputs.shared_get::<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>(),
     })
 }
 
@@ -38,6 +42,18 @@ impl BlogGraphqlRuntimeData {
             self.comments_thread_port.clone(),
             self.settings_reader.clone(),
         )
+    }
+
+    pub(crate) fn category_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> CategoryService {
+        let mut service = CategoryService::new(db, event_bus);
+        if let Some(cleanup) = self.category_delete_cleanup.clone() {
+            service = service.with_category_delete_cleanup(cleanup);
+        }
+        service
     }
 
     pub(crate) fn public_comments_snapshot_store(
