@@ -27,6 +27,8 @@ const STATUS_CANCELLED: &str = "cancelled";
 const STATUS_REFUNDED: &str = "refunded";
 const STATUS_REFUND_CANCELLED: &str = "cancelled";
 const MANUAL_PROVIDER_ID: &str = "manual";
+pub(crate) const MAX_PAYMENT_METADATA_BYTES: usize = 64 * 1024;
+const MAX_PAYMENT_METADATA_DEPTH: usize = 16;
 
 pub struct PaymentService {
     db: DatabaseConnection,
@@ -70,6 +72,7 @@ impl PaymentService {
         let customer_id = input.customer_id;
         let amount = input.amount;
         let metadata = input.metadata;
+        validate_payment_metadata(&metadata, "create collection")?;
         let collection_id = generate_id();
         let now = Utc::now();
 
@@ -266,6 +269,7 @@ impl PaymentService {
         order_id: Uuid,
         metadata: serde_json::Value,
     ) -> PaymentResult<PaymentCollectionResponse> {
+        validate_payment_metadata(&metadata, "attach order")?;
         let txn = self.db.begin().await?;
         let collection = self
             .load_collection_for_update_in_tx(&txn, tenant_id, collection_id)
@@ -290,8 +294,10 @@ impl PaymentService {
 
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         let collection_metadata = active.metadata.clone().take().unwrap_or_default();
+        let merged_metadata = merge_metadata(collection_metadata, metadata);
+        validate_payment_metadata(&merged_metadata, "attach order merged metadata")?;
         active.order_id = Set(Some(order_id));
-        active.metadata = Set(merge_metadata(collection_metadata, metadata));
+        active.metadata = Set(merged_metadata);
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
 
@@ -419,6 +425,7 @@ impl PaymentService {
         refund_id: Uuid,
         input: CompleteRefundInput,
     ) -> PaymentResult<RefundResponse> {
+        validate_payment_metadata(&input.metadata, "complete refund")?;
         let txn = self.db.begin().await?;
         let refund = self
             .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
@@ -449,6 +456,7 @@ impl PaymentService {
         refund_id: Uuid,
         input: CancelRefundInput,
     ) -> PaymentResult<RefundResponse> {
+        validate_payment_metadata(&input.metadata, "cancel refund")?;
         let txn = self.db.begin().await?;
         let refund = self
             .load_refund_for_update_in_tx(&txn, tenant_id, refund_id)
@@ -569,18 +577,22 @@ impl PaymentService {
 
         let mut payment_active: entities::payment::ActiveModel = payment.into();
         let payment_metadata = payment_active.metadata.clone().take().unwrap_or_default();
+        let merged_payment_metadata = merge_metadata(payment_metadata, input.metadata.clone());
+        validate_payment_metadata(&merged_payment_metadata, "capture payment merged metadata")?;
         payment_active.status = Set(STATUS_CAPTURED.to_string());
         payment_active.captured_amount = Set(capture_amount);
-        payment_active.metadata = Set(merge_metadata(payment_metadata, input.metadata.clone()));
+        payment_active.metadata = Set(merged_payment_metadata);
         payment_active.updated_at = Set(now.into());
         payment_active.captured_at = Set(Some(now.into()));
         payment_active.update(&txn).await?;
 
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         let collection_metadata = active.metadata.clone().take().unwrap_or_default();
+        let merged_collection_metadata = merge_metadata(collection_metadata, input.metadata);
+        validate_payment_metadata(&merged_collection_metadata, "capture collection merged metadata")?;
         active.status = Set(STATUS_CAPTURED.to_string());
         active.captured_amount = Set(capture_amount);
-        active.metadata = Set(merge_metadata(collection_metadata, input.metadata));
+        active.metadata = Set(merged_collection_metadata);
         active.captured_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
@@ -648,9 +660,11 @@ impl PaymentService {
 
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         let collection_metadata = active.metadata.clone().take().unwrap_or_default();
+        let merged_collection_metadata = merge_metadata(collection_metadata, input.metadata);
+        validate_payment_metadata(&merged_collection_metadata, "cancel collection merged metadata")?;
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
-        active.metadata = Set(merge_metadata(collection_metadata, input.metadata));
+        active.metadata = Set(merged_collection_metadata);
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
@@ -962,6 +976,37 @@ fn normalize_optional_reason(value: Option<String>) -> Option<String> {
     value
         .map(|reason| reason.trim().to_string())
         .filter(|reason| !reason.is_empty())
+}
+
+pub(crate) fn validate_payment_metadata(
+    value: &serde_json::Value,
+    operation: &str,
+) -> PaymentResult<()> {
+    let encoded = serde_json::to_vec(value).map_err(|error| {
+        PaymentError::Validation(format!(
+            "payment {operation} metadata could not be encoded: {error}"
+        ))
+    })?;
+    if encoded.len() > MAX_PAYMENT_METADATA_BYTES
+        || payment_json_depth(value) > MAX_PAYMENT_METADATA_DEPTH
+    {
+        return Err(PaymentError::Validation(format!(
+            "payment {operation} metadata exceeds size or depth limits"
+        )));
+    }
+    Ok(())
+}
+
+fn payment_json_depth(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Array(values) => {
+            1 + values.iter().map(payment_json_depth).max().unwrap_or(0)
+        }
+        serde_json::Value::Object(values) => {
+            1 + values.values().map(payment_json_depth).max().unwrap_or(0)
+        }
+        _ => 1,
+    }
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
