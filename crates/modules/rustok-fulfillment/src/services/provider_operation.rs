@@ -604,7 +604,14 @@ fn validate_provider_result_for_operation(
         ));
     }
 
+    if !typed_result.metadata.is_object() {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider_result metadata must be a JSON object".to_string(),
+        ));
+    }
     validate_provider_metadata_safety(&typed_result.metadata)?;
+    validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)
+        .map_err(provider_result_invalid)?;
 
     let result_reference = normalize_optional(typed_result.external_reference.clone());
     let supplied_reference = normalize_optional(provider_reference);

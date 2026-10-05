@@ -304,6 +304,44 @@ async fn provider_result_writer_rejects_mismatched_journal_identity() {
         rustok_fulfillment::error::FulfillmentError::ProviderResultInvalid(_)
     ));
 
+    let scalar_metadata_error = journal
+        .mark_provider_succeeded(
+            tenant_id,
+            operation.id,
+            Some("shipment-1".to_string()),
+            serde_json::json!({
+                "provider_id": "carrier",
+                "external_reference": "shipment-1",
+                "tracking_number": "TRACK-1",
+                "metadata": "not-an-object"
+            }),
+        )
+        .await
+        .expect_err("journal writer must reject non-object provider metadata");
+    assert!(matches!(
+        scalar_metadata_error,
+        rustok_fulfillment::error::FulfillmentError::ProviderResultInvalid(_)
+    ));
+
+    let oversized_reference_error = journal
+        .mark_provider_succeeded(
+            tenant_id,
+            operation.id,
+            Some("r".repeat(192)),
+            serde_json::json!({
+                "provider_id": "carrier",
+                "external_reference": null,
+                "tracking_number": "TRACK-1",
+                "metadata": {}
+            }),
+        )
+        .await
+        .expect_err("journal writer must reject oversized provider references");
+    assert!(matches!(
+        oversized_reference_error,
+        rustok_fulfillment::error::FulfillmentError::ProviderResultInvalid(_)
+    ));
+
     let unresolved_result = journal
         .mark_execution_reconciliation_required(
             tenant_id,
