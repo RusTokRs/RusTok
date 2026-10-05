@@ -10,6 +10,8 @@
 
 `rustok-payment` owns collection lifecycle, provider registry, provider operation journals, checkout compensation, and payment execution.
 
+Provider-operation journals are tenant-scoped at every read and lifecycle mutation. Journal creation validates that the payment collection belongs to the requested tenant and that an optional refund belongs to the same tenant and collection; the database migration `m20261005_000121_enforce_provider_operation_ownership` rejects cross-tenant or cross-collection provider-operation inserts.
+
 ## Current state
 
 The ecommerce-family implementation plan is maintained in `crates/modules/rustok-commerce/docs/implementation-plan.md#payment-workstream`.
