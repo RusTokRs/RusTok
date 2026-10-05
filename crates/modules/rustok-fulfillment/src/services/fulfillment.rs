@@ -3764,6 +3764,85 @@ mod tests {
     }
 
     #[test]
+    fn create_label_result_metadata_replaces_reserved_receipt_with_journal_operation() {
+        let caller_operation_id = Uuid::new_v4();
+        let journal_operation_id = Uuid::new_v4();
+        let result = crate::providers::FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: Some("label-1".to_string()),
+            tracking_number: Some("track-1".to_string()),
+            metadata: serde_json::json!({
+                "provider_fact": true,
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "ship"
+                }
+            }),
+        };
+
+        let metadata = super::prepare_create_label_result_metadata(
+            serde_json::json!({
+                "delivery_group": {"seller_id": "seller-1"},
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "cancel"
+                }
+            }),
+            &result,
+            journal_operation_id,
+        )
+        .expect("create-label result metadata should normalize");
+
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("id"))
+                .and_then(Value::as_str),
+            Some(journal_operation_id.to_string().as_str())
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("operation"))
+                .and_then(Value::as_str),
+            Some("create_label")
+        );
+        assert_eq!(
+            metadata
+                .get("delivery_group")
+                .and_then(|value| value.get("seller_id"))
+                .and_then(Value::as_str),
+            Some("seller-1")
+        );
+        assert_eq!(
+            metadata
+                .get("label")
+                .and_then(|value| value.get("tracking_number"))
+                .and_then(Value::as_str),
+            Some("track-1")
+        );
+    }
+
+    #[test]
+    fn create_label_result_metadata_rejects_non_object_provider_metadata() {
+        let result = crate::providers::FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            tracking_number: None,
+            metadata: serde_json::json!(["opaque"]),
+        };
+
+        assert!(
+            super::prepare_create_label_result_metadata(
+                serde_json::json!({"customer_note": "keep"}),
+                &result,
+                Uuid::new_v4(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn fulfillment_metadata_sanitization_removes_user_audit_data() {
         let value = serde_json::json!({
             "audit": {
