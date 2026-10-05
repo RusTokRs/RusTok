@@ -43,11 +43,16 @@ const requireBefore = (content, first, second, label) => {
 
 
 for (const [value, label] of [
-  ['let _ = journal', 'create-label recovery silent reconciliation checkpoint suppression'],
   ['mark_reconciliation_required(', 'create-label recovery reconciliation checkpoint'],
   ['mark_execution_reconciliation_required(', 'create-label recovery execution quarantine'],
   ['request.idempotency_key.as_deref().map(str::trim)', 'create-label recovery request idempotency binding'],
+  ['FulfillmentOrchestrationError::ProviderAfterPersistence', 'create-label recovery reconciliation classification'],
 ]) requireText(labelRecovery, value, label);
+forbidText(
+  labelRecovery,
+  'let _ = journal',
+  'create-label recovery silent reconciliation checkpoint suppression',
+);
 
 const requestDeserialize = labelRecovery.indexOf('serde_json::from_value(operation.request_payload.clone())');
 const claimExecution = labelRecovery.indexOf('journal');
