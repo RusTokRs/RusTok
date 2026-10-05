@@ -173,7 +173,6 @@ impl ShippingOptionFailure {
             StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
                 shipping_option_id,
                 shipping_profile_slug,
-                ..
             } => Self::profile_incompatible(shipping_option_id, shipping_profile_slug.as_str()),
             StorefrontShippingSelectionValidationError::Owner {
                 shipping_option_id,

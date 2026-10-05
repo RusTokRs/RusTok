@@ -2,27 +2,6 @@ use super::{BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, error::Fulfillmen
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::uuid::Uuid;
 
-pub(super) fn shipping_option_query_context(
-    tenant_id: Uuid,
-    query_field: &'static str,
-    shipping_option_id: Option<Uuid>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-) -> PortContext {
-    let locale = requested_locale.or(tenant_default_locale).unwrap_or("en");
-    let resource = shipping_option_id
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| tenant_id.to_string());
-    with_current_graphql_public_channel(
-        PortContext::new(
-            tenant_id.to_string(),
-            PortActor::service("rustok-commerce.graphql-query-shipping-options"),
-            locale,
-            format!("graphql-fulfillment:{query_field}:{resource}"),
-        )
-        .with_deadline(std::time::Duration::from_secs(2)),
-    )
-}
 
 pub(super) fn fulfillment_query_context(
     tenant_id: Uuid,
@@ -52,82 +31,6 @@ fn with_current_graphql_public_channel(context: PortContext) -> PortContext {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn map_shipping_option_lookup_port_error(
-    error: PortError,
-    context: &PortContext,
-    query_field: &'static str,
-    operation: &'static str,
-    shipping_option_id: Uuid,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-) -> FulfillmentError {
-    let error_kind = port_error_kind_name(&error.kind);
-    let technical = is_technical_port_error(&error.kind);
-    let optional_not_found = matches!(&error.kind, PortErrorKind::NotFound);
-    let (message, code, retryable) = public_fulfillment_port_policy(&error.kind);
-    log_shipping_option_port_error(
-        &error,
-        context,
-        query_field,
-        operation,
-        Some(shipping_option_id),
-        requested_locale,
-        tenant_default_locale,
-        error_kind,
-        if optional_not_found {
-            "OPTIONAL_NONE"
-        } else {
-            code
-        },
-        if optional_not_found { false } else { retryable },
-        technical,
-    );
-
-    if optional_not_found {
-        FulfillmentError::ShippingOptionNotFound(shipping_option_id)
-    } else {
-        FulfillmentError::Public(BoundaryError::Public {
-            message,
-            code,
-            retryable,
-        })
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn map_shipping_option_port_error(
-    error: PortError,
-    context: &PortContext,
-    query_field: &'static str,
-    operation: &'static str,
-    shipping_option_id: Option<Uuid>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-) -> BoundaryError {
-    let (message, code, retryable) = public_fulfillment_port_policy(&error.kind);
-    let error_kind = port_error_kind_name(&error.kind);
-    let technical = is_technical_port_error(&error.kind);
-    log_shipping_option_port_error(
-        &error,
-        context,
-        query_field,
-        operation,
-        shipping_option_id,
-        requested_locale,
-        tenant_default_locale,
-        error_kind,
-        code,
-        retryable,
-        technical,
-    );
-
-    BoundaryError::Public {
-        message,
-        code,
-        retryable,
-    }
-}
 
 pub(super) fn map_fulfillment_port_error(
     error: PortError,
@@ -267,87 +170,6 @@ fn text_presence_shape(value: &str) -> &'static str {
     if value.is_empty() { "empty" } else { "present" }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn log_shipping_option_port_error(
-    error: &PortError,
-    context: &PortContext,
-    query_field: &'static str,
-    operation: &'static str,
-    shipping_option_id: Option<Uuid>,
-    requested_locale: Option<&str>,
-    tenant_default_locale: Option<&str>,
-    error_kind: &'static str,
-    public_code: &'static str,
-    public_retryable: bool,
-    technical: bool,
-) {
-    let facts = fulfillment_query_context_facts(context);
-    let shipping_option_id_shape = optional_uuid_shape(shipping_option_id);
-    let owner_message_presence = text_presence_shape(&error.message);
-    let owner_message_length = error.message.chars().count();
-    let diagnostic_error = FulfillmentQueryDiagnosticError;
-    if technical {
-        tracing::error!(
-            error = ?diagnostic_error,
-            owner = "rustok_fulfillment",
-            tenant_id_length = facts.tenant_id_length,
-            actor_kind = facts.actor_kind,
-            actor_id_length = facts.actor_id_length,
-            claim_count = facts.claim_count,
-            role_count = facts.role_count,
-            correlation_id_length = facts.correlation_id_length,
-            context_locale_length = facts.context_locale_length,
-            channel_present = facts.channel_present,
-            channel_length = ?facts.channel_length,
-            deadline_ms = ?facts.deadline_ms,
-            query_field,
-            operation,
-            shipping_option_id_shape,
-            requested_locale_length = requested_locale.map(str::len),
-            tenant_default_locale_length = tenant_default_locale.map(str::len),
-            error_kind,
-            owner_code = %error.code,
-            owner_kind = error_kind,
-            owner_message_presence,
-            owner_message_length,
-            owner_retryable = error.retryable,
-            public_code,
-            public_retryable,
-            boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
-            "commerce GraphQL query shipping-option owner read failed"
-        );
-    } else {
-        tracing::warn!(
-            error = ?diagnostic_error,
-            owner = "rustok_fulfillment",
-            tenant_id_length = facts.tenant_id_length,
-            actor_kind = facts.actor_kind,
-            actor_id_length = facts.actor_id_length,
-            claim_count = facts.claim_count,
-            role_count = facts.role_count,
-            correlation_id_length = facts.correlation_id_length,
-            context_locale_length = facts.context_locale_length,
-            channel_present = facts.channel_present,
-            channel_length = ?facts.channel_length,
-            deadline_ms = ?facts.deadline_ms,
-            query_field,
-            operation,
-            shipping_option_id_shape,
-            requested_locale_length = requested_locale.map(str::len),
-            tenant_default_locale_length = tenant_default_locale.map(str::len),
-            error_kind,
-            owner_code = %error.code,
-            owner_kind = error_kind,
-            owner_message_presence,
-            owner_message_length,
-            owner_retryable = error.retryable,
-            public_code,
-            public_retryable,
-            boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY,
-            "commerce GraphQL query shipping-option owner read was rejected"
-        );
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 fn log_fulfillment_port_error(

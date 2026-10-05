@@ -87,7 +87,6 @@ pub(crate) enum StorefrontShippingSelectionValidationError {
     MissingDeliveryGroup {
         shipping_option_id: Uuid,
         shipping_profile_slug: String,
-        seller_id: Option<String>,
     },
     Owner {
         shipping_option_id: Uuid,
@@ -140,7 +139,6 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
         return Err(StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
             shipping_option_id: Uuid::nil(),
             shipping_profile_slug: selection.shipping_profile_slug.clone(),
-            seller_id: selection.seller_id.clone(),
         });
     };
 
@@ -155,7 +153,6 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
             StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
                 shipping_option_id,
                 shipping_profile_slug: selection.shipping_profile_slug.clone(),
-                seller_id: selection.seller_id.clone(),
             },
         );
     }
