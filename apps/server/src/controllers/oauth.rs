@@ -14,8 +14,8 @@ use axum::{
 };
 use reqwest::Url;
 use rustok_auth::{
-    AuthorizeRequest, BrowserAuthorizeRequest, ConsentRequest, RevokeRequest, TokenErrorResponse,
-    TokenRequest,
+    AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
+    RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
 };
 use std::net::SocketAddr;
 use uuid::Uuid;
@@ -66,6 +66,17 @@ fn oauth_token_http_response(
     response
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/oauth/token",
+    tag = "oauth",
+    request_body = TokenRequest,
+    responses(
+        (status = 200, description = "OAuth token response", body = TokenResponse),
+        (status = 400, description = "Invalid OAuth request", body = TokenErrorResponse),
+        (status = 401, description = "Invalid client", body = TokenErrorResponse)
+    )
+)]
 async fn token_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
@@ -127,6 +138,20 @@ fn is_form_encoded_content_type(value: &str) -> bool {
             media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded")
         })
 }
+#[utoipa::path(
+    post,
+    path = "/api/oauth/authorize",
+    tag = "oauth",
+    security(("bearer_auth" = [])),
+    request_body = AuthorizeRequest,
+    responses(
+        (status = 200, description = "Authorization code response"),
+        (status = 302, description = "OAuth redirect"),
+        (status = 400, description = "Invalid authorization request", body = TokenErrorResponse),
+        (status = 401, description = "Authentication required", body = TokenErrorResponse),
+        (status = 403, description = "Authorization denied", body = TokenErrorResponse)
+    )
+)]
 async fn authorize_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
@@ -196,6 +221,27 @@ async fn authorize_handler_inner(
     Ok(Json(response))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/oauth/authorize",
+    tag = "oauth",
+    security(("bearer_auth" = [])),
+    params(
+        ("response_type" = String, Query, description = "OAuth response type"),
+        ("client_id" = String, Query, description = "OAuth client identifier"),
+        ("redirect_uri" = String, Query, description = "Registered redirect URI"),
+        ("scope" = Option<String>, Query, description = "Requested scopes"),
+        ("state" = Option<String>, Query, description = "Opaque client state"),
+        ("code_challenge" = String, Query, description = "PKCE code challenge"),
+        ("code_challenge_method" = Option<String>, Query, description = "PKCE code challenge method")
+    ),
+    responses(
+        (status = 200, description = "Authorization or consent page"),
+        (status = 302, description = "OAuth redirect"),
+        (status = 400, description = "Invalid authorization request", body = TokenErrorResponse),
+        (status = 401, description = "Authentication required")
+    )
+)]
 async fn authorize_browser_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
@@ -300,6 +346,17 @@ async fn authorize_browser_handler(
     .into_response()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/oauth/consent",
+    tag = "oauth",
+    request_body = ConsentRequest,
+    responses(
+        (status = 302, description = "OAuth redirect"),
+        (status = 400, description = "Invalid consent request", body = TokenErrorResponse),
+        (status = 401, description = "Authentication required", body = TokenErrorResponse)
+    )
+)]
 async fn consent_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
@@ -386,6 +443,16 @@ async fn consent_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/oauth/browser-session",
+    tag = "oauth",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 204, description = "Browser OAuth session cookie created"),
+        (status = 401, description = "Authentication required", body = TokenErrorResponse)
+    )
+)]
 async fn create_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -409,6 +476,14 @@ async fn create_browser_session_handler(
         .into_response()
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/oauth/browser-session",
+    tag = "oauth",
+    responses(
+        (status = 204, description = "Browser OAuth session cookie cleared")
+    )
+)]
 async fn clear_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -741,6 +816,17 @@ fn escape_attr(value: &str) -> String {
 
 /// Token Revocation Endpoint (RFC 7009)
 /// Revokes a refresh token (access tokens are stateless JWTs and expire naturally).
+#[utoipa::path(
+    post,
+    path = "/api/oauth/revoke",
+    tag = "oauth",
+    request_body = RevokeRequest,
+    responses(
+        (status = 200, description = "Token revoked"),
+        (status = 400, description = "Invalid revocation request", body = TokenErrorResponse),
+        (status = 401, description = "Invalid client", body = TokenErrorResponse)
+    )
+)]
 async fn revoke_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
@@ -863,6 +949,28 @@ async fn revoke_handler_inner(
 
 /// OpenID Connect UserInfo Endpoint (RFC 5362)
 /// Allows clients with `openid` or `profile` scopes to fetch user details.
+#[utoipa::path(
+    get,
+    path = "/api/oauth/userinfo",
+    tag = "oauth",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "OpenID Connect UserInfo response"),
+        (status = 403, description = "Insufficient scope", body = TokenErrorResponse),
+        (status = 401, description = "Authentication required", body = TokenErrorResponse)
+    )
+)]
+#[utoipa::path(
+    post,
+    path = "/api/oauth/userinfo",
+    tag = "oauth",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "OpenID Connect UserInfo response"),
+        (status = 403, description = "Insufficient scope", body = TokenErrorResponse),
+        (status = 401, description = "Authentication required", body = TokenErrorResponse)
+    )
+)]
 async fn userinfo_handler(
     current_user: CurrentUser, // Automatically extracts and validates Bearer token
 ) -> axum::response::Response {
