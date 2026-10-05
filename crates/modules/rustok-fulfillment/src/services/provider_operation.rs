@@ -604,7 +604,18 @@ fn validate_provider_result_for_operation(
         ));
     }
 
+    if !typed_result.metadata.is_object() {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider_result metadata must be a JSON object".to_string(),
+        ));
+    }
     validate_provider_metadata_safety(&typed_result.metadata)?;
+    validate_optional_boundary_text(
+        "provider_reference",
+        provider_reference.as_deref(),
+        191,
+    )
+    .map_err(provider_result_invalid)?;
 
     let result_reference = normalize_optional(typed_result.external_reference.clone());
     let supplied_reference = normalize_optional(provider_reference);
@@ -807,6 +818,72 @@ mod tests {
         assert!(validate_durable_provider_payload(&oversized, "provider_result").is_err());
     }
 
+    #[test]
+    fn provider_result_journal_rejects_non_object_metadata() {
+        let tenant_id = Uuid::new_v4();
+        let fulfillment_id = Uuid::new_v4();
+        let mut operation = provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id,
+            fulfillment_id,
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "key".to_string(),
+            status: PROVIDER_OPERATION_EXECUTING.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: None,
+            error_message: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            provider_completed_at: None,
+            committed_at: None,
+        };
+        let result = serde_json::json!({
+            "provider_id": "carrier",
+            "external_reference": "shipment-1",
+            "tracking_number": "track-1",
+            "metadata": "not-an-object"
+        });
+        let error = validate_provider_result_for_operation(&operation, None, &result)
+            .expect_err("provider result metadata must remain object-shaped");
+        assert!(matches!(error, FulfillmentError::ProviderResultInvalid(_)));
+        operation.provider_reference = None;
+    }
+
+    #[test]
+    fn provider_result_journal_rejects_oversized_supplied_reference() {
+        let operation = provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            operation: "ship".to_string(),
+            provider_id: "carrier".to_string(),
+            idempotency_key: "key".to_string(),
+            status: PROVIDER_OPERATION_EXECUTING.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: None,
+            error_message: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            provider_completed_at: None,
+            committed_at: None,
+        };
+        let result = serde_json::json!({
+            "provider_id": "carrier",
+            "external_reference": null,
+            "tracking_number": "track-1",
+            "metadata": {}
+        });
+        let error = validate_provider_result_for_operation(
+            &operation,
+            Some("r".repeat(192)),
+            &result,
+        )
+        .expect_err("provider reference must respect the journal bound");
+        assert!(matches!(error, FulfillmentError::ProviderResultInvalid(_)));
+    }
     #[test]
     fn provider_operation_payload_limit_accepts_small_json() {
         let payload = serde_json::json!({"provider": "carrier", "tracking_number": "track-1"});
