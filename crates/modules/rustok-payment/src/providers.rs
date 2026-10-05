@@ -720,6 +720,25 @@ mod boundary_tests {
     }
 
     #[test]
+    fn rejects_deep_provider_result_payloads_before_serialization() {
+        let mut nested = serde_json::json!({});
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+        let mut result = valid_result();
+        result.metadata = nested;
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
+    }
+
+    #[test]
     fn rejects_oversized_provider_result_payloads() {
         let mut result = valid_result();
         result.metadata = serde_json::json!({
