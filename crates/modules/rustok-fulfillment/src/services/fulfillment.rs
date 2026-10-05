@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::{
     AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
     DatabaseTransaction, EntityTrait, IsolationLevel, JoinType, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait, sea_query::OnConflict,
+    QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait, sea_query::{Expr, OnConflict, Query},
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -2505,15 +2505,47 @@ async fn synchronize_translations(
         match desired.remove(&current.locale) {
             Some(name) if name == current.name => {}
             Some(name) => {
-                let mut active: entities::shipping_option_translation::ActiveModel = current.into();
-                active.name = Set(name);
-                active.update(db).await?;
+                let update_result = entities::shipping_option_translation::Entity::update_many()
+                    .col_expr(
+                        entities::shipping_option_translation::Column::Name,
+                        Expr::value(name),
+                    )
+                    .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
+                    .filter(shipping_option_tenant_exists(
+                        tenant_id,
+                        shipping_option_id,
+                    ))
+                    .exec(db)
+                    .await?;
+                if update_result.rows_affected != 1 {
+                    return Err(FulfillmentError::Database(
+                        sea_orm::DbErr::RecordNotUpdated,
+                    ));
+                }
                 changed = true;
             }
             None => {
-                entities::shipping_option_translation::Entity::delete_by_id(current.id)
+                let delete_result = entities::shipping_option_translation::Entity::delete_many()
+                    .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
+                    .filter(shipping_option_tenant_exists(
+                        tenant_id,
+                        shipping_option_id,
+                    ))
                     .exec(db)
                     .await?;
+                if delete_result.rows_affected != 1 {
+                    return Err(FulfillmentError::Database(
+                        sea_orm::DbErr::RecordNotUpdated,
+                    ));
+                }
                 changed = true;
             }
         }
@@ -2532,6 +2564,20 @@ async fn synchronize_translations(
     }
 
     Ok(changed)
+}
+
+fn shipping_option_tenant_exists(
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+) -> sea_orm::sea_query::SimpleExpr {
+    Expr::exists(
+        Query::select()
+            .column(entities::shipping_option::Column::Id)
+            .from(entities::shipping_option::Entity)
+            .and_where(entities::shipping_option::Column::Id.eq(shipping_option_id))
+            .and_where(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .to_owned(),
+    )
 }
 
 async fn load_shipping_option_translation_rows<C>(
