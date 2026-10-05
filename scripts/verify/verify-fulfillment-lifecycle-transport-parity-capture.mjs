@@ -102,6 +102,12 @@ if (
 ) {
   failures.push('execution contract request policy mismatch');
 }
+if (
+  contract.normalization?.timestamp_canonicalization !== 'UTC' ||
+  contract.normalization?.projection_strings_preserve_whitespace !== true
+) {
+  failures.push('execution contract normalization policy mismatch');
+}
 const responseReaderChecks = [
   ['async function readResponseBytes(response, operation)', 'bounded response reader'],
   ['response.body.getReader()', 'streaming response reader'],
@@ -115,8 +121,50 @@ for (const [value, label] of responseReaderChecks) {
 }
 forbidText(runner, 'response.arrayBuffer()', 'unbounded full-response buffering');
 
+const projectionStringBlock = (start, end, label) => {
+  const startIndex = runner.indexOf(start);
+  const endIndex = runner.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return runner.slice(startIndex, endIndex);
+};
+const requiredProjectionString = projectionStringBlock(
+  'function requiredString(value, field)',
+  'function optionalString(value, field)',
+  'required projection string block',
+);
+const optionalProjectionString = projectionStringBlock(
+  'function optionalString(value, field)',
+  'function timestamp(value, field)',
+  'optional projection string block',
+);
+
+for (const [source, value, label] of [
+  [
+    requiredProjectionString,
+    'if (/[\\u0000-\\u001f\\u007f]/u.test(value))',
+    'required projection string control-character guard',
+  ],
+  [requiredProjectionString, 'return value;', 'required projection exact-value preservation'],
+  [
+    optionalProjectionString,
+    'if (value.length > 4096 || /[\\u0000-\\u001f\\u007f]/u.test(value))',
+    'optional projection string control-character guard',
+  ],
+  [optionalProjectionString, 'return value;', 'optional projection exact-value preservation'],
+]) {
+  requireText(source, value, label);
+}
+for (const [source, value, label] of [
+  [requiredProjectionString, 'value.trim()', 'required projection whitespace trimming'],
+  [optionalProjectionString, 'value.trim()', 'optional projection whitespace trimming'],
+]) {
+  forbidText(source, value, label);
+}
+
 for (const [value, label] of [
-  [contract.retained_boundary?.bearer_token_retained, 'bearer token retention'],
   [contract.retained_boundary?.raw_response_bodies_retained, 'raw response retention'],
   [contract.retained_boundary?.fulfillment_metadata_retained, 'metadata retention'],
 ]) {

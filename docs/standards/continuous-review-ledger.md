@@ -4686,3 +4686,14 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `e3c8934bebaac8f663f3913657c40252ef1fede2` via PR #4524; post-merge main was re-read at the merge SHA and the capture runner, parity verifier, runbook, and evidence ledger were reconciled.
 - Status: FS-22.06.124 complete and integrated; mounted runtime evidence remains unproven.
 - Next primary iteration: continue the remaining Fulfillment evidence-boundary audit without promoting projection parity, deadline/failure, restart, or remote-adapter evidence before maintainer-owned execution.
+
+### FS-22.06.125 Assessment — fulfillment parity normalization hid projection whitespace drift
+
+- Base: `780208ad7375eadbb9b868bebd4f5b3f06257cd5`; dedicated branch `codex/audit-fs-22.06.125-preserve-projection-whitespace`.
+- Primary scope: the Fulfillment transport-parity capture runner's projection normalization semantics.
+- Confirmed finding FULFILLMENT-22.06.125-01: `requiredString` and `optionalString` reused the environment-oriented `trim()` behavior. As a result, transport-parity comparison could treat values such as `"tracking"` and `"tracking "` as identical, hiding a real GraphQL/REST projection difference.
+- Remediation: split environment/input trimming from projection normalization. Required and optional projection strings now preserve their exact JSON string value while retaining type/length/control-character validation. UUID, environment, and header normalization keeps its transport-appropriate canonicalization. The parity execution contract now explicitly requires exact projection-string preservation; the source verifier isolates the projection string validator blocks and forbids trimming there.
+- Re-audit: timestamp canonicalization remains intentionally UTC-normalized; list ordering, item ordering, projection fields, response-size limits, and evidence-retention boundaries are unchanged. No mounted application runtime behavior changed.
+- Verification: repository-content inspection only. No Node verifier, capture runner, Cargo, test, formatting, workflow, CI, or runtime command was executed by the agent.
+- Status: source/evidence-tool remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
+- Next primary iteration: after integration, re-read the normalization functions and verifier, then continue the remaining Fulfillment parity evidence-boundary audit.
