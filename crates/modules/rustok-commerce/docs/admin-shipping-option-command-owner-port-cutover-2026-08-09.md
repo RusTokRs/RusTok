@@ -42,7 +42,8 @@ two-second deadline, and a payload-bound deterministic idempotency identity requ
 write policy.
 
 The deterministic transport identity is admission metadata only. This slice does **not** claim that
-shipping-option create/update/state commands have durable owner receipt/replay semantics; the owner
+shipping-option create has durable owner receipt/replay semantics; update/deactivate/reactivate retain caller-owned
+idempotency admission and state-setting semantics without create-style resource-allocation replay; the owner
 capability record from the preceding slice remains authoritative on that limitation.
 
 ## Error boundary
