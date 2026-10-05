@@ -29,9 +29,9 @@ That output file is intentionally absent until the mounted capture succeeds.
 
 ## Mounted inputs
 
-The runner requires full mounted URLs instead of assuming a server prefix:
+The runner requires full mounted URLs and validates the canonical mounted paths:
 
-- `RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL`, ending in the canonical
+- `RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL`, using exactly the canonical
   `/api/graphql` path;
 - `RUSTOK_FULFILLMENT_PARITY_REST_BASE_URL`, the prefix immediately before
   `/admin/fulfillments`.
