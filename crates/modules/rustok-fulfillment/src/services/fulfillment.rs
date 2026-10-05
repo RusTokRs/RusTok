@@ -241,7 +241,7 @@ impl FulfillmentService {
 
         if let Some(expected_revision) = expected_translation_revision.as_deref() {
             let current_translations =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let current_revision = shipping_option_translation_resource_revision(
                 &shipping_option,
                 &current_translations,
@@ -287,7 +287,7 @@ impl FulfillmentService {
         };
         if localized_copy_changed {
             let translation_rows =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let resource_revision =
                 shipping_option_translation_resource_revision(&option, &translation_rows);
             record_shipping_option_translation_change_in_tx(
@@ -1633,7 +1633,7 @@ impl FulfillmentService {
             option.updated_at = Set(Utc::now().into());
             let option = option.update(&txn).await?;
             let translation_rows =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let resource_revision =
                 shipping_option_translation_resource_revision(&option, &translation_rows);
             record_shipping_option_translation_change_in_tx(
