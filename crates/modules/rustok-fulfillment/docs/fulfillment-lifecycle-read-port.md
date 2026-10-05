@@ -32,11 +32,13 @@ The existing owner DTO is returned unchanged. Commerce does not define a partial
 copy of fulfillment lifecycle state.
 
 For every lifecycle projection read, parent fulfillment rows and their typed items are
-read from one repeatable-read, read-only database transaction. For multi-row reads,
+read through one database transaction. PostgreSQL explicitly requests a repeatable-read,
+read-only transaction; SeaORM's SQLite adapter ignores those isolation/access-mode knobs,
+but the transaction still spans all reads on one SQLite snapshot. For multi-row reads,
 fulfillment items are materialized in one batch query for the selected fulfillment ids,
 grouped back by fulfillment id, and mapped in the original parent-row order. Item order
 remains deterministic by `created_at`, then `id`. The paginated total and selected parent
-rows are also computed inside that same snapshot, so a concurrent lifecycle commit
+rows are also computed inside that same transaction, so a concurrent lifecycle commit
 cannot produce a parent/item or count/page combination that was never simultaneously
 visible to one database snapshot.
 
