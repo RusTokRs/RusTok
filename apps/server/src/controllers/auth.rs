@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::error::Result;
+use chrono::Utc;
 use axum::response::Response;
 use axum::{
     Json,
@@ -10,15 +11,22 @@ use axum::{
 };
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    sea_query::Expr,
+};
 use std::net::SocketAddr;
 
 use crate::auth::{
     decode_email_verification_token, encode_email_verification_token,
-    encode_password_reset_token, hash_refresh_token,
+    encode_password_reset_token,
 };
 use crate::common::{RustokSettings, RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
-use crate::models::users::{self, Entity as Users};
+use crate::models::{
+    sessions,
+    users::{self, Entity as Users},
+};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
     EmailVerificationEmail, PasswordResetEmail, email_service_from_ctx, password_reset_url,
