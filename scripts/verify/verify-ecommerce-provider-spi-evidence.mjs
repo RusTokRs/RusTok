@@ -193,6 +193,15 @@ const verifyProviderSpiEvidence = ({
 
 
   if (!providerSpi) fail(`${module} registry lacks provider_spi`);
+  if (module === 'fulfillment') {
+    if (providerSpi.webhook_ingress?.status !== 'planned' || providerSpi.webhook_ingress?.runtime_wired !== false) {
+      fail('fulfillment webhook ingress must remain explicitly planned and not runtime-wired');
+    }
+    if (liveAdapterEvidence.current_runtime_reconciliation?.webhook_ingress?.status !== 'not_wired') {
+      fail('fulfillment historical webhook evidence must declare current ingress as not wired');
+    }
+  }
+
   if (evidence.schema_version !== 1) fail(`${module} provider SPI evidence schema_version must be 1`);
   if (evidence.module !== module) fail(`${module} provider SPI evidence module drift`);
   if (evidence.status !== 'static_matrix_locked') fail(`${module} provider SPI evidence status drift`);
