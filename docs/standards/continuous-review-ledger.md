@@ -4912,3 +4912,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.140` complete as a clean source assessment; runtime/build evidence remains unpromoted.
 - **Next primary iteration:** continue Fulfillment Admin provider-command hardening with a fresh pass over provider-operation request identity, journal tenant/resource binding, and recovery status transitions.
 
+### FS-22.06.141 Assessment — Fulfillment provider-operation journal identity and recovery
+
+- **Base:** cd448ed74dec52018a58433cfdc7fd9c9560414a; fresh review of the provider-operation journal after Admin reconciliation hardening.
+- **Primary scope:** FulfillmentProviderOperationJournal begin/lookup/claim/checkpoint paths, provider-operation entity/migration, and Admin provider command callers.
+- **Identity invariant:** provider operations are namespaced by tenant, provider, and caller-owned idempotency key. The durable row additionally binds immutable fulfillment_id and operation; request replay checks reject reuse when those facts or the normalized request payload differ.
+- **Tenant/resource integrity:** journal admission verifies the referenced fulfillment belongs to the supplied tenant before inserting. PostgreSQL ownership triggers and SQLite state guards independently enforce tenant/fulfillment coherence and immutable operation identity at the database boundary.
+- **Retry/recovery semantics:** pending/executing/succeeded/reconciliation-required/committed transitions are guarded by explicit status predicates; execution claiming is tenant-scoped and returns the current row after successful claim. Provider result persistence and local-commit failures route through reconciliation rather than silently retrying an external side effect.
+- **Key reuse semantics:** lookup by tenant/provider/idempotency key is intentional; ensure_same_request additionally binds operation, fulfillment, provider, key, and request payload so the same key cannot silently target a different fulfillment or operation.
+- **Admin caller audit:** shipping provider calls derive the provider ID from the tenant-owned Shipping Option or enforce the manual provider boundary before journaling; caller-owned idempotency identity is carried into the provider request unchanged.
+- **Finding:** no additional repository-owned production defect was confirmed in this identity/recovery slice after the checkpoint-error remediation.
+- **Fresh second pass:** re-read journal service, entity, migration triggers/constraints, Admin provider callers, request normalization, and focused provider-operation tests. No cross-tenant lookup, mutable identity path, silent external-side-effect retry, or unbounded key reuse path remained.
+- **Status:** FS-22.06.141 complete as a clean source assessment; runtime/build evidence remains unpromoted.
+- **Next primary iteration:** continue Fulfillment provider lifecycle hardening with a fresh pass over local persistence reconciliation after provider success and the exact replay semantics of committed versus reconciliation-required operations.
