@@ -4887,3 +4887,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.138` implementation complete at source level on current `main`; runtime/build evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment Admin command boundary with a fresh pass over permission/actor binding and whether durable command receipts are coupled to the authenticated actor/context strongly enough for the accepted owner contract.
 
+
+### FS-22.06.139 Assessment — Shipping Option admin receipt actor/context binding
+
+- **Base:** `c175e446ff633d468c64c262de024499f5f2ae65`; fresh review after FS-22.06.138.
+- **Primary scope:** shared owner-operation receipt ADR/primitive and the Fulfillment Shipping Option Admin command executor, specifically whether durable replay must bind the authenticated actor or other request-context dimensions in addition to tenant, owner, operation, key, and request payload.
+- **Architecture check:** the accepted owner-operation receipt ADR defines the canonical namespace as tenant + owner + idempotency key and binds an admitted operation to its canonical request digest. It deliberately does not make authenticated actor identity part of the generic receipt primitive, because authorization remains owner-controlled and the receipt layer is not a generic domain authorization service.
+- **Fulfillment check:** Shipping Option Admin commands still perform authorization/admission through the canonical `PortContext` policy before owner receipt admission. The durable request hash covers the complete command request and the receipt is tenant-scoped; replay therefore remains tied to the same owner operation namespace without silently introducing actor-specific semantics into the generic primitive.
+- **Finding:** no repository-owned actor-binding defect was confirmed in this bounded contract. Adding actor identity to the generic receipt uniqueness/hash would be an architecture change beyond the accepted ADR and would affect other owners; no such competing contract was introduced.
+- **Fresh second pass:** re-read the owner receipt ADR, outbox implementation/migration, Fulfillment command executor, Commerce context propagation, and current Shipping Option admin tests. Tenant/owner/key/operation/request binding remains internally consistent.
+- **Status:** `FS-22.06.139` complete as a clean source assessment; runtime/build evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment Admin command boundary with a fresh audit of permission-to-operation mapping and whether each Shipping Option command enforces the correct authenticated permission before durable receipt admission.
+
