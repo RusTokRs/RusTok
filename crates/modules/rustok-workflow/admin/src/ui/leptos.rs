@@ -2,11 +2,13 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    WorkflowStatusPresentation, workflow_admin_nav_view_model, workflow_admin_transport_context,
-    workflow_error_view_model, workflow_row_view_model, workflow_template_card_view_model,
+    WorkflowRowViewModel, WorkflowStatusPresentation, filter_workflows,
+    workflow_admin_nav_view_model, workflow_admin_transport_context, workflow_error_view_model,
+    workflow_grid_columns, workflow_row_view_model, workflow_template_card_view_model,
     workflow_template_create_command,
 };
 use crate::i18n::t;
@@ -155,20 +157,18 @@ pub fn WorkflowAdmin() -> impl IntoView {
 #[component]
 fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let is_ru = locale.as_deref().map(|s| s.starts_with("ru")).unwrap_or(false);
     let empty_message = t(
         locale.as_deref(),
         "workflow.empty",
         "No workflows yet. Start with a template or open the legacy workflow screens.",
     );
-    let table_name = t(locale.as_deref(), "workflow.table.name", "Name");
-    let table_status = t(locale.as_deref(), "workflow.table.status", "Status");
-    let table_failures = t(locale.as_deref(), "workflow.table.failures", "Failures");
-    let table_updated = t(locale.as_deref(), "workflow.table.updated", "Updated");
-    let details = t(
+    let details_label = t(
         locale.as_deref(),
         "workflow.table.details",
         "View details ->",
     );
+
     if workflows.is_empty() {
         return view! {
             <div class="rounded-xl border border-dashed border-border p-12 text-center">
@@ -180,43 +180,136 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
         .into_any();
     }
 
+    let items = workflows
+        .into_iter()
+        .map(workflow_row_view_model)
+        .collect::<Vec<_>>();
+
+    let columns = workflow_grid_columns(locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, items.len() as u64));
+    let (search, set_search) = signal(String::new());
+
+    let filtered_items = Memo::new(move |_| {
+        let current_filters = filters.get();
+        let search_term = search.get();
+        let list = filter_workflows(
+            &items,
+            &current_filters,
+            if search_term.trim().is_empty() {
+                None
+            } else {
+                Some(search_term.trim())
+            },
+        );
+        pagination.update(|p| p.total = list.len() as u64);
+        list
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_details_label = details_label.clone();
+    let cell_renderer = Callback::new(move |(item, col_id): (WorkflowRowViewModel, String)| {
+        match col_id.as_str() {
+            "name" => {
+                let name = item.name.clone();
+                let detail_href = item.detail_href.clone();
+                view! {
+                    <A href=detail_href>
+                        <span class="font-medium text-foreground hover:text-primary hover:underline">
+                            {name}
+                        </span>
+                    </A>
+                }
+                .into_any()
+            }
+            "status" => {
+                let status = item.status.clone();
+                view! {
+                    <StatusBadge status=status />
+                }
+                .into_any()
+            }
+            "failures" => {
+                let failures = item.failure_count.clone();
+                view! {
+                    <span class="text-xs font-mono text-muted-foreground">
+                        {failures}
+                    </span>
+                }
+                .into_any()
+            }
+            "updated_at" => {
+                let updated = item.updated_at.split('T').next().unwrap_or(item.updated_at.as_str()).to_string();
+                view! {
+                    <span class="text-xs text-muted-foreground font-mono">
+                        {updated}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let detail_href = item.detail_href.clone();
+                let label = cell_details_label.clone();
+                view! {
+                    <div class="flex items-center justify-end">
+                        <A href=detail_href>
+                            <span class="text-xs font-medium text-primary hover:underline">
+                                {label}
+                            </span>
+                        </A>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
     view! {
-        <div class="overflow-hidden rounded-xl border border-border">
-            <table class="w-full text-sm">
-                <thead class="border-b border-border bg-muted/50">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table_name}</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table_status}</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table_failures}</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table_updated}</th>
-                        <th class="px-4 py-3"></th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    {workflows.into_iter().map(|workflow| {
-                        let row = workflow_row_view_model(workflow);
-                        let details = details.clone();
-                        view! {
-                            <tr class="transition-colors hover:bg-muted/30">
-                                <td class="px-4 py-3 font-medium text-foreground">{row.name}</td>
-                                <td class="px-4 py-3">
-                                    <StatusBadge status=row.status />
-                                </td>
-                                <td class="px-4 py-3 text-muted-foreground">{row.failure_count}</td>
-                                <td class="px-4 py-3 text-xs text-muted-foreground">{row.updated_at}</td>
-                                <td class="px-4 py-3 text-right">
-                                    <A
-                                        href=row.detail_href
-                                        attr:class="text-xs font-medium text-primary hover:underline"
-                                    >
-                                        {details}
-                                    </A>
-                                </td>
-                            </tr>
-                        }
-                    }).collect_view()}
-                </tbody>
-            </table>
+        <div class="space-y-4">
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                    <span class="font-medium text-foreground">
+                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "процессов" } else { "workflows" })}
+                    </span>
+                    <button
+                        type="button"
+                        class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                        on:click=move |_| selection.update(|s| s.clear())
+                    >
+                        {if is_ru { "Снять выбор" } else { "Clear" }}
+                    </button>
+                </div>
+            </Show>
+
+            <div class="flex items-center justify-between gap-4">
+                <input
+                    type="text"
+                    placeholder=if is_ru { "Поиск по названию..." } else { "Search by name..." }
+                    class="w-full max-w-xs px-3 py-1.5 border border-border rounded-lg text-sm bg-background text-foreground"
+                    prop:value=move || search.get()
+                    on:input=move |ev| set_search.set(event_target_value(&ev))
+                />
+                <span class="text-xs text-muted-foreground whitespace-nowrap">
+                    {move || format!("{}: {}", if is_ru { "Всего процессов" } else { "Total workflows" }, pagination.get().total)}
+                </span>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || filtered_items.get())
+                key_fn=|item: &WorkflowRowViewModel| item.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+            />
         </div>
     }
     .into_any()

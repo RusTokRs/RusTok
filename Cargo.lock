@@ -18618,6 +18618,8 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
