@@ -5027,3 +5027,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.148` implementation complete at source level on current `main`; runtime/provider evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment provider boundary with a fresh audit of retention lifecycle/cleanup: how long completed, failed, and reconciliation-required provider operations remain, what deletion/reconciliation guarantees exist, and whether cleanup can break replay or recovery invariants.
 
+
+### FS-22.06.149 Assessment — provider-operation retention and cleanup boundary
+
+- **Base:** `2b6efd612f7f9b77d84e25c88b4ae3b2c2b53cfd`; fresh follow-up after payload/privacy hardening.
+- **Primary scope:** `fulfillment_provider_operations` lifecycle, Fulfillment recovery queries, destructive deletion paths, foreign-key behavior, and the repository's accepted shared retention-policy contract.
+- **Retention audit:** provider-operation rows have no automatic cleanup worker, retention timestamp, legal-hold state, or owner retention receipt. The shared `rustok-core::RetentionPolicy` contract is intended for evidence owners that explicitly adopt retention; Fulfillment provider-operation rows are currently recovery-state records rather than a declared retained-evidence archive, so this audit does not invent a new retention duration or cleanup mechanism.
+- **Deletion audit:** the Fulfillment owner service currently exposes no production deletion operation for `fulfillments`; no mounted Commerce path was found in the audited Fulfillment surface that deletes the parent aggregate. Consequently the existing provider-operation foreign key's `ON DELETE CASCADE` is not exercised by the canonical owner runtime today.
+- **Recovery safety:** unresolved provider operations remain tenant-scoped and fail-closed; automatic cleanup of `pending`, `executing`, or `reconciliation_required` rows would violate recovery correctness unless a future owner retention contract explicitly proves the external outcome is resolved and the canonical Fulfillment state is durable.
+- **Conclusion:** no repository-owned cleanup defect was confirmed in this bounded slice. Adding a speculative purge job or changing the FK solely to create a retention policy would introduce a new lifecycle contract without an accepted requirement and is therefore deferred.
+- **Fresh second pass:** re-read the provider-operation schema, all Fulfillment recovery methods, owner deletion surface, reconciliation migrations, and shared retention ADR. No current runtime path silently deletes provider recovery evidence.
+- **Verification:** source inspection only; no Cargo/tests/Clippy/rustfmt/runtime or database lifecycle execution was run.
+- **Status:** `FS-22.06.149` complete as a clean source assessment; a future explicit provider-operation retention policy remains an architectural requirement only if product/runtime requirements demand automatic history collection.
+- **Next primary iteration:** continue the Fulfillment provider boundary with a fresh audit of tracking-webhook ingress durability, raw-payload retention, and replay-to-lifecycle atomicity.
+
