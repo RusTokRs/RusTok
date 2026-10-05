@@ -850,7 +850,9 @@ impl FulfillmentService {
             .all(&txn)
             .await?;
 
-        let (_, items) = self.build_fulfillment_responses(&txn, rows).await?;
+        let (_, items) = self
+            .build_fulfillment_responses(&txn, tenant_id, rows)
+            .await?;
         txn.commit().await?;
 
         Ok((items, total))
