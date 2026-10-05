@@ -4515,6 +4515,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Next primary module iteration: continue the next single Fulfillment storefront owner boundary audit.
 
 
+
+### FS-22.06.112 Assessment — FulfillmentReadPort deadline enforcement
+
+- Base: f3e2bc9126848eacc49210726f12041910284eaa; fresh main was refreshed before implementation and the post-merge main is `643654d865fd9e0c12ee1d1b7a65c4eadb958fb3`.
+- Primary scope: one production owner module, `crates/modules/rustok-fulfillment/src/fulfillment_read.rs`, covering all three lifecycle projection read operations.
+- Confirmed finding FULFILLMENT-22.06.112-01: `PortContext::require_policy(PortCallPolicy::read())` required only that a non-zero `deadline_ms` be declared; the in-process Fulfillment read adapter did not enforce that duration around its database/response-assembly future. Mounted GraphQL and admin REST contexts could therefore exceed their declared two-second read budget when storage or projection assembly stalled.
+- Remediation: all three owner read operations now execute through one `tokio::time::timeout` helper using `context.deadline_ms`; expiry returns the typed `PortErrorKind::Timeout`, which remains retryable with stable code `fulfillment.deadline_exceeded`; existing owner-error redaction/mapping is unchanged. `tokio` is a runtime dependency of the fulfillment crate.
+- Re-audit: the helper is invoked exactly once by each of the three read operations, timeout diagnostics retain only bounded context/request facts, the existing tenant parser and owner error map remain intact, and GraphQL/admin REST public timeout envelopes continue to map through their existing typed policies.
+- Verifier/evidence: the lifecycle read verifier now requires the wall-clock timeout helper and three call sites; source evidence records in-process runtime deadline enforcement while keeping runtime parity/deadline-failure execution evidence unproven. The verifier was parser-checked after a second-pass regex correction.
+- Integration: squash-merged as `643654d865fd9e0c12ee1d1b7a65c4eadb958fb3` via PR #4502.
+- Status: source remediation complete; maintainer-owned Cargo/test/runtime execution remains unrun and must not be inferred from source verification.
+- Next primary module iteration: continue the same Fulfillment lifecycle-read module with a fresh second-pass audit of request validation/filter semantics and projection materialization, while keeping mounted parity/failure/restart/remote evidence separate.
+
 ### FS-22.06.111 Assessment — lifecycle read verifier path reconciliation
 
 - Base: f2c37f45852bc58e343624af6647c036a3462452; fresh main was refreshed after PR #4500 merge.
