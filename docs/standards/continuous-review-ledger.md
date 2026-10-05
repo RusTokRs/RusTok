@@ -5069,3 +5069,15 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Verification: repository source inspection and final reread only. No Cargo/tests/Clippy/rustfmt/remediation-gate/runtime provider execution was run because the repository workspace/toolchain is not mounted; no CI pass is claimed.
 - Status: FS-22.06.151 implementation complete at source level on current main; runtime/provider evidence remains pending.
 - Next primary iteration: continue the Fulfillment provider boundary with a fresh review of webhook contracts versus actual ingress wiring and ensure planned surfaces are explicitly separated from executable provider capabilities.
+
+### FS-22.06.152 Assessment — tracking-webhook ingress current-state reconciliation
+
+- Base: current main after FS-22.06.151; fresh audit of the Fulfillment provider webhook contract versus executable source wiring.
+- Scope: fulfillment-fba-registry.json provider webhook declaration, provider SPI handle_tracking_webhook contract, live-adapter evidence artifacts, and repository-wide source topology for a current webhook ingress path.
+- Confirmed finding FULFILLMENTPROVIDER-22.06.152-01: the Fulfillment provider registry declares tracking-webhook ingress as planned, but an older live-adapter evidence packet still contained an executed webhook replay case without explicitly stating that current production ingress is not wired. This could mislead reviewers into treating historical evidence as current runtime capability.
+- Remediation: the canonical provider registry now states runtime_wired=false and identifies the webhook as contract-only. README and provider evidence verifier enforce that current boundary. The historical executed packet is retained unchanged in its historical pass/fail claims and gains an explicit current_runtime_reconciliation field marking the webhook ingress as not_wired.
+- Source audit: no current repository-owned Fulfillment ingress transport or durable webhook delivery inbox was found; only the provider SPI adapter method and evidence contracts exist. No speculative ingress transport, raw-payload store, or worker was introduced because the accepted contract marks this capability planned.
+- Privacy/retention boundary: the historical webhook contract remains separate from provider-operation result metadata. The durable provider journal never becomes a raw webhook payload store.
+- Verification: repository tree/source inspection, provider-contract comparison, evidence reconciliation, and verifier-source reread only. No runtime webhook delivery was executed and no historical packet was reclassified as current runtime evidence.
+- Status: FS-22.06.152 complete as a current-state reconciliation; live tracking-webhook ingress remains an explicitly planned capability and is not implemented.
+- Next primary iteration: continue provider SPI execution readiness, auditing the external adapter registration/capability contract against the actual execution dispatch and degraded/unavailable behavior.
