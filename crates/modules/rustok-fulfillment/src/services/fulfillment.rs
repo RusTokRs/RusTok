@@ -1455,6 +1455,9 @@ impl FulfillmentService {
     }
 
     async fn begin_read_transaction(&self) -> FulfillmentResult<DatabaseTransaction> {
+        // PostgreSQL uses an explicit repeatable-read/read-only transaction. SeaORM's
+        // SQLite adapter does not support those two configuration knobs, but the
+        // transaction itself still keeps every read on one SQLite snapshot.
         self.db
             .begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))
             .await
