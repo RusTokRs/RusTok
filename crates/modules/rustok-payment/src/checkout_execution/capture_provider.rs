@@ -228,7 +228,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(journal_operation.id)
+                .get(tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
             if let Some(result) = persisted_provider_result(context, owner_operation, &current)? {
