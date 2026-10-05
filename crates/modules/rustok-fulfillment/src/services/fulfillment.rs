@@ -2019,13 +2019,6 @@ fn create_label_provider_operation_id(metadata: &Value) -> Option<Uuid> {
         .and_then(|value| value.get("id"))
         .and_then(Value::as_str)
         .and_then(|value| Uuid::parse_str(value).ok())
-        .or_else(|| {
-            metadata
-                .get("label")
-                .and_then(|value| value.get("provider_operation_id"))
-                .and_then(Value::as_str)
-                .and_then(|value| Uuid::parse_str(value).ok())
-        })
 }
 
 fn prepare_create_label_result_metadata(
@@ -3763,6 +3756,22 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_label_provider_operation_id_ignores_secondary_label_locator() {
+        let legacy_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "label": {
+                "provider_operation_id": legacy_id,
+            }
+        });
+
+        assert_eq!(
+            super::create_label_provider_operation_id(&metadata),
+            None,
+            "only the canonical provider_operation receipt may identify a create-label operation"
+        );
     }
 
     #[test]
