@@ -56,6 +56,9 @@ for (const [source, value, label] of [
   [ownerSource, 'pub trait FulfillmentReadPort: Send + Sync {', 'owner trait'],
   [ownerSource, 'impl FulfillmentReadPort for InProcessFulfillmentReadPort', 'adapter implementation'],
   [ownerSource, 'context.require_policy(PortCallPolicy::read())?', 'read policy'],
+  [ownerSource, 'async fn execute_fulfillment_read<T, F>', 'read deadline executor'],
+  [ownerSource, 'tokio::time::timeout(deadline, future)', 'read wall-clock timeout'],
+  [ownerSource, 'fulfillment.deadline_exceeded', 'typed deadline timeout code'],
   [ownerSource, '.get_fulfillment(tenant_id, request.fulfillment_id)', 'single delegation'],
   [ownerSource, '.list_fulfillments(', 'list delegation'],
   [ownerSource, '.find_by_order(tenant_id, request.order_id)', 'latest delegation'],
@@ -152,6 +155,16 @@ for (const value of [
   'DbErr::Custom("fulfillment storage is temporarily unavailable"',
   'FulfillmentError::Validation("fulfillment query is not permitted"',
 ]) forbidText(compatibilityFacade, value, 'GraphQL concrete or downgraded delegate');
+
+const ownerReadImplementation = between(
+  ownerSource,
+  'impl FulfillmentReadPort for InProcessFulfillmentReadPort',
+  'fn fulfillment_lifecycle_read_context_facts(',
+  'owner read implementation',
+);
+if ((ownerReadImplementation.match(/execute_fulfillment_read\\(/g) || []).length !== 3) {
+  failures.push('owner read implementation must enforce the shared deadline executor for all three operations');
+}
 
 const adminList = between(
   adminRest,
