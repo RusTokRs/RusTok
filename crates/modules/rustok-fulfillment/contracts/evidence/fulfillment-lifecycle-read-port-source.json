@@ -131,7 +131,8 @@
     "failure_harness_executed": false,
     "deadline_failure_proven": false,
     "restart_proven": false,
-    "remote_adapter_proven": false
+    "remote_adapter_proven": false,
+    "owner_deadline_unit_test_present": true
   },
   "consumer_cutover": {
     "graphql_compatibility_facade": true,
