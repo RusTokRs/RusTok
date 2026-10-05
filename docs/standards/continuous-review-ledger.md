@@ -4517,6 +4517,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 
+
+### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
+
+- Base: b093d073de50528a576aca07474a595a668bc8c8; fresh main was refreshed before implementation and post-merge main is 5d0f4dc18698a492dc9c13b4bd70484671b7407c.
+- Primary scope: one owner production module, `crates/modules/rustok-fulfillment/src/services/fulfillment.rs`, focused on multi-row lifecycle projection materialization.
+- Confirmed finding FULFILLMENT-22.06.114-01: `list_fulfillments`, `list_by_order`, and `list_checkout_fulfillments` loaded `fulfillment_items` by calling the single-row `build_fulfillment_response` once per parent row. With the public list page capped at 100, this created up to 100 sequential item queries after the parent query; the same pattern also affected unbounded internal multi-row readers.
+- Remediation: added one batch materialization helper that fetches all item rows for the selected fulfillment IDs in one query, groups them by `fulfillment_id`, preserves item ordering by `(created_at, id)`, and emits responses in the original parent-row order. Single-row `get_fulfillment`/latest materialization remains on the dedicated single-row helper.
+- Re-audit: tenant safety remains anchored in the parent fulfillment selection and the existing fulfillment-item foreign key; no item data is fetched by tenantless caller-supplied IDs. Parent ordering from each caller is preserved, including checkout identity ordering and lifecycle list ordering.
+- Verifier/evidence: lifecycle source verifier now reads `services/fulfillment.rs` and requires the batch helper, `IN` query, deterministic item ordering, and its use in the lifecycle list; evidence records batch item materialization and order preservation.
+- Integration: squash-merged as `5d0f4dc18698a492dc9c13b4bd70484671b7407c` via PR #4506.
+- Status: source remediation complete; Cargo/test/runtime performance evidence remains maintainer-owned and unrun. The improvement is source-proven, not benchmark-proven.
+- Next primary module iteration: continue the same owner service read path with a fresh second pass over filtering/index semantics and consistency of parent/item reads; do not promote runtime performance evidence without an actual maintainer run.
 ### FS-22.06.113 Assessment — mounted Fulfillment GraphQL pagination overflow
 
 - Base: 9919d553e597cb5c34e63a97bba20c070beb4fc8; fresh main was refreshed before implementation and post-merge main is 95cb2e4e666e923e123de7b918ff9e62785e139b.
