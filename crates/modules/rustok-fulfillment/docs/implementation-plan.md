@@ -282,6 +282,7 @@ disable/reconciliation matrix in
 - [x] Bound durable provider-operation request/result JSON to 32 KiB at the provider SPI and journal/recovery boundaries; oversized results are rejected before external execution or recovery persistence.
 - [x] Reject restricted sensitive/raw provider-result metadata keys recursively before external-result persistence or manual recovery; durable provider journal data remains limited to normalized, non-sensitive provider facts.
 - [x] Provider lifecycle calls honor the declared `PortContext` deadline; timeout is fail-closed as `reconciliation_required` for unknown external outcomes, with checkpoint failure remaining unavailable/reconciliation-required rather than retryable.
+- [x] Durable provider-result writers revalidate provider ID and external reference against the journaled operation before persistence, with the same metadata/tracking safety checks used by recovery.
 
 ## Fulfillment lifecycle read source checklist
 
