@@ -14,6 +14,9 @@ const source = read('crates/modules/rustok-commerce/src/controllers/reconciliati
 const labelRecovery = read(
   'crates/modules/rustok-commerce/src/services/fulfillment_create_label_recovery.rs',
 );
+const localRecovery = read(
+  'crates/modules/rustok-commerce/src/services/fulfillment_reconciliation.rs',
+);
 
 const openapi = read('crates/modules/rustok-commerce/src/openapi.rs');
 const failures = [];
@@ -41,6 +44,20 @@ const requireBefore = (content, first, second, label) => {
   }
 };
 
+
+
+for (const [value, label] of [
+  ['ship_fulfillment_with_provider_result(', 'local ship reconciliation must retain provider receipt'],
+  ['reship_fulfillment_with_provider_result(', 'local reship reconciliation must retain provider receipt'],
+  ['cancel_fulfillment_with_provider_result(', 'local cancel reconciliation must retain provider receipt'],
+  ['request.idempotency_key.as_deref().map(str::trim)', 'local reconciliation request identity'],
+]) requireText(localRecovery, value, label);
+
+for (const forbidden of [
+  '.ship_fulfillment(tenant_id, operation.fulfillment_id, input)',
+  '.reship_fulfillment(tenant_id, operation.fulfillment_id, input)',
+  '.cancel_fulfillment(tenant_id, operation.fulfillment_id, input)',
+]) forbidText(localRecovery, forbidden, 'local reconciliation must not strip the provider receipt');
 
 for (const [value, label] of [
   ['mark_reconciliation_required(', 'create-label recovery reconciliation checkpoint'],
