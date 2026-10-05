@@ -99,6 +99,7 @@
   },
   "normalization": {
     "timestamp_canonicalization": "UTC",
-    "projection_strings_preserve_whitespace": true
+    "projection_strings_preserve_whitespace": true,
+    "projection_items_preserve_order": true
   }
 }

@@ -104,7 +104,8 @@ if (
 }
 if (
   contract.normalization?.timestamp_canonicalization !== 'UTC' ||
-  contract.normalization?.projection_strings_preserve_whitespace !== true
+  contract.normalization?.projection_strings_preserve_whitespace !== true ||
+  contract.normalization?.projection_items_preserve_order !== true
 ) {
   failures.push('execution contract normalization policy mismatch');
 }
@@ -130,6 +131,20 @@ const projectionStringBlock = (start, end, label) => {
   }
   return runner.slice(startIndex, endIndex);
 };
+const projectionItemsBlock = projectionStringBlock(
+  'function normalizeItems(items, flavor, field)',
+  'function normalizeProjection(value, flavor, field)',
+  'projection item normalizer block',
+);
+if (!projectionItemsBlock.includes('return assertArray(items, field).map')) {
+  failures.push('projection item normalizer must preserve source order');
+}
+forbidText(
+  projectionItemsBlock,
+  '.sort((left, right) => left.id.localeCompare(right.id))',
+  'projection item reordering',
+);
+
 const requiredProjectionString = projectionStringBlock(
   'function requiredString(value, field)',
   'function optionalString(value, field)',
