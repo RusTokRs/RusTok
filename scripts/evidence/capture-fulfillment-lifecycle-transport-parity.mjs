@@ -192,6 +192,16 @@ function endpoint(value, field) {
   return parsed;
 }
 
+function graphqlEndpoint(value) {
+  const parsed = endpoint(value, 'RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL');
+  if (parsed.pathname !== contract.request_policy.graphql_mounted_path) {
+    fail(
+      `RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL must use ${contract.request_policy.graphql_mounted_path}`,
+    );
+  }
+  return parsed;
+}
+
 function sanitizedEndpoint(value) {
   return `${value.origin}${value.pathname}`;
 }
