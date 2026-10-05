@@ -528,7 +528,14 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                     "create-label journal reconciliation marker could not be persisted"
                 );
             }
-            let _ = error;
+            tracing::error!(
+                boundary = ADMIN_CREATE_BOUNDARY,
+                owner_operation,
+                provider_operation_id_non_nil = !operation_id.is_nil(),
+                commit_failed = true,
+                internal_code = %map_fulfillment_error_without_context(error).code,
+                "create-label journal commit failed"
+            );
             return Err(PortError::conflict(
                 "fulfillment.reconciliation_required",
                 "fulfillment create-label operation requires reconciliation",
