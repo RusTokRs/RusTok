@@ -116,6 +116,18 @@
       "raw_payload_audit_required": true,
       "owner_service_replay_guard_required": true
     },
+    "external_call_deadline": {
+      "source": "rustok_api::ports::PortContext.deadline_ms",
+      "required": true,
+      "applies_to": [
+        "create_label",
+        "ship",
+        "reship",
+        "cancel"
+      ],
+      "timeout_outcome": "reconciliation_required",
+      "reason": "external provider execution may have completed after the local future timed out"
+    },
     "lifecycle_owner_service": "FulfillmentService",
     "external_adapter_registration": {
       "status": "planned_contract_locked",
