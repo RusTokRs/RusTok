@@ -5,11 +5,12 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    CreateUserInputError, graphql_user_view, prepare_create_user_input, user_list_page,
-    user_list_pagination, user_list_previous_page, user_list_query_params,
+    CreateUserInputError, GraphqlUserViewModel, filter_users, graphql_user_view,
+    prepare_create_user_input, user_grid_columns, user_list_page, user_list_query_params,
 };
 use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{create_user, fetch_users};
@@ -91,6 +92,7 @@ pub fn Users() -> impl IntoView {
         set_page.set(1);
     });
 
+    let navigate_effect = navigate.clone();
     Effect::new(move |_| {
         let s = debounced_search.get();
         let r = role_filter.get();
@@ -105,7 +107,7 @@ pub fn Users() -> impl IntoView {
             .map(|encoded| format!("?{}", encoded))
             .unwrap_or_default();
 
-        navigate(&format!("/users{}", search_string), Default::default());
+        navigate_effect(&format!("/users{}", search_string), Default::default());
     });
 
     let users_resource = local_resource(
@@ -138,9 +140,105 @@ pub fn Users() -> impl IntoView {
     );
 
     let refresh = Callback::new(move |_| set_refresh_counter.update(|value| *value += 1));
-    let next_page = Callback::new(move |_| set_page.update(|value| *value += 1));
-    let previous_page =
-        Callback::new(move |_| set_page.update(|value| *value = user_list_previous_page(*value)));
+
+    let is_ru = locale.with_value(|l| l.as_deref().map(|s| s.starts_with("ru")).unwrap_or(false));
+    let columns = locale.with_value(|l| user_grid_columns(l.as_deref()));
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(initial_page as usize, 12, 0));
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        if let Some(FilterValue::Select(r)) = new_filters.get("role") {
+            set_role_filter.set(r.clone());
+        } else {
+            set_role_filter.set(String::new());
+        }
+        if let Some(FilterValue::Select(s)) = new_filters.get("status") {
+            set_status_filter.set(s.clone());
+        } else {
+            set_status_filter.set(String::new());
+        }
+        filters.set(new_filters);
+    });
+
+    Effect::new(move |_| {
+        let current_grid_page = pagination.get().page as i64;
+        if current_grid_page != page.get() {
+            set_page.set(current_grid_page);
+        }
+    });
+
+    let navigate_click = navigate.clone();
+    let on_row_click = Callback::new(move |item: GraphqlUserViewModel| {
+        navigate_click(&item.detail_href, Default::default());
+    });
+
+    let cell_renderer = Callback::new(move |(item, col_id): (GraphqlUserViewModel, String)| {
+        match col_id.as_str() {
+            "email" => {
+                let detail_href = item.detail_href.clone();
+                let email = item.email.clone();
+                view! {
+                    <A href=detail_href>
+                        <span class="text-primary hover:underline font-medium">
+                            {email}
+                        </span>
+                    </A>
+                }
+                .into_any()
+            }
+            "name" => {
+                let name = item.name.clone();
+                view! {
+                    <span class="text-foreground">{name}</span>
+                }
+                .into_any()
+            }
+            "role" => {
+                let role = item.role.clone();
+                view! {
+                    <span class="text-xs font-mono uppercase bg-muted text-muted-foreground px-2 py-0.5 rounded">
+                        {role}
+                    </span>
+                }
+                .into_any()
+            }
+            "status" => {
+                let is_active = item.is_active;
+                let status = item.status.clone();
+                view! {
+                    <Badge variant=if is_active { BadgeVariant::Success } else { BadgeVariant::Default }>
+                        {status}
+                    </Badge>
+                }
+                .into_any()
+            }
+            "created_at" => {
+                let created = item.created_at.clone();
+                view! {
+                    <span class="text-xs text-muted-foreground font-mono">
+                        {created}
+                    </span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let detail_href = item.detail_href.clone();
+                let view_label = if is_ru { "Просмотр" } else { "View" };
+                view! {
+                    <div class="flex items-center justify-end">
+                        <A href=detail_href>
+                            <span class="text-xs text-primary hover:underline font-medium px-2 py-1 rounded hover:bg-muted/50">
+                                {view_label}
+                            </span>
+                        </A>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
 
     let (show_create_modal, set_show_create_modal) = signal(false);
     let (new_email, set_new_email) = signal(String::new());
@@ -244,111 +342,73 @@ pub fn Users() -> impl IntoView {
                         None => view! { <div>{users_table_skeleton()}</div> }.into_any(),
                         Some(Ok(response)) => {
                             let total_count = response.users.page_info.total_count;
-                            let edges = response.users.edges;
+                            pagination.update(|p| p.total = total_count as u64);
+                            let user_items = response
+                                .users
+                                .edges
+                                .into_iter()
+                                .map(|edge| {
+                                    graphql_user_view(
+                                        edge.node,
+                                        t_local("users.placeholderDash", "—"),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            let search_term = search_query.get();
+                            let search_trimmed = search_term.trim();
+                            let filtered_users = filter_users(
+                                &user_items,
+                                &filters.get(),
+                                if search_trimmed.is_empty() {
+                                    None
+                                } else {
+                                    Some(search_trimmed)
+                                },
+                            );
+
                             view! {
-                            <div>
-                                <p class="text-xs text-muted-foreground mb-4">
-                                    {t_local("users.graphql.total", "Total users:")} " " {total_count}
-                                </p>
-                                <div class="mb-4 grid gap-3 md:grid-cols-3">
-                                    <Input
-                                        value=search_query
-                                        set_value=set_search_query
-                                        placeholder=t_local("users.filters.searchPlaceholder", "Email or name")
-                                        label=t_local("users.filters.search", "Search")
-                                    />
-                                    <Input
-                                        value=role_filter
-                                        set_value=set_role_filter
-                                        placeholder=t_local("users.filters.rolePlaceholder", "admin, editor")
-                                        label=t_local("users.filters.role", "Role filter")
-                                    />
-                                    <Input
-                                        value=status_filter
-                                        set_value=set_status_filter
-                                        placeholder=t_local("users.filters.statusPlaceholder", "active, disabled")
-                                        label=t_local("users.filters.status", "Status filter")
+                                <div class="space-y-4">
+                                    <Show when=move || !selection.get().is_empty()>
+                                        <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                                            <span class="font-medium text-foreground">
+                                                {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "пользователей" } else { "users" })}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                                on:click=move |_| selection.update(|s| s.clear())
+                                            >
+                                                {if is_ru { "Снять выбор" } else { "Clear" }}
+                                            </button>
+                                        </div>
+                                    </Show>
+                                    <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+                                        <div class="w-full md:w-72">
+                                            <Input
+                                                value=search_query
+                                                set_value=set_search_query
+                                                placeholder=t_local("users.filters.searchPlaceholder", "Email or name")
+                                                label=t_local("users.filters.search", "Search")
+                                            />
+                                        </div>
+                                        <div class="text-xs text-muted-foreground">
+                                            {t_local("users.graphql.total", "Total users:")} " " {total_count}
+                                        </div>
+                                    </div>
+                                    <DataGrid
+                                        columns=columns.clone()
+                                        data=Signal::derive(move || filtered_users.clone())
+                                        key_fn=|item: &GraphqlUserViewModel| item.id.clone()
+                                        cell_renderer=cell_renderer
+                                        is_loading=Signal::derive(move || users_resource.get().is_none())
+                                        empty_message=t_local("users.empty", "No users found").to_string()
+                                        selection=selection
+                                        pagination=pagination
+                                        filters=filters
+                                        on_filter_change=on_filters_change
+                                        on_row_click=on_row_click
                                     />
                                 </div>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full border-collapse text-sm">
-                                        <thead>
-                                            <tr>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {t_local("users.graphql.email", "Email")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {t_local("users.graphql.name", "Name")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {t_local("users.graphql.role", "Role")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {t_local("users.graphql.status", "Status")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {t_local("users.graphql.createdAt", "Created")}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {{
-                                                edges
-                                                    .iter()
-                                                    .map(|edge| {
-                                                        let user = graphql_user_view(
-                                                            edge.node.clone(),
-                                                            t_local("users.placeholderDash", "—"),
-                                                        );
-                                                        view! {
-                                                            <tr>
-                                                                <td class="border-b border-border py-2">
-                                                                    <A href=user.detail_href>
-                                                                        <span class="text-primary hover:underline">
-                                                                            {user.email}
-                                                                        </span>
-                                                                    </A>
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">
-                                                                    {user.name}
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{user.role}</td>
-                                                                <td class="border-b border-border py-2">
-                                                                    <Badge variant=if user.is_active { BadgeVariant::Success } else { BadgeVariant::Default }>{user.status}</Badge>
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{user.created_at}</td>
-                                                            </tr>
-                                                        }
-                                                    })
-                                                    .collect_view()
-                                            }}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="mt-4 flex flex-wrap items-center gap-3">
-                                    <Button
-                                        on_click=previous_page
-                                        class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
-                                        disabled=Signal::derive(move || {
-                                            !user_list_pagination(page.get(), limit.get(), total_count).can_previous
-                                        })
-                                    >
-                                        {t_local("users.pagination.prev", "Previous")}
-                                    </Button>
-                                    <span class="text-xs text-muted-foreground">
-                                        {t_local("users.pagination.page", "Page")} " " {page.get()}
-                                    </span>
-                                    <Button
-                                        on_click=next_page
-                                        class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
-                                        disabled=Signal::derive(move || {
-                                            !user_list_pagination(page.get(), limit.get(), total_count).can_next
-                                        })
-                                    >
-                                        {t_local("users.pagination.next", "Next")}
-                                    </Button>
-                                </div>
-                            </div>
                             }
                             .into_any()
                         }

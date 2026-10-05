@@ -1,4 +1,7 @@
 use chrono::{DateTime, Utc};
+use rustok_grid::{
+    ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
+};
 
 use crate::model::{
     AppType, CreateOAuthAppInput, CreateUserInput, GraphqlUser, UpdateOAuthAppInput,
@@ -145,6 +148,173 @@ pub fn user_list_query_params(
         params.push(("page", page.to_string()));
     }
     params
+}
+
+pub fn user_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("email", if is_ru { "Эл. почта" } else { "Email" })
+            .width(240)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр почты...".to_string()
+                } else {
+                    "Filter email...".to_string()
+                }),
+            }),
+        GridColumnDef::new("name", if is_ru { "Имя" } else { "Name" })
+            .width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр имени...".to_string()
+                } else {
+                    "Filter name...".to_string()
+                }),
+            }),
+        GridColumnDef::new("role", if is_ru { "Роль" } else { "Role" })
+            .width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption {
+                        value: "ADMIN".to_string(),
+                        label: if is_ru {
+                            "Администратор".to_string()
+                        } else {
+                            "Admin".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "EDITOR".to_string(),
+                        label: if is_ru {
+                            "Редактор".to_string()
+                        } else {
+                            "Editor".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "CUSTOMER".to_string(),
+                        label: if is_ru {
+                            "Клиент".to_string()
+                        } else {
+                            "Customer".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "VIEWER".to_string(),
+                        label: if is_ru {
+                            "Наблюдатель".to_string()
+                        } else {
+                            "Viewer".to_string()
+                        },
+                    },
+                ],
+                placeholder: Some(if is_ru {
+                    "Все роли".to_string()
+                } else {
+                    "All roles".to_string()
+                }),
+            }),
+        GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
+            .width(130)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption {
+                        value: "active".to_string(),
+                        label: if is_ru {
+                            "Активен".to_string()
+                        } else {
+                            "Active".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "disabled".to_string(),
+                        label: if is_ru {
+                            "Отключен".to_string()
+                        } else {
+                            "Disabled".to_string()
+                        },
+                    },
+                    FilterOption {
+                        value: "pending".to_string(),
+                        label: if is_ru {
+                            "В ожидании".to_string()
+                        } else {
+                            "Pending".to_string()
+                        },
+                    },
+                ],
+                placeholder: Some(if is_ru {
+                    "Все статусы".to_string()
+                } else {
+                    "All statuses".to_string()
+                }),
+            }),
+        GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
+            .width(160)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(100)
+            .align(ColumnAlign::Right)
+            .not_sortable(),
+    ]
+}
+
+pub fn matches_user_filter(user: &GraphqlUserViewModel, filters: &ColumnFilters) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("email", FilterValue::Text(q)) => {
+                if !user.email.to_lowercase().contains(&q.to_lowercase()) {
+                    return false;
+                }
+            }
+            ("name", FilterValue::Text(q)) => {
+                if !user.name.to_lowercase().contains(&q.to_lowercase()) {
+                    return false;
+                }
+            }
+            ("role", FilterValue::Select(r)) => {
+                if !user.role.eq_ignore_ascii_case(r) {
+                    return false;
+                }
+            }
+            ("status", FilterValue::Select(s)) => {
+                if !user.status.eq_ignore_ascii_case(s) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_users(
+    users: &[GraphqlUserViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<GraphqlUserViewModel> {
+    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+
+    users
+        .iter()
+        .filter(|user| {
+            if let Some(ref term) = search_term {
+                let matches_global = user.email.to_lowercase().contains(term)
+                    || user.name.to_lowercase().contains(term)
+                    || user.role.to_lowercase().contains(term);
+                if !matches_global {
+                    return false;
+                }
+            }
+
+            matches_user_filter(user, filters)
+        })
+        .cloned()
+        .collect()
 }
 
 pub fn prepare_create_user_input(
@@ -725,5 +895,76 @@ mod tests {
         assert_eq!(view.edit_form.name, "");
         assert_eq!(view.edit_form.role, "ADMIN");
         assert_eq!(view.edit_form.status, "active");
+    }
+
+    #[test]
+    fn user_grid_columns_localization() {
+        let cols_en = user_grid_columns(Some("en"));
+        assert_eq!(cols_en[0].title, "Email");
+        assert_eq!(cols_en[1].title, "Name");
+        assert_eq!(cols_en[2].title, "Role");
+        assert_eq!(cols_en[3].title, "Status");
+
+        let cols_ru = user_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Эл. почта");
+        assert_eq!(cols_ru[1].title, "Имя");
+        assert_eq!(cols_ru[2].title, "Роль");
+        assert_eq!(cols_ru[3].title, "Статус");
+    }
+
+    #[test]
+    fn filter_users_by_search_and_role_and_status() {
+        let u1 = GraphqlUserViewModel {
+            id: "1".into(),
+            email: "alice@example.com".into(),
+            name: "Alice Smith".into(),
+            role: "ADMIN".into(),
+            status: "active".into(),
+            created_at: "2026-01-01".into(),
+            tenant_name: "Tenant 1".into(),
+            detail_href: "/users/1".into(),
+            is_active: true,
+            edit_form: UserEditFormValues {
+                name: "Alice Smith".into(),
+                role: "ADMIN".into(),
+                status: "active".into(),
+            },
+        };
+        let u2 = GraphqlUserViewModel {
+            id: "2".into(),
+            email: "bob@example.com".into(),
+            name: "Bob Jones".into(),
+            role: "EDITOR".into(),
+            status: "disabled".into(),
+            created_at: "2026-02-01".into(),
+            tenant_name: "Tenant 1".into(),
+            detail_href: "/users/2".into(),
+            is_active: false,
+            edit_form: UserEditFormValues {
+                name: "Bob Jones".into(),
+                role: "EDITOR".into(),
+                status: "disabled".into(),
+            },
+        };
+        let list = vec![u1.clone(), u2.clone()];
+
+        // Filter by search
+        let res = filter_users(&list, &ColumnFilters::new(), Some("alice"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id, "1");
+
+        // Filter by role
+        let mut filters = ColumnFilters::new();
+        filters.set("role", FilterValue::Select("EDITOR".into()));
+        let res = filter_users(&list, &filters, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id, "2");
+
+        // Filter by status
+        let mut filters = ColumnFilters::new();
+        filters.set("status", FilterValue::Select("active".into()));
+        let res = filter_users(&list, &filters, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].id, "1");
     }
 }
