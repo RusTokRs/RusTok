@@ -218,29 +218,43 @@ LIMIT 1
             r#"
 INSERT INTO shipping_option_translation_change_journal (
     operation_id, tenant_id, shipping_option_id, resource_revision, lifecycle
-) VALUES ($1, $2, $3, $4, $5)
+)
+SELECT $1, shipping_options.tenant_id, shipping_options.id, $3, $4
+FROM shipping_options
+WHERE shipping_options.id = $2
+  AND shipping_options.tenant_id = $5
 "#
         }
         _ => {
             r#"
 INSERT INTO shipping_option_translation_change_journal (
     operation_id, tenant_id, shipping_option_id, resource_revision, lifecycle
-) VALUES (?, ?, ?, ?, ?)
+)
+SELECT ?, shipping_options.tenant_id, shipping_options.id, ?, ?
+FROM shipping_options
+WHERE shipping_options.id = ?
+  AND shipping_options.tenant_id = ?
 "#
         }
     };
-    txn.execute_raw(Statement::from_sql_and_values(
-        backend,
-        insert_sql,
-        vec![
-            operation_id.into(),
-            tenant_id.into(),
-            shipping_option_id.into(),
-            resource_revision.to_string().into(),
-            lifecycle.as_str().into(),
-        ],
-    ))
-    .await?;
+    let result = txn
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            insert_sql,
+            vec![
+                operation_id.into(),
+                resource_revision.to_string().into(),
+                lifecycle.as_str().into(),
+                shipping_option_id.into(),
+                tenant_id.into(),
+            ],
+        ))
+        .await?;
+    if result.rows_affected != 1 {
+        return Err(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
+            shipping_option_id,
+        ));
+    }
     Ok(())
 }
 
