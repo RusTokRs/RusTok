@@ -10,8 +10,8 @@ use crate::{PaymentError, PaymentResult};
 
 pub const MANUAL_PAYMENT_PROVIDER_ID: &str = "manual";
 const MAX_WEBHOOK_IDENTITY_LENGTH: usize = 191;
-const MAX_EXTERNAL_REFERENCE_LENGTH: usize = 191;
-const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+pub(crate) const MAX_EXTERNAL_REFERENCE_LENGTH: usize = 191;
+pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderCapabilities {
@@ -460,7 +460,7 @@ impl PaymentProviderRegistry {
     }
 }
 
-fn validate_provider_operation_payload(
+pub(crate) fn validate_provider_operation_payload(
     value: &Value,
     field: &str,
 ) -> PaymentResult<()> {
