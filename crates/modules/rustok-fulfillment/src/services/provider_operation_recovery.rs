@@ -10,7 +10,7 @@ use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
 use crate::providers::{
     FULFILLMENT_TRACKING_NUMBER_MAX_LEN, FulfillmentProviderOperationResult,
-    validate_optional_boundary_text,
+    validate_durable_provider_payload, validate_optional_boundary_text,
 };
 
 use super::provider_operation::{
