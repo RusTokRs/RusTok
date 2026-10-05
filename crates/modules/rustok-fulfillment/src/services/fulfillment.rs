@@ -959,6 +959,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "ship",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if !matches!(fulfillment.status.as_str(), STATUS_PENDING | STATUS_SHIPPED) {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1344,6 +1359,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "reship",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if fulfillment.status != STATUS_DELIVERED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1481,6 +1511,21 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+
+        if let Some((_, operation_id)) = provider_result.as_ref()
+            && has_matching_provider_operation(
+                &fulfillment.metadata,
+                *operation_id,
+                "cancel",
+            )
+        {
+            let response = self
+                .build_fulfillment_response(&txn, tenant_id, fulfillment)
+                .await?;
+            txn.commit().await?;
+            return Ok(response);
+        }
+
         if fulfillment.status == STATUS_DELIVERED || fulfillment.status == STATUS_CANCELLED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1853,6 +1898,35 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
         }
         other => other,
     }
+}
+
+fn has_matching_provider_operation(
+    metadata: &Value,
+    operation_id: Uuid,
+    operation: &str,
+) -> bool {
+    if operation_id.is_nil() {
+        return false;
+    }
+
+    let Some(provider_operation) = metadata.get("provider_operation").and_then(Value::as_object)
+    else {
+        return false;
+    };
+
+    let Some(stored_id) = provider_operation
+        .get("id")
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+    else {
+        return false;
+    };
+
+    stored_id == operation_id
+        && provider_operation
+            .get("operation")
+            .and_then(Value::as_str)
+            == Some(operation)
 }
 
 fn prepare_provider_lifecycle_metadata(
@@ -2949,6 +3023,43 @@ mod tests {
             }]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn matching_provider_operation_is_replay_safe_for_lifecycle_recovery() {
+        let operation_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "provider_operation": {
+                "id": operation_id,
+                "operation": "ship",
+            }
+        });
+
+        assert!(super::has_matching_provider_operation(
+            &metadata,
+            operation_id,
+            "ship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &metadata,
+            operation_id,
+            "reship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &metadata,
+            Uuid::new_v4(),
+            "ship"
+        ));
+        assert!(!super::has_matching_provider_operation(
+            &serde_json::json!({
+                "provider_operation": {
+                    "id": "not-a-uuid",
+                    "operation": "ship",
+                }
+            }),
+            operation_id,
+            "ship"
+        ));
     }
 
     #[test]
