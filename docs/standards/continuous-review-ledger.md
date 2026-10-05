@@ -446,7 +446,7 @@ Hard limits for every iteration:
 - [ ] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
 - [x] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — auth lifecycle delegation and tenant-scoped session operations completed; public routes/DTOs unchanged. PR #4556 squash merged as `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
 - [x] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — fresh one-module audit complete; tenant isolation, permission admission, bounded pagination, DB error propagation, DTO projection, and route compatibility reverified. No repository-owned production defect required remediation.
-- [ ] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — audit OAuth token/authorize/consent/browser-session/revoke transport contracts, principal binding, CSRF/browser trust, and failure mapping.### FS-22.06.02 Assessment — `apps/server/src/controllers/users.rs`
+- [x] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — OAuth transport audit complete; RFC 7009 form revocation, transport-safe consent errors, and full OAuth OpenAPI route/schema registration implemented and re-audited.### FS-22.06.02 Assessment — `apps/server/src/controllers/users.rs`
 
 - **Base:** refreshed `main` at `3aba5a3c50c4ee551ad22cbd00b99f0a0ca6e21c`; dedicated branch `codex/audit-fs-22.06.02-users-controller` was created from that exact SHA.
 - **Primary scope:** user-list/detail REST handlers, tenant and permission extractors, owner DTO projection, pagination/search/filter behavior, database error mapping, and route/OpenAPI parity.
@@ -462,7 +462,26 @@ Hard limits for every iteration:
 - **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.03 — apps/server/src/controllers/oauth.rs`.
 
 
-- [ ] **FS-22.06.04 — `apps/server/src/controllers/auth.rs` auxiliary reset/verification surface** — reserved for a separate iteration only if the primary auth audit uncovers an independent token/email lifecycle root cause.
+- [ ] **FS-22.06.04 — `apps/server/src/controllers/auth.rs` auxiliary reset/verification surface** — reserved for a separate iteration only if the primary auth audit uncovers an independent token/email lifecycle root cause.### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
+
+- **Base:** refreshed `main` at `864ffd02a0caba91aada24e3078644e61b525cf0`; dedicated branch `codex/audit-fs-22.06.03-oauth-controller` was created from that exact SHA.
+- **Primary scope:** OAuth token, authorization-code/browser authorization, consent, browser-session cookie, UserInfo, and RFC 7009 revocation transport; client/tenant binding; content negotiation; public error mapping; and OpenAPI route/schema parity.
+- **Invariant map:** token and revocation credentials must use standard OAuth transport formats; tenant/client identity is derived from trusted request context plus persisted OAuth app identity; redirect URIs must be validated before redirect construction; PKCE must remain S256-only; browser-session authentication must remain Bearer-consistent; consent writes must not expose owner/backend diagnostics; OpenAPI must describe the mounted OAuth surface using owner DTOs without creating a second schema authority.
+- **Confirmed finding OAUTHCONTROLLER-22.06.03-01:** RFC 7009 revocation requests were accepted only through an Axum JSON extractor. RFC 7009 requires revocation parameters in `application/x-www-form-urlencoded`; JSON may be retained only as a compatibility extension. The route therefore rejected standard OAuth revocation clients.
+- **Remediation:** `revoke_handler` now parses form-urlencoded requests and retains JSON parsing for compatibility through the same bounded content-type helper already used by the token endpoint. Malformed bodies map to the stable `invalid_request` response.
+- **Confirmed finding OAUTHCONTROLLER-22.06.03-02:** consent failure mapping embedded the owner error's `Display` text in the public OAuth `error_description`. The current owner returns a generic internal error, but the transport contract was unnecessarily coupled to owner diagnostics.
+- **Remediation:** consent grant failures now return the fixed `Failed to grant consent` message and never stringify the owner error.
+- **Confirmed finding OAUTHCONTROLLER-22.06.03-03:** mounted OAuth REST endpoints had no corresponding entries in the server `ApiDoc`, and their owner request/response schemas were therefore absent from the generated OpenAPI document.
+- **Remediation:** added explicit `utoipa::path` contracts and registered all OAuth handlers and owner DTO schemas in `apps/server/src/controllers/swagger.rs`. Token and revocation request bodies describe both supported JSON compatibility and RFC-standard form encoding; consent is documented as form-urlencoded; UserInfo GET/POST receive unique operation IDs.
+- **Immediate re-audit:** re-read the complete changed OAuth revoke/consent sections, OpenAPI annotations, swagger registration, and the shared content-type/authentication helpers. No route was left unregistered and no public response path contains owner error text.
+- **Adjacent-boundary re-audit:** compared OAuth controller behavior with `OAuthTokenService`, `OAuthAppService`, `CurrentUser`/OAuth principal resolution, request-trust secure-cookie handling, persisted redirect-URI validation, and the existing auth/tenant architecture. No duplicate authentication authority or redirect validation bypass was introduced.
+- **Regression audit:** JSON token clients retain their prior behavior; standard form-urlencoded token and revocation clients now have first-class transport support; consent failures remain generic; OAuth route/schema metadata now matches mounted methods without changing runtime route topology.
+- **Fresh second pass:** independently searched the controller for raw owner-error formatting, unbounded authorization parsing, redirect `expect` sites, tenant/client checks, cookie attributes, and OpenAPI path coverage. Remaining redirect `expect` calls are guarded by the existing persisted redirect URI validation invariant already accepted by the earlier OAuth audit; no new in-scope defect was confirmed.
+- **Verification:** repository source inspection, RFC/OIDC protocol comparison, immediate re-audits, OpenAPI registration comparison, and branch diff review. Local Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution was not possible because the workspace is not mounted and local DNS cannot resolve GitHub; no CI/runtime pass is claimed.
+- **Status:** `FS-22.06.03` implementation complete on the dedicated branch; PR/integration pending.
+- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.04` only if an independent reset/verification root cause remains after the auth controller audit; otherwise proceed to the next controller track.
+
+
 ### FS-22.06.01 Assessment — `apps/server/src/controllers/auth.rs`
 
 - **Base:** refreshed `main` at `9f1dbc6c22ef0937a9e0369801cff461ec604202`; dedicated branch `codex/audit-fs-22.06.01-auth-controller` was created from that exact SHA.
