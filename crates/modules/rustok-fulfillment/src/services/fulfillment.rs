@@ -728,9 +728,9 @@ impl FulfillmentService {
             .await?;
 
         let mut records = Vec::with_capacity(rows.len());
-        let fulfillments = self.build_fulfillment_responses(rows).await?;
+        let (rows, fulfillments) = self.build_fulfillment_responses(rows).await?;
 
-        for (row, fulfillment) in fulfillments.0.into_iter().zip(fulfillments.1) {
+        for (row, fulfillment) in rows.into_iter().zip(fulfillments) {
             let index = row.checkout_fulfillment_index.ok_or_else(|| {
                 FulfillmentError::Validation(
                     "checkout fulfillment identity index is missing".to_string(),
