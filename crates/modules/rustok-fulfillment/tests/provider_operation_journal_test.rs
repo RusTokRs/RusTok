@@ -342,6 +342,35 @@ async fn provider_result_writer_rejects_mismatched_journal_identity() {
         rustok_fulfillment::error::FulfillmentError::ProviderResultInvalid(_)
     ));
 
+    let oversized_reconciliation_reference_error = journal
+        .mark_execution_reconciliation_required(
+            tenant_id,
+            operation.id,
+            Some("r".repeat(192)),
+            None,
+            "provider outcome is unknown",
+        )
+        .await
+        .expect_err("reconciliation writer must reject oversized provider references without a result");
+    assert!(matches!(
+        oversized_reconciliation_reference_error,
+        rustok_fulfillment::error::FulfillmentError::Validation(_)
+    ));
+
+    let current = journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("operation should remain readable after rejected reconciliation reference");
+    assert_eq!(
+        current.status,
+        rustok_fulfillment::PROVIDER_OPERATION_EXECUTING,
+        "invalid provider reference must not mutate the executing operation"
+    );
+    assert!(
+        current.provider_reference.is_none(),
+        "invalid provider reference must not be persisted"
+    );
+
     let unresolved_result = journal
         .mark_execution_reconciliation_required(
             tenant_id,

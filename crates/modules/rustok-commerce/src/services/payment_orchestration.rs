@@ -157,6 +157,7 @@ impl PaymentOrchestrationService {
             Ok(collection) => {
                 mark_journal_committed(
                     &self.provider_operation_journal,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                 )
@@ -166,6 +167,7 @@ impl PaymentOrchestrationService {
             Err(source) => {
                 mark_local_persistence_failed(
                     &self.provider_operation_journal,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                     &source,
@@ -259,6 +261,7 @@ impl PaymentOrchestrationService {
             Ok(collection) => {
                 mark_journal_committed(
                     &self.provider_operation_journal,
+                    tenant_id,
                     journaled.operation_id,
                     "capture",
                 )
@@ -268,6 +271,7 @@ impl PaymentOrchestrationService {
             Err(source) => {
                 mark_local_persistence_failed(
                     &self.provider_operation_journal,
+                    tenant_id,
                     journaled.operation_id,
                     "capture",
                     &source,
@@ -357,6 +361,7 @@ impl PaymentOrchestrationService {
                 if let Some(operation_id) = provider_operation_id {
                     mark_journal_committed(
                         &self.provider_operation_journal,
+                        tenant_id,
                         operation_id,
                         "cancel",
                     )
@@ -368,6 +373,7 @@ impl PaymentOrchestrationService {
                 if let Some(operation_id) = provider_operation_id {
                     mark_local_persistence_failed(
                         &self.provider_operation_journal,
+                        tenant_id,
                         operation_id,
                         "cancel",
                         &source,
@@ -450,6 +456,7 @@ impl PaymentOrchestrationService {
         .await?;
         match mark_journal_committed(
             &self.provider_operation_journal,
+            tenant_id,
             journaled.operation_id,
             "refund",
         )
@@ -506,7 +513,12 @@ impl PaymentOrchestrationService {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            mark_journal_committed(&self.provider_operation_journal, existing.id, operation)
+            mark_journal_committed(
+                &self.provider_operation_journal,
+                tenant_id,
+                existing.id,
+                operation,
+            )
                 .await?;
         }
         Ok(())

@@ -10,6 +10,8 @@ use crate::{PaymentError, PaymentResult};
 
 pub const MANUAL_PAYMENT_PROVIDER_ID: &str = "manual";
 const MAX_WEBHOOK_IDENTITY_LENGTH: usize = 191;
+pub(crate) const MAX_EXTERNAL_REFERENCE_LENGTH: usize = 191;
+pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderCapabilities {
@@ -279,12 +281,21 @@ impl PaymentProviderRegistry {
         if request
             .idempotency_key
             .as_deref()
-            .is_some_and(|key| key.trim().is_empty())
+            .is_some_and(|key| {
+                let key = key.trim();
+                key.is_empty() || key.len() > MAX_WEBHOOK_IDENTITY_LENGTH
+            })
         {
             return Err(PaymentError::Validation(format!(
-                "payment provider `{provider_id}` {operation} idempotency_key must not be blank"
+                "payment provider `{provider_id}` {operation} idempotency_key must contain 1 to {MAX_WEBHOOK_IDENTITY_LENGTH} bytes"
             )));
         }
+        if !request.metadata.is_object() {
+            return Err(PaymentError::Validation(format!(
+                "payment provider `{provider_id}` {operation} metadata must be an object"
+            )));
+        }
+        validate_provider_operation_payload(&request.metadata, "request metadata")?;
         Ok(())
     }
 
@@ -294,6 +305,13 @@ impl PaymentProviderRegistry {
         requested_amount: Decimal,
         result: &PaymentProviderOperationResult,
     ) -> PaymentResult<()> {
+        let external_reference_valid = result
+            .external_reference
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(|value| {
+                !value.is_empty() && value.len() <= MAX_EXTERNAL_REFERENCE_LENGTH
+            });
         let invalid = result.provider_id != provider_id
             || result.authorized_amount < Decimal::ZERO
             || result.captured_amount < Decimal::ZERO
@@ -302,13 +320,20 @@ impl PaymentProviderRegistry {
             || (result.authorized_amount > Decimal::ZERO
                 && result.captured_amount > result.authorized_amount)
             || (operation == "authorize" && result.authorized_amount <= Decimal::ZERO)
-            || (operation == "capture" && result.captured_amount <= Decimal::ZERO);
+            || (operation == "capture" && result.captured_amount <= Decimal::ZERO)
+            || !external_reference_valid
+            || !result.metadata.is_object();
         if invalid {
             return Err(PaymentError::provider_invalid_response(
                 provider_id,
                 operation,
             ));
         }
+        let result_payload = serde_json::to_value(result).map_err(|_| {
+            PaymentError::provider_invalid_response(provider_id, operation)
+        })?;
+        validate_provider_operation_payload(&result_payload, "result")
+            .map_err(|_| PaymentError::provider_invalid_response(provider_id, operation))?;
         Ok(())
     }
 
@@ -433,6 +458,23 @@ impl PaymentProviderRegistry {
         }
         Ok(result)
     }
+}
+
+pub(crate) fn validate_provider_operation_payload(
+    value: &Value,
+    field: &str,
+) -> PaymentResult<()> {
+    let encoded = serde_json::to_vec(value).map_err(|_| {
+        PaymentError::Validation(format!(
+            "payment provider {field} could not be encoded"
+        ))
+    })?;
+    if encoded.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
+        return Err(PaymentError::Validation(format!(
+            "payment provider {field} exceeds {MAX_PROVIDER_OPERATION_PAYLOAD_BYTES} serialized bytes"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_optional_webhook_hint(value: Option<&str>, label: &str) -> PaymentResult<()> {
@@ -620,7 +662,7 @@ mod boundary_tests {
             external_reference: None,
             authorized_amount: Decimal::new(100, 0),
             captured_amount: Decimal::ZERO,
-            metadata: Value::Null,
+            metadata: serde_json::json!({}),
         }
     }
 
@@ -640,6 +682,38 @@ mod boundary_tests {
 
         let mut result = valid_result();
         result.authorized_amount = Decimal::new(101, 0);
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_oversized_provider_result_payloads() {
+        let mut result = valid_result();
+        result.metadata = serde_json::json!({
+            "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+        });
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_oversized_provider_external_references() {
+        let mut result = valid_result();
+        result.external_reference = Some("r".repeat(MAX_EXTERNAL_REFERENCE_LENGTH + 1));
         assert!(matches!(
             PaymentProviderRegistry::validate_operation_result(
                 "gateway",

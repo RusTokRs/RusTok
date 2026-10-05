@@ -8,6 +8,7 @@
 - `payments` schema;
 - `PaymentModule` and `PaymentService`;
 - payment boundary for the `cart -> payment -> order` checkout chain;
+- tenant-scoped provider-operation journals with collection/refund ownership validation at the service boundary and database ownership guards;
 - built-in manual/default payment flow at the current stage;
 - payment-owned provider SPI registry for external provider composition: descriptor/adapter id validation, health/degraded-mode registration guards and side-effect-free runtime-mode checks before adapter invocation.
 

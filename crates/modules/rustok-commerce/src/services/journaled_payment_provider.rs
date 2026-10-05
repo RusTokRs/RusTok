@@ -64,9 +64,9 @@ pub(crate) async fn execute_journaled_provider_operation(
         });
     }
 
-    let claimed = journal.claim_execution(journal_operation.id).await?;
+    let claimed = journal.claim_execution(journal_operation.tenant_id, journal_operation.id).await?;
     if claimed.is_none() {
-        let current = journal.get(journal_operation.id).await?;
+        let current = journal.get(journal_operation.tenant_id, journal_operation.id).await?;
         if let Some(result) = persisted_provider_result(&current)? {
             return Ok(JournaledProviderResult {
                 operation_id: current.id,
@@ -97,11 +97,11 @@ pub(crate) async fn execute_journaled_provider_operation(
         Err(source) => {
             let journal_result = if source.requires_provider_reconciliation() {
                 journal
-                    .mark_reconciliation_required(journal_operation.id, source.to_string())
+                    .mark_reconciliation_required(journal_operation.tenant_id, journal_operation.id, source.to_string())
                     .await
             } else {
                 journal
-                    .mark_provider_error(journal_operation.id, source.to_string())
+                    .mark_provider_error(journal_operation.tenant_id, journal_operation.id, source.to_string())
                     .await
             };
             if journal_result.is_err() {
@@ -119,6 +119,7 @@ pub(crate) async fn execute_journaled_provider_operation(
         Err(_) => {
             let _ = journal
                 .mark_reconciliation_required(
+                    journal_operation.tenant_id,
                     journal_operation.id,
                     "provider result serialization failed after external success",
                 )
@@ -131,6 +132,7 @@ pub(crate) async fn execute_journaled_provider_operation(
     };
     if journal
         .mark_provider_succeeded(
+            journal_operation.tenant_id,
             journal_operation.id,
             provider_result.external_reference.clone(),
             result_payload,
@@ -302,12 +304,14 @@ fn persisted_provider_result(
 
 pub(crate) async fn mark_journal_committed(
     journal: &PaymentProviderOperationJournal,
+    tenant_id: Uuid,
     operation_id: Uuid,
     operation: &'static str,
 ) -> PaymentOrchestrationResult<()> {
-    if journal.mark_committed(operation_id).await.is_err() {
+    if journal.mark_committed(tenant_id, operation_id).await.is_err() {
         let _ = journal
             .mark_reconciliation_required(
+                tenant_id,
                 operation_id,
                 format!("local {operation} commit could not be checkpointed"),
             )
@@ -321,6 +325,7 @@ pub(crate) async fn mark_journal_committed(
 
 pub(crate) async fn mark_local_persistence_failed(
     journal: &PaymentProviderOperationJournal,
+    tenant_id: Uuid,
     operation_id: Uuid,
     operation: &'static str,
     source: &PaymentError,

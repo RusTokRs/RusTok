@@ -314,6 +314,7 @@ impl FulfillmentProviderOperationJournal {
         error_message: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
+        validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)?;
         if let Some(provider_result) = provider_result.as_ref() {
             validate_durable_provider_payload(provider_result, "provider_result")?;
             let current = self.get(tenant_id, operation_id).await?;

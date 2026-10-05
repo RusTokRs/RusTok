@@ -190,6 +190,7 @@ impl FulfillmentProviderOperationRecovery {
             typed_result.tracking_number.as_deref(),
             FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
         )?;
+        validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)?;
         let result_reference = normalize_optional(typed_result.external_reference.clone());
         let supplied_reference = normalize_optional(provider_reference);
         if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference)
@@ -281,6 +282,11 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
 
 fn normalize_error(value: String) -> String {
     let value = value.trim();
+    let value = if value.is_empty() {
+        "provider operation failed"
+    } else {
+        value
+    };
     if value.len() <= 2000 {
         value.to_string()
     } else {
@@ -349,6 +355,80 @@ mod tests {
             .await
             .expect("recovery state must remain unchanged after rejected oversized result");
         assert_eq!(current.status, PROVIDER_OPERATION_ERROR);
+    }
+
+    #[tokio::test]
+    async fn oversized_recovery_provider_reference_is_rejected_before_persistence() {
+        let db = setup_test_db().await;
+        support::ensure_fulfillment_schema(&db).await;
+        let journal = FulfillmentProviderOperationJournal::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let fulfillment_id = Uuid::new_v4();
+        insert_test_fulfillment(&db, tenant_id, fulfillment_id).await;
+
+        let operation = journal
+            .begin(BeginProviderOperation {
+                tenant_id,
+                fulfillment_id,
+                operation: "ship".to_string(),
+                provider_id: "carrier".to_string(),
+                idempotency_key: "oversized-recovery-reference".to_string(),
+                request_payload: serde_json::json!({
+                    "tenant_id": tenant_id,
+                    "fulfillment_id": fulfillment_id,
+                    "idempotency_key": "oversized-recovery-reference",
+                    "metadata": {}
+                }),
+            })
+            .await
+            .expect("provider operation should begin");
+        journal
+            .claim_execution(tenant_id, operation.id)
+            .await
+            .expect("claim should succeed")
+            .expect("operation should be claimable");
+        journal
+            .mark_provider_error(tenant_id, operation.id, "outcome unknown")
+            .await
+            .expect("ambiguous outcome should be quarantined");
+
+        let provider_result = serde_json::json!({
+            "provider_id": "carrier",
+            "external_reference": "shipment-1",
+            "tracking_number": "TRACK-1",
+            "metadata": {}
+        });
+        let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
+        let error = recovery
+            .resolve_unknown_as_succeeded(
+                tenant_id,
+                operation.id,
+                Some("x".repeat(192)),
+                provider_result,
+            )
+            .await
+            .expect_err("oversized provider reference must be rejected");
+
+        assert!(matches!(
+            error,
+            rustok_fulfillment::error::FulfillmentError::Validation(_)
+        ));
+
+        let current = recovery
+            .resolve_unknown_as_failed(tenant_id, operation.id, "confirmed no shipment")
+            .await
+            .expect("recovery state must remain unchanged after rejected provider reference");
+        assert_eq!(current.status, PROVIDER_OPERATION_ERROR);
+        assert!(current.provider_reference.is_none());
+        assert!(current.provider_result.is_none());
+    }
+
+    #[test]
+    fn empty_recovery_error_is_normalized_to_safe_default() {
+        assert_eq!(
+            normalize_error("   ".to_string()),
+            "provider operation failed"
+        );
     }
 
     #[test]

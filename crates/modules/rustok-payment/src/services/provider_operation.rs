@@ -8,8 +8,12 @@ use uuid::Uuid;
 
 use rustok_core::generate_id;
 
-use crate::entities::provider_operation;
+use crate::entities::{payment_collection, provider_operation, refund};
 use crate::error::{PaymentError, PaymentResult};
+use crate::providers::{
+    MAX_EXTERNAL_REFERENCE_LENGTH, PaymentProviderOperationResult,
+    validate_provider_operation_payload,
+};
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
 pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
@@ -47,6 +51,7 @@ impl PaymentProviderOperationJournal {
         input: BeginProviderOperation,
     ) -> PaymentResult<provider_operation::Model> {
         let input = normalize_begin_input(input)?;
+        validate_begin_identity(&self.db, &input).await?;
         if let Some(existing) = self
             .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
             .await?
@@ -94,12 +99,20 @@ impl PaymentProviderOperationJournal {
         }
     }
 
-    pub async fn get(&self, id: Uuid) -> PaymentResult<provider_operation::Model> {
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> PaymentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, id)?;
         provider_operation::Entity::find_by_id(id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| {
-                PaymentError::Validation(format!("payment provider operation {id} not found"))
+                PaymentError::Validation(format!(
+                    "payment provider operation {id} not found for tenant {tenant_id}"
+                ))
             })
     }
 
@@ -134,8 +147,10 @@ impl PaymentProviderOperationJournal {
 
     pub async fn claim_execution(
         &self,
+        tenant_id: Uuid,
         id: Uuid,
     ) -> PaymentResult<Option<provider_operation::Model>> {
+        validate_operation_identity(tenant_id, id)?;
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -145,6 +160,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(
                 provider_operation::Column::Status
@@ -156,16 +172,20 @@ impl PaymentProviderOperationJournal {
         if update.rows_affected == 0 {
             return Ok(None);
         }
-        self.get(id).await.map(Some)
+        self.get(tenant_id, id).await.map(Some)
     }
 
     pub async fn mark_provider_succeeded(
         &self,
+        tenant_id: Uuid,
         id: Uuid,
         provider_reference: Option<String>,
         provider_result: Value,
     ) -> PaymentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
+        validate_operation_identity(tenant_id, id)?;
+        let model = self.get(tenant_id, id).await?;
+        let provider_reference =
+            validate_provider_result_for_operation(&model, provider_reference, &provider_result)?;
         if matches!(
             model.status.as_str(),
             PROVIDER_OPERATION_SUCCEEDED
@@ -184,7 +204,7 @@ impl PaymentProviderOperationJournal {
             )
             .col_expr(
                 provider_operation::Column::ProviderReference,
-                Expr::value(normalize_optional(provider_reference)),
+                Expr::value(provider_reference),
             )
             .col_expr(
                 provider_operation::Column::ProviderResult,
@@ -208,7 +228,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if matches!(
                 current.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED
@@ -223,15 +243,17 @@ impl PaymentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, id).await
     }
 
     pub async fn mark_provider_error(
         &self,
+        tenant_id: Uuid,
         id: Uuid,
         error_message: impl Into<String>,
     ) -> PaymentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
+        validate_operation_identity(tenant_id, id)?;
+        let model = self.get(tenant_id, id).await?;
         ensure_transition(&model.status, PROVIDER_OPERATION_ERROR)?;
 
         let now = Utc::now();
@@ -255,7 +277,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_ERROR {
                 return Ok(current);
             }
@@ -265,7 +287,7 @@ impl PaymentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, id).await
     }
 
     /// Record an operation whose external outcome cannot be safely retried.
@@ -274,10 +296,12 @@ impl PaymentProviderOperationJournal {
     /// but the response or local success checkpoint is uncertain.
     pub async fn mark_reconciliation_required(
         &self,
+        tenant_id: Uuid,
         id: Uuid,
         error_message: impl Into<String>,
     ) -> PaymentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
+        validate_operation_identity(tenant_id, id)?;
+        let model = self.get(tenant_id, id).await?;
         if model.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
             return Ok(model);
         }
@@ -308,7 +332,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -318,11 +342,16 @@ impl PaymentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, id).await
     }
 
-    pub async fn mark_committed(&self, id: Uuid) -> PaymentResult<provider_operation::Model> {
-        let model = self.get(id).await?;
+    pub async fn mark_committed(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> PaymentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, id)?;
+        let model = self.get(tenant_id, id).await?;
         if model.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(model);
         }
@@ -366,7 +395,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_COMMITTED {
                 return Ok(current);
             }
@@ -376,8 +405,59 @@ impl PaymentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, id).await
     }
+}
+
+async fn validate_begin_identity(
+    db: &DatabaseConnection,
+    input: &BeginProviderOperation,
+) -> PaymentResult<()> {
+    validate_operation_identity(input.tenant_id, input.payment_collection_id)?;
+
+    let collection = payment_collection::Entity::find_by_id(input.payment_collection_id)
+        .one(db)
+        .await?
+        .ok_or(PaymentError::PaymentCollectionNotFound(
+            input.payment_collection_id,
+        ))?;
+    if collection.tenant_id != input.tenant_id {
+        return Err(PaymentError::Validation(
+            "payment provider operation tenant does not match payment collection tenant"
+                .to_string(),
+        ));
+    }
+
+    if let Some(refund_id) = input.refund_id {
+        if refund_id.is_nil() {
+            return Err(PaymentError::Validation(
+                "payment provider operation refund_id must not be nil".to_string(),
+            ));
+        }
+        let refund = refund::Entity::find_by_id(refund_id)
+            .one(db)
+            .await?
+            .ok_or(PaymentError::RefundNotFound(refund_id))?;
+        if refund.tenant_id != input.tenant_id
+            || refund.payment_collection_id != input.payment_collection_id
+        {
+            return Err(PaymentError::Validation(
+                "payment provider operation refund does not belong to the payment collection and tenant"
+                    .to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> PaymentResult<()> {
+    if tenant_id.is_nil() || operation_id.is_nil() {
+        return Err(PaymentError::Validation(
+            "payment provider operation requires non-nil tenant_id and operation_id".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn normalize_begin_input(
@@ -466,6 +546,88 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn validate_provider_result_for_operation(
+    current: &provider_operation::Model,
+    provider_reference: Option<String>,
+    provider_result: &Value,
+) -> PaymentResult<Option<String>> {
+    if !provider_result.is_object() {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+    validate_provider_operation_payload(provider_result, "result").map_err(|_| {
+        PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        }
+    })?;
+
+    let typed_result: PaymentProviderOperationResult =
+        serde_json::from_value(provider_result.clone()).map_err(|_| {
+            PaymentError::ProviderInvalidResponse {
+                provider_id: current.provider_id.clone(),
+                operation: current.operation.clone(),
+            }
+        })?;
+
+    if typed_result.provider_id != current.provider_id
+        || typed_result
+            .external_reference
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| value.is_empty() || value.len() > MAX_EXTERNAL_REFERENCE_LENGTH)
+        || !typed_result.metadata.is_object()
+    {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+
+    validate_provider_operation_payload(&serde_json::to_value(&typed_result).map_err(|_| {
+        PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        }
+    })?, "canonical result").map_err(|_| PaymentError::ProviderInvalidResponse {
+        provider_id: current.provider_id.clone(),
+        operation: current.operation.clone(),
+    })?;
+
+    validate_provider_reference(current, provider_reference.as_deref())?;
+
+    let result_reference = normalize_optional(typed_result.external_reference);
+    let supplied_reference = normalize_optional(provider_reference);
+    if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference)
+        && supplied != result
+    {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+
+    Ok(supplied_reference.or(result_reference))
+}
+
+fn validate_provider_reference(
+    current: &provider_operation::Model,
+    value: Option<&str>,
+) -> PaymentResult<()> {
+    if let Some(value) = value {
+        let value = value.trim();
+        if value.is_empty() || value.len() > MAX_EXTERNAL_REFERENCE_LENGTH {
+            return Err(PaymentError::ProviderInvalidResponse {
+                provider_id: current.provider_id.clone(),
+                operation: current.operation.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn normalize_error(value: String) -> String {
     let value = value.trim();
     let value = if value.is_empty() {
@@ -479,6 +641,74 @@ fn normalize_error(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_operation() -> provider_operation::Model {
+        let now = chrono::Utc::now().fixed_offset();
+        provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            payment_collection_id: Uuid::new_v4(),
+            refund_id: None,
+            operation: "authorize".to_string(),
+            provider_id: "gateway".to_string(),
+            idempotency_key: "test-operation".to_string(),
+            status: PROVIDER_OPERATION_EXECUTING.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: None,
+            error_message: None,
+            created_at: now,
+            updated_at: now,
+            provider_completed_at: None,
+            committed_at: None,
+        }
+    }
+
+    #[test]
+    fn provider_reference_boundary_is_enforced() {
+        let current = test_operation();
+        assert!(validate_provider_reference(&current, None).is_ok());
+        assert!(validate_provider_reference(&current, Some("reference-1")).is_ok());
+        assert!(validate_provider_reference(&current, Some("   ")).is_err());
+        assert!(validate_provider_reference(&current, Some(&"r".repeat(192))).is_err());
+    }
+
+    #[test]
+    fn journal_provider_result_identity_is_enforced() {
+        let current = test_operation();
+        let valid = serde_json::to_value(PaymentProviderOperationResult {
+            provider_id: "gateway".to_string(),
+            external_reference: Some("reference-1".to_string()),
+            authorized_amount: rust_decimal::Decimal::new(100, 0),
+            captured_amount: rust_decimal::Decimal::ZERO,
+            metadata: serde_json::json!({}),
+        })
+        .expect("provider result should serialize");
+
+        assert_eq!(
+            validate_provider_result_for_operation(
+                &current,
+                Some("reference-1".to_string()),
+                &valid,
+            )
+            .expect("valid provider result should pass"),
+            Some("reference-1".to_string())
+        );
+        assert!(
+            validate_provider_result_for_operation(
+                &current,
+                Some("other-reference".to_string()),
+                &valid,
+            )
+            .is_err(),
+            "supplied provider reference must match the external reference"
+        );
+        assert!(
+            validate_provider_result_for_operation(&current, None, &serde_json::Value::Null)
+                .is_err(),
+            "non-object provider result must be rejected"
+        );
+    }
 
     #[test]
     fn uncertain_executing_outcome_requires_reconciliation() {

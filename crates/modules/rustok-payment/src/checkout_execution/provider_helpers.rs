@@ -88,7 +88,13 @@ impl InProcessCheckoutPaymentExecutionPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(context, owner_operation, existing.id, provider_operation)
+            self.mark_journal_committed(
+                context,
+                owner_operation,
+                tenant_id,
+                existing.id,
+                provider_operation,
+            )
                 .await?;
         }
         Ok(())
@@ -98,10 +104,11 @@ impl InProcessCheckoutPaymentExecutionPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        tenant_id: Uuid,
         operation_id: Uuid,
         provider_operation: &'static str,
     ) -> Result<(), PortError> {
-        if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
+        if let Err(error) = self.operation_journal.mark_committed(tenant_id, operation_id).await {
             let context_facts = checkout_payment_execution_context_facts(context);
             let error_facts = checkout_payment_execution_payment_error_facts(&error);
             tracing::error!(
@@ -128,6 +135,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation_id,
                     format!("payment.local_{provider_operation}_commit_checkpoint_failed"),
                 )
@@ -145,6 +153,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        tenant_id: Uuid,
         operation_id: Uuid,
         provider_operation: &'static str,
     ) {

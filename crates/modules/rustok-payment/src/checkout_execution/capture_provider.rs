@@ -96,6 +96,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 self.mark_journal_committed(
                     context,
                     owner_operation,
+                    tenant_id,
                     journaled.operation_id,
                     "capture",
                 )
@@ -107,6 +108,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 self.mark_local_persistence_failed(
                     context,
                     owner_operation,
+                    tenant_id,
                     journaled.operation_id,
                     "capture",
                 )
@@ -220,13 +222,13 @@ impl InProcessCheckoutPaymentExecutionPort {
 
         let claimed = self
             .operation_journal
-            .claim_execution(journal_operation.id)
+            .claim_execution(tenant_id, journal_operation.id)
             .await
             .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(journal_operation.id)
+                .get(tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
             if let Some(result) = persisted_provider_result(context, owner_operation, &current)? {
@@ -266,11 +268,11 @@ impl InProcessCheckoutPaymentExecutionPort {
                 let code = stable_payment_error_code(&error);
                 let checkpoint = if error.requires_provider_reconciliation() {
                     self.operation_journal
-                        .mark_reconciliation_required(journal_operation.id, code)
+                        .mark_reconciliation_required(tenant_id, journal_operation.id, code)
                         .await
                 } else {
                     self.operation_journal
-                        .mark_provider_error(journal_operation.id, code)
+                        .mark_provider_error(tenant_id, journal_operation.id, code)
                         .await
                 };
                 if let Err(checkpoint_error) = checkpoint {
@@ -335,6 +337,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         })?;
         self.operation_journal
             .mark_provider_succeeded(
+                tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
