@@ -655,9 +655,15 @@ impl PaymentService {
                 .clone()
                 .unwrap_or_else(|| "cancelled".to_string());
             let payment_metadata = payment_active.metadata.clone().take().unwrap_or_default();
+            let merged_payment_metadata =
+                merge_metadata(payment_metadata, input.metadata.clone());
+            validate_payment_metadata(
+                &merged_payment_metadata,
+                "cancel payment merged metadata",
+            )?;
             payment_active.status = Set(STATUS_CANCELLED.to_string());
             payment_active.error_message = Set(Some(reason));
-            payment_active.metadata = Set(merge_metadata(payment_metadata, input.metadata.clone()));
+            payment_active.metadata = Set(merged_payment_metadata);
             payment_active.updated_at = Set(now.into());
             payment_active.cancelled_at = Set(Some(now.into()));
             payment_active.update(&txn).await?;
