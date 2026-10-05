@@ -5112,3 +5112,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** repository source inspection, schema/index/trigger comparison, caller tracing, and post-write reread only. No Cargo/tests/Clippy/rustfmt/remediation-gate or runtime execution was run; no CI/runtime pass is claimed.
 - **Status:** `FS-22.06.154` complete as a clean source audit on the dedicated branch; concrete runtime/provider evidence remains pending.
 - **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
+
+### FS-22.06.155 Assessment — durable provider-result boundary residual hardening
+
+- **Base:** `deead445e1d3c5b396fb2e231f9a1e12e24c28e7`; fresh follow-up to FS-22.06.151 after canonical create-label receipt identity integration.
+- **Primary scope:** `FulfillmentProviderOperationJournal` provider-result validation immediately before durable journal persistence, with regression coverage in `tests/provider_operation_journal_test.rs`.
+- **Confirmed residual finding FULFILLMENTPROVIDERJOURNAL-22.06.155-01:** the durable journal validator deserialized the provider result and ran the recursive sensitive-field guard, but did not independently require `metadata` to remain JSON-object-shaped. This was weaker than the public provider SPI contract and left the owner writer with a broader accepted result shape.
+- **Confirmed residual finding FULFILLMENTPROVIDERJOURNAL-22.06.155-02:** a separately supplied `provider_reference` was normalized and compared with `external_reference` when both existed, but its own 191-character persistence boundary was not enforced when the provider result omitted `external_reference`.
+- **Production remediation:** the journal helper now fails closed when provider-result metadata is not an object and validates the supplied `provider_reference` against the canonical 191-character boundary before returning the value for persistence. Existing provider-id, external-reference, tracking-number, sensitive metadata, payload-size, and reference-coherence checks remain unchanged.
+- **Regression coverage:** extended `provider_result_writer_rejects_mismatched_journal_identity` to assert rejection of scalar metadata and an oversized separately supplied provider reference before the journal leaves `executing`.
+- **Fresh second pass:** re-read the provider SPI result validator, durable success/reconciliation writers, current canonical create-label receipt identity changes, lifecycle callers, recovery result path, migration bounds, and integration regression. No alternate provider-result persistence path was found that bypasses the strengthened metadata/reference checks.
+- **Verification:** repository source inspection and post-write reread only. Cargo/tests/Clippy/rustfmt/remediation-gate/runtime execution were not run; no CI/runtime pass is claimed.
+- **Status:** `FS-22.06.155` implementation complete at source level on the dedicated branch; runtime/provider evidence remains pending.
+- **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
