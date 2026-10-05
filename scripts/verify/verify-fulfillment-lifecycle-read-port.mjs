@@ -22,7 +22,7 @@ const hostRuntime = read('apps/server/src/services/commerce_provider_runtime.rs'
 const commerceHttp = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const compatibilityFacade = readCommerceSafeQuerySource(read);
 const fulfillmentShim = readCommerceFulfillmentQueryShimSource(read);
-const adminRest = read('crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs');
+const adminRest = read('crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs');
 const evidence = JSON.parse(
   read('crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json'),
 );
