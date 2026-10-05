@@ -3,6 +3,7 @@ import { BlogSection } from "./components/blog-section";
 
 export type {
   BlogCommentDetail,
+  BlogPostAuthorProfile,
   BlogPostDetail,
   BlogPostListResponse,
   BlogPostSummary,
@@ -12,6 +13,11 @@ export { createBlogComment, fetchPublishedPost, fetchPublishedPosts } from "./ap
 export { BlogSection } from "./components/blog-section";
 export { PostCard } from "./components/post-card";
 export { BlogCommentComposer } from "./components/blog-comment-composer";
+export { BlogTableOfContents } from "./components/blog-toc";
+export { AuthorMiniBadge, AuthorBioCard } from "./components/author-card";
+export { CommentsPagination } from "./components/comments-pagination";
+export { BlogPagination } from "./components/blog-pagination";
+export { calculateReadingTime, formatReadingTime } from "./utils/reading-time";
 
 registerStorefrontModule({
   id: "blog-latest-posts",

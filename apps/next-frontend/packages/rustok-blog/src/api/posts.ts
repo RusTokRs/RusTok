@@ -3,6 +3,14 @@ import type { RichTextDocument, RichTextView } from "@rustok/richtext";
 
 export type BlogGraphqlExecutor = typeof storefrontGraphql;
 
+export interface BlogPostAuthorProfile {
+  userId: string;
+  handle: string;
+  displayName: string;
+  tags: string[];
+  avatarMediaId: string | null;
+}
+
 export interface BlogPostSummary {
   id: string;
   title: string;
@@ -10,6 +18,7 @@ export interface BlogPostSummary {
   excerpt: string | null;
   featuredImageUrl: string | null;
   authorId: string | null;
+  authorProfile?: BlogPostAuthorProfile | null;
   tags: string[];
   publishedAt: string | null;
 }
@@ -33,7 +42,7 @@ export interface BlogPostDetail extends BlogPostSummary {
   content: RichTextView;
   contentPlainText: string;
   publicComments: {
-    availability: "AVAILABLE" | "UNAVAILABLE" | "TIMEOUT";
+    availability: "AVAILABLE" | "DISABLED" | "READ_ONLY" | "UNAVAILABLE" | "TIMEOUT";
     cachedSnapshot: boolean;
     items: BlogPublicComment[];
     total: number;
@@ -63,6 +72,7 @@ type PostsQueryResponse = {
       excerpt: string | null;
       featuredImageUrl: string | null;
       authorId: string | null;
+      authorProfile?: BlogPostAuthorProfile | null;
       tags: string[];
       publishedAt: string | null;
     }>;
@@ -73,19 +83,27 @@ type PostsQueryResponse = {
 const PUBLISHED_POSTS_QUERY = `
   query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
     posts(tenantId: $tenantId, filter: $filter) {
-      items { id title slug excerpt featuredImageUrl authorId tags publishedAt }
+      items {
+        id title slug excerpt featuredImageUrl authorId tags publishedAt
+        authorProfile {
+          userId handle displayName tags avatarMediaId
+        }
+      }
       total
     }
   }
 `;
 
 const PUBLISHED_POST_QUERY = `
-  query PublishedPost($tenantId: UUID!, $slug: String!, $locale: String) {
+  query PublishedPost($tenantId: UUID!, $slug: String!, $locale: String, $commentsPage: Int, $commentsPerPage: Int) {
     postBySlug(tenantId: $tenantId, slug: $slug, locale: $locale) {
       id title slug excerpt featuredImageUrl authorId tags publishedAt effectiveLocale
+      authorProfile {
+        userId handle displayName tags avatarMediaId
+      }
       content { document html }
       contentPlainText
-      publicComments(locale: $locale, page: 1, perPage: 20) {
+      publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) {
         availability cachedSnapshot total
         items { id effectiveLocale authorId contentPreview parentCommentId createdAt }
       }
@@ -135,14 +153,18 @@ export async function fetchPublishedPost(
   tenantSlug: string | null,
   slug: string,
   locale: string,
+  commentsPage = 1,
+  commentsPerPage = 20,
 ): Promise<BlogPostDetail | null> {
   const response = await graphql<{ postBySlug: BlogPostDetail | null }, {
     tenantId: string;
     slug: string;
     locale: string;
+    commentsPage: number;
+    commentsPerPage: number;
   }>({
     query: PUBLISHED_POST_QUERY,
-    variables: { tenantId, slug, locale },
+    variables: { tenantId, slug, locale, commentsPage, commentsPerPage },
     tenant: tenantSlug ?? undefined,
   });
   if (response.errors?.length || !response.data) {

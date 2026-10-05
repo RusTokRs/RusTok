@@ -182,6 +182,9 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         ),
         published_at.as_str(),
     );
+    let author_profile = post.author_profile;
+    let reading_minutes = core::calculate_reading_time(&content_plain_text);
+    let reading_time_label = core::format_reading_time(reading_minutes, locale.as_deref());
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
@@ -241,11 +244,22 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                {if let Some(author) = author_profile.as_ref() {
+                    view! {
+                        <span class="font-semibold text-foreground">{author.display_name.clone()}</span>
+                        <span>{selected_post_header.meta.separator}</span>
+                    }
+                    .into_any()
+                } else {
+                    ().into_any()
+                }}
                 <span>{selected_post_header.meta.slug_meta}</span>
                 <span>{selected_post_header.meta.separator}</span>
                 <span>{selected_post_header.meta.locale_meta}</span>
                 <span>{selected_post_header.meta.separator}</span>
                 <span>{selected_post_header.meta.published_meta}</span>
+                <span>{selected_post_header.meta.separator}</span>
+                <span>{reading_time_label}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{selected_post_header.title}</h3>
             <div class="mt-3">
@@ -285,6 +299,33 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                                 }
                             })
                             .collect_view()}
+                    </div>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
+            {if let Some(author) = author_profile {
+                let initial = author
+                    .display_name
+                    .chars()
+                    .next()
+                    .unwrap_or('?')
+                    .to_uppercase()
+                    .to_string();
+                view! {
+                    <div class="mt-6 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                            {initial}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm font-semibold text-foreground">
+                                {author.display_name}
+                            </div>
+                            <div class="text-xs text-muted-foreground">
+                                {format!("@{}", author.handle)}
+                            </div>
+                        </div>
                     </div>
                 }
                 .into_any()
@@ -607,6 +648,16 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
                                     status=post_card_view.status
                                     unknown_label=unknown_status_label.clone()
                                 />
+                                {if let Some(author) = post.author_profile.as_ref() {
+                                    view! {
+                                        <div class="mt-1 text-xs font-medium text-muted-foreground">
+                                            {author.display_name.clone()}
+                                        </div>
+                                    }
+                                    .into_any()
+                                } else {
+                                    ().into_any()
+                                }}
                                 <h4 class="mt-2 text-base font-semibold text-foreground">{post.title}</h4>
                                 <p class="mt-2 text-sm text-muted-foreground">
                                     {post_card_view.excerpt}

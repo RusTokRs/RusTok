@@ -21,6 +21,7 @@ import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
   fetchPublishedPosts,
   PostCard,
+  BlogPagination,
   type BlogPostSummary,
 } from "@rustok/blog-frontend";
 
@@ -64,16 +65,23 @@ export default async function BlogListingPage({
   const tenantId = getStorefrontTenantId();
 
   const selectedTag = typeof query.tag === "string" ? query.tag.trim() : undefined;
+  const rawPage = typeof query.page === "string" ? parseInt(query.page, 10) : 1;
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const pageSize = 9;
 
   let posts: BlogPostSummary[] = [];
+  let totalPosts = 0;
   try {
     if (tenantId) {
       const res = await fetchPublishedPosts(
         storefrontGraphql,
         tenantId,
-        tenantSlug
+        tenantSlug,
+        page,
+        pageSize
       );
       posts = res.items;
+      totalPosts = res.total;
     }
   } catch {
     posts = [];
@@ -112,7 +120,7 @@ export default async function BlogListingPage({
               href={`/${locale}/blog`}
               className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                 !selectedTag
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-primary text-primary-foreground shadow-sm"
                   : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
             >
@@ -126,7 +134,7 @@ export default async function BlogListingPage({
                   href={`/${locale}/blog?tag=${encodeURIComponent(tag)}`}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                     active
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
                   }`}
                 >
@@ -151,19 +159,32 @@ export default async function BlogListingPage({
             </p>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredPosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                href={
-                  post.slug
-                    ? `/${locale}/blog/${encodeURIComponent(post.slug)}`
-                    : null
-                }
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  locale={locale}
+                  href={
+                    post.slug
+                      ? `/${locale}/blog/${encodeURIComponent(post.slug)}`
+                      : null
+                  }
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <BlogPagination
+              currentPage={page}
+              totalItems={selectedTag ? filteredPosts.length : totalPosts}
+              pageSize={pageSize}
+              baseUrl={`/${locale}/blog`}
+              selectedTag={selectedTag}
+              locale={locale}
+            />
+          </>
         )}
       </div>
     </main>

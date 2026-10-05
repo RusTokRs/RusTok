@@ -4,8 +4,6 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { readCommerceSafeQuerySource } from './lib/commerce-safe-query-source.mjs';
-
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -20,7 +18,7 @@ const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.
 const graphqlQueryErrorBoundary = read(
   'crates/modules/rustok-commerce/src/graphql/safe_query/query_error_boundary.rs',
 );
-const safeQuery = readCommerceSafeQuerySource(read);
+const query = read('crates/modules/rustok-commerce/src/graphql/query.rs');
 const commerceStorefrontTransport = read('crates/modules/rustok-commerce/storefront/src/transport/mod.rs');
 const commerceNativeAdapter = read(
   'crates/modules/rustok-commerce/storefront/src/transport/native_server_adapter.rs',
@@ -56,19 +54,19 @@ const adminList = between(
   'admin shipping-option list',
 );
 const graphqlShippingOptionList = between(
-  safeQuery,
+  query,
   'async fn storefront_shipping_options(',
   'async fn storefront_me',
   'GraphQL storefront shipping-option list',
 );
 const graphqlShippingOptionLookup = between(
-  safeQuery,
+  query,
   'async fn shipping_option(',
   'async fn shipping_options(',
   'GraphQL admin shipping-option lookup',
 );
 const graphqlShippingOptionAdminList = between(
-  safeQuery,
+  query,
   'async fn shipping_options(',
   'async fn fulfillment(',
   'GraphQL admin shipping-option list-all',
@@ -86,8 +84,8 @@ const storefrontList = storefrontRest.slice(
 if (!storefrontList) failures.push('storefront shipping-option list: unable to isolate source block');
 
 for (const [source, value, label] of [
-  [safeQuery, 'shipping_option_graphql_read_port_context(', 'shared GraphQL shipping-option owner context helper'],
-  [safeQuery, '.with_deadline(std::time::Duration::from_secs(2))', 'shared GraphQL shipping-option read deadline'],
+  [query, 'shipping_option_graphql_read_port_context(', 'shared GraphQL shipping-option owner context helper'],
+  [query, '.with_deadline(std::time::Duration::from_secs(2))', 'shared GraphQL shipping-option read deadline'],
 ]) {
   requireText(source, value, label);
 }
@@ -115,11 +113,11 @@ for (const [source, value, label] of [
   [graphqlShippingOptionAdminList, 'tenant_default_locale: Some(tenant.default_locale.clone())', 'GraphQL admin tenant fallback locale'],
   [graphqlShippingOptionLookup, 'PortActor::user(auth.user_id.to_string())', 'GraphQL lookup authenticated actor'],
   [graphqlShippingOptionAdminList, 'PortActor::user(auth.user_id.to_string())', 'GraphQL admin authenticated actor'],
-  [graphqlErrorBoundary, 'pub(crate) fn shipping_option_port_error(', 'GraphQL shipping-option typed error boundary'],
-  [graphqlErrorBoundary, 'SHIPPING_OPTION_REQUEST_INVALID', 'GraphQL shipping-option stable validation code'],
-  [graphqlErrorBoundary, 'SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE', 'GraphQL shipping-option stable availability code'],
-  [graphqlErrorBoundary, 'BoundaryError::public(message, code, retryable)', 'GraphQL shipping-option stable envelope'],
-  [graphqlErrorBoundary, 'owner_message_presence', 'GraphQL shipping-option bounded owner diagnostics'],
+  [graphqlQueryErrorBoundary, 'pub(crate) fn shipping_option_port_error(', 'GraphQL shipping-option typed error boundary'],
+  [graphqlQueryErrorBoundary, 'SHIPPING_OPTION_REQUEST_INVALID', 'GraphQL shipping-option stable validation code'],
+  [graphqlQueryErrorBoundary, 'SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE', 'GraphQL shipping-option stable availability code'],
+  [graphqlQueryErrorBoundary, 'BoundaryError::public(message, code, retryable)', 'GraphQL shipping-option stable envelope'],
+  [graphqlQueryErrorBoundary, 'owner_message_presence', 'GraphQL shipping-option bounded owner diagnostics'],
 ]) {
   requireText(source, value, label);
 }
@@ -144,10 +142,10 @@ for (const [source, value, label] of [
   [serverRuntime, 'CommerceShippingOptionReadRuntime::in_process(', 'host read runtime factory'],
   [serverRuntime, 'host.with_shared_value(runtime)', 'host read runtime attachment'],
   [graphqlRuntime, 'pub struct CommerceShippingOptionReadRuntime', 'typed shared read runtime'],
-  [safeQuery, 'shipping_option_runtime.shipping_option_read_port()', 'GraphQL storefront port'],
+  [query, '.shipping_option_read_port()', 'GraphQL storefront port'],
   [
-    safeQuery,
-    'shipping_option_runtime\n                .shipping_option_admin_read_port()',
+    query,
+    '.shipping_option_admin_read_port()',
     'GraphQL admin port',
   ],
   [httpRuntime, 'shipping_option_read_runtime: crate::graphql_runtime::CommerceShippingOptionReadRuntime', 'HTTP runtime field'],

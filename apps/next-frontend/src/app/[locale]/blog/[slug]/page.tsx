@@ -8,11 +8,12 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, MessageSquare, Tag } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, MessageSquare, Tag } from "lucide-react";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import {
   getStorefrontTenantId,
@@ -24,10 +25,17 @@ import { RichTextHtml } from "@rustok/richtext/view";
 import {
   fetchPublishedPost,
   BlogCommentComposer,
+  AuthorMiniBadge,
+  AuthorBioCard,
+  BlogTableOfContents,
+  CommentsPagination,
+  calculateReadingTime,
+  formatReadingTime,
 } from "@rustok/blog-frontend";
 
 interface BlogPostPageProps {
   params: Promise<{ locale: string; slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({
@@ -70,8 +78,12 @@ export async function generateMetadata({
   });
 }
 
-export default async function BlogPostPage({ params }: BlogPostPageProps) {
+export default async function BlogPostPage({
+  params,
+  searchParams,
+}: BlogPostPageProps) {
   const { locale, slug } = await params;
+  const query = (await searchParams) ?? {};
   const isRu = locale === "ru";
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
@@ -80,6 +92,9 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     notFound();
   }
 
+  const rawCommentsPage = typeof query.commentsPage === "string" ? parseInt(query.commentsPage, 10) : 1;
+  const commentsPage = Number.isFinite(rawCommentsPage) && rawCommentsPage > 0 ? rawCommentsPage : 1;
+
   let post;
   try {
     post = await fetchPublishedPost(
@@ -87,7 +102,9 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
       tenantId,
       tenantSlug,
       slug,
-      locale
+      locale,
+      commentsPage,
+      20
     );
   } catch {
     notFound();
@@ -105,9 +122,36 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
       })
     : null;
 
+  const readingMinutes = calculateReadingTime(post.contentPlainText);
+  const readingTimeLabel = formatReadingTime(readingMinutes, locale);
+
+  const comments = post.publicComments;
+  const degradedCommentsMessage =
+    comments.availability === "UNAVAILABLE"
+      ? comments.cachedSnapshot
+        ? isRu
+          ? "Комментарии временно недоступны. Отображается сохраненная копия."
+          : "Comments are temporarily unavailable. Showing a recent snapshot."
+        : isRu
+          ? "Комментарии временно недоступны. Статья доступна для чтения."
+          : "Comments are temporarily unavailable. The article is still readable."
+      : comments.availability === "TIMEOUT"
+        ? comments.cachedSnapshot
+          ? isRu
+            ? "Истекло время ожидания комментариев. Отображается недавняя копия."
+            : "Comments request timed out. Showing a recent cached snapshot."
+          : isRu
+            ? "Истекло время ожидания комментариев."
+            : "Comments request timed out. The article is still available."
+        : comments.availability === "READ_ONLY"
+          ? isRu
+            ? "Комментарии закрыты для новых ответов."
+            : "Comments are closed for new replies."
+          : null;
+
   return (
     <main className="min-h-screen bg-background">
-      <article className="mx-auto max-w-4xl px-4 sm:px-6 py-10 space-y-8">
+      <article className="mx-auto max-w-6xl px-4 sm:px-6 py-10 space-y-8">
         {/* Navigation Breadcrumb */}
         <div>
           <Link
@@ -121,13 +165,23 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
 
         {/* Article Header */}
         <header className="space-y-4 border-b border-border pb-6">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            {post.authorProfile && (
+              <AuthorMiniBadge author={post.authorProfile} locale={locale} />
+            )}
+
             {publishedDate && (
               <span className="inline-flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>{publishedDate}</span>
               </span>
             )}
+
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              <span>{readingTimeLabel}</span>
+            </span>
+
             {post.tags.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <Tag className="h-3 w-3 text-muted-foreground" />
@@ -155,71 +209,124 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           )}
         </header>
 
-        {/* Featured Image */}
-        {post.featuredImageUrl && (
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
-            <Image
-              src={post.featuredImageUrl}
-              alt={post.title}
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
-        )}
+        {/* 2-column layout: Article Content + Sticky ToC */}
+        <div className="lg:grid lg:grid-cols-12 lg:gap-10 items-start">
+          <div className="lg:col-span-8 space-y-8 min-w-0">
+            {/* Featured Image */}
+            {post.featuredImageUrl && (
+              <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
+                <Image
+                  src={post.featuredImageUrl}
+                  alt={post.title}
+                  fill
+                  className="object-cover"
+                  priority
+                />
+              </div>
+            )}
 
-        {/* Article Body */}
-        <div className="prose prose-neutral dark:prose-invert max-w-none pt-2">
-          <RichTextHtml
-            view={post.content}
-            contentLocale={post.effectiveLocale}
-            className="text-base leading-8 text-foreground/90 space-y-4"
-          />
-        </div>
-
-        {/* Comments Section */}
-        <section className="mt-12 border-t border-border pt-8 space-y-6">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-bold text-foreground">
-              {isRu ? "Комментарии и обсуждение" : "Comments & Discussion"}
-            </h2>
-          </div>
-
-          {/* Comment Composer */}
-          {tenantSlug && (
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <BlogCommentComposer
-                tenantId={tenantId}
-                tenantSlug={tenantSlug}
-                postId={post.id}
+            {/* Article Body */}
+            <div
+              id="article-body"
+              className="prose prose-neutral dark:prose-invert max-w-none pt-2"
+            >
+              <RichTextHtml
+                view={post.content}
                 contentLocale={post.effectiveLocale}
+                className="text-base leading-8 text-foreground/90 space-y-4"
               />
             </div>
-          )}
 
-          {/* Comments List */}
-          {post.publicComments.items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              {isRu
-                ? "Пока нет комментариев. Оставьте отзыв первым!"
-                : "No comments yet. Be the first to share your thoughts!"}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {post.publicComments.items.map((comment) => (
-                <article
-                  key={comment.id}
-                  className="rounded-xl border border-border bg-card p-4 space-y-1.5 shadow-sm"
-                >
-                  <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                    {comment.contentPreview}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+            {/* Author Bio Card */}
+            {post.authorProfile && (
+              <div className="pt-4">
+                <AuthorBioCard author={post.authorProfile} locale={locale} />
+              </div>
+            )}
+
+            {/* Comments Section */}
+            <section id="comments" className="mt-12 border-t border-border pt-8 space-y-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  <h2 className="text-xl font-bold text-foreground">
+                    {isRu ? "Комментарии и обсуждение" : "Comments & Discussion"}
+                  </h2>
+                </div>
+                {comments.total > 0 && (
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {comments.total}{" "}
+                    {isRu ? "комментариев" : "total comments"}
+                  </span>
+                )}
+              </div>
+
+              {/* Degraded comments notification */}
+              {degradedCommentsMessage && (
+                <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                  {degradedCommentsMessage}
+                </div>
+              )}
+
+              {/* Comment Composer */}
+              {tenantSlug && comments.availability === "AVAILABLE" && (
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <BlogCommentComposer
+                    tenantId={tenantId}
+                    tenantSlug={tenantSlug}
+                    postId={post.id}
+                    contentLocale={post.effectiveLocale}
+                  />
+                </div>
+              )}
+
+              {/* Comments List */}
+              {comments.items.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  {isRu
+                    ? "Пока нет комментариев. Оставьте отзыв первым!"
+                    : "No comments yet. Be the first to share your thoughts!"}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {comments.items.map((comment) => (
+                    <article
+                      key={comment.id}
+                      className="rounded-xl border border-border bg-card p-4 space-y-1.5 shadow-sm"
+                    >
+                      <p className="whitespace-pre-line text-sm leading-6 text-foreground">
+                        {comment.contentPreview}
+                      </p>
+                      <div className="text-[11px] text-muted-foreground pt-1">
+                        {new Date(comment.createdAt).toLocaleDateString(locale, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    </article>
+                  ))}
+
+                  {/* Pagination */}
+                  <CommentsPagination
+                    currentPage={commentsPage}
+                    totalItems={comments.total}
+                    pageSize={20}
+                    baseUrl={`/${locale}/blog/${encodeURIComponent(slug)}`}
+                    locale={locale}
+                  />
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Sidebar with Sticky Table of Contents */}
+          <aside className="hidden lg:block lg:col-span-4 min-w-0">
+            <BlogTableOfContents contentSelector="#article-body" locale={locale} />
+          </aside>
+        </div>
       </article>
     </main>
   );

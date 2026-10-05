@@ -30,6 +30,8 @@ pub struct BlogPostListItem {
     pub tags: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,
+    #[serde(default, rename = "authorProfile")]
+    pub author_profile: Option<BlogPostAuthorProfile>,
 }
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
@@ -111,6 +113,18 @@ pub struct BlogCommentDetail {
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogPostAuthorProfile {
+    pub user_id: String,
+    pub handle: String,
+    pub display_name: String,
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub avatar_media_id: Option<String>,
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDetail {
     pub id: String,
     #[serde(rename = "effectiveLocale")]
@@ -128,6 +142,8 @@ pub struct BlogPostDetail {
     pub tags: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,
+    #[serde(default, rename = "authorProfile")]
+    pub author_profile: Option<BlogPostAuthorProfile>,
     #[serde(default, rename = "publicComments")]
     pub public_comments: BlogCommentList,
 }

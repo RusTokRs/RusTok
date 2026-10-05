@@ -482,6 +482,7 @@ fn map_post_detail(
         published_at: post.published_at.map(|value| value.to_string()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
+        author_profile: None,
         public_comments,
     }
 }
@@ -515,6 +516,7 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         published_at: post.published_at.map(|value| value.to_string()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
+        author_profile: None,
     }
 }
 
