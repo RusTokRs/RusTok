@@ -10,6 +10,7 @@ use rustok_core::generate_id;
 
 use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::providers::{FulfillmentProviderOperationResult, FULFILLMENT_TRACKING_NUMBER_MAX_LEN, validate_durable_provider_payload, validate_optional_boundary_text, validate_provider_metadata_safety, validate_provider_id};
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
 pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
@@ -184,8 +185,13 @@ impl FulfillmentProviderOperationJournal {
         provider_result: Value,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
-        validate_durable_json_payload(&provider_result, "provider_result")?;
-        let provider_reference = normalize_optional(provider_reference);
+        validate_durable_provider_payload(&provider_result, "provider_result")?;
+        let current = self.get(tenant_id, operation_id).await?;
+        let provider_reference = validate_provider_result_for_operation(
+            &current,
+            provider_reference,
+            &provider_result,
+        )?;
         let now = Utc::now();
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -309,7 +315,13 @@ impl FulfillmentProviderOperationJournal {
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
         if let Some(provider_result) = provider_result.as_ref() {
-            validate_durable_json_payload(provider_result, "provider_result")?;
+            validate_durable_provider_payload(provider_result, "provider_result")?;
+            let current = self.get(tenant_id, operation_id).await?;
+            let _ = validate_provider_result_for_operation(
+                &current,
+                provider_reference.clone(),
+                provider_result,
+            )?;
         }
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -559,6 +571,67 @@ impl FulfillmentProviderOperationJournal {
     }
 }
 
+fn validate_provider_result_for_operation(
+    current: &provider_operation::Model,
+    provider_reference: Option<String>,
+    provider_result: &Value,
+) -> FulfillmentResult<Option<String>> {
+    let typed_result: FulfillmentProviderOperationResult =
+        serde_json::from_value(provider_result.clone()).map_err(|error| {
+            FulfillmentError::ProviderResultInvalid(format!(
+                "provider_result does not match the fulfillment provider contract: {error}"
+            ))
+        })?;
+
+    validate_provider_id(&typed_result.provider_id)
+        .map_err(provider_result_invalid)?;
+    validate_optional_boundary_text(
+        "external_reference",
+        typed_result.external_reference.as_deref(),
+        191,
+    )
+    .map_err(provider_result_invalid)?;
+    validate_optional_boundary_text(
+        "tracking_number",
+        typed_result.tracking_number.as_deref(),
+        FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
+    )
+    .map_err(provider_result_invalid)?;
+
+    if typed_result.provider_id != current.provider_id {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            format!("provider_result provider_id {} does not match journal provider {}", typed_result.provider_id, current.provider_id),
+        ));
+    }
+
+    if !typed_result.metadata.is_object() {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider_result metadata must be a JSON object".to_string(),
+        ));
+    }
+    validate_provider_metadata_safety(&typed_result.metadata)?;
+    validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)
+        .map_err(provider_result_invalid)?;
+
+    let result_reference = normalize_optional(typed_result.external_reference.clone());
+    let supplied_reference = normalize_optional(provider_reference);
+    if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference)
+        && supplied != result
+    {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider_reference does not match provider_result.external_reference".to_string(),
+        ));
+    }
+
+    Ok(supplied_reference.or(result_reference))
+}
+
+fn provider_result_invalid(error: FulfillmentError) -> FulfillmentError {
+    match error {
+        FulfillmentError::Validation(message) => FulfillmentError::ProviderResultInvalid(message),
+        other => other,
+    }
+}
 fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
     if tenant_id.is_nil() || operation_id.is_nil() {
         return Err(FulfillmentError::Validation(
@@ -604,7 +677,7 @@ fn normalize_begin_input(
             "provider operation request_payload must be a JSON object".to_string(),
         ));
     }
-    validate_durable_json_payload(&input.request_payload, "request_payload")?;
+    validate_durable_provider_payload(&input.request_payload, "request_payload")?;
     Ok(input)
 }
 
@@ -656,20 +729,6 @@ fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
             to: to.to_string(),
         })
     }
-}
-
-pub(crate) fn validate_durable_json_payload(value: &Value, field: &'static str) -> FulfillmentResult<()> {
-    let bytes = serde_json::to_vec(value).map_err(|error| {
-        FulfillmentError::Validation(format!(
-            "provider operation {field} could not be serialized: {error}"
-        ))
-    })?;
-    if bytes.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
-        return Err(FulfillmentError::Validation(format!(
-            "provider operation {field} must not exceed {MAX_PROVIDER_OPERATION_PAYLOAD_BYTES} serialized bytes"
-        )));
-    }
-    Ok(())
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -752,13 +811,13 @@ mod tests {
     #[test]
     fn provider_operation_payloads_are_bounded() {
         let oversized = serde_json::json!({"metadata": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)});
-        assert!(validate_durable_json_payload(&oversized, "provider_result").is_err());
+        assert!(validate_durable_provider_payload(&oversized, "provider_result").is_err());
     }
 
     #[test]
     fn provider_operation_payload_limit_accepts_small_json() {
         let payload = serde_json::json!({"provider": "carrier", "tracking_number": "track-1"});
-        assert!(validate_durable_json_payload(&payload, "provider_result").is_ok());
+        assert!(validate_durable_provider_payload(&payload, "provider_result").is_ok());
     }
 
     #[test]

@@ -57,5 +57,13 @@
       ]
     }
   ],
+  "provider_call_deadline_contract": {
+    "status": "separate_runtime_execution_pending",
+    "assertions": [
+      "external provider future is bounded by the declared owner deadline",
+      "timeout is persisted as reconciliation_required when the external outcome is unknown"
+    ]
+  },
+  "evidence_status": "runtime_execution_pending"
   "evidence_status": "runtime_execution_pending"
 }

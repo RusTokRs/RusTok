@@ -170,6 +170,7 @@ const verifyProviderSpiEvidence = ({
   liveAdapterContract,
   liveAdapterEvidence,
   providerSource,
+  fulfillmentProviderJournalSource,
   fulfillmentAdminCommandSource,
   fulfillmentAdminCreateCommandSource,
   commerceCheckoutSource,
@@ -178,8 +179,29 @@ const verifyProviderSpiEvidence = ({
 }) => {
   const providerSpi = registry.provider_spi;
   const auditPolicy = webhookAuditPolicy(module);
+  if (module === 'fulfillment') {
+    const deadline = providerSpi.external_call_deadline;
+    if (
+      deadline?.source !== 'rustok_api::ports::PortContext.deadline_ms' ||
+      deadline?.required !== true ||
+      deadline?.timeout_outcome !== 'reconciliation_required' ||
+      !sameSet(deadline.applies_to, ['create_label', 'ship', 'reship', 'cancel'])
+    ) {
+      fail('fulfillment provider external-call deadline contract drift');
+    }
+  }
+
 
   if (!providerSpi) fail(`${module} registry lacks provider_spi`);
+  if (module === 'fulfillment') {
+    if (providerSpi.webhook_ingress?.status !== 'planned' || providerSpi.webhook_ingress?.runtime_wired !== false) {
+      fail('fulfillment webhook ingress must remain explicitly planned and not runtime-wired');
+    }
+    if (liveAdapterEvidence.current_runtime_reconciliation?.webhook_ingress?.status !== 'not_wired') {
+      fail('fulfillment historical webhook evidence must declare current ingress as not wired');
+    }
+  }
+
   if (evidence.schema_version !== 1) fail(`${module} provider SPI evidence schema_version must be 1`);
   if (evidence.module !== module) fail(`${module} provider SPI evidence module drift`);
   if (evidence.status !== 'static_matrix_locked') fail(`${module} provider SPI evidence status drift`);
@@ -561,6 +583,7 @@ const verifyProviderSpiEvidence = ({
       [
         'pub(crate) fn validate_provider_metadata_safety(',
         'validate_provider_metadata_safety(&result.metadata)',
+        'validate_provider_metadata_safety(&request.metadata)',
         '"authorization"',
         '"accesstoken"',
         '"rawpayload"',
@@ -570,6 +593,18 @@ const verifyProviderSpiEvidence = ({
     );
   }
 
+  if (module === 'fulfillment') {
+    requireMarkers(
+      fulfillmentProviderJournalSource,
+      [
+        'serde_json::from_value(provider_result.clone())',
+        'typed_result.provider_id != current.provider_id',
+        'validate_provider_metadata_safety(&typed_result.metadata)',
+        'provider_reference does not match provider_result.external_reference',
+      ],
+      (marker) => `fulfillment provider result journal identity guard missing ${marker}`,
+    );
+  }
   for (const marker of [
     'descriptor.provider_id',
     'descriptor.provider_id != registration.descriptor.provider_id',
@@ -612,6 +647,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       liveAdapterContract: readJson(root, liveAdapterContractPath),
       liveAdapterEvidence: readJson(root, liveAdapterEvidencePath),
       providerSource: readText(root, `crates/modules/rustok-${module}/src/providers.rs`),
+      fulfillmentProviderJournalSource: readText(root, 'crates/modules/rustok-fulfillment/src/services/provider_operation.rs'),
       fulfillmentAdminCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_command.rs'),
       fulfillmentAdminCreateCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_create_command.rs'),
       commerceCheckoutSource,

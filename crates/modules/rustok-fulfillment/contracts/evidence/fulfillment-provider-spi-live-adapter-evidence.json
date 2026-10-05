@@ -61,5 +61,13 @@
         "lifecycle_transition_delegated_to_owner_service"
       ]
     }
-  ]
+  ],
+  "current_runtime_reconciliation": {
+    "webhook_ingress": {
+      "status": "not_wired",
+      "source_of_truth": "crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+      "historical_executed_case_retained": true,
+      "note": "The historical executed webhook case is retained as evidence from an earlier runtime slice; it must not be interpreted as current production ingress wiring."
+    }
+  }
 }
