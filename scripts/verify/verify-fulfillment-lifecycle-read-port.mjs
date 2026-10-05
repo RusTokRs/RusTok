@@ -181,8 +181,53 @@ const listMaterialization = between(
   'pub async fn ship_fulfillment(',
   'lifecycle list materialization',
 );
-if (!listMaterialization.includes('self.build_fulfillment_responses(rows).await?')) {
-  failures.push('lifecycle list must use batched fulfillment item materialization');
+if (
+  !listMaterialization.includes('self.build_fulfillment_responses(&txn, tenant_id, rows).await?') &&
+  !listMaterialization.includes('self\n            .build_fulfillment_responses(&txn, tenant_id, rows)')
+) {
+  failures.push('lifecycle list must use batched fulfillment item materialization with tenant scope');
+}
+
+const itemReadBlocks = [
+  [
+    between(
+      ownerService,
+      'async fn build_fulfillment_responses<C>(',
+      'async fn build_fulfillment_response<C>(',
+      'batch item materialization',
+    ),
+    'batch item materialization',
+  ],
+  [
+    between(
+      ownerService,
+      'async fn build_fulfillment_response<C>(',
+      '/// Lifecycle commands serialize on the parent fulfillment row',
+      'single item materialization',
+    ),
+    'single item materialization',
+  ],
+  [
+    between(
+      ownerService,
+      'async fn load_fulfillment_items<C>(',
+      'async fn set_shipping_option_active(',
+      'lifecycle item loader',
+    ),
+    'lifecycle item loader',
+  ],
+];
+for (const [block, label] of itemReadBlocks) {
+  for (const [value, requirement] of [
+    ['.join(', 'parent fulfillment join'],
+    ['JoinType::InnerJoin', 'inner parent join'],
+    ['entities::fulfillment_item::Relation::Fulfillment.def()', 'declared fulfillment relation'],
+    ['entities::fulfillment::Column::TenantId.eq(tenant_id)', 'tenant predicate'],
+  ]) {
+    if (!block.includes(value)) {
+      failures.push(label + ': missing ' + requirement);
+    }
+  }
 }
 
 const ownerReadImplementation = between(
