@@ -8,7 +8,7 @@ use rustok_fulfillment::{
     in_process_shipping_option_admin_command_port,
 };
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::EntityTrait;
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -97,14 +97,21 @@ async fn admin_shipping_option_create_replays_atomically_and_binds_key_to_reques
 
     assert_eq!(reused.kind, PortErrorKind::Conflict);
 
-    let receipt_count = rustok_outbox::idempotency_test_support::completed_receipt_count(
-        &db,
-        tenant_id,
-        "fulfillment",
-        "shipping-option-key-1",
-        "create_admin_shipping_option",
-    )
-    .await
-    .expect("completed receipt count query should succeed");
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM owner_operation_receipts WHERE tenant_id = ? AND owner_slug = ? AND idempotency_key = ? AND operation = ? AND status = ?",
+            vec![
+                tenant_id.into(),
+                "fulfillment".to_string().into(),
+                "shipping-option-key-1".to_string().into(),
+                "create_admin_shipping_option".to_string().into(),
+                "completed".to_string().into(),
+            ],
+        ))
+        .await
+        .expect("completed receipt query should succeed")
+        .expect("completed receipt count row should exist");
+    let receipt_count: i64 = row.try_get("", "count").expect("count should be an integer");
     assert_eq!(receipt_count, 1);
 }
