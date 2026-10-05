@@ -3,6 +3,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{RouteQueryWriter, use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
@@ -27,7 +29,7 @@ use crate::core::{
     product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
     product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
     text_or_none, build_product_media_panel_copy, build_product_variants_panel_copy,
-    build_product_image_view_models, build_variant_row_view_models,
+    build_product_image_view_models, build_variant_row_view_models, VariantRowViewModel,
 };
 use crate::model::{
     ProductAdminBootstrap, ProductDetail,
@@ -1903,61 +1905,138 @@ fn ProductVariantsPanel(
                 </form>
             </Show>
 
-            <div class="mt-4 overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            <th class="py-2.5 px-3">"SKU"</th>
-                            <th class="py-2.5 px-3">"Variant Axes"</th>
-                            <th class="py-2.5 px-3">"Price"</th>
-                            <th class="py-2.5 px-3">"Stock"</th>
-                            <th class="py-2.5 px-3">"Policy"</th>
-                            <th class="py-2.5 px-3 text-right">"Action"</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border/40">
-                        {variant_rows.into_iter().map(|row| {
-                            let variant_id = row.id.clone();
-                            let can_delete = row.can_delete;
-                            let product_id_for_del = product_id.clone();
-                            let product_id_for_edit = product_id.clone();
-                            let default_curr = default_currency.clone();
-                            let on_mutated_del = on_variant_mutated;
-                            let on_mutated_edit = on_variant_mutated;
+            {
+                let columns = crate::core::product_variant_grid_columns(locale.as_deref());
+                let filters = RwSignal::new(ColumnFilters::default());
+                let selection = RwSignal::new(RowSelection::default());
+                let pagination = RwSignal::new(GridPagination::new(1, 10, variant_rows.len() as u64));
 
-                            let vid_for_edit = variant_id.clone();
-                            let sku_for_edit = row.sku.clone();
-                            let price_for_edit = row.price.clone();
-                            let stock_for_edit = row.stock.parse::<i32>().unwrap_or_default();
+                let filtered_rows = {
+                    let rows = variant_rows.clone();
+                    Memo::new(move |_| {
+                        let f = filters.get();
+                        crate::core::filter_product_variants(&rows, &f, None)
+                    })
+                };
 
-                            let is_editing_this = {
+                Effect::new(move |_| {
+                    let total = filtered_rows.get().len() as u64;
+                    pagination.update(|p| p.set_total(total));
+                });
+
+                let paged_rows = Memo::new(move |_| {
+                    let list = filtered_rows.get();
+                    let p = pagination.get();
+                    let start = (p.page.saturating_sub(1)) * p.page_size;
+                    list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+                });
+
+                let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+                    filters.set(new_filters);
+                });
+
+                let cell_renderer = {
+                    let product_id_for_del = product_id.clone();
+                    let product_id_for_edit = product_id.clone();
+                    let default_curr = default_currency.clone();
+                    let on_mutated_del = on_variant_mutated;
+                    let on_mutated_edit = on_variant_mutated;
+
+                    Callback::new(move |(row, col_id): (VariantRowViewModel, String)| {
+                        let variant_id = row.id.clone();
+                        let can_delete = row.can_delete;
+                        let is_editing_this = {
+                            let v_id = variant_id.clone();
+                            Signal::derive(move || editing_variant_id.get().as_deref() == Some(&v_id))
+                        };
+
+                        match col_id.as_str() {
+                            "sku" => {
+                                let sku_val = row.sku.clone();
+                                view! {
+                                    <div class="font-mono text-xs text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-28"
+                                                    prop:value=move || edit_sku.get()
+                                                    on:input=move |ev| set_edit_sku.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{sku_val.clone()}</span> }.into_any()
+                                        }}
+                                    </div>
+                                }.into_any()
+                            }
+                            "options_summary" => view! {
+                                <span class="text-foreground font-medium">{row.options_summary.clone()}</span>
+                            }.into_any(),
+                            "price" => {
+                                let price_val = row.price.clone();
+                                view! {
+                                    <div class="text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-20"
+                                                    prop:value=move || edit_price.get()
+                                                    on:input=move |ev| set_edit_price.set(event_target_value(&ev))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{price_val.clone()}</span> }.into_any()
+                                        }}
+                                    </div>
+                                }.into_any()
+                            }
+                            "stock" => {
+                                let stock_val = row.stock.clone();
+                                view! {
+                                    <div class="text-foreground">
+                                        {move || if is_editing_this.get() {
+                                            view! {
+                                                <input
+                                                    type="number"
+                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-16"
+                                                    prop:value=move || edit_stock.get().to_string()
+                                                    on:input=move |ev| set_edit_stock.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                                                />
+                                            }.into_any()
+                                        } else {
+                                            view! { <span>{stock_val.clone()}</span> }.into_any()
+                                        }}
+                                    </div>
+                                }.into_any()
+                            }
+                            "inventory_policy" => view! {
+                                <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium border border-border bg-muted/50 text-muted-foreground">
+                                    {row.inventory_policy.clone()}
+                                </span>
+                            }.into_any(),
+                            "actions" => {
                                 let v_id = variant_id.clone();
-                                Signal::derive(move || editing_variant_id.get().as_deref() == Some(&v_id))
-                            };
-
-                            let on_start_edit = {
-                                let v_id = vid_for_edit.clone();
-                                let s = sku_for_edit.clone();
-                                let p = price_for_edit.clone();
-                                move |_| {
+                                let s = row.sku.clone();
+                                let p = row.price.clone();
+                                let stock_for_edit = row.stock.parse::<i32>().unwrap_or_default();
+                                let on_start_edit = move |_| {
                                     set_edit_sku.set(s.clone());
                                     set_edit_price.set(p.split_whitespace().next().unwrap_or("").to_string());
                                     set_edit_stock.set(stock_for_edit);
                                     set_editing_variant_id.set(Some(v_id.clone()));
-                                }
-                            };
+                                };
 
-                            let on_save_edit = {
-                                let v_id = vid_for_edit.clone();
-                                let p_id = product_id_for_edit.clone();
-                                move |_| {
+                                let v_id_save = variant_id.clone();
+                                let p_id_save = product_id_for_edit.clone();
+                                let default_curr_save = default_curr.clone();
+                                let on_save_edit = move |_| {
                                     let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
                                         return;
                                     };
                                     let token_val = token.get_untracked();
                                     let tenant_val = tenant.get_untracked();
-                                    let var_id = v_id.clone();
-                                    let prod_id = p_id.clone();
+                                    let var_id = v_id_save.clone();
+                                    let prod_id = p_id_save.clone();
 
                                     let draft = VariantDraft {
                                         sku: text_or_none(edit_sku.get_untracked()),
@@ -1965,7 +2044,7 @@ fn ProductVariantsPanel(
                                         shipping_profile_slug: None,
                                         axis_values: Vec::new(),
                                         prices: vec![VariantPriceDraft {
-                                            currency_code: default_curr.clone(),
+                                            currency_code: default_curr_save.clone(),
                                             amount: edit_price.get_untracked(),
                                             compare_at_amount: None,
                                         }],
@@ -1992,132 +2071,102 @@ fn ProductVariantsPanel(
                                         }
                                         set_busy.set(false);
                                     });
-                                }
-                            };
-
-                            let on_delete = move |_| {
-                                let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-                                    return;
                                 };
-                                let token_val = token.get_untracked();
-                                let tenant_val = tenant.get_untracked();
-                                let variant_id_val = variant_id.clone();
-                                let product_id_val = product_id_for_del.clone();
 
-                                set_busy.set(true);
-                                set_error.set(None);
-                                spawn_local(async move {
-                                    match transport::delete_product_variant(
-                                        token_val,
-                                        tenant_val,
-                                        bootstrap.current_tenant.id,
-                                        bootstrap.me.id,
-                                        variant_id_val,
-                                    ).await {
-                                        Ok(_) => on_mutated_del.run(product_id_val),
-                                        Err(err) => set_error.set(Some(err.to_string())),
-                                    }
-                                    set_busy.set(false);
-                                });
-                            };
+                                let v_id_del = variant_id.clone();
+                                let p_id_del = product_id_for_del.clone();
+                                let on_delete = move |_| {
+                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        return;
+                                    };
+                                    let token_val = token.get_untracked();
+                                    let tenant_val = tenant.get_untracked();
+                                    let variant_id_val = v_id_del.clone();
+                                    let product_id_val = p_id_del.clone();
 
-                            view! {
-                                <tr class="hover:bg-muted/30 transition">
-                                    <td class="py-2.5 px-3 font-mono text-xs text-foreground">
+                                    set_busy.set(true);
+                                    set_error.set(None);
+                                    spawn_local(async move {
+                                        match transport::delete_product_variant(
+                                            token_val,
+                                            tenant_val,
+                                            bootstrap.current_tenant.id,
+                                            bootstrap.me.id,
+                                            variant_id_val,
+                                        ).await {
+                                            Ok(_) => on_mutated_del.run(product_id_val),
+                                            Err(err) => set_error.set(Some(err.to_string())),
+                                        }
+                                        set_busy.set(false);
+                                    });
+                                };
+
+                                view! {
+                                    <div class="inline-flex items-center gap-1 justify-end w-full">
                                         {move || if is_editing_this.get() {
                                             view! {
-                                                <input
-                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-28"
-                                                    prop:value=move || edit_sku.get()
-                                                    on:input=move |ev| set_edit_sku.set(event_target_value(&ev))
-                                                />
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                                                    disabled=move || busy.get()
+                                                    on:click=on_save_edit.clone()
+                                                >
+                                                    "Save"
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent"
+                                                    on:click=move |_| set_editing_variant_id.set(None)
+                                                >
+                                                    "Cancel"
+                                                </button>
                                             }.into_any()
                                         } else {
-                                            view! { <span>{row.sku.clone()}</span> }.into_any()
-                                        }}
-                                    </td>
-                                    <td class="py-2.5 px-3 text-foreground font-medium">{row.options_summary}</td>
-                                    <td class="py-2.5 px-3 text-foreground">
-                                        {move || if is_editing_this.get() {
                                             view! {
-                                                <input
-                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-20"
-                                                    prop:value=move || edit_price.get()
-                                                    on:input=move |ev| set_edit_price.set(event_target_value(&ev))
-                                                />
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                    disabled=move || busy.get()
+                                                    on:click=on_start_edit.clone()
+                                                >
+                                                    "Edit"
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                                                    disabled=move || !can_delete || busy.get()
+                                                    title=if can_delete { "" } else { "Cannot delete the only variant of a product" }
+                                                    on:click=on_delete.clone()
+                                                >
+                                                    "Delete"
+                                                </button>
                                             }.into_any()
-                                        } else {
-                                            view! { <span>{row.price.clone()}</span> }.into_any()
                                         }}
-                                    </td>
-                                    <td class="py-2.5 px-3 text-foreground">
-                                        {move || if is_editing_this.get() {
-                                            view! {
-                                                <input
-                                                    type="number"
-                                                    class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-16"
-                                                    prop:value=move || edit_stock.get().to_string()
-                                                    on:input=move |ev| set_edit_stock.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
-                                                />
-                                            }.into_any()
-                                        } else {
-                                            view! { <span>{row.stock.clone()}</span> }.into_any()
-                                        }}
-                                    </td>
-                                    <td class="py-2.5 px-3">
-                                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium border border-border bg-muted/50 text-muted-foreground">
-                                            {row.inventory_policy}
-                                        </span>
-                                    </td>
-                                    <td class="py-2.5 px-3 text-right">
-                                        <div class="inline-flex items-center gap-1">
-                                            {move || if is_editing_this.get() {
-                                                view! {
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                                                        disabled=move || busy.get()
-                                                        on:click=on_save_edit.clone()
-                                                    >
-                                                        "Save"
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent"
-                                                        on:click=move |_| set_editing_variant_id.set(None)
-                                                    >
-                                                        "Cancel"
-                                                    </button>
-                                                }.into_any()
-                                            } else {
-                                                view! {
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                        disabled=move || busy.get()
-                                                        on:click=on_start_edit.clone()
-                                                    >
-                                                        "Edit"
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
-                                                        disabled=move || !can_delete || busy.get()
-                                                        title=if can_delete { "" } else { "Cannot delete the only variant of a product" }
-                                                        on:click=on_delete.clone()
-                                                    >
-                                                        "Delete"
-                                                    </button>
-                                                }.into_any()
-                                            }}
-                                        </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                }.into_any()
                             }
-                        }).collect_view()}
-                    </tbody>
-                </table>
-            </div>
+                            _ => ().into_any(),
+                        }
+                    })
+                };
+
+                view! {
+                    <div class="mt-4">
+                        <DataGrid
+                            columns=columns
+                            data=Signal::derive(move || paged_rows.get())
+                            key_fn=|row: &VariantRowViewModel| row.id.clone()
+                            cell_renderer=cell_renderer
+                            empty_message=copy.empty.clone()
+                            selection=selection
+                            pagination=pagination
+                            filters=filters
+                            on_filter_change=on_filters_change
+                            on_row_click=Callback::new(|_| ())
+                        />
+                    </div>
+                }
+            }
         </section>
     }.into_any()
 }

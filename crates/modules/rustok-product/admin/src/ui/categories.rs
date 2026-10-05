@@ -1,11 +1,153 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
-use crate::core::{build_category_tree, flatten_category_tree, slugify};
+use crate::core::{
+    build_category_tree, build_category_tree_row_view_models, filter_product_categories,
+    flatten_category_tree, product_category_grid_columns, slugify, CategoryTreeRowViewModel,
+};
 use crate::model::{CatalogCategoryDraft, CatalogCategorySummary};
 use crate::transport;
+
+#[component]
+fn CategoryTreeGrid(
+    #[prop(into)] categories: Signal<Vec<CatalogCategorySummary>>,
+    locale: Option<String>,
+    empty_label: String,
+    is_loading: Signal<bool>,
+    on_add_child: Callback<String>,
+    on_clone: Callback<CatalogCategorySummary>,
+) -> impl IntoView {
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = product_category_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 20, 0));
+
+    let tree_rows = Memo::new(move |_| {
+        let cats = categories.get();
+        build_category_tree_row_view_models(&cats)
+    });
+
+    let filtered_rows = Memo::new(move |_| {
+        let rows = tree_rows.get();
+        let q = search.get();
+        let f = filters.get();
+        filter_product_categories(
+            &rows,
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(row, col_id): (CategoryTreeRowViewModel, String)| {
+        match col_id.as_str() {
+            "category" => {
+                let indent_px = row.depth * 20;
+                view! {
+                    <div class="flex items-center gap-1.5" style=format!("padding-left: {}px", indent_px)>
+                        <span class="text-muted-foreground/60 text-xs">
+                            {if row.depth == 0 { "📁" } else { "↳ 📄" }}
+                        </span>
+                        <span class="font-medium text-foreground">{row.category.name.clone()}</span>
+                        <span class="text-[10px] font-mono text-muted-foreground/70">
+                            {format!("({})", row.category.slug)}
+                        </span>
+                    </div>
+                }.into_any()
+            }
+            "code" => view! {
+                <span class="font-mono text-[11px] text-muted-foreground">{row.category.code.clone()}</span>
+            }.into_any(),
+            "kind" => {
+                let is_virt = row.category.kind.to_lowercase() == "virtual";
+                view! {
+                    <span class=if is_virt {
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                    } else {
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                    }>
+                        {if is_virt { "Virtual" } else { "Physical" }}
+                    </span>
+                }.into_any()
+            }
+            "actions" => {
+                let cat_id_sub = row.category.id.clone();
+                let cat_clone = row.category.clone();
+                let on_sub = on_add_child;
+                let on_cln = on_clone;
+                view! {
+                    <div class="flex items-center justify-end gap-1.5">
+                        <button
+                            type="button"
+                            class="h-6 px-2 rounded text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent"
+                            title=if is_ru { "Добавить дочернюю категорию" } else { "Add child category" }
+                            on:click=move |_| on_sub.run(cat_id_sub.clone())
+                        >
+                            "+ ↳"
+                        </button>
+                        <button
+                            type="button"
+                            class="h-6 px-2 rounded text-[11px] font-medium border border-border text-foreground hover:bg-accent"
+                            title=if is_ru { "Создать категорию на основе этой" } else { "Create category from this template" }
+                            on:click=move |_| on_cln.run(cat_clone.clone())
+                        >
+                            {if is_ru { "Копия" } else { "Clone" }}
+                        </button>
+                    </div>
+                }.into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+                <input
+                    type="text"
+                    placeholder=if is_ru { "Поиск по дереву категорий..." } else { "Search category tree..." }
+                    prop:value=move || search.get()
+                    on:input=move |ev| search.set(event_target_value(&ev))
+                    class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-56 font-normal"
+                />
+            </div>
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &CategoryTreeRowViewModel| row.category.id.clone()
+                cell_renderer=cell_renderer
+                is_loading=is_loading
+                empty_message=empty_label
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+}
 
 #[component]
 pub fn CategoriesPage() -> impl IntoView {
@@ -76,6 +218,7 @@ pub fn CategoriesPage() -> impl IntoView {
     };
 
     // Save category
+    let save_locale = locale.clone();
     let on_save_category = move |_| {
         let name = cat_name.get_untracked().trim().to_string();
         if name.is_empty() {
@@ -106,7 +249,7 @@ pub fn CategoriesPage() -> impl IntoView {
 
         let tok = token.get_untracked();
         let ten = tenant.get_untracked();
-        let loc = locale.clone().unwrap_or_default();
+        let loc = save_locale.clone().unwrap_or_default();
 
         let draft = CatalogCategoryDraft {
             parent_id,
@@ -221,102 +364,23 @@ pub fn CategoriesPage() -> impl IntoView {
                         {if is_ru { "Дерево категорий" } else { "Category Taxonomy Tree" }}
                     </h2>
 
-                    <div class="rounded-xl border border-border overflow-hidden">
-                        <table class="w-full text-xs text-left">
-                            <thead class="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
-                                <tr>
-                                    <th class="px-4 py-2.5">{if is_ru { "Категория" } else { "Category" }}</th>
-                                    <th class="px-3 py-2.5">{if is_ru { "Код" } else { "Code" }}</th>
-                                    <th class="px-3 py-2.5">{if is_ru { "Тип" } else { "Kind" }}</th>
-                                    <th class="px-3 py-2.5 text-right">{if is_ru { "Действия" } else { "Actions" }}</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-border/60">
-                                {move || {
-                                    let cats = categories_resource.get().and_then(Result::ok).unwrap_or_default();
-                                    if cats.is_empty() {
-                                        return view! {
-                                            <tr>
-                                                <td colspan="4" class="px-4 py-8 text-center text-muted-foreground italic">
-                                                    {if is_ru { "Категории ещё не созданы" } else { "No categories found" }}
-                                                </td>
-                                            </tr>
-                                        }.into_any();
-                                    }
-
-                                    let tree = build_category_tree(&cats);
-                                    let flattened = flatten_category_tree(&tree);
-
-                                    flattened.into_iter().map(|(cat, depth)| {
-                                        let cat_id = cat.id.clone();
-                                        let cat_id_sub = cat.id.clone();
-                                        let cat_name_val = cat.name.clone();
-                                        let cat_slug_val = cat.slug.clone();
-                                        let cat_code_val = cat.code.clone();
-                                        let cat_kind_val = cat.kind.clone();
-                                        let is_virt = cat.kind.to_lowercase() == "virtual";
-
-                                        view! {
-                                            <tr class="hover:bg-accent/40 transition-colors">
-                                                <td class="px-4 py-2.5">
-                                                    <div class="flex items-center gap-1.5" style=format!("padding-left: {}px", depth * 20)>
-                                                        <span class="text-muted-foreground/60 text-xs">
-                                                            {if depth == 0 { "📁" } else { "↳ 📄" }}
-                                                        </span>
-                                                        <span class="font-medium text-foreground">{cat.name}</span>
-                                                        <span class="text-[10px] font-mono text-muted-foreground/70">
-                                                            {format!("({})", cat.slug)}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td class="px-3 py-2.5 font-mono text-[11px] text-muted-foreground">
-                                                    {cat.code}
-                                                </td>
-                                                <td class="px-3 py-2.5">
-                                                    <span class=if is_virt {
-                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                                                    } else {
-                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                                                    }>
-                                                        {if is_virt { "Virtual" } else { "Physical" }}
-                                                    </span>
-                                                </td>
-                                                <td class="px-3 py-2.5 text-right">
-                                                    <div class="flex items-center justify-end gap-1.5">
-                                                        <button
-                                                            type="button"
-                                                            class="h-6 px-2 rounded text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent"
-                                                            title=if is_ru { "Добавить дочернюю категорию" } else { "Add child category" }
-                                                            on:click=move |_| {
-                                                                reset_form();
-                                                                set_cat_parent_id.set(cat_id_sub.clone());
-                                                            }
-                                                        >
-                                                            "+ ↳"
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            class="h-6 px-2 rounded text-[11px] font-medium border border-border text-foreground hover:bg-accent"
-                                                            title=if is_ru { "Создать категорию на основе этой" } else { "Create category from this template" }
-                                                            on:click=move |_| {
-                                                                set_editing_id.set(Some(cat_id.clone()));
-                                                                set_cat_name.set(format!("{} (copy)", cat_name_val));
-                                                                set_cat_slug.set(format!("{}-copy", cat_slug_val));
-                                                                set_cat_code.set(format!("{}_COPY", cat_code_val));
-                                                                set_cat_kind.set(cat_kind_val.clone());
-                                                            }
-                                                        >
-                                                            {if is_ru { "Копия" } else { "Clone" }}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        }
-                                    }).collect_view().into_any()
-                                }}
-                            </tbody>
-                        </table>
-                    </div>
+                    <CategoryTreeGrid
+                        categories=Signal::derive(move || categories_resource.get().and_then(Result::ok).unwrap_or_default())
+                        locale=locale.clone()
+                        empty_label=if is_ru { "Категории ещё не созданы" } else { "No categories found" }.to_string()
+                        is_loading=Signal::derive(move || is_busy.get() || categories_resource.get().is_none())
+                        on_add_child=Callback::new(move |parent_id: String| {
+                            reset_form();
+                            set_cat_parent_id.set(parent_id);
+                        })
+                        on_clone=Callback::new(move |cat: CatalogCategorySummary| {
+                            set_editing_id.set(Some(cat.id));
+                            set_cat_name.set(format!("{} (copy)", cat.name));
+                            set_cat_slug.set(format!("{}-copy", cat.slug));
+                            set_cat_code.set(format!("{}_COPY", cat.code));
+                            set_cat_kind.set(cat.kind);
+                        })
+                    />
                 </div>
 
                 // Right Column: Add / Edit Form (1 col)

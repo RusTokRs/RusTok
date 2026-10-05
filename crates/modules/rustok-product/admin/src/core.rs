@@ -7,9 +7,10 @@ use std::collections::HashMap;
 
 use crate::i18n::t;
 use crate::model::{
-    CatalogCategorySummary, ProductAdminBootstrap, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, ProductDetail, ProductDraft, ProductList, ProductListItem,
-    ProductPricingDetail, ProductTranslation, ShippingProfile, ShippingProfileList,
+    CatalogCategorySummary, ProductAdminBootstrap, ProductAttributeSchemaSummary,
+    ProductAttributeSummary, ProductAttributeValueItem, ProductAttributeValuePatchDraft,
+    ProductDetail, ProductDraft, ProductList, ProductListItem, ProductPricingDetail,
+    ProductTranslation, ShippingProfile, ShippingProfileList,
 };
 
 pub(crate) fn translation_for_locale(
@@ -1859,7 +1860,7 @@ pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'stat
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VariantRowViewModel {
+pub struct VariantRowViewModel {
     pub id: String,
     pub sku: String,
     pub title: String,
@@ -1870,7 +1871,7 @@ pub(crate) struct VariantRowViewModel {
     pub can_delete: bool,
 }
 
-pub(crate) fn build_variant_row_view_models(product: &ProductDetail) -> Vec<VariantRowViewModel> {
+pub fn build_variant_row_view_models(product: &ProductDetail) -> Vec<VariantRowViewModel> {
     let multiple = product.variants.len() > 1;
     product
         .variants
@@ -2362,6 +2363,441 @@ pub fn flatten_category_tree(tree: &[CategoryTreeItem]) -> Vec<(CatalogCategoryS
         visit(root, &mut flat);
     }
     flat
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CategoryTreeRowViewModel {
+    pub category: CatalogCategorySummary,
+    pub depth: usize,
+}
+
+pub fn build_category_tree_row_view_models(
+    categories: &[CatalogCategorySummary],
+) -> Vec<CategoryTreeRowViewModel> {
+    let tree = build_category_tree(categories);
+    flatten_category_tree(&tree)
+        .into_iter()
+        .map(|(category, depth)| CategoryTreeRowViewModel { category, depth })
+        .collect()
+}
+
+pub fn attribute_schema_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new(
+            "name",
+            if is_ru {
+                "Название схемы"
+            } else {
+                "Schema Name"
+            },
+        )
+        .min_width(200)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр названия схемы..."
+                } else {
+                    "Filter schema name..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new("code", if is_ru { "Код" } else { "Code" })
+            .min_width(160)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр кода..."
+                    } else {
+                        "Filter code..."
+                    }
+                    .into(),
+                ),
+            }),
+    ]
+}
+
+pub fn matches_attribute_schema_filter(
+    item: &ProductAttributeSchemaSummary,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("name", FilterValue::Text(q)) => {
+                if !item.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("code", FilterValue::Text(q)) => {
+                if !item.code.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_attribute_schemas(
+    items: &[ProductAttributeSchemaSummary],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<ProductAttributeSchemaSummary> {
+    items
+        .iter()
+        .filter(|item| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !item.name.to_ascii_lowercase().contains(&term)
+                    && !item.code.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_attribute_schema_filter(item, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn product_attribute_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("label", if is_ru { "Название" } else { "Label" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр названия..."
+                    } else {
+                        "Filter label..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("code", if is_ru { "Код" } else { "Code" })
+            .min_width(150)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр кода..."
+                    } else {
+                        "Filter code..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("value_type", if is_ru { "Тип" } else { "Type" })
+            .min_width(120)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр типа..."
+                    } else {
+                        "Filter type..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new(
+            "is_filterable",
+            if is_ru { "Фильтр" } else { "Filterable" },
+        )
+        .min_width(100)
+        .not_sortable()
+        .align(ColumnAlign::Center),
+        GridColumnDef::new("actions", if is_ru { "Опции" } else { "Actions" })
+            .width(110)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_product_attribute_filter(
+    item: &ProductAttributeSummary,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("label", FilterValue::Text(q)) => {
+                if !item.label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("code", FilterValue::Text(q)) => {
+                if !item.code.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("value_type", FilterValue::Text(q)) => {
+                if !item
+                    .value_type
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_product_attributes(
+    items: &[ProductAttributeSummary],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<ProductAttributeSummary> {
+    items
+        .iter()
+        .filter(|item| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !item.label.to_ascii_lowercase().contains(&term)
+                    && !item.code.to_ascii_lowercase().contains(&term)
+                    && !item.value_type.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_product_attribute_filter(item, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn product_category_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new(
+            "category",
+            if is_ru { "Категория" } else { "Category" },
+        )
+        .min_width(260)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр категории..."
+                } else {
+                    "Filter category..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new("code", if is_ru { "Код" } else { "Code" })
+            .min_width(150)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр кода..."
+                    } else {
+                        "Filter code..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("kind", if is_ru { "Тип" } else { "Kind" })
+            .min_width(120)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр типа..."
+                    } else {
+                        "Filter kind..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(150)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_product_category_filter(
+    item: &CategoryTreeRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("category", FilterValue::Text(q)) => {
+                if !item
+                    .category
+                    .name
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("code", FilterValue::Text(q)) => {
+                if !item
+                    .category
+                    .code
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("kind", FilterValue::Text(q)) => {
+                if !item
+                    .category
+                    .kind
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_product_categories(
+    items: &[CategoryTreeRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<CategoryTreeRowViewModel> {
+    items
+        .iter()
+        .filter(|item| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !item.category.name.to_ascii_lowercase().contains(&term)
+                    && !item.category.code.to_ascii_lowercase().contains(&term)
+                    && !item.category.kind.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_product_category_filter(item, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn product_variant_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("sku", if is_ru { "Артикул" } else { "SKU" })
+            .min_width(160)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр артикула..."
+                    } else {
+                        "Filter SKU..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new(
+            "options_summary",
+            if is_ru {
+                "Оси варианта"
+            } else {
+                "Variant Axes"
+            },
+        )
+        .min_width(200)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр осей варианта..."
+                } else {
+                    "Filter variant axes..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new("price", if is_ru { "Цена" } else { "Price" })
+            .min_width(120)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("stock", if is_ru { "Остаток" } else { "Stock" })
+            .min_width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "inventory_policy",
+            if is_ru { "Политика" } else { "Policy" },
+        )
+        .min_width(120)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new("actions", if is_ru { "Действие" } else { "Action" })
+            .width(130)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_product_variant_filter(
+    item: &VariantRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("sku", FilterValue::Text(q)) => {
+                if !item.sku.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("options_summary", FilterValue::Text(q)) => {
+                if !item
+                    .options_summary
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_product_variants(
+    items: &[VariantRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<VariantRowViewModel> {
+    items
+        .iter()
+        .filter(|item| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !item.sku.to_ascii_lowercase().contains(&term)
+                    && !item.options_summary.to_ascii_lowercase().contains(&term)
+                    && !item.title.to_ascii_lowercase().contains(&term)
+                    && !item.price.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_product_variant_filter(item, filters)
+        })
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
@@ -3413,5 +3849,78 @@ mod tests {
         assert!(!models[1].is_first);
         assert!(models[1].is_last);
         assert_eq!(models[1].alt_text, "");
+    }
+
+    #[test]
+    fn product_admin_subtable_grids_and_filters_are_correct() {
+        let schema = ProductAttributeSchemaSummary {
+            id: "schema-1".to_string(),
+            code: "apparel".to_string(),
+            name: "Apparel Specs".to_string(),
+        };
+        let schema_cols = attribute_schema_grid_columns(Some("en"));
+        assert_eq!(schema_cols.len(), 2);
+        let schemas = vec![schema];
+        assert_eq!(
+            filter_attribute_schemas(&schemas, &ColumnFilters::default(), Some("apparel")).len(),
+            1
+        );
+
+        let attr = ProductAttributeSummary {
+            id: "attr-1".to_string(),
+            code: "color".to_string(),
+            value_type: "option".to_string(),
+            is_localized: false,
+            is_filterable: true,
+            is_searchable: true,
+            is_sortable: false,
+            show_on_storefront: true,
+            label: "Color".to_string(),
+        };
+        let attr_cols = product_attribute_grid_columns(Some("en"));
+        assert_eq!(attr_cols.len(), 5);
+        let attrs = vec![attr];
+        assert_eq!(
+            filter_product_attributes(&attrs, &ColumnFilters::default(), Some("color")).len(),
+            1
+        );
+
+        let cat_row = CategoryTreeRowViewModel {
+            category: CatalogCategorySummary {
+                id: "cat-1".to_string(),
+                code: "shoes".to_string(),
+                slug: "shoes".to_string(),
+                path: "/shoes".to_string(),
+                kind: "physical".to_string(),
+                name: "Shoes".to_string(),
+                parent_id: None,
+            },
+            depth: 0,
+        };
+        let cat_cols = product_category_grid_columns(Some("en"));
+        assert_eq!(cat_cols.len(), 4);
+        let cat_rows = vec![cat_row];
+        assert_eq!(
+            filter_product_categories(&cat_rows, &ColumnFilters::default(), Some("shoes")).len(),
+            1
+        );
+
+        let variant = VariantRowViewModel {
+            id: "var-1".to_string(),
+            sku: "SKU-RED-M".to_string(),
+            title: "Red / M".to_string(),
+            options_summary: "Red / M".to_string(),
+            price: "29.99 USD".to_string(),
+            stock: "100".to_string(),
+            inventory_policy: "DENY".to_string(),
+            can_delete: true,
+        };
+        let var_cols = product_variant_grid_columns(Some("en"));
+        assert_eq!(var_cols.len(), 6);
+        let variants = vec![variant];
+        assert_eq!(
+            filter_product_variants(&variants, &ColumnFilters::default(), Some("RED")).len(),
+            1
+        );
     }
 }

@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::model::{
@@ -8,6 +10,167 @@ use crate::model::{
     ProductAttributeSchemaSummary, ProductAttributeSummary,
 };
 use crate::transport;
+
+#[component]
+fn AttributeSchemasGrid(
+    #[prop(into)] schemas: Signal<Vec<ProductAttributeSchemaSummary>>,
+    locale: Option<String>,
+    empty_label: String,
+    is_loading: Signal<bool>,
+) -> impl IntoView {
+    let columns = crate::core::attribute_schema_grid_columns(locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let f = filters.get();
+        crate::core::filter_attribute_schemas(&schemas.get(), &f, None)
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(s, col_id): (ProductAttributeSchemaSummary, String)| {
+        match col_id.as_str() {
+            "name" => view! {
+                <span class="font-medium text-foreground">{s.name}</span>
+            }.into_any(),
+            "code" => view! {
+                <span class="font-mono text-[11px] text-muted-foreground">{s.code}</span>
+            }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <DataGrid
+            columns=columns
+            data=Signal::derive(move || paged_rows.get())
+            key_fn=|s: &ProductAttributeSchemaSummary| s.id.clone()
+            cell_renderer=cell_renderer
+            is_loading=is_loading
+            empty_message=empty_label
+            selection=selection
+            pagination=pagination
+            filters=filters
+            on_filter_change=on_filters_change
+            on_row_click=Callback::new(|_| ())
+        />
+    }
+}
+
+#[component]
+fn ProductAttributesGrid(
+    #[prop(into)] attributes: Signal<Vec<ProductAttributeSummary>>,
+    locale: Option<String>,
+    empty_label: String,
+    is_loading: Signal<bool>,
+    search_query: ReadSignal<String>,
+    on_add_option: Callback<ProductAttributeSummary>,
+) -> impl IntoView {
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = crate::core::product_attribute_grid_columns(locale.as_deref());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let q = search_query.get();
+        let f = filters.get();
+        crate::core::filter_product_attributes(
+            &attributes.get(),
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(attr, col_id): (ProductAttributeSummary, String)| {
+        match col_id.as_str() {
+            "label" => view! {
+                <span class="font-medium text-foreground">{attr.label}</span>
+            }.into_any(),
+            "code" => view! {
+                <span class="font-mono text-[11px] text-muted-foreground">{attr.code}</span>
+            }.into_any(),
+            "value_type" => view! {
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-muted text-muted-foreground">
+                    {attr.value_type}
+                </span>
+            }.into_any(),
+            "is_filterable" => {
+                if attr.is_filterable {
+                    view! { <span class="text-emerald-500 font-bold">"✓"</span> }.into_any()
+                } else {
+                    view! { <span class="text-muted-foreground/40">"—"</span> }.into_any()
+                }
+            }
+            "actions" => {
+                let is_option = attr.value_type == "option" || attr.value_type == "multi_option";
+                if is_option {
+                    let attr_clone = attr.clone();
+                    view! {
+                        <button
+                            type="button"
+                            class="h-6 px-2 rounded text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition"
+                            on:click=move |_| on_add_option.run(attr_clone.clone())
+                        >
+                            "+ " {if is_ru { "Опция" } else { "Option" }}
+                        </button>
+                    }.into_any()
+                } else {
+                    view! { <span class="text-muted-foreground text-[10px]">"—"</span> }.into_any()
+                }
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <DataGrid
+            columns=columns
+            data=Signal::derive(move || paged_rows.get())
+            key_fn=|attr: &ProductAttributeSummary| attr.id.clone()
+            cell_renderer=cell_renderer
+            is_loading=is_loading
+            empty_message=empty_label
+            selection=selection
+            pagination=pagination
+            filters=filters
+            on_filter_change=on_filters_change
+            on_row_click=Callback::new(|_| ())
+        />
+    }
+}
 
 #[component]
 pub fn AttributesPage() -> impl IntoView {
@@ -323,39 +486,12 @@ pub fn AttributesPage() -> impl IntoView {
                                 <h2 class="text-sm font-semibold text-foreground border-b border-border pb-2.5">
                                     {if is_ru { "Шаблоны схем категорий" } else { "Category Schema Templates" }}
                                 </h2>
-                                <div class="rounded-xl border border-border overflow-hidden">
-                                    <table class="w-full text-xs text-left">
-                                        <thead class="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
-                                            <tr>
-                                                <th class="px-4 py-2.5">{if is_ru { "Название схемы" } else { "Schema Name" }}</th>
-                                                <th class="px-3 py-2.5">{if is_ru { "Код" } else { "Code" }}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-border/60">
-                                            {move || {
-                                                let schemas = schemas_resource.get().and_then(Result::ok).unwrap_or_default();
-                                                if schemas.is_empty() {
-                                                    return view! {
-                                                        <tr>
-                                                            <td colspan="2" class="px-4 py-8 text-center text-muted-foreground italic">
-                                                                {if is_ru { "Схемы ещё не созданы" } else { "No attribute schemas defined" }}
-                                                            </td>
-                                                        </tr>
-                                                    }.into_any();
-                                                }
-
-                                                schemas.into_iter().map(|s| {
-                                                    view! {
-                                                        <tr class="hover:bg-accent/40 transition-colors">
-                                                            <td class="px-4 py-2.5 font-medium text-foreground">{s.name}</td>
-                                                            <td class="px-3 py-2.5 font-mono text-[11px] text-muted-foreground">{s.code}</td>
-                                                        </tr>
-                                                    }
-                                                }).collect_view().into_any()
-                                            }}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <AttributeSchemasGrid
+                                    schemas=Signal::derive(move || schemas_resource.get().and_then(Result::ok).unwrap_or_default())
+                                    locale=locale_store.get_value()
+                                    empty_label=if is_ru { "Схемы ещё не созданы" } else { "No attribute schemas defined" }.to_string()
+                                    is_loading=Signal::derive(move || is_busy.get() || schemas_resource.get().is_none())
+                                />
                             </div>
 
                             // Add Schema Column
@@ -463,82 +599,18 @@ pub fn AttributesPage() -> impl IntoView {
                                     />
                                 </div>
 
-                                <div class="rounded-xl border border-border overflow-hidden">
-                                    <table class="w-full text-xs text-left">
-                                        <thead class="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
-                                            <tr>
-                                                <th class="px-4 py-2.5">{if is_ru { "Название" } else { "Label" }}</th>
-                                                <th class="px-3 py-2.5">{if is_ru { "Код" } else { "Code" }}</th>
-                                                <th class="px-3 py-2.5">{if is_ru { "Тип" } else { "Type" }}</th>
-                                                <th class="px-3 py-2.5 text-center">{if is_ru { "Фильтр" } else { "Filter" }}</th>
-                                                <th class="px-3 py-2.5 text-right">{if is_ru { "Опции" } else { "Actions" }}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-border/60">
-                                            {move || {
-                                                let all_attrs = attributes_resource.get().and_then(Result::ok).unwrap_or_default();
-                                                let q = search_query.get().to_lowercase().trim().to_string();
-                                                let attrs: Vec<_> = all_attrs.into_iter().filter(|a| {
-                                                    if q.is_empty() { return true; }
-                                                    a.label.to_lowercase().contains(&q) || a.code.to_lowercase().contains(&q)
-                                                }).collect();
-
-                                                if attrs.is_empty() {
-                                                    return view! {
-                                                        <tr>
-                                                            <td colspan="5" class="px-4 py-8 text-center text-muted-foreground italic">
-                                                                {if is_ru { "Характеристики не найдены" } else { "No attributes found" }}
-                                                            </td>
-                                                        </tr>
-                                                    }.into_any();
-                                                }
-
-                                                attrs.into_iter().map(|attr| {
-                                                    let is_option = attr.value_type == "option" || attr.value_type == "multi_option";
-                                                    let attr_clone = attr.clone();
-
-                                                    view! {
-                                                        <tr class="hover:bg-accent/40 transition-colors">
-                                                            <td class="px-4 py-2.5 font-medium text-foreground">{attr.label}</td>
-                                                            <td class="px-3 py-2.5 font-mono text-[11px] text-muted-foreground">{attr.code}</td>
-                                                            <td class="px-3 py-2.5">
-                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-muted text-muted-foreground">
-                                                                    {attr.value_type}
-                                                                </span>
-                                                            </td>
-                                                            <td class="px-3 py-2.5 text-center">
-                                                                {if attr.is_filterable {
-                                                                    view! { <span class="text-emerald-500 font-bold">"✓"</span> }.into_any()
-                                                                } else {
-                                                                    view! { <span class="text-muted-foreground/40">"—"</span> }.into_any()
-                                                                }}
-                                                            </td>
-                                                            <td class="px-3 py-2.5 text-right">
-                                                                {if is_option {
-                                                                    view! {
-                                                                        <button
-                                                                            type="button"
-                                                                            class="h-6 px-2 rounded text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition"
-                                                                            on:click=move |_| {
-                                                                                set_selected_attr_for_opt.set(Some(attr_clone.clone()));
-                                                                                set_opt_label.set(String::new());
-                                                                                set_opt_code.set(String::new());
-                                                                            }
-                                                                        >
-                                                                            "+ " {if is_ru { "Опция" } else { "Option" }}
-                                                                        </button>
-                                                                    }.into_any()
-                                                                } else {
-                                                                    view! { <span class="text-muted-foreground text-[10px]">"—"</span> }.into_any()
-                                                                }}
-                                                            </td>
-                                                        </tr>
-                                                    }
-                                                }).collect_view().into_any()
-                                            }}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <ProductAttributesGrid
+                                    attributes=Signal::derive(move || attributes_resource.get().and_then(Result::ok).unwrap_or_default())
+                                    locale=locale_store.get_value()
+                                    empty_label=if is_ru { "Характеристики не найдены" } else { "No attributes found" }.to_string()
+                                    is_loading=Signal::derive(move || is_busy.get() || attributes_resource.get().is_none())
+                                    search_query=search_query
+                                    on_add_option=Callback::new(move |attr: ProductAttributeSummary| {
+                                        set_selected_attr_for_opt.set(Some(attr));
+                                        set_opt_label.set(String::new());
+                                        set_opt_code.set(String::new());
+                                    })
+                                />
                             </div>
 
                             // Right Column: Add Attribute Form (1 col)

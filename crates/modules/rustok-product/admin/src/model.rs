@@ -335,7 +335,7 @@ pub struct ProductAttributeList {
     pub total: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProductAttributeSummary {
     pub id: String,
     pub code: String,
@@ -390,7 +390,7 @@ pub struct ProductAttributeSchemaList {
     pub total: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProductAttributeSchemaSummary {
     pub id: String,
     pub code: String,
