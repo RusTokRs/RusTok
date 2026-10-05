@@ -75,7 +75,11 @@ impl FulfillmentReconciliationService {
                     "fulfillment provider operation {operation_id} contains invalid request_payload: {error}"
                 ))
             })?;
-        if request.tenant_id != tenant_id || request.fulfillment_id != operation.fulfillment_id {
+        if request.tenant_id != tenant_id
+            || request.fulfillment_id != operation.fulfillment_id
+            || request.idempotency_key.as_deref().map(str::trim)
+                != Some(operation.idempotency_key.as_str())
+        {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment provider operation {operation_id} request identity does not match the journal"
             )));
@@ -105,12 +109,7 @@ impl FulfillmentReconciliationService {
                     "fulfillment provider operation {operation_id} lacks commerce_orchestration metadata"
                 ))
             })?;
-        let local_metadata = local_commit_metadata(
-            request.metadata.clone(),
-            provider_result.metadata,
-            operation_id,
-            operation.operation.as_str(),
-        );
+        
 
         let updated =
             match operation.operation.as_str() {
@@ -121,10 +120,16 @@ impl FulfillmentReconciliationService {
                             required_string(orchestration, "tracking_number", operation_id)?,
                         ),
                         items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .ship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .ship_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "reship" => {
@@ -134,19 +139,31 @@ impl FulfillmentReconciliationService {
                             required_string(orchestration, "tracking_number", operation_id)?,
                         ),
                         items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .reship_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .reship_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "cancel" => {
                     let input = CancelFulfillmentInput {
                         reason: optional_field(orchestration, "reason", operation_id)?,
-                        metadata: local_metadata,
+                        metadata: request.metadata.clone(),
                     };
                     service
-                        .cancel_fulfillment(tenant_id, operation.fulfillment_id, input)
+                        .cancel_fulfillment_with_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            input,
+                            provider_result.metadata.clone(),
+                            operation_id,
+                        )
                         .await?
                 }
                 "create_label" => {
