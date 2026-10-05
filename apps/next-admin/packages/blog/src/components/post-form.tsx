@@ -1,6 +1,6 @@
 'use client';
 
-import { FormInput, FormTextarea, FormSwitch } from '@/shared/ui/forms';
+import { FormInput, FormTextarea, FormSwitch, FormSelect, type FormOption } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextEditor } from '@/shared/ui/rich-text-editor';
@@ -15,17 +15,20 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale } from '@rustok/next-fluent';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
+import { listBlogCategories, type BlogCategory } from '../api/categories';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters.'),
   slug: z.string().optional(),
   locale: z.string().min(2),
+  categoryId: z.string().optional(),
+  channelSlugs: z.string().optional(),
   excerpt: z.string().optional(),
   tags: z.string().optional(),
   featuredImageUrl: z.string().url().optional().or(z.literal('')),
@@ -58,11 +61,36 @@ export default function PostForm({
     [initialData]
   );
   const [content, setContent] = useState<RichTextDocument>(initialDoc);
+  const [categories, setCategories] = useState<BlogCategory[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    listBlogCategories({ locale: defaultLocale }, gqlOpts)
+      .then((res) => {
+        if (active) {
+          setCategories(res.items);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [defaultLocale, gqlOpts]);
+
+  const categoryOptions: FormOption[] = useMemo(() => {
+    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '' }];
+    categories.forEach((cat) => {
+      opts.push({ label: cat.name, value: cat.id });
+    });
+    return opts;
+  }, [categories]);
 
   const defaultValues: FormValues = {
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
+    categoryId: initialData?.categoryId ?? '',
+    channelSlugs: initialData?.channelSlugs?.join(', ') ?? '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
@@ -76,12 +104,20 @@ export default function PostForm({
     defaultValues
   });
   const contentLocale = form.watch('locale');
+  const featuredImageUrl = form.watch('featuredImageUrl');
 
   async function onSubmit(values: FormValues) {
     const tags = values.tags
       ? values.tags
           .split(',')
           .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
+    const channelSlugs = values.channelSlugs
+      ? values.channelSlugs
+          .split(',')
+          .map((s) => s.trim())
           .filter(Boolean)
       : [];
 
@@ -105,9 +141,12 @@ export default function PostForm({
             content,
             excerpt: values.excerpt || undefined,
             tags,
+            categoryId: values.categoryId ? values.categoryId : null,
+            channelSlugs,
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
-            seoDescription: values.seoDescription || undefined
+            seoDescription: values.seoDescription || undefined,
+            version: initialData.version
           },
           gqlOpts
         );
@@ -122,6 +161,8 @@ export default function PostForm({
             excerpt: values.excerpt || undefined,
             publish: values.publish,
             tags,
+            categoryId: values.categoryId ? values.categoryId : undefined,
+            channelSlugs: channelSlugs.length > 0 ? channelSlugs : undefined,
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
             seoDescription: values.seoDescription || undefined
@@ -182,6 +223,23 @@ export default function PostForm({
             />
           </div>
 
+          <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
+            <FormSelect
+              control={form.control}
+              name='categoryId'
+              label='Category'
+              options={categoryOptions}
+              placeholder='Select category'
+            />
+            <FormInput
+              control={form.control}
+              name='channelSlugs'
+              label='Channels'
+              placeholder='e.g. default, mobile'
+              description='Comma-separated channel slugs'
+            />
+          </div>
+
           <RichTextEditor
             label='Content'
             profile='article'
@@ -199,12 +257,27 @@ export default function PostForm({
             config={{ rows: 3, maxLength: 1000, showCharCount: true }}
           />
 
-          <FormInput
-            control={form.control}
-            name='featuredImageUrl'
-            label='Featured Image URL'
-            placeholder='https://...'
-          />
+          <div className='space-y-2'>
+            <FormInput
+              control={form.control}
+              name='featuredImageUrl'
+              label='Featured Image URL'
+              placeholder='https://...'
+            />
+            {featuredImageUrl && (
+              <div className='relative mt-2 h-44 max-w-sm overflow-hidden rounded-md border bg-muted'>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={featuredImageUrl}
+                  alt='Featured image preview'
+                  className='h-full w-full object-cover'
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+          </div>
 
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput

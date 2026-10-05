@@ -35,6 +35,10 @@ export interface PostResponse {
   contentPlainText?: string | null;
   status: BlogPostStatus;
   authorId: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  channelSlugs?: string[];
+  version: number;
   createdAt: string;
   publishedAt: string | null;
   tags: string[];
@@ -68,6 +72,7 @@ export interface CreatePostInput {
   featuredImageUrl?: string;
   seoTitle?: string;
   seoDescription?: string;
+  channelSlugs?: string[];
 }
 
 export interface UpdatePostInput {
@@ -78,10 +83,12 @@ export interface UpdatePostInput {
   slug?: string;
   status?: BlogPostStatus;
   tags?: string[];
-  categoryId?: string;
+  categoryId?: string | null;
   featuredImageUrl?: string;
   seoTitle?: string;
   seoDescription?: string;
+  channelSlugs?: string[];
+  version: number;
 }
 
 // ---------- GraphQL queries & mutations ----------
@@ -120,6 +127,10 @@ query Post($tenantId: UUID!, $id: UUID!) {
     contentPlainText
     status
     authorId
+    categoryId
+    categoryName
+    channelSlugs
+    version
     createdAt
     publishedAt
     tags

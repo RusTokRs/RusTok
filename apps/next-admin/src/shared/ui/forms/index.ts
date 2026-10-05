@@ -4,7 +4,7 @@ export { FormDatePicker } from './form-date-picker';
 export { FormFileUpload } from './form-file-upload';
 export { FormInput } from './form-input';
 export { FormRadioGroup } from './form-radio-group';
-export { FormSelect } from './form-select';
+export { FormSelect, type FormOption } from './form-select';
 export { FormSlider } from './form-slider';
 export { FormSwitch } from './form-switch';
 export { FormTextarea } from './form-textarea';

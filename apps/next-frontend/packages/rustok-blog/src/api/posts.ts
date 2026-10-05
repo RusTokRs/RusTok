@@ -41,6 +41,7 @@ export interface BlogPublicComment {
 
 export interface BlogPostDetail extends BlogPostSummary {
   effectiveLocale: string;
+  version?: number;
   content: RichTextView;
   contentPlainText: string;
   publicComments: {
@@ -101,7 +102,7 @@ const PUBLISHED_POSTS_QUERY = `
 const PUBLISHED_POST_QUERY = `
   query PublishedPost($tenantId: UUID!, $slug: String!, $locale: String, $commentsPage: Int, $commentsPerPage: Int) {
     postBySlug(tenantId: $tenantId, slug: $slug, locale: $locale) {
-      id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt effectiveLocale
+      id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt effectiveLocale version
       authorProfile {
         userId handle displayName tags avatarMediaId
       }
@@ -202,6 +203,7 @@ export async function createBlogComment(
   locale: string,
   content: RichTextDocument,
   commandId: string,
+  parentCommentId?: string | null,
 ): Promise<BlogCommentDetail> {
   const response = await graphql<{ createBlogComment: BlogCommentDetail }, {
     tenantId: string;
@@ -210,7 +212,7 @@ export async function createBlogComment(
       commandId: string;
       locale: string;
       content: RichTextDocument;
-      parentCommentId: null;
+      parentCommentId?: string | null;
     };
   }>({
     query: CREATE_BLOG_COMMENT_MUTATION,
@@ -221,7 +223,7 @@ export async function createBlogComment(
         commandId,
         locale,
         content,
-        parentCommentId: null,
+        parentCommentId: parentCommentId ?? null,
       },
     },
     token,
@@ -232,3 +234,49 @@ export async function createBlogComment(
   }
   return response.data.createBlogComment;
 }
+
+export interface BlogCategorySummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  postsCount: number;
+}
+
+const BLOG_CATEGORIES_QUERY = `
+  query BlogCategories($tenantId: UUID, $filter: BlogCategoriesFilter) {
+    blogCategories(tenantId: $tenantId, filter: $filter) {
+      items {
+        id name slug description postsCount
+      }
+      total
+    }
+  }
+`;
+
+export async function fetchBlogCategories(
+  graphql: BlogGraphqlExecutor,
+  tenantId?: string | null,
+  tenantSlug?: string | null,
+  locale?: string,
+): Promise<BlogCategorySummary[]> {
+  try {
+    const response = await graphql<{
+      blogCategories: { items: BlogCategorySummary[]; total: number };
+    }, {
+      tenantId?: string | null;
+      filter?: { locale?: string; isActive?: boolean };
+    }>({
+      query: BLOG_CATEGORIES_QUERY,
+      variables: {
+        tenantId,
+        filter: { locale, isActive: true },
+      },
+      tenant: tenantSlug ?? undefined,
+    });
+    return response.data?.blogCategories?.items ?? [];
+  } catch {
+    return [];
+  }
+}
+

@@ -26,7 +26,8 @@ import { TableOfContents } from "@/shared/ui/table-of-contents";
 import {
   fetchPublishedPost,
   fetchPublishedPosts,
-  BlogCommentComposer,
+  BlogCommentsSection,
+  ReactionBar,
   AuthorMiniBadge,
   AuthorBioCard,
   BlogShareButtons,
@@ -284,12 +285,20 @@ export default async function BlogPostPage({
               />
             </div>
 
-            {/* Social Share Buttons */}
-            <BlogShareButtons
-              title={post.title}
-              url={articleUrl}
-              locale={locale}
-            />
+            {/* Social Share Buttons & Reactions */}
+            <div className="flex flex-wrap items-center justify-between gap-4 py-2 border-y border-border/60">
+              <ReactionBar
+                postId={post.id}
+                version={post.version}
+                locale={locale}
+                tenantSlug={tenantSlug}
+              />
+              <BlogShareButtons
+                title={post.title}
+                url={articleUrl}
+                locale={locale}
+              />
+            </div>
 
             {/* Author Bio Card */}
             {post.authorProfile && (
@@ -322,71 +331,19 @@ export default async function BlogPostPage({
             )}
 
             {/* Comments Section */}
-            <section id="comments" className="mt-12 border-t border-border pt-8 space-y-6">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-primary" />
-                  <h2 className="text-xl font-bold text-foreground">
-                    {isRu ? "Комментарии и обсуждение" : "Comments & Discussion"}
-                  </h2>
-                </div>
-                {comments.total > 0 && (
-                  <span className="text-xs text-muted-foreground font-medium">
-                    {comments.total}{" "}
-                    {isRu ? "комментариев" : "total comments"}
-                  </span>
-                )}
-              </div>
+            {tenantSlug && (
+              <div className="space-y-4">
+                <BlogCommentsSection
+                  tenantId={tenantId}
+                  tenantSlug={tenantSlug}
+                  postId={post.id}
+                  contentLocale={post.effectiveLocale}
+                  comments={comments}
+                  degradedMessage={degradedCommentsMessage}
+                  locale={locale}
+                />
 
-              {/* Degraded comments notification */}
-              {degradedCommentsMessage && (
-                <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  {degradedCommentsMessage}
-                </div>
-              )}
-
-              {/* Comment Composer */}
-              {tenantSlug && comments.availability === "AVAILABLE" && (
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                  <BlogCommentComposer
-                    tenantId={tenantId}
-                    tenantSlug={tenantSlug}
-                    postId={post.id}
-                    contentLocale={post.effectiveLocale}
-                  />
-                </div>
-              )}
-
-              {/* Comments List */}
-              {comments.items.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                  {isRu
-                    ? "Пока нет комментариев. Оставьте отзыв первым!"
-                    : "No comments yet. Be the first to share your thoughts!"}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {comments.items.map((comment) => (
-                    <article
-                      key={comment.id}
-                      className="rounded-xl border border-border bg-card p-4 space-y-1.5 shadow-sm"
-                    >
-                      <p className="whitespace-pre-line text-sm leading-6 text-foreground">
-                        {comment.contentPreview}
-                      </p>
-                      <div className="text-[11px] text-muted-foreground pt-1">
-                        {new Date(comment.createdAt).toLocaleDateString(locale, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                    </article>
-                  ))}
-
-                  {/* Pagination */}
+                {comments.total > 20 && (
                   <CommentsPagination
                     currentPage={commentsPage}
                     totalItems={comments.total}
@@ -394,9 +351,9 @@ export default async function BlogPostPage({
                     baseUrl={`/${locale}/blog/${encodeURIComponent(slug)}`}
                     locale={locale}
                   />
-                </div>
-              )}
-            </section>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sidebar with Sticky Table of Contents */}

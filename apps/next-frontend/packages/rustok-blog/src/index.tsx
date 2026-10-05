@@ -8,11 +8,20 @@ export type {
   BlogPostListResponse,
   BlogPostSummary,
   BlogPublicComment,
+  BlogCategorySummary,
 } from "./api/posts";
-export { createBlogComment, fetchPublishedPost, fetchPublishedPosts } from "./api/posts";
+export {
+  createBlogComment,
+  fetchPublishedPost,
+  fetchPublishedPosts,
+  fetchBlogCategories,
+} from "./api/posts";
 export { BlogSection } from "./components/blog-section";
 export { PostCard } from "./components/post-card";
 export { BlogCommentComposer } from "./components/blog-comment-composer";
+export { ThreadedCommentsList } from "./components/threaded-comments";
+export { BlogCommentsSection } from "./components/blog-comments-section";
+export { ReactionBar } from "./components/reaction-bar";
 export { BlogTableOfContents, TableOfContents } from "./components/blog-toc";
 export { AuthorMiniBadge, AuthorBioCard } from "./components/author-card";
 export { CommentsPagination } from "./components/comments-pagination";

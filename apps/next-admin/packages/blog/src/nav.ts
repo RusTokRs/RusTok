@@ -16,6 +16,12 @@ export const blogNavItems: NavItem[] = [
         shortcut: ['b', 'p']
       },
       {
+        title: 'Categories',
+        url: '/dashboard/blog/categories',
+        i18nKey: 'categories',
+        shortcut: ['b', 'c']
+      },
+      {
         title: 'New Post',
         url: '/dashboard/blog/new',
         i18nKey: 'newPost',

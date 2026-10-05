@@ -20,6 +20,7 @@ import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
   fetchPublishedPosts,
+  fetchBlogCategories,
   PostCard,
   BlogPagination,
   type BlogPostSummary,
@@ -120,15 +121,33 @@ export default async function BlogListingPage({
       })
     : posts;
 
-  // Extract all distinct tags and categories from results
-  const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
-  const categoriesMap = new Map<string, string>();
-  for (const p of posts) {
-    if (p.categoryId && p.categoryName) {
-      categoriesMap.set(p.categoryId, p.categoryName);
+  // Load categories directly from taxonomy/blog GraphQL
+  let allCategories: Array<{ id: string; name: string }> = [];
+  try {
+    const fetchedCategories = await fetchBlogCategories(
+      storefrontGraphql,
+      tenantId,
+      tenantSlug,
+      locale,
+    );
+    if (fetchedCategories.length > 0) {
+      allCategories = fetchedCategories.map((c) => ({ id: c.id, name: c.name }));
     }
+  } catch {
+    // fallback
   }
-  const allCategories = Array.from(categoriesMap.entries()).map(([id, name]) => ({ id, name }));
+
+  // Extract all distinct tags and categories fallback from results
+  const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+  if (allCategories.length === 0) {
+    const categoriesMap = new Map<string, string>();
+    for (const p of posts) {
+      if (p.categoryId && p.categoryName) {
+        categoriesMap.set(p.categoryId, p.categoryName);
+      }
+    }
+    allCategories = Array.from(categoriesMap.entries()).map(([id, name]) => ({ id, name }));
+  }
 
   return (
     <main className="min-h-screen bg-background">
