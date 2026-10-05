@@ -4662,3 +4662,14 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `d282d2eb7487cc450190c13681b742dc16b82320` via PR #4520; post-merge main was re-read at the merge SHA and the REST failure harness, machine contract, source evidence, verifier, runbook, and test coverage were reconciled.
 - Status: FS-22.06.122 complete and integrated; maintainer execution remains required before `deadline_failure_proven` may change.
 - Next primary iteration: continue the remaining Fulfillment lifecycle runtime-evidence source audit; do not promote deadline/failure, projection-parity, restart, or remote-adapter evidence without maintainer-owned execution.
+
+### FS-22.06.123 Assessment — admin REST failure verifier matrix source-lock gap
+
+- Base: `f1dbf086d28aab063c29af25d9dc3b34a83469c6`; dedicated branch `codex/audit-fs-22.06.123-rest-policy-lock`.
+- Primary scope: the deterministic Fulfillment lifecycle-read failure verifier's source binding to the canonical admin REST error mapper.
+- Confirmed finding FULFILLMENT-22.06.123-01: the verifier explicitly source-locked only `PortErrorKind::Forbidden => HTTP 403 / commerce_permission_denied`, while the published REST failure contract and harness covered Validation, NotFound, Conflict, Unavailable, Timeout, and InvariantViolation as well. A production status/code change for those other kinds could therefore leave source verification green while the executable contract expected different behavior.
+- Remediation: the verifier now isolates `fulfillment_command_error_policy` and requires each current owner-kind status/code tuple for Validation, NotFound, Conflict, Forbidden, Unavailable/Timeout, and InvariantViolation. Runtime mapping behavior is unchanged.
+- Re-audit: special owner-code branches remain in the canonical mapper and are outside this generic owner-kind matrix; the verifier's new source lock is intentionally limited to the failure contract's generic scripted error cases. REST detail/list harness coverage and the owner wall-clock timeout proof remain intact.
+- Verification: repository-content inspection only. No Cargo, test, verifier, formatting, workflow, CI, or runtime command was executed by the agent.
+- Status: source-verifier remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
+- Next primary iteration: after integration, re-read the full failure verifier and REST mapper once more, then continue only within the remaining Fulfillment lifecycle runtime-evidence source boundary.
