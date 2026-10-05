@@ -48,7 +48,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
         .expect("provider operation must be journaled");
 
     let claimed = journal
-        .claim_execution(operation.id)
+        .claim_execution(tenant_id, operation.id)
         .await
         .expect("pending operation must be claimable")
         .expect("claim must win");
@@ -56,6 +56,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
 
     let uncertain = journal
         .mark_reconciliation_required(
+            tenant_id,
             operation.id,
             "provider response was lost after request dispatch",
         )
@@ -75,7 +76,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
     );
 
     let committed = journal
-        .mark_committed(operation.id)
+        .mark_committed(tenant_id, operation.id)
         .await
         .expect("operator reconciliation may commit the durable outcome");
     assert_eq!(committed.status, PROVIDER_OPERATION_COMMITTED);
