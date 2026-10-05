@@ -736,6 +736,7 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} metadata must be a JSON object"
         )));
     }
+    validate_provider_metadata_safety(&request.metadata)?;
     validate_durable_provider_payload(&request.metadata, "request metadata")?;
     Ok(())
 }
@@ -972,6 +973,20 @@ mod boundary_tests {
             validate_operation_result("carrier", "ship", &result),
             Err(FulfillmentError::ProviderResultInvalid(_))
         ));
+    }
+
+    #[test]
+    fn provider_request_metadata_rejects_restricted_fields() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: Some("request-key".to_string()),
+            metadata: serde_json::json!({
+                "commerce_orchestration": {"operation": "ship"},
+                "authorization": "Bearer secret"
+            }),
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
     }
 
     #[test]
