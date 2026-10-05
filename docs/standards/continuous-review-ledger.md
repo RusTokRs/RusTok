@@ -4827,3 +4827,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.133` implementation complete on current `main`; runtime evidence remains unpromoted.
 - **Next primary iteration:** continue the translation journal/concurrency boundary with a fresh pass over operation-id uniqueness, retry semantics, and rollback/reapply evidence separately.
 
+
+### FS-22.06.134 Assessment — PostgreSQL translation journal parameter mapping
+
+- **Base:** `76a2b8358bff03abd3054f95e44ffa9bb11d0db1`; post-FS-22.06.133 re-audit of `translation_changes.rs`.
+- **Primary scope:** the backend-aware SQL inside `record_shipping_option_translation_change_in_tx`, with emphasis on placeholder ordering and equivalence between PostgreSQL and SQLite/MySQL paths.
+- **Confirmed finding FULFILLMENT-22.06.134-01:** the PostgreSQL `INSERT ... SELECT` introduced in FS-22.06.133 bound `resource_revision`, `lifecycle`, and `shipping_option_id` to the wrong placeholders relative to the argument vector. Specifically, the query used `$3/$4` for the inserted revision/lifecycle and `$2` for the parent id while the vector supplied revision at position 2, lifecycle at 3, and shipping-option id at 4. This would fail to match the intended parent row and record the wrong values on PostgreSQL, while the SQLite/MySQL positional form remained correct.
+- **Production remediation:** PostgreSQL now uses `SELECT $1, parent.tenant_id, parent.id, $2, $3` with `WHERE parent.id = $4 AND parent.tenant_id = $5`, exactly matching the common argument vector and the non-PostgreSQL parameter semantics.
+- **Verifier remediation:** the shipping-translation write-scope verifier now locks the PostgreSQL placeholder mapping explicitly, including `$2` revision, `$3` lifecycle, and `$4` shipping-option identity.
+- **Fresh second pass:** compared both backend branches side by side after the fix and verified that the argument vector positions are semantically identical: operation id, resource revision, lifecycle, shipping-option id, tenant id.
+- **Runtime note:** this is a source-level remediation only; no PostgreSQL/SQLite/MySQL execution, Cargo, tests, formatter, or verifier command was run.
+- **Status:** `FS-22.06.134` complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the translation change-journal boundary with a fresh pass over duplicate-operation behavior, rollback/reapply semantics, and change-cursor monotonicity.
+
