@@ -70,7 +70,13 @@ fn oauth_token_http_response(
     post,
     path = "/api/oauth/token",
     tag = "oauth",
-    request_body = TokenRequest,
+    request_body(
+        description = "OAuth token request; JSON is retained for compatibility and form encoding is RFC-compliant",
+        content(
+            (TokenRequest = "application/json"),
+            (TokenRequest = "application/x-www-form-urlencoded")
+        )
+    ),
     responses(
         (status = 200, description = "OAuth token response", body = TokenResponse),
         (status = 400, description = "Invalid OAuth request", body = TokenErrorResponse),
@@ -350,7 +356,10 @@ async fn authorize_browser_handler(
     post,
     path = "/api/oauth/consent",
     tag = "oauth",
-    request_body = ConsentRequest,
+    request_body(
+        content = ConsentRequest,
+        content_type = "application/x-www-form-urlencoded"
+    ),
     responses(
         (status = 302, description = "OAuth redirect"),
         (status = 400, description = "Invalid consent request", body = TokenErrorResponse),
@@ -820,7 +829,13 @@ fn escape_attr(value: &str) -> String {
     post,
     path = "/api/oauth/revoke",
     tag = "oauth",
-    request_body = RevokeRequest,
+    request_body(
+        description = "OAuth revocation request; RFC 7009 form encoding is required, JSON is retained for compatibility",
+        content(
+            (RevokeRequest = "application/x-www-form-urlencoded"),
+            (RevokeRequest = "application/json")
+        )
+    ),
     responses(
         (status = 200, description = "Token revoked"),
         (status = 400, description = "Invalid revocation request", body = TokenErrorResponse),
@@ -953,6 +968,7 @@ async fn revoke_handler_inner(
     get,
     path = "/api/oauth/userinfo",
     tag = "oauth",
+    operation_id = "oauth_userinfo_get",
     security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "OpenID Connect UserInfo response"),
@@ -964,6 +980,7 @@ async fn revoke_handler_inner(
     post,
     path = "/api/oauth/userinfo",
     tag = "oauth",
+    operation_id = "oauth_userinfo_post",
     security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "OpenID Connect UserInfo response"),
