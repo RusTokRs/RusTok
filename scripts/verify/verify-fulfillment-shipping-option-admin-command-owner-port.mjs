@@ -40,6 +40,15 @@ for (const marker of [
   'idempotency::complete(&txn, lease, &created)',
   'fail_receipt(',
   'create_shipping_option_in_txn(',
+  'enum ShippingOptionAdminCommand',
+  'async fn execute_idempotent_command(',
+  'ShippingOptionAdminCommand::Create(request)',
+  'ShippingOptionAdminCommand::Update(request)',
+  'ShippingOptionAdminCommand::Deactivate(request)',
+  'ShippingOptionAdminCommand::Reactivate(request)',
+  'self.service.update_shipping_option_in_txn(',
+  'self.service.set_shipping_option_active_in_txn(',
+  'idempotency::complete(&txn, lease, &response)',
   'Uuid::parse_str(&context.tenant_id)',
   'PortError::validation(',
   'PortError::not_found(',
@@ -120,3 +129,11 @@ if (failures.length > 0) {
 }
 
 console.log('[verify-fulfillment-shipping-option-admin-command-owner-port] PASS');
+
+for (const marker of [
+  'self.service.update_shipping_option(tenant_id, request.shipping_option_id, request.input)',
+  'self.service.deactivate_shipping_option(tenant_id, request.shipping_option_id)',
+  'self.service.reactivate_shipping_option(tenant_id, request.shipping_option_id)',
+]) {
+  forbid(owner, marker, 'shipping option admin command must use the durable transaction owner boundary');
+}
