@@ -24,6 +24,10 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use super::provider_operation::{
+    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+};
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
 };
@@ -901,6 +905,113 @@ impl FulfillmentService {
         txn.commit().await?;
 
         Ok((items, total))
+    }
+
+    pub async fn commit_create_label_provider_result(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        operation_id: Uuid,
+        result: &crate::providers::FulfillmentProviderOperationResult,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        validate_tenant_id(tenant_id)?;
+        if operation_id.is_nil() {
+            return Err(FulfillmentError::Validation(
+                "fulfillment provider operation id must not be nil".to_string(),
+            ));
+        }
+        validate_provider_id(&result.provider_id)?;
+        validate_object_metadata(&result.metadata, "provider result")?;
+        if let Some(reference) = result.external_reference.as_deref() {
+            crate::providers::validate_optional_boundary_text(
+                "external_reference",
+                Some(reference),
+                191,
+            )?;
+        }
+        if let Some(tracking_number) = result.tracking_number.as_deref() {
+            crate::providers::validate_optional_boundary_text(
+                "tracking_number",
+                Some(tracking_number),
+                100,
+            )?;
+        }
+
+        let txn = self.db.begin().await?;
+        let operation = entities::provider_operation::Entity::find_by_id(operation_id)
+            .filter(entities::provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(entities::provider_operation::Column::FulfillmentId.eq(fulfillment_id))
+            .filter(entities::provider_operation::Column::Operation.eq("create_label"))
+            .one(&txn)
+            .await?
+            .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))?;
+
+        if !matches!(
+            operation.status.as_str(),
+            PROVIDER_OPERATION_SUCCEEDED
+                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                | PROVIDER_OPERATION_COMMITTED
+        ) {
+            return Err(FulfillmentError::InvalidTransition {
+                from: operation.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
+        }
+        if operation.provider_id != result.provider_id {
+            return Err(FulfillmentError::ProviderResultInvalid(format!(
+                "create_label provider result does not match the journaled provider"
+            )));
+        }
+
+        let fulfillment = self.load_fulfillment_for_update(&txn, tenant_id, fulfillment_id).await?;
+        if let Some(stored_operation_id) = create_label_provider_operation_id(&fulfillment.metadata)
+            && stored_operation_id != operation_id
+        {
+            return Err(FulfillmentError::InvalidTransition {
+                from: format!("create_label:{stored_operation_id}"),
+                to: format!("create_label:{operation_id}"),
+            });
+        }
+
+        let updated = if create_label_provider_operation_id(&fulfillment.metadata) == Some(operation_id) {
+            fulfillment
+        } else {
+            let carrier_missing = fulfillment
+                .carrier
+                .as_deref()
+                .map(|carrier| carrier.trim().is_empty())
+                .unwrap_or(true);
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let current_metadata = active.metadata.clone().take().unwrap_or_default();
+            active.metadata = Set(prepare_create_label_result_metadata(
+                current_metadata,
+                result,
+                operation_id,
+            )?);
+            if carrier_missing {
+                active.carrier = Set(Some(result.provider_id.clone()));
+            }
+            if let Some(tracking_number) = result
+                .tracking_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                active.tracking_number = Set(Some(tracking_number.to_string()));
+            }
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?
+        };
+
+        let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
+        journal
+            .mark_committed_in_txn(&txn, tenant_id, operation_id)
+            .await?;
+        let response = self
+            .build_fulfillment_response(&txn, tenant_id, updated)
+            .await?;
+        txn.commit().await?;
+        Ok(response)
     }
 
     pub async fn ship_fulfillment(
@@ -1898,6 +2009,46 @@ fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Va
         }
         other => other,
     }
+}
+
+fn create_label_provider_operation_id(metadata: &Value) -> Option<Uuid> {
+    metadata
+        .get("provider_operation")
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .or_else(|| {
+            metadata
+                .get("label")
+                .and_then(|value| value.get("provider_operation_id"))
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+        })
+}
+
+fn prepare_create_label_result_metadata(
+    current: Value,
+    result: &crate::providers::FulfillmentProviderOperationResult,
+    operation_id: Uuid,
+) -> FulfillmentResult<Value> {
+    validate_object_metadata(&current, "fulfillment")?;
+    validate_object_metadata(&result.metadata, "provider result")?;
+    merge_fulfillment_metadata(
+        current,
+        serde_json::json!({
+            "provider_operation": {
+                "id": operation_id,
+                "operation": "create_label",
+            },
+            "label": {
+                "provider_operation_id": operation_id,
+                "provider_id": result.provider_id,
+                "external_reference": result.external_reference,
+                "tracking_number": result.tracking_number,
+                "provider_metadata": result.metadata,
+            }
+        }),
+    )
 }
 
 fn has_matching_provider_operation(
