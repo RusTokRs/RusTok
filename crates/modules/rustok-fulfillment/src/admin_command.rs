@@ -1061,6 +1061,12 @@ fn validate_provider_operation_metadata(metadata: &Value) -> Result<(), PortErro
             "fulfillment provider metadata must be a JSON object",
         ));
     }
+    validate_provider_metadata_safety(metadata).map_err(|_| {
+        PortError::validation(
+            "fulfillment.provider_metadata_invalid",
+            "fulfillment provider metadata contains restricted sensitive fields",
+        )
+    })?;
     Ok(())
 }
 
