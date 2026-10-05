@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::dto::{
     CreateRefundInput, PaymentCollectionStatusKind, RefundResponse, RefundStatusKind,
 };
+use crate::services::payment::validate_payment_metadata;
 use crate::entities::{payment_collection, refund_creation};
 use crate::error::{PaymentError, PaymentResult};
 
@@ -37,6 +38,7 @@ impl PaymentRefundCreationService {
         input: CreateRefundInput,
     ) -> PaymentResult<RefundResponse> {
         let creation_key = normalize_creation_key(creation_key.into())?;
+        validate_payment_metadata(&input.metadata, "create refund")?;
         let reason = normalize_reason(input.reason);
         let request_hash = refund_request_hash(input.amount, reason.as_deref(), &input.metadata)?;
 
@@ -261,6 +263,20 @@ fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refund_hash_rejects_oversized_or_deep_metadata() {
+        let oversized = serde_json::json!({"note": "x".repeat(
+            crate::services::payment::MAX_PAYMENT_METADATA_BYTES,
+        )});
+        assert!(validate_payment_metadata(&oversized, "test").is_err());
+
+        let mut nested = serde_json::json!({});
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+        assert!(validate_payment_metadata(&nested, "test").is_err());
+    }
 
     #[test]
     fn refund_hash_is_stable_across_object_key_order() {
