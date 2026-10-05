@@ -10,6 +10,10 @@ use rustok_core::generate_id;
 
 use crate::entities::{payment_collection, provider_operation, refund};
 use crate::error::{PaymentError, PaymentResult};
+use crate::providers::{
+    MAX_EXTERNAL_REFERENCE_LENGTH, PaymentProviderOperationResult,
+    validate_provider_operation_payload,
+};
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
 pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
@@ -179,8 +183,9 @@ impl PaymentProviderOperationJournal {
         provider_result: Value,
     ) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
-        validate_provider_reference(provider_reference.as_deref())?;
         let model = self.get(tenant_id, id).await?;
+        let provider_reference =
+            validate_provider_result_for_operation(&model, provider_reference, &provider_result)?;
         if matches!(
             model.status.as_str(),
             PROVIDER_OPERATION_SUCCEEDED
@@ -199,7 +204,7 @@ impl PaymentProviderOperationJournal {
             )
             .col_expr(
                 provider_operation::Column::ProviderReference,
-                Expr::value(normalize_optional(provider_reference)),
+                Expr::value(provider_reference),
             )
             .col_expr(
                 provider_operation::Column::ProviderResult,
@@ -541,14 +546,80 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn validate_provider_result_for_operation(
+    current: &provider_operation::Model,
+    provider_reference: Option<String>,
+    provider_result: &Value,
+) -> PaymentResult<Option<String>> {
+    if !provider_result.is_object() {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+    validate_provider_operation_payload(provider_result, "result").map_err(|_| {
+        PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        }
+    })?;
+
+    let typed_result: PaymentProviderOperationResult =
+        serde_json::from_value(provider_result.clone()).map_err(|_| {
+            PaymentError::ProviderInvalidResponse {
+                provider_id: current.provider_id.clone(),
+                operation: current.operation.clone(),
+            }
+        })?;
+
+    if typed_result.provider_id != current.provider_id
+        || typed_result
+            .external_reference
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| value.is_empty() || value.len() > MAX_EXTERNAL_REFERENCE_LENGTH)
+        || !typed_result.metadata.is_object()
+    {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+
+    validate_provider_operation_payload(&serde_json::to_value(&typed_result).map_err(|_| {
+        PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        }
+    })?, "canonical result").map_err(|_| PaymentError::ProviderInvalidResponse {
+        provider_id: current.provider_id.clone(),
+        operation: current.operation.clone(),
+    })?;
+
+    validate_provider_reference(provider_reference.as_deref())?;
+
+    let result_reference = normalize_optional(typed_result.external_reference);
+    let supplied_reference = normalize_optional(provider_reference);
+    if let (Some(supplied), Some(result)) = (&supplied_reference, &result_reference)
+        && supplied != result
+    {
+        return Err(PaymentError::ProviderInvalidResponse {
+            provider_id: current.provider_id.clone(),
+            operation: current.operation.clone(),
+        });
+    }
+
+    Ok(supplied_reference.or(result_reference))
+}
+
 fn validate_provider_reference(value: Option<&str>) -> PaymentResult<()> {
     if let Some(value) = value {
         let value = value.trim();
-        if value.is_empty() || value.len() > 191 {
-            return Err(PaymentError::Validation(
-                "payment provider_reference must be non-empty and at most 191 characters"
-                    .to_string(),
-            ));
+        if value.is_empty() || value.len() > MAX_EXTERNAL_REFERENCE_LENGTH {
+            return Err(PaymentError::ProviderInvalidResponse {
+                provider_id: "unknown".to_string(),
+                operation: "unknown".to_string(),
+            });
         }
     }
     Ok(())
