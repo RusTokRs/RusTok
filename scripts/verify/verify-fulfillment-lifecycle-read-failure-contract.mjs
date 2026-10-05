@@ -46,11 +46,59 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 const sameRecord = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const between = (source, start, end, label) => {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return source.slice(startIndex, endIndex);
+};
 
 for (const [source, value, label] of [
-  [adminRest, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
-  [adminRest, 'StatusCode::FORBIDDEN,', 'REST forbidden status'],
-  [adminRest, '"commerce_permission_denied"', 'REST forbidden code'],
+  [
+    fulfillmentCommandErrorPolicy,
+    'PortErrorKind::Validation => (',
+    'REST validation mapping',
+  ],
+  [fulfillmentCommandErrorPolicy, 'StatusCode::BAD_REQUEST,', 'REST validation status'],
+  [fulfillmentCommandErrorPolicy, '"commerce_admin_fulfillment_invalid"', 'REST validation code'],
+  [fulfillmentCommandErrorPolicy, 'PortErrorKind::NotFound => (', 'REST not-found mapping'],
+  [fulfillmentCommandErrorPolicy, 'StatusCode::NOT_FOUND,', 'REST not-found status'],
+  [fulfillmentCommandErrorPolicy, '"commerce_admin_not_found"', 'REST not-found code'],
+  [fulfillmentCommandErrorPolicy, 'PortErrorKind::Conflict => (', 'REST conflict mapping'],
+  [fulfillmentCommandErrorPolicy, 'StatusCode::CONFLICT,', 'REST conflict status'],
+  [fulfillmentCommandErrorPolicy, '"commerce_admin_fulfillment_state_conflict"', 'REST conflict code'],
+  [fulfillmentCommandErrorPolicy, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
+  [fulfillmentCommandErrorPolicy, 'StatusCode::FORBIDDEN,', 'REST forbidden status'],
+  [fulfillmentCommandErrorPolicy, '"commerce_permission_denied"', 'REST forbidden code'],
+  [
+    fulfillmentCommandErrorPolicy,
+    'PortErrorKind::Unavailable | PortErrorKind::Timeout => (',
+    'REST unavailable/timeout mapping',
+  ],
+  [fulfillmentCommandErrorPolicy, 'StatusCode::SERVICE_UNAVAILABLE,', 'REST unavailable/timeout status'],
+  [
+    fulfillmentCommandErrorPolicy,
+    '"commerce_admin_fulfillment_storage_unavailable"',
+    'REST unavailable/timeout code',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    'PortErrorKind::InvariantViolation => (',
+    'REST invariant mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    'StatusCode::INTERNAL_SERVER_ERROR,',
+    'REST invariant status',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    '"commerce_admin_fulfillment_failed"',
+    'REST invariant code',
+  ],
   [
     ownerSource,
     'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout',
