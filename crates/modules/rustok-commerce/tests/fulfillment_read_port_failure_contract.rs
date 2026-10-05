@@ -548,7 +548,7 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
         ),
         (
             port_error(PortErrorKind::Forbidden, "owner.forbidden", false),
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "commerce_permission_denied",
         ),
         (
