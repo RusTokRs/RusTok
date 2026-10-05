@@ -95,6 +95,7 @@ async fn admin_shipping_option_create_replays_atomically_and_binds_key_to_reques
 
     assert_eq!(first.id, replay.id);
     assert_eq!(first.translation_revision, replay.translation_revision);
+    assert_eq!(first.updated_at, replay.updated_at);
 
     let owner = FulfillmentService::new(db.clone());
     let options = owner
@@ -168,9 +169,9 @@ async fn admin_shipping_option_update_replays_and_rejects_changed_payload() {
 
     assert_eq!(first.id, replay.id);
     assert_eq!(first.amount, replay.amount);
+    assert_eq!(first.updated_at, replay.updated_at);
 
-    let conflict_request = update_request("21.00");
-    let mut conflict_request = conflict_request;
+    let mut conflict_request = update_request("21.00");
     conflict_request.shipping_option_id = created.id;
     let error = runtime
         .command_port()
@@ -224,6 +225,7 @@ async fn admin_shipping_option_state_commands_replay_and_cross_operation_key_reu
         .expect("same-key deactivation should replay");
     assert!(!first_deactivate.active);
     assert_eq!(first_deactivate.id, replay_deactivate.id);
+    assert_eq!(first_deactivate.updated_at, replay_deactivate.updated_at);
     assert!(!replay_deactivate.active);
 
     let cross_operation = runtime
@@ -259,5 +261,6 @@ async fn admin_shipping_option_state_commands_replay_and_cross_operation_key_reu
         .expect("same-key reactivation should replay");
     assert!(first_reactivate.active);
     assert_eq!(first_reactivate.id, replay_reactivate.id);
+    assert_eq!(first_reactivate.updated_at, replay_reactivate.updated_at);
     assert!(replay_reactivate.active);
 }
