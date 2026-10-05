@@ -40,11 +40,11 @@ Each owner call now receives a bounded `PortContext` carrying the admitted tenan
 user actor, effective request locale, optional request channel, a stable correlation identity, a
 two-second deadline, and the caller-owned `Idempotency-Key` unchanged through the owner write policy.
 
-Shipping-option create now has durable owner receipt/replay semantics. The owner admits the caller key through
-the shared receipt ledger and atomically commits the new Shipping Option, its translations, the translation
-change-journal evidence, and the completed receipt. Reusing the same key with a different request is rejected
-by the durable request hash. Update/deactivate/reactivate retain caller-owned idempotency admission and
-state-setting semantics without create-style resource-allocation replay.
+All four shipping-option commands now have durable owner receipt/replay semantics. The owner admits the caller
+key through the shared tenant-scoped receipt ledger and atomically commits each mutation, required translation
+change evidence, and the completed receipt. Reusing a key with a changed request or a different command operation
+is rejected by the durable request hash/operation binding. Update/deactivate/reactivate replay their stored response
+without rerunning the state mutation.
 
 ## Error boundary
 
