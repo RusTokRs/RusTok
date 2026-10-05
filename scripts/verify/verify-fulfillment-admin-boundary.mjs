@@ -55,6 +55,7 @@ for (const filePath of [
   transportPath,
   graphqlAdapterPath,
   implementationPlanPath,
+  fulfillmentServicePath,
   registryPath,
 ]) {
   assertExists(filePath, `${filePath}: expected fulfillment admin FFA boundary file`);
