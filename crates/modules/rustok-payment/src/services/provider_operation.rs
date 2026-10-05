@@ -596,7 +596,7 @@ fn validate_provider_result_for_operation(
         operation: current.operation.clone(),
     })?;
 
-    validate_provider_reference(provider_reference.as_deref())?;
+    validate_provider_reference(current, provider_reference.as_deref())?;
 
     let result_reference = normalize_optional(typed_result.external_reference);
     let supplied_reference = normalize_optional(provider_reference);
@@ -612,13 +612,16 @@ fn validate_provider_result_for_operation(
     Ok(supplied_reference.or(result_reference))
 }
 
-fn validate_provider_reference(value: Option<&str>) -> PaymentResult<()> {
+fn validate_provider_reference(
+    current: &provider_operation::Model,
+    value: Option<&str>,
+) -> PaymentResult<()> {
     if let Some(value) = value {
         let value = value.trim();
         if value.is_empty() || value.len() > MAX_EXTERNAL_REFERENCE_LENGTH {
             return Err(PaymentError::ProviderInvalidResponse {
-                provider_id: "unknown".to_string(),
-                operation: "unknown".to_string(),
+                provider_id: current.provider_id.clone(),
+                operation: current.operation.clone(),
             });
         }
     }
