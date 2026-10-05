@@ -83,7 +83,7 @@ fn oauth_token_http_response(
         (status = 401, description = "Invalid client", body = TokenErrorResponse)
     )
 )]
-async fn token_handler(
+pub(crate) async fn token_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     request: Request,
@@ -158,7 +158,7 @@ fn is_form_encoded_content_type(value: &str) -> bool {
         (status = 403, description = "Authorization denied", body = TokenErrorResponse)
     )
 )]
-async fn authorize_handler(
+pub(crate) async fn authorize_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
     current_user: CurrentUser,
@@ -248,7 +248,7 @@ async fn authorize_handler_inner(
         (status = 401, description = "Authentication required")
     )
 )]
-async fn authorize_browser_handler(
+pub(crate) async fn authorize_browser_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
@@ -366,7 +366,7 @@ async fn authorize_browser_handler(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
-async fn consent_handler(
+pub(crate) async fn consent_handler(
     State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
@@ -462,7 +462,7 @@ async fn consent_handler(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
-async fn create_browser_session_handler(
+pub(crate) async fn create_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -493,7 +493,7 @@ async fn create_browser_session_handler(
         (status = 204, description = "Browser OAuth session cookie cleared")
     )
 )]
-async fn clear_browser_session_handler(
+pub(crate) async fn clear_browser_session_handler(
     State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -842,7 +842,7 @@ fn escape_attr(value: &str) -> String {
         (status = 401, description = "Invalid client", body = TokenErrorResponse)
     )
 )]
-async fn revoke_handler(
+pub(crate) async fn revoke_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
     request: Request,
@@ -988,7 +988,7 @@ async fn revoke_handler_inner(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
-async fn userinfo_handler(
+pub(crate) async fn userinfo_handler(
     current_user: CurrentUser, // Automatically extracts and validates Bearer token
 ) -> axum::response::Response {
     match userinfo_handler_inner(current_user).await {
