@@ -34,6 +34,12 @@ for (const marker of [
   'service: FulfillmentService',
   'FulfillmentService::new(db)',
   'context.require_policy(PortCallPolicy::write())',
+  'idempotency::admit(',
+  'idempotency::OwnerOperationScope::Tenant(tenant_id)',
+  'Admission::Replay(value)',
+  'idempotency::complete(&txn, lease, &created)',
+  'fail_receipt(',
+  'create_shipping_option_in_txn(',
   'Uuid::parse_str(&context.tenant_id)',
   'PortError::validation(',
   'PortError::not_found(',
@@ -48,7 +54,13 @@ for (const marker of [
   'context.require_write_semantics()',
   'error = ?error',
   'error.to_string()',
-]) forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
+])
+for (const marker of [
+  'service.create_shipping_option(tenant_id, request.input)',
+  'let lease = match idempotency::admit(',
+  'idempotency::complete(&txn, lease, &created)',
+]) forbid(owner, marker, 'shipping option create must use durable owner receipt');
+ forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
 
 for (const marker of [
   'mod shipping_option_admin_command;',
@@ -89,7 +101,7 @@ for (const marker of [
   'Status: `source_complete_unvalidated`',
   '`ShippingOptionAdminCommandPort`',
   '`ShippingOptionAdminCommandRuntime`',
-  'does **not** claim durable idempotent replay',
+  'claims durable idempotent replay for shipping-option create',
   'no tests, Cargo commands, Node verifiers, formatter',
 ]) need(record, marker, 'owner capability source record');
 
