@@ -167,8 +167,30 @@ impl FulfillmentReconciliationService {
                         .await?
                 }
                 "create_label" => {
-                    journal.mark_committed(tenant_id, operation_id).await?;
-                    return Ok(current);
+                    let provider_result: FulfillmentProviderOperationResult = operation
+                        .provider_result
+                        .clone()
+                        .ok_or_else(|| {
+                            FulfillmentOrchestrationError::Validation(format!(
+                                "fulfillment provider operation {operation_id} has no persisted provider result for local create-label reconciliation"
+                            ))
+                        })
+                        .and_then(|value| {
+                            serde_json::from_value(value).map_err(|error| {
+                                FulfillmentOrchestrationError::Validation(format!(
+                                    "fulfillment provider operation {operation_id} contains invalid provider_result: {error}"
+                                ))
+                            })
+                        })?;
+                    return service
+                        .commit_create_label_provider_result(
+                            tenant_id,
+                            operation.fulfillment_id,
+                            operation_id,
+                            &provider_result,
+                        )
+                        .await
+                        .map_err(Into::into);
                 }
                 other => {
                     return Err(FulfillmentOrchestrationError::Validation(format!(
