@@ -132,7 +132,8 @@
     "deadline_failure_proven": false,
     "restart_proven": false,
     "remote_adapter_proven": false,
-    "owner_deadline_unit_test_present": true
+    "owner_deadline_unit_test_present": true,
+    "next_gate": "execute the owner wall-clock timeout test, deterministic deadline/failure harness, and mounted lifecycle projection-parity capture"
   },
   "consumer_cutover": {
     "graphql_compatibility_facade": true,
