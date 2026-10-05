@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentResult};
 
+/// Maximum serialized JSON retained by durable provider-operation persistence.
 pub const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
 fn normalize_provider_metadata_key(key: &str) -> String {
@@ -75,7 +76,6 @@ pub(crate) fn validate_durable_provider_payload(
     }
     Ok(())
 }
-
 
 /// Stable identifier of the built-in manual fulfillment provider.
 pub const MANUAL_FULFILLMENT_PROVIDER_ID: &str = "manual";
