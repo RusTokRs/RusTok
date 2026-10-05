@@ -178,6 +178,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 self.mark_journal_committed(
                     context,
                     owner_operation,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                 )
@@ -189,6 +190,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 self.mark_local_persistence_failed(
                     context,
                     owner_operation,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                 )

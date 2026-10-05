@@ -4,21 +4,21 @@ pub(super) const PAYMENT_EXECUTION_BOUNDARY: &str = "checkout_payment_execution_
 
 #[derive(Debug)]
 pub(super) struct CheckoutPaymentExecutionContextFacts {
-    tenant_id_length: usize,
-    actor_kind: &'static str,
-    actor_id_length: usize,
-    claim_count: usize,
-    role_count: usize,
-    channel_present: bool,
-    channel_length: Option<usize>,
-    locale_length: usize,
-    causation_id_present: bool,
-    causation_id_length: Option<usize>,
-    traceparent_present: bool,
-    traceparent_length: Option<usize>,
-    idempotency_key_present: bool,
-    idempotency_key_length: Option<usize>,
-    deadline_ms: Option<u64>,
+    pub(super) tenant_id_length: usize,
+    pub(super) actor_kind: &'static str,
+    pub(super) actor_id_length: usize,
+    pub(super) claim_count: usize,
+    pub(super) role_count: usize,
+    pub(super) channel_present: bool,
+    pub(super) channel_length: Option<usize>,
+    pub(super) locale_length: usize,
+    pub(super) causation_id_present: bool,
+    pub(super) causation_id_length: Option<usize>,
+    pub(super) traceparent_present: bool,
+    pub(super) traceparent_length: Option<usize>,
+    pub(super) idempotency_key_present: bool,
+    pub(super) idempotency_key_length: Option<usize>,
+    pub(super) deadline_ms: Option<u64>,
 }
 
 pub(super) fn checkout_payment_execution_context_facts(
@@ -59,9 +59,9 @@ pub(super) fn checkout_payment_execution_context_facts(
 
 #[derive(Debug)]
 pub(super) struct CheckoutPaymentExecutionPortErrorFacts {
-    error_kind: &'static str,
-    message_present: bool,
-    message_length: usize,
+    pub(super) error_kind: &'static str,
+    pub(super) message_present: bool,
+    pub(super) message_length: usize,
 }
 
 pub(super) fn checkout_payment_execution_port_error_facts(
@@ -85,20 +85,20 @@ pub(super) fn checkout_payment_execution_port_error_facts(
 
 #[derive(Debug)]
 pub(super) struct CheckoutPaymentExecutionDiagnosticFacts {
-    checkout_operation_id_non_nil: bool,
-    cart_id_non_nil: bool,
-    order_id_non_nil: bool,
-    customer_id_present: bool,
-    customer_id_non_nil: Option<bool>,
-    collection_id_present: bool,
-    collection_id_non_nil: Option<bool>,
-    amount_text_length: usize,
-    currency_code_length: usize,
-    order_plan_hash_length: usize,
-    requested_provider_id_present: bool,
-    requested_provider_id_length: Option<usize>,
-    provider_payment_id_present: bool,
-    provider_payment_id_length: Option<usize>,
+    pub(super) checkout_operation_id_non_nil: bool,
+    pub(super) cart_id_non_nil: bool,
+    pub(super) order_id_non_nil: bool,
+    pub(super) customer_id_present: bool,
+    pub(super) customer_id_non_nil: Option<bool>,
+    pub(super) collection_id_present: bool,
+    pub(super) collection_id_non_nil: Option<bool>,
+    pub(super) amount_text_length: usize,
+    pub(super) currency_code_length: usize,
+    pub(super) order_plan_hash_length: usize,
+    pub(super) requested_provider_id_present: bool,
+    pub(super) requested_provider_id_length: Option<usize>,
+    pub(super) provider_payment_id_present: bool,
+    pub(super) provider_payment_id_length: Option<usize>,
 }
 
 pub(super) fn checkout_payment_execution_diagnostic_facts(

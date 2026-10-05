@@ -1,8 +1,8 @@
 use super::*;
 
 pub(super) struct JournaledProviderResult {
-    operation_id: Uuid,
-    result: PaymentProviderOperationResult,
+    pub(super) operation_id: Uuid,
+    pub(super) result: PaymentProviderOperationResult,
 }
 
 pub(super) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError> {

@@ -13,6 +13,7 @@ impl MigrationTrait for Migration {
             DatabaseBackend::Postgres => install_postgres(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite(manager).await?,
             DatabaseBackend::MySql => install_mysql(manager).await?,
+            _ => {}
         }
 
         Ok(())
@@ -52,6 +53,7 @@ impl MigrationTrait for Migration {
                     )
                     .await?;
             }
+            _ => {}
         }
 
         Ok(())

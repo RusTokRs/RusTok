@@ -32,10 +32,6 @@ use crate::error::{FulfillmentError, FulfillmentResult};
 use crate::providers::{
     validate_durable_provider_payload, validate_provider_id, validate_provider_metadata_safety,
 };
-use super::provider_operation::{
-    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
-};
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
 };

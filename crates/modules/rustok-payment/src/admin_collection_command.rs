@@ -445,6 +445,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                     self.mark_local_persistence_failed(
                         &context,
                         OPERATION,
+                        tenant_id,
                         operation_id,
                         "cancel",
                         &error,
@@ -484,6 +485,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 request,
             )
             .await?;
+        let tenant_id = request.tenant_id;
         let idempotency_key = request
             .idempotency_key
             .as_deref()
@@ -505,7 +507,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
         let journal_operation = self
             .operation_journal
             .begin(BeginProviderOperation {
-                tenant_id: request.tenant_id,
+                tenant_id,
                 payment_collection_id: request.collection_id,
                 refund_id: None,
                 operation: provider_operation.to_string(),
@@ -527,13 +529,13 @@ impl InProcessPaymentAdminCollectionCommandPort {
 
         let claimed = self
             .operation_journal
-            .claim_execution(request.tenant_id, journal_operation.id)
+            .claim_execution(tenant_id, journal_operation.id)
             .await
             .map_err(|error| map_payment_error(context, owner_operation, error))?;
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(request.tenant_id, journal_operation.id)
+                .get(tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| map_payment_error(context, owner_operation, error))?;
             if let Some(result) = persisted_provider_result(&current)
@@ -579,7 +581,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 let checkpoint = if error.requires_provider_reconciliation() {
                     self.operation_journal
                         .mark_reconciliation_required(
-                            request.tenant_id,
+                            tenant_id,
                             journal_operation.id,
                             "payment.provider_outcome_requires_reconciliation",
                         )
@@ -587,7 +589,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 } else {
                     self.operation_journal
                         .mark_provider_error(
-                            request.tenant_id,
+                            tenant_id,
                             journal_operation.id,
                             "payment.provider_operation_failed",
                         )
@@ -610,7 +612,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 let _ = self
                     .operation_journal
                     .mark_reconciliation_required(
-                        request.tenant_id,
+                        tenant_id,
                         journal_operation.id,
                         "payment.provider_result_serialization_failed",
                     )
@@ -625,7 +627,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
         if self
             .operation_journal
             .mark_provider_succeeded(
-                request.tenant_id,
+                tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
@@ -636,7 +638,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
-                    request.tenant_id,
+                    tenant_id,
                     journal_operation.id,
                     "payment.provider_success_checkpoint_failed",
                 )
@@ -749,7 +751,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(context, owner_operation, request.tenant_id, existing.id, provider_operation)
+            self.mark_journal_committed(context, owner_operation, tenant_id, existing.id, provider_operation)
                 .await?;
         }
         Ok(())

@@ -67,7 +67,7 @@ pub struct ReadCheckoutPaymentCollectionRequest {
 }
 
 pub struct InProcessCheckoutPaymentExecutionPort {
-    payment_service: PaymentService,
-    operation_journal: PaymentProviderOperationJournal,
-    provider_registry: PaymentProviderRegistry,
+    pub(crate) payment_service: PaymentService,
+    pub(crate) operation_journal: PaymentProviderOperationJournal,
+    pub(crate) provider_registry: PaymentProviderRegistry,
 }

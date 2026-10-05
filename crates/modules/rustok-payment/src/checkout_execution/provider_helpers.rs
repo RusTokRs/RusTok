@@ -162,6 +162,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         if let Err(error) = self
             .operation_journal
             .mark_reconciliation_required(
+                tenant_id,
                 operation_id,
                 format!("payment.local_{provider_operation}_persistence_failed"),
             )

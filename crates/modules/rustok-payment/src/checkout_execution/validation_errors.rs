@@ -354,12 +354,12 @@ pub(super) fn manual_reconciliation(
 
 #[derive(Debug)]
 pub(super) struct CheckoutPaymentExecutionPaymentErrorFacts {
-    error_variant: &'static str,
-    text_field_count: usize,
-    text_total_length: usize,
-    uuid_field_count: usize,
-    uuid_non_nil_count: usize,
-    opaque_payload_present: bool,
+    pub(super) error_variant: &'static str,
+    pub(super) text_field_count: usize,
+    pub(super) text_total_length: usize,
+    pub(super) uuid_field_count: usize,
+    pub(super) uuid_non_nil_count: usize,
+    pub(super) opaque_payload_present: bool,
 }
 
 pub(super) fn checkout_payment_execution_payment_error_facts(

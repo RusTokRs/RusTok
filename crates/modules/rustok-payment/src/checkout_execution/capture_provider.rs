@@ -164,6 +164,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                 request,
             )
             .await?;
+        let tenant_id = request.tenant_id;
         let idempotency_key = request
             .idempotency_key
             .as_deref()
@@ -202,7 +203,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         let journal_operation = self
             .operation_journal
             .begin(BeginProviderOperation {
-                tenant_id: request.tenant_id,
+                tenant_id,
                 payment_collection_id: request.collection_id,
                 refund_id: None,
                 operation: provider_operation.to_string(),
