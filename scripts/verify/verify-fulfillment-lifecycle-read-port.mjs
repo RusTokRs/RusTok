@@ -162,7 +162,7 @@ const ownerReadImplementation = between(
   'fn fulfillment_lifecycle_read_context_facts(',
   'owner read implementation',
 );
-if ((ownerReadImplementation.match(/execute_fulfillment_read\\(/g) || []).length !== 3) {
+if ((ownerReadImplementation.match(/execute_fulfillment_read\(/g) || []).length !== 3) {
   failures.push('owner read implementation must enforce the shared deadline executor for all three operations');
 }
 
