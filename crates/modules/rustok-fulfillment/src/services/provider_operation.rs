@@ -822,7 +822,7 @@ mod tests {
     fn provider_result_journal_rejects_non_object_metadata() {
         let tenant_id = Uuid::new_v4();
         let fulfillment_id = Uuid::new_v4();
-        let mut operation = provider_operation::Model {
+        let operation = provider_operation::Model {
             id: Uuid::new_v4(),
             tenant_id,
             fulfillment_id,
@@ -848,7 +848,6 @@ mod tests {
         let error = validate_provider_result_for_operation(&operation, None, &result)
             .expect_err("provider result metadata must remain object-shaped");
         assert!(matches!(error, FulfillmentError::ProviderResultInvalid(_)));
-        operation.provider_reference = None;
     }
 
     #[test]
