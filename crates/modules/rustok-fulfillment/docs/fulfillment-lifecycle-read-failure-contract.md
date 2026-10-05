@@ -61,6 +61,11 @@ test inside `rustok-fulfillment/src/fulfillment_read.rs`; the Commerce
 harness separately proves propagation of an already-typed `Timeout`
 failure.
 
+The locked REST matrix applies to both admin lifecycle-read routes. The list
+route is exercised with status/order/customer filters and pagination so its
+request parsing and read-context construction cross the same public controller
+boundary as the detail route.
+
 The locked REST matrix is:
 
 | Owner kind | HTTP status | Public code |
