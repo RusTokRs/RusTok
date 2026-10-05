@@ -789,6 +789,7 @@ These are source-contract defects, not verification-only tasks.
   upgraded staged checkout retries adopt existing provider journal rows.
 - [x] Checkpoint normalized provider success before local collection mutation and route
   local persistence failure after provider success to reconciliation.
+- [x] Route Fulfillment local provider-result reconciliation through the owner receipt-aware lifecycle boundary so `provider_operation` metadata and journal commit remain transactionally coupled; validate replay request identity before local mutation.
 - [x] Guard provider operations through the provider registry with CAS journals and
   explicit reconciliation outcomes.
 - [x] Route uncertain external outcomes to reconciliation and forbid auto-reclaim.
