@@ -51,6 +51,7 @@ static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
     get,
     path = "/metrics",
     tag = "observability",
+    security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "Prometheus metrics in text format", content_type = "text/plain"),
         (status = 503, description = "Metrics collection disabled")
