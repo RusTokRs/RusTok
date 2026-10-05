@@ -11,6 +11,8 @@ use crate::{FulfillmentError, FulfillmentResult};
 
 /// Maximum serialized JSON retained by durable provider-operation persistence.
 pub const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+pub(crate) const MAX_PROVIDER_WEBHOOK_PAYLOAD_BYTES: usize = 1024 * 1024;
+const MAX_PROVIDER_WEBHOOK_IDENTITY_LEN: usize = 191;
 
 fn normalize_provider_metadata_key(key: &str) -> String {
     key.chars()
@@ -802,15 +804,29 @@ fn validate_webhook_request(
             request.provider_id
         )));
     }
-    if request.delivery_id.trim().is_empty() || request.idempotency_key.trim().is_empty() {
+    let delivery_id = request.delivery_id.trim();
+    let idempotency_key = request.idempotency_key.trim();
+    if delivery_id.is_empty() || idempotency_key.is_empty() {
         return Err(FulfillmentError::Validation(
             "fulfillment provider webhook requires delivery_id and idempotency_key".to_string(),
         ));
+    }
+    if delivery_id.len() > MAX_PROVIDER_WEBHOOK_IDENTITY_LEN
+        || idempotency_key.len() > MAX_PROVIDER_WEBHOOK_IDENTITY_LEN
+    {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider webhook delivery_id and idempotency_key must be at most {MAX_PROVIDER_WEBHOOK_IDENTITY_LEN} characters"
+        )));
     }
     if request.raw_payload.is_empty() {
         return Err(FulfillmentError::Validation(
             "fulfillment provider webhook payload must not be empty".to_string(),
         ));
+    }
+    if request.raw_payload.len() > MAX_PROVIDER_WEBHOOK_PAYLOAD_BYTES {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider webhook payload must not exceed {MAX_PROVIDER_WEBHOOK_PAYLOAD_BYTES} bytes"
+        )));
     }
     Ok(())
 }
@@ -821,22 +837,45 @@ fn validate_webhook_result(
     result: &FulfillmentProviderWebhookResult,
 ) -> FulfillmentResult<()> {
     if result.provider_id != provider_id {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider `{provider_id}` returned webhook result for `{}`",
             result.provider_id
         )));
     }
     if result.event_type.trim().is_empty() || result.replay_key != expected_replay_key {
-        return Err(FulfillmentError::Validation(format!(
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
             "fulfillment provider `{provider_id}` returned an invalid webhook event or replay key"
         )));
     }
+    validate_optional_boundary_text("event_type", Some(result.event_type.as_str()), 100)
+        .map_err(provider_result_invalid)?;
+    validate_optional_boundary_text("replay_key", Some(result.replay_key.as_str()), MAX_PROVIDER_WEBHOOK_IDENTITY_LEN)
+        .map_err(provider_result_invalid)?;
     validate_optional_boundary_text(
         "external_reference",
         result.external_reference.as_deref(),
         191,
-    )?;
-    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 191)?;
+    )
+    .map_err(provider_result_invalid)?;
+    validate_optional_boundary_text(
+        "tracking_number",
+        result.tracking_number.as_deref(),
+        FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
+    )
+    .map_err(provider_result_invalid)?;
+    if !result.metadata.is_object() {
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
+            "fulfillment provider `{provider_id}` returned webhook metadata that is not a JSON object"
+        )));
+    }
+    validate_provider_metadata_safety(&result.metadata)?;
+    let result_value = serde_json::to_value(result).map_err(|error| {
+        FulfillmentError::ProviderResultInvalid(format!(
+            "fulfillment provider `{provider_id}` returned a webhook result that could not be serialized: {error}"
+        ))
+    })?;
+    validate_durable_provider_payload(&result_value, "webhook result")
+        .map_err(provider_result_invalid)?;
     Ok(())
 }
 
@@ -1011,6 +1050,72 @@ mod boundary_tests {
         assert!(validate_provider_metadata_safety(&metadata).is_ok());
     }
 
+    #[test]
+    fn rejects_oversized_webhook_payload_before_provider_execution() {
+        let request = FulfillmentProviderWebhookRequest {
+            tenant_id: Uuid::new_v4(),
+            provider_id: "carrier".to_string(),
+            delivery_id: "delivery-1".to_string(),
+            idempotency_key: "request-key".to_string(),
+            signature: Some("signature".to_string()),
+            raw_payload: vec![0u8; MAX_PROVIDER_WEBHOOK_PAYLOAD_BYTES + 1],
+        };
+        assert!(validate_webhook_request("carrier", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_webhook_identity() {
+        let request = FulfillmentProviderWebhookRequest {
+            tenant_id: Uuid::new_v4(),
+            provider_id: "carrier".to_string(),
+            delivery_id: "d".repeat(MAX_PROVIDER_WEBHOOK_IDENTITY_LEN + 1),
+            idempotency_key: "request-key".to_string(),
+            signature: None,
+            raw_payload: b"{\"event\":\"ok\"}".to_vec(),
+        };
+        assert!(validate_webhook_request("carrier", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_webhook_tracking_number_over_fulfillment_limit() {
+        let result = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "tracking.updated".to_string(),
+            replay_key: "request-key".to_string(),
+            tracking_number: Some("t".repeat(FULFILLMENT_TRACKING_NUMBER_MAX_LEN + 1)),
+            metadata: serde_json::json!({}),
+        };
+        assert!(matches!(
+            validate_webhook_result("carrier", "request-key", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_webhook_sensitive_or_oversized_metadata() {
+        let sensitive = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "tracking.updated".to_string(),
+            replay_key: "request-key".to_string(),
+            tracking_number: None,
+            metadata: serde_json::json!({"authorization": "Bearer secret"}),
+        };
+        assert!(validate_webhook_result("carrier", "request-key", &sensitive).is_err());
+
+        let oversized = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "tracking.updated".to_string(),
+            replay_key: "request-key".to_string(),
+            tracking_number: None,
+            metadata: serde_json::json!({
+                "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            }),
+        };
+        assert!(validate_webhook_result("carrier", "request-key", &oversized).is_err());
+    }
     #[test]
     fn rejects_non_object_operation_result_metadata() {
         let result = FulfillmentProviderOperationResult {
