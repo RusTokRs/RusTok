@@ -583,6 +583,7 @@ const verifyProviderSpiEvidence = ({
       [
         'pub(crate) fn validate_provider_metadata_safety(',
         'validate_provider_metadata_safety(&result.metadata)',
+        'validate_provider_metadata_safety(&request.metadata)',
         '"authorization"',
         '"accesstoken"',
         '"rawpayload"',
