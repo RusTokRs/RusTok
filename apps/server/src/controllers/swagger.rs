@@ -41,6 +41,15 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::auth::update_profile,
         crate::controllers::auth::login_history,
         crate::controllers::auth::revoke_session,
+        // OAuth
+        crate::controllers::oauth::token_handler,
+        crate::controllers::oauth::authorize_handler,
+        crate::controllers::oauth::authorize_browser_handler,
+        crate::controllers::oauth::consent_handler,
+        crate::controllers::oauth::create_browser_session_handler,
+        crate::controllers::oauth::clear_browser_session_handler,
+        crate::controllers::oauth::revoke_handler,
+        crate::controllers::oauth::userinfo_handler,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,
@@ -117,6 +126,16 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
             crate::controllers::auth::AuthResponse,
             crate::controllers::auth::UserInfo,
             crate::controllers::auth::LogoutResponse,
+
+            // OAuth
+            crate::controllers::oauth::TokenRequest,
+            crate::controllers::oauth::AuthorizeRequest,
+            crate::controllers::oauth::BrowserAuthorizeRequest,
+            crate::controllers::oauth::ConsentRequest,
+            crate::controllers::oauth::RevokeRequest,
+            crate::controllers::oauth::TokenResponse,
+            crate::controllers::oauth::TokenErrorResponse,
+            crate::controllers::oauth::BrowserSessionResponse,
 
             // Users
             crate::controllers::users::UserItem,
