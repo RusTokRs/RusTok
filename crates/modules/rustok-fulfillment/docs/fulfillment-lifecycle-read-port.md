@@ -31,6 +31,10 @@ The owner publishes three read-only operations:
 The existing owner DTO is returned unchanged. Commerce does not define a partial
 copy of fulfillment lifecycle state.
 
+For multi-row reads, fulfillment items are materialized in one batch query for the
+selected fulfillment ids, grouped back by fulfillment id, and mapped in the original
+parent-row order. Item order remains deterministic by `created_at`, then `id`.
+
 ## In-process adapter
 
 `InProcessFulfillmentReadPort` owns concrete `FulfillmentService` construction.
@@ -46,7 +50,10 @@ Every operation:
 2. parses tenant identity from `PortContext`;
 3. delegates to the existing fulfillment owner service;
 4. maps every current `FulfillmentError` variant to a stable `PortError`;
-5. preserves the owner projection and pagination total on success.
+5. enforces the declared `PortContext.deadline_ms` with a wall-clock timeout around
+   the owner future; expiry returns typed `PortErrorKind::Timeout` with stable
+   `fulfillment.deadline_exceeded` code;
+6. preserves the owner projection and pagination total on success.
 
 The adapter does not parse, match, or expose owner error messages as control
 flow. Database failures are retryable `Unavailable`; validation, not-found, and
@@ -166,6 +173,10 @@ restart, external-adapter identity, and remote-adapter behavior are retained.
 The capture runbook is:
 
 `crates/modules/rustok-fulfillment/docs/fulfillment-lifecycle-transport-parity-capture.md`
+
+Source-level deadline enforcement and batch materialization are repository-verified,
+but mounted runtime deadline/failure behavior and performance remain unproven until the
+maintainer-owned execution contracts are actually run.
 
 ## Evidence
 
