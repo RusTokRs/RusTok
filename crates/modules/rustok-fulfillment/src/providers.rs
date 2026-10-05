@@ -688,6 +688,7 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} metadata must be a JSON object"
         )));
     }
+    validate_durable_provider_payload(&request.metadata, "request metadata")?;
     Ok(())
 }
 
@@ -719,6 +720,13 @@ fn validate_operation_result(
             "fulfillment provider {provider_id} returned {operation} metadata that is not a JSON object"
         )));
     }
+    let result_value = serde_json::to_value(result).map_err(|error| {
+        FulfillmentError::ProviderResultInvalid(format!(
+            "fulfillment provider {provider_id} returned {operation} result that could not be serialized: {error}"
+        ))
+    })?;
+    validate_durable_provider_payload(&result_value, "result")
+        .map_err(provider_result_invalid)?;
     Ok(())
 }
 
