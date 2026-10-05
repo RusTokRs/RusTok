@@ -466,6 +466,8 @@ Hard limits for every iteration:
 
 
 - [x] **FS-22.06.04 — conditional auth reset/verification slice** — not instantiated: the completed auth-controller audit found no independent reset/verification root-cause defect requiring a separate iteration. Future independent findings remain assignable as their own bounded track.
+- [x] **FS-22.06.05 — `apps/server/src/controllers/health.rs`** — health/readiness audit complete; search-lag DB decode now fails closed, readiness OpenAPI documents 503, and protected runtime/module diagnostics declare bearer security. No additional unblocked controller defect remained.
+- [ ] **FS-22.06.06 — `apps/server/src/controllers/metrics.rs`** — audit metrics authentication, label/cardinality boundaries, response caching, endpoint exposure, and backend failure behavior.
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
 
@@ -487,6 +489,26 @@ Hard limits for every iteration:
 - **Post-merge reconciliation:** refreshed `main` at `0fb39ced8d4b0c9e98d2a478445e3bde720927cb`; confirmed all eight Swagger-registered OAuth handlers are `pub(crate)`, POST `/api/oauth/consent` advertises bearer authentication, and the merged tree is otherwise the expected OAuth hotfix scope.
 - **Next primary iteration:** `FS-22.06.05 — apps/server/src/controllers/health.rs`.
 
+
+### FS-22.06.05 Assessment — `apps/server/src/controllers/health.rs`
+
+- **Base:** refreshed `main` at `2087f21ecbef0e58d2ec61a91cbd04df8417abdb`; dedicated branch `codex/audit-fs-22.06.05-health-controller` was created from that exact SHA.
+- **Primary scope:** liveness/readiness/runtime/module health endpoints, readiness aggregation and circuit breaker, dependency probes, feature/profile gating, diagnostic disclosure, OpenAPI contract, and runtime worker-health reporting.
+- **Historical baseline:** the earlier `FS-22.02.20` health audit had already fixed public readiness raw backend diagnostics, disabled-feature search-lag execution, and unsafe search URL parsing. Those invariants were treated as regression gates. The 2026-09-30 SEO worker expansion was traced through `SeoBulkWorkerHandle`; its bulk/sitemap/index-repair rows intentionally represent logical jobs served by one shared SEO worker loop.
+- **Invariant map:** public readiness reveals only aggregate status unless an observability bearer is supplied; detailed runtime/module diagnostics are protected in production; critical dependency failures produce unhealthy readiness; noncritical failures degrade; optional feature checks must not run against absent storage/schema; diagnostic errors must remain bounded and non-sensitive; OpenAPI metadata must match actual status/security behavior.
+- **Confirmed finding HEALTHCONTROLLER-22.06.05-01:** `check_search_index_lag` used `row.try_get::<i64>("", "max_lag_seconds").unwrap_or(0)`, converting an unexpected DB result/type/decode failure into zero lag and potentially reporting `OK`.
+- **Remediation:** search-lag value decoding now fails closed to a noncritical `Degraded` readiness check with the stable `search lag check failed` reason.
+- **Confirmed finding HEALTHCONTROLLER-22.06.05-02:** `/health/ready` is normalized by middleware to HTTP `503 Service Unavailable` when aggregate status is `unhealthy`, but its OpenAPI contract documented only `200`.
+- **Remediation:** added the explicit `503` response while preserving public aggregate-only readiness output and detailed authorized output.
+- **Confirmed finding HEALTHCONTROLLER-22.06.05-03:** `/health/runtime` and `/health/modules` are protected observability endpoints in the Axum middleware chain, but their OpenAPI operations lacked bearer security.
+- **Remediation:** both operations now declare the existing `bearer_auth` scheme; runtime authorization remains unchanged.
+- **Immediate re-audit:** re-read the changed search-lag function and all three health annotations. The fail-closed path preserves timeout/circuit semantics and metadata now matches middleware behavior.
+- **Adjacent-boundary re-audit:** compared health behavior with `metrics_auth::require_bearer`, rate-limit placement, runtime host modes, search migration schema, SEO worker lifecycle, and Swagger registration. No tenant/auth bypass or optional-feature mismatch was introduced.
+- **Regression audit:** liveness/basic health remain public; readiness remains 200 for `ok`/`degraded` and 503 for `unhealthy`; protected diagnostics remain bearer-gated in production; disabled search indexing still skips search-lag checks; search decode errors no longer become false healthy state.
+- **Fresh second pass:** independently searched the complete controller for raw backend diagnostics, silent error conversion, panics, unbounded health work, feature-gating drift, and stale OpenAPI status/security metadata. Remaining `unwrap_or_default()` uses are confined to bounded URL parser string-slicing fallbacks; no additional health defect was confirmed.
+- **Verification:** source/contract inspection, historical health-audit comparison, search schema comparison, middleware authorization tracing, immediate re-audit, and branch diff review only. Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution were unavailable because the workspace is not mounted and local DNS cannot reach GitHub; no CI/runtime pass is claimed.
+- **Status:** `FS-22.06.05` implementation complete on the dedicated branch; PR/integration pending.
+- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.06 — apps/server/src/controllers/metrics.rs`.
 
 ### FS-22.06.01 Assessment — `apps/server/src/controllers/auth.rs`
 

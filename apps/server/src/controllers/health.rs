@@ -163,7 +163,8 @@ pub async fn live() -> Result<Response> {
     path = "/health/ready",
     tag = "health",
     responses(
-        (status = 200, description = "Readiness status with detailed dependency checks")
+        (status = 200, description = "Readiness status; unauthenticated callers receive only the aggregate status"),
+        (status = 503, description = "Readiness is unhealthy; unauthenticated callers receive only the aggregate status")
     )
 )]
 pub async fn ready(
@@ -397,6 +398,7 @@ fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     get,
     path = "/health/runtime",
     tag = "health",
+    security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot)
     )
@@ -412,6 +414,7 @@ pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response
     get,
     path = "/health/modules",
     tag = "health",
+    security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "Module health statuses", body = ModulesHealthResponse)
     )
@@ -622,10 +625,19 @@ async fn check_search_index_lag(
 
     let (status, reason) = match ctx.db().query_one_raw(stmt).await {
         Ok(Some(row)) => {
-            let lag_seconds = row
-                .try_get::<i64>("", "max_lag_seconds")
-                .unwrap_or(0)
-                .max(0);
+            let lag_seconds = match row.try_get::<i64>("", "max_lag_seconds") {
+                Ok(value) => value.max(0),
+                Err(_) => {
+                    return ReadinessCheck {
+                        name: "search_index_lag".to_string(),
+                        kind: "lag",
+                        criticality: DependencyCriticality::NonCritical,
+                        status: ReadinessStatus::Degraded,
+                        latency_ms: started_at.elapsed().as_millis(),
+                        reason: Some("search lag check failed".to_string()),
+                    };
+                }
+            };
             if lag_seconds > threshold {
                 (
                     ReadinessStatus::Degraded,
