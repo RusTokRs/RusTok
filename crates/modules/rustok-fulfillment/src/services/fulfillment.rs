@@ -63,6 +63,10 @@ impl FulfillmentService {
         Self { db }
     }
 
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn create_shipping_option(
         &self,
