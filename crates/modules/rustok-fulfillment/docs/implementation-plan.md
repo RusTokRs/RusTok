@@ -16,6 +16,7 @@ seller_id`; legacy `seller_scope` is not accepted. Provider registry guards
 capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
 Provider-backed ship/reship/cancel retries are replay-safe after local persistence succeeds but journal commit is interrupted: persisted `metadata.provider_operation` identity is checked before lifecycle mutation, so recovery can complete the provider journal without duplicating the local state transition.
+The tracking-webhook SPI now bounds ingress payloads and identity fields and validates normalized provider results against the existing durable metadata and tracking-number limits. A mounted webhook transport, durable inbound replay ledger, raw-payload retention policy, and transactional lifecycle applier remain future work; the SPI must not be treated as evidence that those runtime guarantees already exist.
 
 Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
