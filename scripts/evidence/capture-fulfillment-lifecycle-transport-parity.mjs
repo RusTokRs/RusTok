@@ -224,17 +224,22 @@ function assertArray(value, field) {
 }
 
 function requiredString(value, field) {
-  return oneLine(value, field, 4096);
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4096) {
+    fail(`${field} must be a non-empty string within the capture boundary`);
+  }
+  if (/[\u0000-\u001f\u007f]/u.test(value)) {
+    fail(`${field} is outside the capture boundary`);
+  }
+  return value;
 }
 
 function optionalString(value, field) {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string') fail(`${field} must be a string or null`);
-  const line = value.trim();
-  if (line.length > 4096 || /[\u0000-\u001f\u007f]/u.test(line)) {
+  if (value.length > 4096 || /[\u0000-\u001f\u007f]/u.test(value)) {
     fail(`${field} is outside the capture boundary`);
   }
-  return line;
+  return value;
 }
 
 function timestamp(value, field) {
