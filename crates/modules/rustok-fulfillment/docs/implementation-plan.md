@@ -278,6 +278,7 @@ disable/reconciliation matrix in
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
 - [x] Make all four shipping-option admin commands (create/update/deactivate/reactivate) durable and replay-safe through the shared owner-operation receipt ledger; changed-payload and cross-operation idempotency-key reuse conflicts fail closed.
+- [x] Make provider-backed `create_label` result persistence owner-atomic: provider result facts, reserved `provider_operation` metadata, and journal `COMMITTED` transition share one Fulfillment transaction; recovery reuses the same owner boundary.
 
 ## Fulfillment lifecycle read source checklist
 
