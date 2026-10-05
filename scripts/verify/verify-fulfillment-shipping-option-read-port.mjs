@@ -16,9 +16,19 @@ const requireText = (source, value, label) => {
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const between = (source, start, end, label) => {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return source.slice(startIndex, endIndex);
+};
 
 const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
 const owner = read('crates/modules/rustok-fulfillment/src/shipping_option_read.rs');
+const ownerService = read('crates/modules/rustok-fulfillment/src/services/fulfillment.rs');
 const context = read(
   'crates/modules/rustok-commerce/src/graphql/mutations/shipping_option_read_context.rs',
 );
@@ -65,6 +75,57 @@ for (const marker of [
   'request.requested_locale.as_deref()',
   'request.tenant_default_locale.as_deref()',
 ]) requireText(owner, marker, 'owner topology');
+
+for (const marker of [
+  'tenant_id: Uuid,',
+  'JoinType::InnerJoin',
+  'entities::shipping_option_translation::Relation::ShippingOption.def()',
+  'entities::shipping_option::Column::TenantId.eq(tenant_id)',
+]) requireText(ownerService, marker, 'shipping translation query topology');
+
+const translationProjection = between(
+  ownerService,
+  'async fn load_shipping_options_with_translations(',
+  'async fn synchronize_translations(',
+  'shipping-option translation projection helper',
+);
+const translationRows = between(
+  ownerService,
+  'async fn load_shipping_option_translation_rows<C>(',
+  'fn translation_change_error_to_fulfillment_error(',
+  'shipping-option translation row helper',
+);
+for (const [source, label] of [
+  [translationProjection, 'shipping-option translation projection helper'],
+  [translationRows, 'shipping-option translation row helper'],
+]) {
+  for (const [value, requirement] of [
+    ['JoinType::InnerJoin', 'inner parent join'],
+    [
+      'entities::shipping_option_translation::Relation::ShippingOption.def()',
+      'declared shipping-option relation',
+    ],
+    [
+      'entities::shipping_option::Column::TenantId.eq(tenant_id)',
+      'tenant predicate',
+    ],
+  ]) {
+    if (!source.includes(value)) {
+      failures.push(label + ': missing ' + requirement);
+    }
+  }
+}
+for (const [value, label, count] of [
+  ['load_shipping_options_with_translations(\n            &self.db,\n            tenant_id,', 'tenant-scoped translation projection delegation', 3],
+  ['load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id)', 'tenant-scoped transactional translation read', 4],
+  ['load_shipping_option_translation_rows(db, tenant_id, shipping_option_id)', 'tenant-scoped synchronization translation read', 1],
+  ['synchronize_translations(&txn, tenant_id, shipping_option_id, translations)', 'tenant-scoped translation synchronization', 1],
+]) {
+  const matches = ownerService.split(value).length - 1;
+  if (matches !== count) {
+    failures.push(`${label}: expected ${count}, found ${matches}`);
+  }
+}
 
 for (const marker of [
   'ShippingOptionReadContextFacts',
