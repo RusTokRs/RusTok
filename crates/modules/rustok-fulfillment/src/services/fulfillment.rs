@@ -411,26 +411,6 @@ impl FulfillmentService {
     ///
     /// Durable orchestration journals use this ID as their local resource anchor so
     /// retries rebuild the same fulfillment instead of creating a second resource.
-    pub(crate) async fn create_fulfillment_in_txn(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        fulfillment_id: Uuid,
-        input: CreateFulfillmentInput,
-    ) -> FulfillmentResult<()> {
-        validate_tenant_id(tenant_id)?;
-        self.validate_create_fulfillment_input(tenant_id, &input).await?;
-        self.insert_fulfillment_in_txn(
-            txn,
-            tenant_id,
-            fulfillment_id,
-            input,
-            None,
-            Utc::now(),
-        )
-        .await
-    }
-
     pub(crate) async fn create_fulfillment_with_id(
         &self,
         tenant_id: Uuid,
@@ -1738,5 +1718,1809 @@ impl FulfillmentService {
         let translation_rows =
             load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
         map_shipping_option(option, translation_rows, None, None)
+    }
+}
+
+fn validate_tenant_id(tenant_id: Uuid) -> FulfillmentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn normalize_checkout_plan_hash(checkout_plan_hash: &str) -> FulfillmentResult<String> {
+    let checkout_plan_hash = checkout_plan_hash.trim().to_ascii_lowercase();
+    if checkout_plan_hash.len() != 64
+        || !checkout_plan_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(FulfillmentError::Validation(
+            "checkout fulfillment plan hash must be a 64-character hexadecimal value".to_string(),
+        ));
+    }
+    Ok(checkout_plan_hash)
+}
+
+fn validate_checkout_identity(
+    checkout_operation_id: Uuid,
+    checkout_fulfillment_index: u32,
+    checkout_plan_hash: &str,
+) -> FulfillmentResult<String> {
+    if checkout_operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "checkout operation identity must be non-nil".to_string(),
+        ));
+    }
+    let checkout_plan_hash = normalize_checkout_plan_hash(checkout_plan_hash)?;
+    let _ = checkout_fulfillment_index;
+    Ok(checkout_plan_hash)
+}
+
+fn normalize_provider_id(value: Option<String>) -> FulfillmentResult<String> {
+    let provider_id = value
+        .map(|provider_id| provider_id.trim().to_string())
+        .filter(|provider_id| !provider_id.is_empty())
+        .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+    crate::providers::validate_provider_id(&provider_id)?;
+    Ok(provider_id)
+}
+
+fn normalize_currency_code(value: &str) -> FulfillmentResult<String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.len() != 3
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
+        return Err(FulfillmentError::Validation(
+            "currency_code must be a 3-letter code".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn fulfillment_list_offset(page: u64, per_page: u64) -> u64 {
+    page.saturating_sub(1).saturating_mul(per_page)
+}
+
+fn merge_fulfillment_metadata(
+    current: serde_json::Value,
+    patch: serde_json::Value,
+) -> FulfillmentResult<serde_json::Value> {
+    let current = match current {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    let current_audit = current
+        .as_object()
+        .and_then(|object| object.get("audit"))
+        .cloned();
+    validate_object_metadata(&patch, "fulfillment metadata patch")?;
+    let mut merged = merge_metadata(current, strip_fulfillment_audit_metadata(patch));
+
+    if let Some(audit) = current_audit {
+        match &mut merged {
+            Value::Object(object) => {
+                object.insert("audit".to_string(), audit);
+            }
+            _ => {
+                let mut object = Map::new();
+                object.insert("audit".to_string(), audit);
+                merged = Value::Object(object);
+            }
+        }
+    }
+
+    strip_fulfillment_identity_metadata(merged)
+}
+
+fn strip_fulfillment_metadata(value: serde_json::Value) -> FulfillmentResult<serde_json::Value> {
+    let value = match value {
+        Value::Object(_) => value,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    let value = strip_fulfillment_audit_metadata(value);
+    let value = strip_provider_operation_metadata(value);
+    strip_fulfillment_identity_metadata(value)
+}
+
+fn strip_fulfillment_audit_metadata(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        Value::Object(mut object) => {
+            object.remove("audit");
+            Value::Object(object)
+        }
+        other => other,
+    }
+}
+
+fn strip_provider_operation_metadata(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(mut object) => {
+            object.remove("provider_operation");
+            serde_json::Value::Object(object)
+        }
+        other => other,
+    }
+}
+
+fn prepare_provider_lifecycle_metadata(
+    input_metadata: Value,
+    provider_metadata: Value,
+    operation_id: Uuid,
+    operation: &'static str,
+) -> FulfillmentResult<Value> {
+    if operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "fulfillment provider operation id must not be nil".to_string(),
+        ));
+    }
+    let input_metadata =
+        strip_provider_operation_metadata(strip_fulfillment_audit_metadata(input_metadata));
+    let merged = merge_fulfillment_metadata(input_metadata, provider_metadata)?;
+    let mut object = match merged {
+        Value::Object(object) => object,
+        _ => unreachable!("fulfillment metadata merge returns an object"),
+    };
+    object.insert(
+        "provider_operation".to_string(),
+        serde_json::json!({
+            "id": operation_id,
+            "operation": operation,
+        }),
+    );
+    Ok(Value::Object(object))
+}
+
+pub(crate) fn strip_fulfillment_identity_metadata(
+    value: serde_json::Value,
+) -> FulfillmentResult<serde_json::Value> {
+    let mut root = match value {
+        serde_json::Value::Object(object) => object,
+        _ => return Ok(value),
+    };
+    if let Some(checkout) = root.remove("checkout") {
+        let mut checkout = match checkout {
+            serde_json::Value::Object(object) => object,
+            _ => {
+                return Err(FulfillmentError::Validation(
+                    "fulfillment checkout metadata namespace must be a JSON object".to_string(),
+                ));
+            }
+        };
+        for key in [
+            "operation_id",
+            "order_id",
+            "order_plan_hash",
+            "fulfillment_index",
+            "fulfillment_key",
+        ] {
+            checkout.remove(key);
+        }
+        if checkout.is_empty() {
+            root.remove("checkout");
+        } else {
+            root.insert("checkout".to_string(), serde_json::Value::Object(checkout));
+        }
+    }
+    Ok(serde_json::Value::Object(root))
+}
+
+fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
+    match (current, patch) {
+        (serde_json::Value::Object(mut current), serde_json::Value::Object(patch)) => {
+            for (key, value) in patch {
+                current.insert(key, value);
+            }
+            serde_json::Value::Object(current)
+        }
+        (_, patch) => patch,
+    }
+}
+
+fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_allowed_shipping_profile_slugs(
+    values: Option<Vec<String>>,
+) -> FulfillmentResult<Option<Vec<String>>> {
+    values
+        .map(|values| {
+            let mut normalized = BTreeSet::new();
+            for value in values {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(FulfillmentError::Validation(
+                        "shipping profile slug must not be empty".to_string(),
+                    ));
+                }
+                if trimmed.chars().count() > 64 {
+                    return Err(FulfillmentError::Validation(
+                        "shipping profile slug must be at most 64 characters".to_string(),
+                    ));
+                }
+                let value = normalize_shipping_profile_slug(trimmed).ok_or_else(|| {
+                    FulfillmentError::Validation(
+                        "shipping profile slug must not be empty".to_string(),
+                    )
+                })?;
+                normalized.insert(value);
+            }
+            Ok(normalized.into_iter().collect())
+        })
+        .transpose()
+}
+
+fn extract_allowed_shipping_profile_slugs(metadata: &Value) -> Option<Vec<String>> {
+    let profiles = metadata.get("shipping_profiles")?;
+    let Some(profiles) = profiles.as_object() else {
+        return Some(Vec::new());
+    };
+    let Some(values) = profiles.get("allowed_slugs") else {
+        return Some(Vec::new());
+    };
+    let Some(values) = values.as_array() else {
+        return Some(Vec::new());
+    };
+    if values.is_empty() {
+        return None;
+    }
+
+    let mut normalized = BTreeSet::new();
+    for value in values {
+        let Some(value) = value.as_str() else {
+            return Some(Vec::new());
+        };
+        let Some(value) = normalize_shipping_profile_slug(value) else {
+            return Some(Vec::new());
+        };
+        normalized.insert(value);
+    }
+
+    Some(normalized.into_iter().collect())
+}
+
+fn apply_allowed_shipping_profiles_to_metadata(
+    metadata: Value,
+    allowed_shipping_profile_slugs: Option<Vec<String>>,
+) -> FulfillmentResult<Value> {
+    let Some(allowed_shipping_profile_slugs) = allowed_shipping_profile_slugs else {
+        if let Value::Object(object) = &metadata
+            && let Some(shipping_profiles) = object.get("shipping_profiles")
+            && !shipping_profiles.is_object()
+        {
+            return Err(FulfillmentError::Validation(
+                "shipping option shipping_profiles metadata namespace must be a JSON object"
+                    .to_string(),
+            ));
+        }
+        return Ok(metadata);
+    };
+
+    let mut metadata_object = match metadata {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "shipping option metadata must be a JSON object when allowed shipping profiles are specified"
+                    .to_string(),
+            ));
+        }
+    };
+    let mut shipping_profiles = match metadata_object.remove("shipping_profiles") {
+        Some(Value::Object(object)) => object,
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "shipping option shipping_profiles metadata namespace must be a JSON object"
+                    .to_string(),
+            ));
+        }
+        None => Map::new(),
+    };
+    shipping_profiles.insert(
+        "allowed_slugs".to_string(),
+        Value::Array(
+            allowed_shipping_profile_slugs
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    metadata_object.insert(
+        "shipping_profiles".to_string(),
+        Value::Object(shipping_profiles),
+    );
+    Ok(Value::Object(metadata_object))
+}
+
+pub(crate) fn strip_fulfillment_item_checkout_metadata(value: Value) -> FulfillmentResult<Value> {
+    let mut root = match value {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    let Some(checkout) = root.remove("checkout") else {
+        return Ok(Value::Object(root));
+    };
+
+    let mut checkout = match checkout {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment item checkout metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+    };
+
+    for key in [
+        "operation_id",
+        "order_id",
+        "order_plan_hash",
+        "fulfillment_index",
+        "fulfillment_key",
+    ] {
+        checkout.remove(key);
+    }
+
+    if let Some(cart_line_item_id) = checkout.get("cart_line_item_id").cloned() {
+        let canonical = cart_line_item_id
+            .as_str()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .filter(|value| !value.is_nil())
+            .map(|value| Value::String(value.to_string()))
+            .ok_or_else(|| {
+                FulfillmentError::Validation(
+                    "fulfillment item checkout cart_line_item_id must be a non-nil UUID string"
+                        .to_string(),
+                )
+            })?;
+        checkout.insert("cart_line_item_id".to_string(), canonical);
+    }
+
+    if checkout.is_empty() {
+        root.remove("checkout");
+    } else {
+        root.insert("checkout".to_string(), Value::Object(checkout));
+    }
+
+    Ok(Value::Object(root))
+}
+
+pub(crate) fn strip_fulfillment_item_metadata(value: Value) -> FulfillmentResult<Value> {
+    // Item audit history is owner-generated lifecycle evidence and cannot be seeded by
+    // create callers. Checkout identity sanitization remains separate and strict.
+    let value = strip_fulfillment_audit_metadata(value);
+    strip_fulfillment_item_checkout_metadata(value)
+}
+
+fn validate_object_metadata(metadata: &Value, resource: &str) -> FulfillmentResult<()> {
+    if !metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "{resource} metadata must be a JSON object",
+        )));
+    }
+    Ok(())
+}
+
+fn validate_fulfillment_items(
+    items: Option<&[crate::dto::CreateFulfillmentItemInput]>,
+) -> FulfillmentResult<()> {
+    let Some(items) = items else {
+        return Ok(());
+    };
+
+    let mut seen_line_items = BTreeSet::new();
+    for item in items {
+        item.validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if !seen_line_items.insert(item.order_line_item_id) {
+            return Err(FulfillmentError::Validation(format!(
+                "duplicate fulfillment item for order_line_item_id {}",
+                item.order_line_item_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_item_quantity_adjustments(
+    items: Option<&[FulfillmentItemQuantityInput]>,
+) -> FulfillmentResult<()> {
+    let Some(items) = items else {
+        return Ok(());
+    };
+
+    let mut seen_items = BTreeSet::new();
+    for item in items {
+        item.validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if !seen_items.insert(item.fulfillment_item_id) {
+            return Err(FulfillmentError::Validation(format!(
+                "duplicate fulfillment item adjustment for item {}",
+                item.fulfillment_item_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum FulfillmentItemAction {
+    Ship,
+    Deliver,
+    Reopen,
+    Reship,
+    Cancel,
+}
+
+fn validate_item_progress_snapshot(
+    item: &entities::fulfillment_item::Model,
+) -> FulfillmentResult<()> {
+    if item.quantity <= 0
+        || item.shipped_quantity < 0
+        || item.delivered_quantity < 0
+        || item.delivered_quantity > item.shipped_quantity
+        || item.shipped_quantity > item.quantity
+    {
+        return Err(FulfillmentError::Validation(
+            "fulfillment item progress counters are inconsistent".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_item_adjustments(
+    items: &[entities::fulfillment_item::Model],
+    requested: Option<&[FulfillmentItemQuantityInput]>,
+    action: FulfillmentItemAction,
+) -> FulfillmentResult<Vec<(Uuid, i32)>> {
+    for item in items {
+        validate_item_progress_snapshot(item)?;
+    }
+
+    let planned = if let Some(requested) = requested {
+        requested
+            .iter()
+            .map(|item| (item.fulfillment_item_id, item.quantity))
+            .collect::<Vec<_>>()
+    } else {
+        items
+            .iter()
+            .filter_map(|item| {
+                let quantity = match action {
+                    FulfillmentItemAction::Ship => item.quantity - item.shipped_quantity,
+                    FulfillmentItemAction::Deliver => {
+                        item.shipped_quantity - item.delivered_quantity
+                    }
+                    FulfillmentItemAction::Reopen | FulfillmentItemAction::Reship => {
+                        item.delivered_quantity
+                    }
+                    FulfillmentItemAction::Cancel => 0,
+                };
+                (quantity > 0).then_some((item.id, quantity))
+            })
+            .collect::<Vec<_>>()
+    };
+
+    if planned.is_empty() {
+        return Err(FulfillmentError::Validation(match action {
+            FulfillmentItemAction::Ship => {
+                "fulfillment has no remaining item quantity to ship".to_string()
+            }
+            FulfillmentItemAction::Deliver => {
+                "fulfillment has no remaining shipped item quantity to deliver".to_string()
+            }
+            FulfillmentItemAction::Reopen => {
+                "fulfillment has no delivered item quantity to reopen".to_string()
+            }
+            FulfillmentItemAction::Reship => {
+                "fulfillment has no delivered item quantity to reship".to_string()
+            }
+            FulfillmentItemAction::Cancel => {
+                "fulfillment has no cancellable item quantity".to_string()
+            }
+        }));
+    }
+
+    let items_by_id = items
+        .iter()
+        .map(|item| (item.id, item))
+        .collect::<BTreeMap<_, _>>();
+    for (item_id, quantity) in &planned {
+        let item = items_by_id.get(item_id).ok_or_else(|| {
+            FulfillmentError::Validation(format!(
+                "fulfillment item {item_id} does not belong to this fulfillment"
+            ))
+        })?;
+        let remaining_quantity = match action {
+            FulfillmentItemAction::Ship => item.quantity - item.shipped_quantity,
+            FulfillmentItemAction::Deliver => item.shipped_quantity - item.delivered_quantity,
+            FulfillmentItemAction::Reopen | FulfillmentItemAction::Reship => {
+                item.delivered_quantity
+            }
+            FulfillmentItemAction::Cancel => 0,
+        };
+        if *quantity > remaining_quantity {
+            return Err(FulfillmentError::Validation(format!(
+                "{} quantity {} exceeds remaining quantity {} for fulfillment item {}",
+                action.as_str(),
+                quantity,
+                remaining_quantity,
+                item_id
+            )));
+        }
+    }
+
+    Ok(planned)
+}
+
+fn build_item_audit_event(
+    action: FulfillmentItemAction,
+    at: chrono::DateTime<Utc>,
+    quantity: i32,
+) -> Value {
+    serde_json::json!({
+        "type": action.as_str(),
+        "at": at.to_rfc3339(),
+        "quantity": quantity,
+    })
+}
+
+fn build_fulfillment_audit_event(
+    action: FulfillmentItemAction,
+    at: chrono::DateTime<Utc>,
+    items: &[(Uuid, Uuid, i32)],
+    carrier: Option<String>,
+    tracking_number: Option<String>,
+    status_after: &str,
+) -> Value {
+    serde_json::json!({
+        "type": action.as_str(),
+        "at": at.to_rfc3339(),
+        "status_after": status_after,
+        "carrier": carrier,
+        "tracking_number": tracking_number,
+        "items": items
+            .iter()
+            .map(|(fulfillment_item_id, order_line_item_id, quantity)| {
+                serde_json::json!({
+                    "fulfillment_item_id": fulfillment_item_id,
+                    "order_line_item_id": order_line_item_id,
+                    "quantity": quantity,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn append_audit_event(metadata: Value, event: Value) -> FulfillmentResult<Value> {
+    let mut metadata_object = match metadata {
+        Value::Object(object) => object,
+        _ => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    let mut audit = match metadata_object.remove("audit") {
+        Some(Value::Object(object)) => object,
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit metadata namespace must be a JSON object".to_string(),
+            ));
+        }
+        None => Map::new(),
+    };
+    let mut events = match audit.remove("events") {
+        Some(Value::Array(items)) => items,
+        Some(_) => {
+            return Err(FulfillmentError::Validation(
+                "fulfillment audit events must be a JSON array".to_string(),
+            ));
+        }
+        None => Vec::new(),
+    };
+    events.push(event);
+    audit.insert("events".to_string(), Value::Array(events));
+    metadata_object.insert("audit".to_string(), Value::Object(audit));
+    Ok(Value::Object(metadata_object))
+}
+
+impl FulfillmentItemAction {
+    fn as_str(self) -> &'static str {
+        match self {
+            FulfillmentItemAction::Ship => "ship",
+            FulfillmentItemAction::Deliver => "deliver",
+            FulfillmentItemAction::Reopen => "reopen",
+            FulfillmentItemAction::Reship => "reship",
+            FulfillmentItemAction::Cancel => "cancel",
+        }
+    }
+}
+
+fn reopened_status_for_cancelled(
+    items: &[entities::fulfillment_item::Model],
+    fulfillment: &entities::fulfillment::ActiveModel,
+) -> &'static str {
+    if items.iter().any(|item| item.shipped_quantity > 0)
+        || fulfillment.shipped_at.clone().take().is_some()
+    {
+        STATUS_SHIPPED
+    } else {
+        STATUS_PENDING
+    }
+}
+
+async fn load_shipping_options_with_translations(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    rows: Vec<entities::shipping_option::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let translations = entities::shipping_option_translation::Entity::find()
+        .join(
+            JoinType::InnerJoin,
+            entities::shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+        .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids))
+        .order_by_asc(entities::shipping_option_translation::Column::ShippingOptionId)
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
+        .all(db)
+        .await?;
+
+    let mut translations_by_option: HashMap<
+        Uuid,
+        Vec<entities::shipping_option_translation::Model>,
+    > = HashMap::new();
+    for translation in translations {
+        translations_by_option
+            .entry(translation.shipping_option_id)
+            .or_default()
+            .push(translation);
+    }
+
+    rows.into_iter()
+        .map(|row| {
+            let translations = translations_by_option.remove(&row.id).unwrap_or_default();
+            map_shipping_option(row, translations, requested_locale, tenant_default_locale)
+        })
+        .collect()
+}
+
+fn map_shipping_option(
+    option: entities::shipping_option::Model,
+    translations: Vec<entities::shipping_option_translation::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> FulfillmentResult<ShippingOptionResponse> {
+    validate_persisted_shipping_option_locales(&translations)?;
+    let translation_revision =
+        shipping_option_translation_resource_revision(&option, &translations);
+    let available_locales = translations
+        .iter()
+        .filter(|translation| translation.locale != UNKNOWN_PROVENANCE_LOCALE)
+        .map(|translation| translation.locale.clone())
+        .collect::<Vec<_>>();
+    let runtime_translations = translations
+        .iter()
+        .filter(|translation| translation.locale != UNKNOWN_PROVENANCE_LOCALE)
+        .collect::<Vec<_>>();
+    let requested_locale = requested_locale
+        .and_then(normalize_locale_tag)
+        .filter(|value| !value.is_empty());
+    let (resolved, effective_locale) = resolve_translation(
+        &runtime_translations,
+        requested_locale.as_deref(),
+        tenant_default_locale,
+    );
+    let name = resolved
+        .map(|translation| translation.name.clone())
+        .unwrap_or_default();
+
+    Ok(ShippingOptionResponse {
+        id: option.id,
+        tenant_id: option.tenant_id,
+        name,
+        currency_code: option.currency_code,
+        amount: option.amount,
+        provider_id: option.provider_id,
+        active: option.active,
+        allowed_shipping_profile_slugs: extract_allowed_shipping_profile_slugs(&option.metadata),
+        metadata: option.metadata,
+        created_at: option.created_at.with_timezone(&Utc),
+        updated_at: option.updated_at.with_timezone(&Utc),
+        requested_locale,
+        effective_locale,
+        available_locales,
+        translation_revision,
+        translations: translations
+            .into_iter()
+            .map(|translation| ShippingOptionTranslationResponse {
+                locale: translation.locale,
+                name: translation.name,
+            })
+            .collect(),
+    })
+}
+
+fn validate_persisted_shipping_option_locales(
+    translations: &[entities::shipping_option_translation::Model],
+) -> FulfillmentResult<()> {
+    let mut seen = HashSet::new();
+    for translation in translations {
+        if translation.locale == UNKNOWN_PROVENANCE_LOCALE {
+            continue;
+        }
+        let locale = TenantLocale::new(&translation.locale).map_err(|error| {
+            FulfillmentError::Validation(format!(
+                "Shipping option contains an invalid persisted locale: {error}"
+            ))
+        })?;
+        if locale.as_str() != translation.locale {
+            return Err(FulfillmentError::Validation(
+                "Shipping option contains a non-canonical persisted locale".to_string(),
+            ));
+        }
+        if !seen.insert(locale.into_inner()) {
+            return Err(FulfillmentError::Validation(
+                "Shipping option contains duplicate canonical persisted locales".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn normalize_translation_inputs(
+    translations: Vec<ShippingOptionTranslationInput>,
+) -> FulfillmentResult<Vec<ShippingOptionTranslationInput>> {
+    if translations.is_empty() {
+        return Err(FulfillmentError::Validation(
+            "At least one translation is required".to_string(),
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(translations.len());
+    for translation in translations {
+        let locale = TenantLocale::new(&translation.locale)
+            .map(TenantLocale::into_inner)
+            .map_err(|_| FulfillmentError::Validation("Invalid locale".to_string()))?;
+        if !seen.insert(locale.clone()) {
+            return Err(FulfillmentError::Validation(
+                "Duplicate locale in shipping option translations".to_string(),
+            ));
+        }
+        let name = translation.name.trim();
+        if name.is_empty() {
+            return Err(FulfillmentError::Validation(
+                "Shipping option name cannot be empty".to_string(),
+            ));
+        }
+        if name.chars().count() > 120 {
+            return Err(FulfillmentError::Validation(
+                "Shipping option name must be at most 120 characters".to_string(),
+            ));
+        }
+        normalized.push(ShippingOptionTranslationInput {
+            locale,
+            name: name.to_string(),
+        });
+    }
+    Ok(normalized)
+}
+
+async fn insert_translations(
+    db: &DatabaseTransaction,
+    shipping_option_id: Uuid,
+    translations: &[ShippingOptionTranslationInput],
+) -> FulfillmentResult<()> {
+    for translation in translations {
+        entities::shipping_option_translation::ActiveModel {
+            id: Set(generate_id()),
+            shipping_option_id: Set(shipping_option_id),
+            locale: Set(translation.locale.clone()),
+            name: Set(translation.name.clone()),
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn synchronize_translations(
+    db: &DatabaseTransaction,
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+    translations: &[ShippingOptionTranslationInput],
+) -> FulfillmentResult<bool> {
+    let existing = load_shipping_option_translation_rows(db, tenant_id, shipping_option_id).await?;
+    let mut desired = translations
+        .iter()
+        .map(|translation| (translation.locale.clone(), translation.name.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut changed = false;
+
+    for current in existing {
+        match desired.remove(&current.locale) {
+            Some(name) if name == current.name => {}
+            Some(name) => {
+                let update_result = entities::shipping_option_translation::Entity::update_many()
+                    .col_expr(
+                        entities::shipping_option_translation::Column::Name,
+                        Expr::value(name),
+                    )
+                    .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
+                    .filter(shipping_option_tenant_exists(
+                        tenant_id,
+                        shipping_option_id,
+                    ))
+                    .exec(db)
+                    .await?;
+                if update_result.rows_affected != 1 {
+                    return Err(FulfillmentError::Database(
+                        sea_orm::DbErr::RecordNotUpdated,
+                    ));
+                }
+                changed = true;
+            }
+            None => {
+                let delete_result = entities::shipping_option_translation::Entity::delete_many()
+                    .filter(entities::shipping_option_translation::Column::Id.eq(current.id))
+                    .filter(
+                        entities::shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
+                    .filter(shipping_option_tenant_exists(
+                        tenant_id,
+                        shipping_option_id,
+                    ))
+                    .exec(db)
+                    .await?;
+                if delete_result.rows_affected != 1 {
+                    return Err(FulfillmentError::Database(
+                        sea_orm::DbErr::RecordNotUpdated,
+                    ));
+                }
+                changed = true;
+            }
+        }
+    }
+
+    for (locale, name) in desired {
+        entities::shipping_option_translation::ActiveModel {
+            id: Set(generate_id()),
+            shipping_option_id: Set(shipping_option_id),
+            locale: Set(locale),
+            name: Set(name),
+        }
+        .insert(db)
+        .await?;
+        changed = true;
+    }
+
+    Ok(changed)
+}
+
+fn shipping_option_tenant_exists(
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+) -> sea_orm::sea_query::SimpleExpr {
+    Expr::exists(
+        Query::select()
+            .column(entities::shipping_option::Column::Id)
+            .from(entities::shipping_option::Entity)
+            .and_where(entities::shipping_option::Column::Id.eq(shipping_option_id))
+            .and_where(entities::shipping_option::Column::TenantId.eq(tenant_id))
+            .to_owned(),
+    )
+}
+
+async fn load_shipping_option_translation_rows<C>(
+    db: &C,
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+) -> FulfillmentResult<Vec<entities::shipping_option_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(entities::shipping_option_translation::Entity::find()
+        .join(
+            JoinType::InnerJoin,
+            entities::shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+        .filter(
+            entities::shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id),
+        )
+        .order_by_asc(entities::shipping_option_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+fn translation_change_error_to_fulfillment_error(
+    error: ShippingOptionTranslationExactLocaleError,
+) -> FulfillmentError {
+    match error {
+        ShippingOptionTranslationExactLocaleError::Database(error) => {
+            FulfillmentError::Database(error)
+        }
+        other => FulfillmentError::Validation(format!(
+            "Fulfillment translation change journal write failed: {other}"
+        )),
+    }
+}
+
+fn resolve_translation<'a>(
+    translations: &'a [&'a entities::shipping_option_translation::Model],
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> (
+    Option<&'a entities::shipping_option_translation::Model>,
+    Option<String>,
+) {
+    let mut lookup = HashMap::new();
+    for translation in translations {
+        if let Some(normalized) = normalize_locale_tag(&translation.locale) {
+            lookup.insert(normalized, *translation);
+        }
+    }
+
+    if let Some(locale) = requested_locale.and_then(normalize_locale_tag)
+        && let Some(found) = lookup.get(&locale)
+    {
+        return (Some(*found), Some(found.locale.clone()));
+    }
+    if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag)
+        && let Some(found) = lookup.get(&locale)
+    {
+        return (Some(*found), Some(found.locale.clone()));
+    }
+    translations
+        .first()
+        .map(|item| (Some(*item), Some(item.locale.clone())))
+        .unwrap_or((None, None))
+}
+
+fn map_fulfillment(
+    fulfillment: entities::fulfillment::Model,
+    items: Vec<entities::fulfillment_item::Model>,
+) -> FulfillmentResponse {
+    FulfillmentResponse {
+        id: fulfillment.id,
+        tenant_id: fulfillment.tenant_id,
+        order_id: fulfillment.order_id,
+        shipping_option_id: fulfillment.shipping_option_id,
+        customer_id: fulfillment.customer_id,
+        status: fulfillment.status,
+        carrier: fulfillment.carrier,
+        tracking_number: fulfillment.tracking_number,
+        delivered_note: fulfillment.delivered_note,
+        cancellation_reason: fulfillment.cancellation_reason,
+        items: items.into_iter().map(map_fulfillment_item).collect(),
+        metadata: fulfillment.metadata,
+        created_at: fulfillment.created_at.with_timezone(&Utc),
+        updated_at: fulfillment.updated_at.with_timezone(&Utc),
+        shipped_at: fulfillment
+            .shipped_at
+            .map(|value| value.with_timezone(&Utc)),
+        delivered_at: fulfillment
+            .delivered_at
+            .map(|value| value.with_timezone(&Utc)),
+        cancelled_at: fulfillment
+            .cancelled_at
+            .map(|value| value.with_timezone(&Utc)),
+    }
+}
+
+fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentItemResponse {
+    FulfillmentItemResponse {
+        id: item.id,
+        fulfillment_id: item.fulfillment_id,
+        order_line_item_id: item.order_line_item_id,
+        quantity: item.quantity,
+        shipped_quantity: item.shipped_quantity,
+        delivered_quantity: item.delivered_quantity,
+        metadata: item.metadata,
+        created_at: item.created_at.with_timezone(&Utc),
+        updated_at: item.updated_at.with_timezone(&Utc),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
+        CheckoutFulfillmentIdentity, FulfillmentService,
+    };
+    use crate::entities::{self, shipping_option, shipping_option_translation};
+    use chrono::Utc;
+    use rust_decimal::Decimal;
+    use serde_json::Value;
+    use uuid::Uuid;
+
+    fn translation(
+        shipping_option_id: Uuid,
+        locale: &str,
+        name: &str,
+    ) -> shipping_option_translation::Model {
+        shipping_option_translation::Model {
+            id: Uuid::new_v4(),
+            shipping_option_id,
+            locale: locale.to_string(),
+            name: name.to_string(),
+        }
+    }
+
+    fn option(id: Uuid) -> shipping_option::Model {
+        let now = Utc::now().into();
+        shipping_option::Model {
+            id,
+            tenant_id: Uuid::new_v4(),
+            currency_code: "USD".to_string(),
+            amount: Decimal::new(1000, 2),
+            provider_id: "manual".to_string(),
+            active: true,
+            metadata: serde_json::json!({}),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn checkout_identity_anchor_reuses_same_identity_and_rejects_conflicts() {
+        use rustok_test_utils::db::setup_test_db;
+        use sea_orm::{ConnectionTrait, Schema, TransactionTrait};
+
+        let db = setup_test_db().await;
+        let builder = db.get_database_backend();
+        let schema = Schema::new(builder);
+        let statement = schema
+            .create_table_from_entity(entities::checkout_identity::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(builder.build(&statement))
+            .await
+            .expect("checkout identity anchor table should be created");
+
+        let service = FulfillmentService::new(db.clone());
+        let txn = db.begin().await.expect("transaction should start");
+        let tenant_id = Uuid::new_v4();
+        let operation_id = Uuid::new_v4();
+        let order_id = Uuid::new_v4();
+        let customer_id = Some(Uuid::new_v4());
+        let identity = CheckoutFulfillmentIdentity {
+            operation_id,
+            index: 0,
+            plan_hash: "a".repeat(64),
+        };
+
+        service
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
+            .await
+            .expect("first checkout identity should bind");
+
+        service
+            .ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &identity)
+            .await
+            .expect("identical checkout identity should be idempotent");
+
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                Uuid::new_v4(),
+                customer_id,
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different order"
+        );
+
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                Some(Uuid::new_v4()),
+                &identity,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different customer"
+        );
+
+        let mut different_plan = identity.clone();
+        different_plan.plan_hash = "b".repeat(64);
+        let conflict = service
+            .ensure_checkout_identity_anchor(
+                &txn,
+                tenant_id,
+                order_id,
+                customer_id,
+                &different_plan,
+            )
+            .await;
+        assert!(
+            conflict.is_err(),
+            "same operation must not bind a different plan"
+        );
+
+        txn.rollback().await.expect("transaction should roll back");
+    }
+
+    #[test]
+    fn storage_only_und_is_not_used_as_runtime_shipping_option_locale() {
+        let option_id = Uuid::new_v4();
+        let result = map_shipping_option(
+            option(option_id),
+            vec![translation(option_id, "und", "Legacy name")],
+            Some("de"),
+            Some("en"),
+        )
+        .expect("storage-only locale should be allowed in persisted data");
+
+        assert_eq!(result.name, "");
+        assert_eq!(result.effective_locale, None);
+        assert!(result.available_locales.is_empty());
+        assert_eq!(result.translations.len(), 1);
+        assert_eq!(result.translations[0].locale, "und");
+    }
+
+    #[test]
+    fn persisted_locale_validation_rejects_invalid_and_noncanonical_rows() {
+        let option_id = Uuid::new_v4();
+
+        let invalid = validate_persisted_shipping_option_locales(&[translation(
+            option_id,
+            "not@a-locale",
+            "Broken",
+        )]);
+        assert!(invalid.is_err());
+
+        let noncanonical =
+            validate_persisted_shipping_option_locales(&[translation(option_id, "EN", "Broken")]);
+        assert!(noncanonical.is_err());
+    }
+
+    #[test]
+    fn fulfillment_list_offset_saturates_extreme_page_values() {
+        assert_eq!(fulfillment_list_offset(0, 0), 0);
+        assert_eq!(fulfillment_list_offset(1, 100), 0);
+        assert_eq!(fulfillment_list_offset(u64::MAX, 100), u64::MAX);
+    }
+
+    #[test]
+    fn checkout_plan_hash_normalization_is_canonical() {
+        let hash = "A".repeat(64);
+        assert_eq!(
+            super::normalize_checkout_plan_hash(&hash).expect("valid hash"),
+            "a".repeat(64)
+        );
+    }
+
+    #[test]
+    fn validate_tenant_id_rejects_nil_identity() {
+        assert!(super::validate_tenant_id(Uuid::nil()).is_err());
+        assert!(super::validate_tenant_id(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_oversized_shipping_option_name() {
+        let name = "x".repeat(121);
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
+                locale: "en".to_string(),
+                name,
+            }]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn item_progress_validation_rejects_inconsistent_persisted_counters() {
+        let now = Utc::now().into();
+        let item = entities::fulfillment_item::Model {
+            id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            order_line_item_id: Uuid::new_v4(),
+            quantity: 1,
+            shipped_quantity: 2,
+            delivered_quantity: 0,
+            metadata: serde_json::json!({}),
+            created_at: now,
+            updated_at: now,
+        };
+
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
+
+        let item = entities::fulfillment_item::Model {
+            shipped_quantity: 0,
+            delivered_quantity: -1,
+            ..item
+        };
+        assert!(super::validate_item_progress_snapshot(&item).is_err());
+    }
+
+    #[test]
+    fn item_metadata_drops_caller_supplied_audit_history() {
+        let metadata = serde_json::json!({
+            "audit": {
+                "events": [
+                    {
+                        "type": "ship",
+                        "at": "2000-01-01T00:00:00Z",
+                        "quantity": 999
+                    }
+                ]
+            },
+            "checkout": {
+                "cart_line_item_id": Uuid::new_v4().to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_item_metadata(metadata)
+            .expect("item metadata should sanitize");
+        assert!(sanitized.get("audit").is_none());
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn item_checkout_metadata_removes_legacy_identity_keys() {
+        let cart_line_item_id = Uuid::new_v4();
+        let metadata = serde_json::json!({
+            "checkout": {
+                "operation_id": Uuid::new_v4().to_string(),
+                "order_id": Uuid::new_v4().to_string(),
+                "order_plan_hash": "a".repeat(64),
+                "fulfillment_index": 4,
+                "fulfillment_key": "legacy",
+                "cart_line_item_id": cart_line_item_id.to_string()
+            },
+            "note": "keep"
+        });
+
+        let sanitized = super::strip_fulfillment_item_checkout_metadata(metadata)
+            .expect("valid item checkout metadata should sanitize");
+        let canonical_cart_line_item_id = cart_line_item_id.to_string();
+        assert_eq!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("cart_line_item_id"))
+                .and_then(Value::as_str),
+            Some(canonical_cart_line_item_id.as_str())
+        );
+        assert!(
+            sanitized
+                .get("checkout")
+                .and_then(|value| value.get("operation_id"))
+                .is_none()
+        );
+        assert_eq!(sanitized.get("note").and_then(Value::as_str), Some("keep"));
+    }
+
+    #[test]
+    fn item_checkout_metadata_rejects_invalid_cart_line_identity() {
+        let metadata = serde_json::json!({
+            "checkout": {
+                "cart_line_item_id": "not-a-uuid"
+            }
+        });
+
+        assert!(super::strip_fulfillment_item_checkout_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_rejects_malformed_checkout_namespace() {
+        let metadata = serde_json::json!({
+            "checkout": "not-an-object",
+            "customer_note": "keep"
+        });
+
+        assert!(super::strip_fulfillment_metadata(metadata).is_err());
+    }
+
+    #[test]
+    fn create_fulfillment_metadata_requires_object_shape() {
+        assert!(
+            super::validate_object_metadata(&serde_json::json!("legacy"), "fulfillment").is_err()
+        );
+        assert!(
+            super::validate_object_metadata(&serde_json::json!([]), "fulfillment item").is_err()
+        );
+        assert!(super::validate_object_metadata(&serde_json::json!({}), "fulfillment").is_ok());
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_persisted_metadata() {
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"customer_note": "replacement"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn merge_fulfillment_metadata_rejects_non_object_patch() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profile": "express",
+            "audit": {
+                "events": [{"type": "ship"}]
+            }
+        });
+
+        assert!(
+            super::merge_fulfillment_metadata(current, serde_json::json!("legacy scalar")).is_err()
+        );
+        assert!(
+            super::merge_fulfillment_metadata(
+                serde_json::json!({
+                    "customer_note": "keep",
+                    "shipping_profile": "express",
+                    "audit": {
+                        "events": [{"type": "ship"}]
+                    }
+                }),
+                serde_json::json!(["legacy", "array"]),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_namespace() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": "legacy scalar"}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_malformed_audit_events() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!({"audit": {"events": "legacy scalar"}}),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn append_audit_event_rejects_non_object_metadata() {
+        assert!(
+            super::append_audit_event(
+                serde_json::json!("legacy scalar"),
+                serde_json::json!({"type": "ship"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_rejects_non_object_metadata() {
+        assert!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!("legacy scalar"),
+                Some(vec!["bulky".to_string()]),
+            )
+            .is_err()
+        );
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(
+                serde_json::json!({"customer_note": "keep"}),
+                Some(vec!["bulky".to_string()]),
+            )
+            .expect("object metadata is valid")
+            .get("shipping_profiles")
+            .and_then(|value| value.get("allowed_slugs"))
+            .and_then(Value::as_array)
+            .map(Vec::len),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn shipping_profile_namespace_is_validated_without_typed_restriction() {
+        for malformed in [
+            serde_json::json!({"shipping_profiles": "legacy scalar"}),
+            serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
+            serde_json::json!({"shipping_profiles": null}),
+        ] {
+            assert!(super::apply_allowed_shipping_profiles_to_metadata(malformed, None).is_err());
+        }
+
+        let untouched = serde_json::json!({
+            "customer_note": "keep",
+            "shipping_profiles": {
+                "legacy_flag": true
+            }
+        });
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(untouched.clone(), None)
+                .expect("valid namespace should be preserved"),
+            untouched
+        );
+
+        let scalar_root = serde_json::json!("legacy scalar");
+        assert_eq!(
+            super::apply_allowed_shipping_profiles_to_metadata(scalar_root.clone(), None)
+                .expect("unrelated scalar metadata remains supported"),
+            scalar_root
+        );
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_rejects_malformed_existing_namespace() {
+        for malformed in [
+            serde_json::json!({"shipping_profiles": "legacy scalar"}),
+            serde_json::json!({"shipping_profiles": ["legacy", "array"]}),
+            serde_json::json!({"shipping_profiles": null}),
+        ] {
+            assert!(
+                super::apply_allowed_shipping_profiles_to_metadata(
+                    malformed,
+                    Some(vec!["bulky".to_string()]),
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn apply_shipping_profile_projection_preserves_existing_namespace_fields() {
+        let projected = super::apply_allowed_shipping_profiles_to_metadata(
+            serde_json::json!({
+                "customer_note": "keep",
+                "shipping_profiles": {
+                    "source": "legacy",
+                    "allowed_slugs": ["old"],
+                }
+            }),
+            Some(vec!["bulky".to_string(), "standard".to_string()]),
+        )
+        .expect("valid shipping-profile namespace should project");
+
+        assert_eq!(
+            projected.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            projected
+                .get("shipping_profiles")
+                .and_then(|value| value.get("source"))
+                .and_then(Value::as_str),
+            Some("legacy")
+        );
+        assert_eq!(
+            projected
+                .get("shipping_profiles")
+                .and_then(|value| value.get("allowed_slugs"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn empty_allowed_shipping_profiles_mean_unrestricted() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": []
+                }
+            })),
+            None
+        );
+    }
+
+    #[test]
+    fn malformed_allowed_shipping_profile_entries_fail_closed() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": [""]
+                }
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": [123]
+                }
+            })),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn malformed_shipping_profile_metadata_fails_closed() {
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": "not-an-object"
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {}
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({
+                "shipping_profiles": {
+                    "allowed_slugs": "not-an-array"
+                }
+            })),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            super::extract_allowed_shipping_profile_slugs(&serde_json::json!({})),
+            None
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_rejects_blank_entries() {
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec![
+                "bulky".to_string(),
+                "   ".to_string(),
+            ]))
+            .is_err()
+        );
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["   ".to_string()])).is_err()
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_reserves_empty_list_for_unrestricted() {
+        assert_eq!(
+            super::normalize_allowed_shipping_profile_slugs(Some(Vec::new()))
+                .expect("explicit empty allow-list is valid"),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn typed_shipping_profile_allow_list_matches_profile_slug_limit() {
+        let valid = "x".repeat(64);
+        assert_eq!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec![valid.clone()]))
+                .expect("64-character profile slug is valid"),
+            Some(vec![valid])
+        );
+
+        assert!(
+            super::normalize_allowed_shipping_profile_slugs(Some(vec!["x".repeat(65)])).is_err()
+        );
+    }
+
+    #[test]
+    fn normalize_provider_id_uses_registry_identifier_rules() {
+        assert!(super::normalize_provider_id(Some("PayPal".to_string())).is_err());
+        assert!(super::normalize_provider_id(Some("foo.bar".to_string())).is_err());
+        assert_eq!(
+            super::normalize_provider_id(Some(" carrier-1 ".to_string()))
+                .expect("valid provider id"),
+            "carrier-1"
+        );
+        assert_eq!(
+            super::normalize_provider_id(Some("   ".to_string()))
+                .expect("blank provider id uses manual"),
+            "manual"
+        );
+    }
+
+    #[test]
+    fn normalize_currency_code_rejects_non_letters() {
+        assert!(super::normalize_currency_code("$$$").is_err());
+        assert!(super::normalize_currency_code("123").is_err());
+    }
+
+    #[test]
+    fn normalize_currency_code_canonicalizes_valid_codes() {
+        assert_eq!(
+            super::normalize_currency_code(" usd ").expect("valid currency"),
+            "USD"
+        );
+    }
+
+    #[test]
+    fn normalize_translation_inputs_rejects_storage_only_unknown_provenance_locale() {
+        let result =
+            super::normalize_translation_inputs(vec![crate::dto::ShippingOptionTranslationInput {
+                locale: "und".to_string(),
+                name: "Express".to_string(),
+            }]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_merge_preserves_owner_audit_history() {
+        let current = serde_json::json!({
+            "customer_note": "keep",
+            "audit": {
+                "events": [
+                    {"type": "ship"},
+                    {"type": "deliver"}
+                ]
+            }
+        });
+        let patch = serde_json::json!({
+            "customer_note": "updated",
+            "audit": {
+                "events": [
+                    {"type": "fabricated"},
+                    {"type": "fabricated"}
+                ]
+            }
+        });
+
+        let merged =
+            super::merge_fulfillment_metadata(current, patch).expect("valid metadata should merge");
+
+        assert_eq!(
+            merged.get("customer_note").and_then(Value::as_str),
+            Some("updated")
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            merged
+                .get("audit")
+                .and_then(|audit| audit.get("events"))
+                .and_then(Value::as_array)
+                .and_then(|events| events.first())
+                .and_then(|event| event.get("type"))
+                .and_then(Value::as_str),
+            Some("ship")
+        );
+    }
+
+    #[test]
+    fn provider_backed_lifecycle_metadata_replaces_caller_receipt_with_journal_receipt() {
+        let caller_operation_id = Uuid::new_v4();
+        let journal_operation_id = Uuid::new_v4();
+        let journal_operation_id_string = journal_operation_id.to_string();
+        let metadata = super::prepare_provider_lifecycle_metadata(
+            serde_json::json!({
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "cancel"
+                },
+                "customer_note": "keep",
+                "audit": {
+                    "events": [{"type": "fabricated"}]
+                }
+            }),
+            serde_json::json!({
+                "provider_field": "keep",
+                "provider_operation": {
+                    "id": caller_operation_id,
+                    "operation": "ship"
+                }
+            }),
+            journal_operation_id,
+            "ship",
+        )
+        .expect("provider-backed metadata should be normalized");
+
+        assert_eq!(
+            metadata.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            metadata.get("provider_field").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("id"))
+                .and_then(Value::as_str),
+            Some(journal_operation_id_string.as_str())
+        );
+        assert_eq!(
+            metadata
+                .get("provider_operation")
+                .and_then(|value| value.get("operation"))
+                .and_then(Value::as_str),
+            Some("ship")
+        );
+        assert!(metadata.get("audit").is_none());
+    }
+
+    #[test]
+    fn provider_backed_lifecycle_metadata_rejects_nil_journal_identity() {
+        let result = super::prepare_provider_lifecycle_metadata(
+            serde_json::json!({}),
+            serde_json::json!({}),
+            Uuid::nil(),
+            "ship",
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn fulfillment_metadata_sanitization_removes_user_audit_data() {
+        let value = serde_json::json!({
+            "audit": {
+                "events": [{"type": "fabricated"}]
+            },
+            "provider_operation": {
+                "id": Uuid::new_v4().to_string()
+            },
+            "customer_note": "keep"
+        });
+
+        let sanitized =
+            super::strip_fulfillment_metadata(value).expect("valid metadata should sanitize");
+
+        assert_eq!(
+            sanitized.get("customer_note").and_then(Value::as_str),
+            Some("keep")
+        );
+        assert!(sanitized.get("audit").is_none());
+        assert!(sanitized.get("provider_operation").is_none());
     }
 }
