@@ -5011,3 +5011,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.147` implementation complete at source level on current `main`; runtime/build evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment provider boundary with a fresh pass over provider-result secret/privacy retention and whether arbitrary provider metadata may contain credentials or raw webhook/provider payloads that should never enter the durable journal.
 
+
+### FS-22.06.148 Assessment — provider result metadata privacy/secret retention
+
+- **Base:** `2b6efd612f7f9b77d84e25c88b4ae3b2c2b53cfd`; fresh review following the bounded durable provider payload work.
+- **Primary scope:** Fulfillment provider-result metadata entering the provider-operation journal and canonical Fulfillment metadata through create-label persistence, plus manual unknown-outcome recovery.
+- **Confirmed finding FULFILLMENTPROVIDER-22.06.148-01:** provider-result `metadata` was only required to be an object. No repository-owned boundary rejected obvious sensitive/raw fields, so an adapter or reconciliation operator could persist authorization headers, API/access tokens, cookies, passwords, private keys, or raw request/response payloads inside `provider_operation.provider_result` and then into the Fulfillment `label.provider_metadata` projection.
+- **Production remediation:** the Fulfillment provider SPI now recursively rejects normalized metadata keys corresponding to authorization, API keys, access/refresh/id tokens, client secrets, passwords, private keys, cookies, and raw/request/response payload fields. The check traverses both nested objects and arrays. It runs before normal provider results cross the journal boundary, and the same validator runs in create-label owner persistence and manual unknown-success recovery.
+- **Failure behavior:** sensitive/raw metadata is rejected as a typed provider-result validation failure; normal external-operation handling therefore retains the existing fail-closed reconciliation path rather than storing the prohibited payload or silently truncating it.
+- **No raw-payload conflict:** the separate tracking-webhook audit contract intentionally retains a raw-payload audit boundary where explicitly required; this slice does not widen or alter that accepted webhook contract. Provider-operation result metadata remains normalized-result-only.
+- **Regression coverage:** provider SPI tests cover restricted keys and restricted keys nested inside arrays, alongside the existing 32 KiB payload bound. Recovery and owner persistence now call the same safety contract.
+- **Verifier remediation:** `verify-ecommerce-provider-spi-evidence.mjs` now statically requires the Fulfillment metadata privacy validator and representative sensitive/raw-field guards.
+- **Fresh second pass:** re-read provider SPI result validation, journal writers, create-label owner persistence, manual recovery, live-adapter contract, and README/plan. No alternate provider-result persistence path outside the owner boundary was found.
+- **Verification:** repository source inspection and post-write reread only. No Cargo, focused tests, Clippy, rustfmt, remediation gate, or runtime adapter execution was run because the repository workspace/toolchain is not mounted in this environment; no CI/runtime pass is claimed.
+- **Status:** `FS-22.06.148` implementation complete at source level on current `main`; runtime/provider evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment provider boundary with a fresh audit of retention lifecycle/cleanup: how long completed, failed, and reconciliation-required provider operations remain, what deletion/reconciliation guarantees exist, and whether cleanup can break replay or recovery invariants.
+
