@@ -361,7 +361,7 @@ async fn consent_handler(
         });
     }
 
-    if let Err(error) = OAuthAppService::grant_consent(
+    if OAuthAppService::grant_consent(
         runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
@@ -369,10 +369,11 @@ async fn consent_handler(
         validated.requested_scopes.clone(),
     )
     .await
+    .is_err()
     {
         return oauth_error_response(TokenErrorResponse {
             error: "server_error".to_string(),
-            error_description: format!("Failed to grant consent: {error}"),
+            error_description: "Failed to grant consent".to_string(),
         });
     }
 
