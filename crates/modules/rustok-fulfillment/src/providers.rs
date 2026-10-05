@@ -11,7 +11,7 @@ use crate::{FulfillmentError, FulfillmentResult};
 
 pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
-fn validate_durable_provider_payload(
+pub(crate) fn validate_durable_provider_payload(
     value: &Value,
     field: &'static str,
 ) -> FulfillmentResult<()> {
