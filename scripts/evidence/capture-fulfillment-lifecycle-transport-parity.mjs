@@ -36,7 +36,9 @@ const expectedScenarioIds = [
   'latest_by_order_projection_parity',
   'optional_not_found_transport_policy',
 ];
-const contract = JSON.parse(readFileSync(resolve(repoRoot, contractPath), 'utf8'));
+const contractText = readFileSync(resolve(repoRoot, contractPath), 'utf8');
+const contract = JSON.parse(contractText);
+const contractSnapshotSha256 = sha256(contractText);
 const outputPath = resolve(repoRoot, contract.evidence_path);
 const maximumResponseBytes = contract.request_policy.maximum_response_bytes;
 
@@ -425,6 +427,9 @@ function validateContract() {
   if (contract.publication?.atomic_exclusive_publish !== true) {
     fail('fulfillment lifecycle parity publication boundary drift');
   }
+  if (contract.capture_consistency?.contract_and_source_hashes_stable !== true) {
+    fail('fulfillment lifecycle parity capture-consistency boundary drift');
+  }
 }
 
 function ensureOutputBoundary() {
@@ -572,6 +577,7 @@ function writeEvidence(packet) {
 async function main() {
   validateContract();
   ensureOutputBoundary();
+  const sourceHashesAtStart = sourceHashes();
 
   const graphqlUrl = graphqlEndpoint(
     requiredEnvironment('RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL'),
@@ -851,6 +857,14 @@ async function main() {
   }
 
   const listIds = graphqlListProjections.map((projection) => projection.id);
+  if (fileSha256(contractPath) !== contractSnapshotSha256) {
+    fail('execution contract changed during capture; evidence cannot be published');
+  }
+  const sourceHashesAtEnd = sourceHashes();
+  if (!sameRecord(sourceHashesAtStart, sourceHashesAtEnd)) {
+    fail('captured source files changed during capture; evidence cannot be published');
+  }
+
   const packet = {
     schema_version: 1,
     module: 'fulfillment',
@@ -859,7 +873,7 @@ async function main() {
     captured_at: new Date().toISOString(),
     contract: {
       path: contractPath,
-      sha256: fileSha256(contractPath),
+      sha256: contractSnapshotSha256,
       source_base_revision: contract.source_base_revision,
     },
     runtime_claims: {
@@ -875,7 +889,7 @@ async function main() {
       per_page: perPage,
       client_timeout_ms: timeoutMs,
     },
-    source_hashes: sourceHashes(),
+    source_hashes: sourceHashesAtStart,
     scenarios: {
       lookup_rest_detail_projection_parity: {
         status: 'passed',
