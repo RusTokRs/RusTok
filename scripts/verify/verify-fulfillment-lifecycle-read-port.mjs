@@ -218,6 +218,15 @@ if (evidence.runtime_publication?.runtime !== 'CommerceFulfillmentLifecycleReadR
   failures.push('evidence runtime mismatch');
 }
 for (const [value, label] of [
+  [evidence.projection_materialization?.parent_and_items_share_one_transaction_snapshot, 'parent/item snapshot'],
+  [evidence.projection_materialization?.postgres_isolation_level_requested === 'repeatable_read', 'PostgreSQL repeatable-read request'],
+  [evidence.projection_materialization?.read_only_access_mode_requested, 'read-only access mode request'],
+  [evidence.projection_materialization?.sqlite_transaction_preserves_snapshot, 'SQLite transaction snapshot'],
+  [evidence.projection_materialization?.pagination_total_and_page_share_snapshot, 'pagination snapshot'],
+]) {
+  if (value !== true) failures.push(`evidence must record ${label}`);
+}
+for (const [value, label] of [
   [evidence.runtime_publication?.server_cache_composed, 'server cache'],
   [evidence.runtime_publication?.commerce_http_runtime_required, 'HTTP runtime'],
   [evidence.runtime_publication?.graphql_task_local_scoped, 'GraphQL scope'],
