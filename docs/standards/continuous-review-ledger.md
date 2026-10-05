@@ -4949,3 +4949,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Fresh second pass:** re-read the transition matrix, recovery service, Admin provider replay branches, and migration lifecycle guards. No unguarded retry from unknown execution, cross-tenant transition, or repeated checkpoint loop was found.
 - **Status:** FS-22.06.143 complete as a clean source assessment; runtime/provider restart evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment provider boundary with a fresh pass over recovery operator authorization and tenant filtering of reconciliation administration.
+
+
+### FS-22.06.144 Assessment — reconciliation operator authorization and tenant binding
+
+- **Base:** `41c0fe05279c718456b0b81571a53cf923523a78`; fresh review of the mounted Fulfillment reconciliation administration boundary.
+- **Primary scope:** `crates/modules/rustok-commerce/src/controllers/reconciliation.rs`, `require_manage_permission`, `TenantContext`/authentication correlation, and tenant-scoped Fulfillment provider-operation recovery queries.
+- **Authorization invariant:** reconciliation is an operator-only capability. Every mounted reconciliation route calls `require_manage_permission` before constructing a recovery/reconciliation service or performing request-body processing that can change durable provider state.
+- **Tenant invariant:** `TenantContext.id` is the canonical route tenant and the authentication middleware verifies `claims.tenant_id == tenant_id` before publishing `AuthContext`; direct-user sessions, delegated users, and service credentials are further checked against the same tenant. Recovery services independently filter provider-operation reads and mutations by the supplied tenant id.
+- **Operation binding:** path `operation_id` values are never accepted as globally authoritative locators; recovery lookups and CAS updates require both tenant and operation id.
+- **Input bounds:** stale intervals are clamped to a bounded 60-second to 7-day window, list/recovery page sizes are capped to 500, and provider-result fields are validated before unknown-success resolution.
+- **Response safety:** reconciliation HTTP responses project presence/shape facts instead of serializing request payload, provider result, error text, tenant id, or idempotency key. Error mappers keep owner diagnostics bounded and preserve the manage-permission boundary.
+- **Finding:** no repository-owned authorization or cross-tenant defect was confirmed in this bounded operator surface.
+- **Fresh second pass:** re-read the tenant middleware/auth correlation, reconciliation controller, recovery service, OpenAPI declarations, and existing diagnostic-safety verifier. Authorization precedes owner calls on all six routes; no route bypasses tenant filtering.
+- **Status:** `FS-22.06.144` complete as a clean source assessment; runtime/auth integration evidence remains unpromoted.
+- **Next primary iteration:** continue the local reconciliation boundary with a fresh audit of `retry_local_persistence` and its relation to provider-operation state, reserved metadata, and transaction atomicity.
+
