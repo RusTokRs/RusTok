@@ -219,9 +219,9 @@ LIMIT 1
 INSERT INTO shipping_option_translation_change_journal (
     operation_id, tenant_id, shipping_option_id, resource_revision, lifecycle
 )
-SELECT $1, shipping_options.tenant_id, shipping_options.id, $3, $4
+SELECT $1, shipping_options.tenant_id, shipping_options.id, $2, $3
 FROM shipping_options
-WHERE shipping_options.id = $2
+WHERE shipping_options.id = $4
   AND shipping_options.tenant_id = $5
 "#
         }
