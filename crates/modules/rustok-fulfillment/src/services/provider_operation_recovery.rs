@@ -11,6 +11,7 @@ use crate::error::{FulfillmentError, FulfillmentResult};
 use crate::providers::{
     FULFILLMENT_TRACKING_NUMBER_MAX_LEN, FulfillmentProviderOperationResult,
     validate_durable_provider_payload, validate_optional_boundary_text,
+    validate_provider_metadata_safety,
 };
 
 use super::provider_operation::{
@@ -179,6 +180,7 @@ impl FulfillmentProviderOperationRecovery {
             )));
         }
         validate_provider_result_metadata(&typed_result.metadata)?;
+        validate_provider_metadata_safety(&typed_result.metadata)?;
         validate_optional_boundary_text(
             "external_reference",
             typed_result.external_reference.as_deref(),
