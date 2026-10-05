@@ -115,19 +115,47 @@ for (const [value, label] of responseReaderChecks) {
 }
 forbidText(runner, 'response.arrayBuffer()', 'unbounded full-response buffering');
 
-const projectionStringChecks = [
-  ['function requiredString(value, field)', 'required projection string validator'],
-  ['function optionalString(value, field)', 'optional projection string validator'],
-  ['return value;\n}\n\nfunction timestamp', 'required projection strings preserve exact value'],
-];
-for (const [value, label] of projectionStringChecks) {
-  requireText(runner, value, label);
-}
-for (const [value, label] of [
-  ['const line = value.trim();', 'projection-wide whitespace trimming'],
-  ['return line;\n}\n\nfunction timestamp', 'trimmed projection string return'],
+const projectionStringBlock = (start, end, label) => {
+  const startIndex = runner.indexOf(start);
+  const endIndex = runner.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return runner.slice(startIndex, endIndex);
+};
+const requiredProjectionString = projectionStringBlock(
+  'function requiredString(value, field)',
+  'function optionalString(value, field)',
+  'required projection string block',
+);
+const optionalProjectionString = projectionStringBlock(
+  'function optionalString(value, field)',
+  'function timestamp(value, field)',
+  'optional projection string block',
+);
+
+for (const [source, value, label] of [
+  [
+    requiredProjectionString,
+    'if (/[\\u0000-\\u001f\\u007f]/u.test(value))',
+    'required projection string control-character guard',
+  ],
+  [requiredProjectionString, 'return value;', 'required projection exact-value preservation'],
+  [
+    optionalProjectionString,
+    'if (value.length > 4096 || /[\\u0000-\\u001f\\u007f]/u.test(value))',
+    'optional projection string control-character guard',
+  ],
+  [optionalProjectionString, 'return value;', 'optional projection exact-value preservation'],
 ]) {
-  forbidText(runner, value, label);
+  requireText(source, value, label);
+}
+for (const [source, value, label] of [
+  [requiredProjectionString, 'value.trim()', 'required projection whitespace trimming'],
+  [optionalProjectionString, 'value.trim()', 'optional projection whitespace trimming'],
+]) {
+  forbidText(source, value, label);
 }
 
 for (const [value, label] of [
