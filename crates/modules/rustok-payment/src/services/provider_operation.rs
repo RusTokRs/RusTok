@@ -165,6 +165,7 @@ impl PaymentProviderOperationJournal {
         provider_reference: Option<String>,
         provider_result: Value,
     ) -> PaymentResult<provider_operation::Model> {
+        validate_provider_reference(provider_reference.as_deref())?;
         let model = self.get(id).await?;
         if matches!(
             model.status.as_str(),
@@ -466,6 +467,19 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn validate_provider_reference(value: Option<&str>) -> PaymentResult<()> {
+    if let Some(value) = value {
+        let value = value.trim();
+        if value.is_empty() || value.len() > 191 {
+            return Err(PaymentError::Validation(
+                "payment provider_reference must be non-empty and at most 191 characters"
+                    .to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn normalize_error(value: String) -> String {
     let value = value.trim();
     let value = if value.is_empty() {
@@ -479,6 +493,14 @@ fn normalize_error(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_reference_boundary_is_enforced() {
+        assert!(validate_provider_reference(None).is_ok());
+        assert!(validate_provider_reference(Some("reference-1")).is_ok());
+        assert!(validate_provider_reference(Some("   ")).is_err());
+        assert!(validate_provider_reference(Some(&"r".repeat(192))).is_err());
+    }
 
     #[test]
     fn uncertain_executing_outcome_requires_reconciliation() {
