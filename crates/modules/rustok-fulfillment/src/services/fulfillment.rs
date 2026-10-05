@@ -1,9 +1,9 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
-    sea_query::OnConflict,
+    AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, IsolationLevel, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait, sea_query::OnConflict,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -642,14 +642,24 @@ impl FulfillmentService {
         Ok(())
     }
 
+    /// Read one fulfillment projection from one repeatable-read, read-only snapshot.
+    ///
+    /// Fulfillment state and its items are persisted in separate tables but form one
+    /// response aggregate. The snapshot prevents a concurrent lifecycle commit from
+    /// producing a parent/item combination that never existed atomically.
     pub async fn get_fulfillment(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
-        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
-        self.build_fulfillment_response(fulfillment).await
+        let txn = self.begin_read_transaction().await?;
+        let fulfillment = self
+            .load_fulfillment(&txn, tenant_id, fulfillment_id)
+            .await?;
+        let response = self.build_fulfillment_response(&txn, fulfillment).await?;
+        txn.commit().await?;
+        Ok(response)
     }
 
     async fn ensure_checkout_identity_anchor(
@@ -720,15 +730,16 @@ impl FulfillmentService {
         checkout_operation_id: Uuid,
     ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
         validate_tenant_id(tenant_id)?;
+        let txn = self.begin_read_transaction().await?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
             .order_by_asc(entities::fulfillment::Column::CheckoutFulfillmentIndex)
-            .all(&self.db)
+            .all(&txn)
             .await?;
 
         let mut records = Vec::with_capacity(rows.len());
-        let (rows, fulfillments) = self.build_fulfillment_responses(rows).await?;
+        let (rows, fulfillments) = self.build_fulfillment_responses(&txn, rows).await?;
 
         for (row, fulfillment) in rows.into_iter().zip(fulfillments) {
             let index = row.checkout_fulfillment_index.ok_or_else(|| {
@@ -748,6 +759,7 @@ impl FulfillmentService {
                 fulfillment,
             });
         }
+        txn.commit().await?;
         Ok(records)
     }
 
@@ -757,18 +769,21 @@ impl FulfillmentService {
         order_id: Uuid,
     ) -> FulfillmentResult<Option<FulfillmentResponse>> {
         validate_tenant_id(tenant_id)?;
+        let txn = self.begin_read_transaction().await?;
         let fulfillment = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
             .order_by_desc(entities::fulfillment::Column::CreatedAt)
             .order_by_desc(entities::fulfillment::Column::Id)
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
-        match fulfillment {
-            Some(fulfillment) => Ok(Some(self.build_fulfillment_response(fulfillment).await?)),
-            None => Ok(None),
-        }
+        let response = match fulfillment {
+            Some(fulfillment) => Some(self.build_fulfillment_response(&txn, fulfillment).await?),
+            None => None,
+        };
+        txn.commit().await?;
+        Ok(response)
     }
 
     pub async fn list_by_order(
@@ -777,15 +792,17 @@ impl FulfillmentService {
         order_id: Uuid,
     ) -> FulfillmentResult<Vec<FulfillmentResponse>> {
         validate_tenant_id(tenant_id)?;
+        let txn = self.begin_read_transaction().await?;
         let rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment::Column::OrderId.eq(order_id))
             .order_by_asc(entities::fulfillment::Column::CreatedAt)
             .order_by_asc(entities::fulfillment::Column::Id)
-            .all(&self.db)
+            .all(&txn)
             .await?;
 
-        let (_, items) = self.build_fulfillment_responses(rows).await?;
+        let (_, items) = self.build_fulfillment_responses(&txn, rows).await?;
+        txn.commit().await?;
         Ok(items)
     }
 
@@ -812,16 +829,18 @@ impl FulfillmentService {
             query = query.filter(entities::fulfillment::Column::CustomerId.eq(customer_id));
         }
 
-        let total = query.clone().count(&self.db).await?;
+        let txn = self.begin_read_transaction().await?;
+        let total = query.clone().count(&txn).await?;
         let rows = query
             .order_by_desc(entities::fulfillment::Column::CreatedAt)
             .order_by_desc(entities::fulfillment::Column::Id)
             .offset(offset)
             .limit(per_page)
-            .all(&self.db)
+            .all(&txn)
             .await?;
 
-        let (_, items) = self.build_fulfillment_responses(rows).await?;
+        let (_, items) = self.build_fulfillment_responses(&txn, rows).await?;
+        txn.commit().await?;
 
         Ok((items, total))
     }
@@ -1435,20 +1454,32 @@ impl FulfillmentService {
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
 
-    async fn load_fulfillment(
+    async fn begin_read_transaction(&self) -> FulfillmentResult<DatabaseTransaction> {
+        self.db
+            .begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn load_fulfillment<C>(
         &self,
+        db: &C,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
-    ) -> FulfillmentResult<entities::fulfillment::Model> {
+    ) -> FulfillmentResult<entities::fulfillment::Model>
+    where
+        C: ConnectionTrait,
+    {
         entities::fulfillment::Entity::find_by_id(fulfillment_id)
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(db)
             .await?
             .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))
     }
 
-    async fn build_fulfillment_responses(
+    async fn build_fulfillment_responses<C>(
         &self,
+        db: &C,
         fulfillments: Vec<entities::fulfillment::Model>,
     ) -> FulfillmentResult<(
         Vec<entities::fulfillment::Model>,
@@ -1467,7 +1498,7 @@ impl FulfillmentService {
             .order_by_asc(entities::fulfillment_item::Column::FulfillmentId)
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
-            .all(&self.db)
+            .all(db)
             .await?;
 
         let mut items_by_fulfillment = HashMap::<Uuid, Vec<entities::fulfillment_item::Model>>::new();
@@ -1491,15 +1522,19 @@ impl FulfillmentService {
         Ok((fulfillments, responses))
     }
 
-    async fn build_fulfillment_response(
+    async fn build_fulfillment_response<C>(
         &self,
+        db: &C,
         fulfillment: entities::fulfillment::Model,
-    ) -> FulfillmentResult<FulfillmentResponse> {
+    ) -> FulfillmentResult<FulfillmentResponse>
+    where
+        C: ConnectionTrait,
+    {
         let items = entities::fulfillment_item::Entity::find()
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
-            .all(&self.db)
+            .all(db)
             .await?;
 
         Ok(map_fulfillment(fulfillment, items))
