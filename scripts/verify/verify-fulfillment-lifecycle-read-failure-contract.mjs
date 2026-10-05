@@ -16,6 +16,9 @@ const safeQuery = readCommerceSafeQuerySource(read);
 const adminRest = read(
   'crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs',
 );
+const ownerSource = read(
+  'crates/modules/rustok-fulfillment/src/fulfillment_read.rs',
+);
 const cargo = read('crates/modules/rustok-commerce/Cargo.toml');
 const harness = read(
   'crates/modules/rustok-commerce/tests/fulfillment_read_port_failure_contract.rs',
@@ -47,6 +50,16 @@ for (const [source, value, label] of [
   [adminRest, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
   [adminRest, 'StatusCode::FORBIDDEN,', 'REST forbidden status'],
   [adminRest, '"commerce_permission_denied"', 'REST forbidden code'],
+  [
+    ownerSource,
+    'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout',
+    'owner wall-clock timeout unit test',
+  ],
+  [
+    ownerSource,
+    'std::future::pending::<Result<(), FulfillmentError>>()',
+    'deterministic owner timeout proof',
+  ],
   [safeQuery, 'pub enum FulfillmentError {', 'typed GraphQL shim error'],
   [safeQuery, 'ShippingOptionNotFound(Uuid)', 'shipping optional not-found variant'],
   [safeQuery, 'FulfillmentNotFound(Uuid)', 'fulfillment optional not-found variant'],
@@ -125,6 +138,17 @@ if (contract.owner_port !== 'FulfillmentReadPort') {
 }
 if (contract.deadline?.milliseconds !== 2000) {
   failures.push('contract deadline must be 2000 milliseconds');
+}
+if (
+  contract.deadline?.owner_wall_clock_timeout_test?.crate !== 'rustok-fulfillment' ||
+  contract.deadline?.owner_wall_clock_timeout_test?.name !==
+    'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout'
+) {
+  failures.push('contract must lock the deterministic owner wall-clock timeout test');
+}
+if (contract.deadline?.owner_wall_clock_timeout_test?.command !==
+    'cargo test -p rustok-fulfillment execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout -- --nocapture') {
+  failures.push('contract owner timeout test command mismatch');
 }
 if (contract.test_target?.name !== 'fulfillment_read_port_failure_contract') {
   failures.push('contract test target mismatch');
