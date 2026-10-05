@@ -10,6 +10,7 @@ use rustok_core::generate_id;
 
 use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::providers::validate_durable_provider_payload;
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
 pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
@@ -184,7 +185,7 @@ impl FulfillmentProviderOperationJournal {
         provider_result: Value,
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
-        validate_durable_json_payload(&provider_result, "provider_result")?;
+        validate_durable_provider_payload(&provider_result, "provider_result")?;
         let provider_reference = normalize_optional(provider_reference);
         let now = Utc::now();
         let update = provider_operation::Entity::update_many()
@@ -309,7 +310,7 @@ impl FulfillmentProviderOperationJournal {
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
         if let Some(provider_result) = provider_result.as_ref() {
-            validate_durable_json_payload(provider_result, "provider_result")?;
+            validate_durable_provider_payload(provider_result, "provider_result")?;
         }
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -604,7 +605,7 @@ fn normalize_begin_input(
             "provider operation request_payload must be a JSON object".to_string(),
         ));
     }
-    validate_durable_json_payload(&input.request_payload, "request_payload")?;
+    validate_durable_provider_payload(&input.request_payload, "request_payload")?;
     Ok(input)
 }
 
@@ -656,20 +657,6 @@ fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
             to: to.to_string(),
         })
     }
-}
-
-pub(crate) fn validate_durable_json_payload(value: &Value, field: &'static str) -> FulfillmentResult<()> {
-    let bytes = serde_json::to_vec(value).map_err(|error| {
-        FulfillmentError::Validation(format!(
-            "provider operation {field} could not be serialized: {error}"
-        ))
-    })?;
-    if bytes.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
-        return Err(FulfillmentError::Validation(format!(
-            "provider operation {field} must not exceed {MAX_PROVIDER_OPERATION_PAYLOAD_BYTES} serialized bytes"
-        )));
-    }
-    Ok(())
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -752,13 +739,13 @@ mod tests {
     #[test]
     fn provider_operation_payloads_are_bounded() {
         let oversized = serde_json::json!({"metadata": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)});
-        assert!(validate_durable_json_payload(&oversized, "provider_result").is_err());
+        assert!(validate_durable_provider_payload(&oversized, "provider_result").is_err());
     }
 
     #[test]
     fn provider_operation_payload_limit_accepts_small_json() {
         let payload = serde_json::json!({"provider": "carrier", "tracking_number": "track-1"});
-        assert!(validate_durable_json_payload(&payload, "provider_result").is_ok());
+        assert!(validate_durable_provider_payload(&payload, "provider_result").is_ok());
     }
 
     #[test]
