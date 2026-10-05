@@ -24,6 +24,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::providers::validate_provider_metadata_safety;
 use super::provider_operation::{
     FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
@@ -922,6 +923,7 @@ impl FulfillmentService {
         }
         validate_provider_id(&result.provider_id)?;
         validate_object_metadata(&result.metadata, "provider result")?;
+        validate_provider_metadata_safety(&result.metadata)?;
         if let Some(reference) = result.external_reference.as_deref() {
             crate::providers::validate_optional_boundary_text(
                 "external_reference",
