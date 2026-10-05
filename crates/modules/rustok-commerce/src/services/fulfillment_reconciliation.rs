@@ -228,34 +228,6 @@ fn metadata_operation_id(metadata: &Value) -> Option<Uuid> {
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn local_commit_metadata(
-    input_metadata: Value,
-    provider_metadata: Value,
-    operation_id: Uuid,
-    operation: &str,
-) -> Value {
-    merge_metadata(
-        merge_metadata(input_metadata, provider_metadata),
-        serde_json::json!({
-            "provider_operation": {
-                "id": operation_id,
-                "operation": operation
-            }
-        }),
-    )
-}
-
-fn merge_metadata(current: Value, patch: Value) -> Value {
-    match (current, patch) {
-        (Value::Object(mut current), Value::Object(patch)) => {
-            for (key, value) in patch {
-                current.insert(key, value);
-            }
-            Value::Object(current)
-        }
-        (_, patch) => patch,
-    }
-}
 
 #[cfg(test)]
 mod tests {
