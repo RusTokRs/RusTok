@@ -2,8 +2,8 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
     AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, IsolationLevel, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait, sea_query::OnConflict,
+    DatabaseTransaction, EntityTrait, IsolationLevel, JoinType, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait, sea_query::OnConflict,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -659,7 +659,9 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment(&txn, tenant_id, fulfillment_id)
             .await?;
-        let response = self.build_fulfillment_response(&txn, fulfillment).await?;
+        let response = self
+            .build_fulfillment_response(&txn, tenant_id, fulfillment)
+            .await?;
         txn.commit().await?;
         Ok(response)
     }
@@ -741,7 +743,9 @@ impl FulfillmentService {
             .await?;
 
         let mut records = Vec::with_capacity(rows.len());
-        let (rows, fulfillments) = self.build_fulfillment_responses(&txn, rows).await?;
+        let (rows, fulfillments) = self
+            .build_fulfillment_responses(&txn, tenant_id, rows)
+            .await?;
 
         for (row, fulfillment) in rows.into_iter().zip(fulfillments) {
             let index = row.checkout_fulfillment_index.ok_or_else(|| {
@@ -781,7 +785,10 @@ impl FulfillmentService {
             .await?;
 
         let response = match fulfillment {
-            Some(fulfillment) => Some(self.build_fulfillment_response(&txn, fulfillment).await?),
+            Some(fulfillment) => Some(
+                self.build_fulfillment_response(&txn, tenant_id, fulfillment)
+                    .await?,
+            ),
             None => None,
         };
         txn.commit().await?;
@@ -803,7 +810,9 @@ impl FulfillmentService {
             .all(&txn)
             .await?;
 
-        let (_, items) = self.build_fulfillment_responses(&txn, rows).await?;
+        let (_, items) = self
+            .build_fulfillment_responses(&txn, tenant_id, rows)
+            .await?;
         txn.commit().await?;
         Ok(items)
     }
@@ -909,7 +918,7 @@ impl FulfillmentService {
                 to: STATUS_SHIPPED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
         if items.is_empty() {
             if fulfillment.status != STATUS_PENDING {
                 return Err(FulfillmentError::InvalidTransition {
@@ -1026,7 +1035,7 @@ impl FulfillmentService {
                 to: STATUS_DELIVERED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
             let now = Utc::now();
@@ -1130,7 +1139,7 @@ impl FulfillmentService {
 
         match fulfillment.status.as_str() {
             STATUS_CANCELLED => {
-                let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
+                let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
                 let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                 let metadata = active.metadata.clone().take().unwrap_or_default();
                 let status_after = reopened_status_for_cancelled(&items, &active);
@@ -1155,7 +1164,7 @@ impl FulfillmentService {
                 self.get_fulfillment(tenant_id, fulfillment_id).await
             }
             STATUS_DELIVERED => {
-                let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
+                let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
                 if items.is_empty() {
                     let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                     let metadata = active.metadata.clone().take().unwrap_or_default();
@@ -1295,7 +1304,7 @@ impl FulfillmentService {
             });
         }
 
-        let items = self.load_fulfillment_items(&txn, fulfillment.id).await?;
+        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
         let now = Utc::now();
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
@@ -1485,6 +1494,7 @@ impl FulfillmentService {
     async fn build_fulfillment_responses<C>(
         &self,
         db: &C,
+        tenant_id: Uuid,
         fulfillments: Vec<entities::fulfillment::Model>,
     ) -> FulfillmentResult<(
         Vec<entities::fulfillment::Model>,
@@ -1502,6 +1512,11 @@ impl FulfillmentService {
             .map(|fulfillment| fulfillment.id)
             .collect::<Vec<_>>();
         let item_rows = entities::fulfillment_item::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                entities::fulfillment_item::Relation::Fulfillment.def(),
+            )
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment_item::Column::FulfillmentId.is_in(fulfillment_ids))
             .order_by_asc(entities::fulfillment_item::Column::FulfillmentId)
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
@@ -1533,12 +1548,18 @@ impl FulfillmentService {
     async fn build_fulfillment_response<C>(
         &self,
         db: &C,
+        tenant_id: Uuid,
         fulfillment: entities::fulfillment::Model,
     ) -> FulfillmentResult<FulfillmentResponse>
     where
         C: ConnectionTrait,
     {
         let items = entities::fulfillment_item::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                entities::fulfillment_item::Relation::Fulfillment.def(),
+            )
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
@@ -1567,12 +1588,18 @@ impl FulfillmentService {
     async fn load_fulfillment_items<C>(
         &self,
         db: &C,
+        tenant_id: Uuid,
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<Vec<entities::fulfillment_item::Model>>
     where
         C: ConnectionTrait,
     {
         entities::fulfillment_item::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                entities::fulfillment_item::Relation::Fulfillment.def(),
+            )
+            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
             .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
