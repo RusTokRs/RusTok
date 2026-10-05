@@ -69,7 +69,7 @@ async fn uncertain_executing_provider_operation_requires_reconciliation_without_
     assert!(uncertain.error_message.is_some());
 
     let second_claim = journal
-        .claim_execution(operation.id)
+        .claim_execution(tenant_id, operation.id)
         .await
         .expect("reconciliation state lookup must succeed");
     assert!(
