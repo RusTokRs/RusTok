@@ -1,14 +1,18 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use rustok_grid::{ColumnFilters, FilterValue, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    BundleAdminTransportProfile, build_bundle_admin_shell, selected_transport_profile,
-    validate_bundle_discount, validate_bundle_name, validate_bundle_slug,
+    BundleAdminTransportProfile, build_bundle_admin_shell, bundle_grid_columns, filter_bundles,
+    selected_transport_profile, validate_bundle_discount, validate_bundle_name,
+    validate_bundle_slug,
 };
 use crate::i18n::{normalize_admin_locale, t};
 use crate::model::{
-    BundleAdminCommand, BundleAdminCreateDraft, BundleAdminFilters, BundleAdminUpdateDraft,
+    BundleAdminCommand, BundleAdminCreateDraft, BundleAdminFilters, BundleAdminListItem,
+    BundleAdminUpdateDraft,
 };
 use crate::transport::{
     BundleAdminTransportContext, execute_bundle_command, load_bundle_directory,
@@ -317,190 +321,248 @@ pub fn ProductBundlesAdmin() -> impl IntoView {
                         "×"
                     </button>
                 </div>
-            })}
+            })}            // Grid and table state
+            {
+                let is_ru = locale.starts_with("ru");
+                let columns = bundle_grid_columns(Some(locale));
+                let filters = RwSignal::new(ColumnFilters::new());
+                let selection = RwSignal::new(RowSelection::new());
+                let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
-            // Filters Section
-            <div class="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
-                <div class="relative w-full sm:w-80">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                        </svg>
+                let filtered_bundles = Memo::new(move |_| {
+                    let raw = directory
+                        .get()
+                        .and_then(Result::ok)
+                        .map(|data| data.items)
+                        .unwrap_or_default();
+                    let current_filters = filters.get();
+                    let search_term = search.get();
+                    let list = filter_bundles(
+                        &raw,
+                        &current_filters,
+                        if search_term.trim().is_empty() {
+                            None
+                        } else {
+                            Some(search_term.trim())
+                        },
+                    );
+                    pagination.update(|p| p.total = list.len() as u64);
+                    list
+                });
+
+                let paged_bundles = Memo::new(move |_| {
+                    let list = filtered_bundles.get();
+                    let p = pagination.get();
+                    let start = (p.page.saturating_sub(1)) * p.page_size;
+                    list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+                });
+
+                let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+                    if let Some(FilterValue::Select(s)) = new_filters.get("status") {
+                        status_filter.set(Some(s.clone()));
+                    } else {
+                        status_filter.set(None);
+                    }
+                    if let Some(FilterValue::Select(t_val)) = new_filters.get("type") {
+                        type_filter.set(Some(t_val.clone()));
+                    } else {
+                        type_filter.set(None);
+                    }
+                    filters.set(new_filters);
+                });
+
+                let cell_locale = locale;
+                let cell_draft_slug = draft_slug;
+                let cell_draft_name = draft_name;
+                let cell_draft_description = draft_description;
+                let cell_draft_bundle_type = draft_bundle_type;
+                let cell_draft_status = draft_status;
+                let cell_draft_discount_type = draft_discount_type;
+                let cell_draft_discount_value = draft_discount_value;
+                let cell_edit_bundle_id = edit_bundle_id;
+                let cell_delete_confirm_id = delete_confirm_id;
+
+                let cell_renderer = Callback::new(move |(item, col_id): (BundleAdminListItem, String)| {
+                    match col_id.as_str() {
+                        "name" => {
+                            let name = item.name.clone();
+                            let desc = item.description.clone();
+                            view! {
+                                <div class="flex flex-col py-1">
+                                    <span class="font-medium text-foreground">{name}</span>
+                                    {desc.map(|d| view! {
+                                        <span class="text-xs text-muted-foreground truncate max-w-xs">{d}</span>
+                                    })}
+                                </div>
+                            }
+                            .into_any()
+                        }
+                        "slug" => {
+                            let slug = item.slug.clone();
+                            view! {
+                                <code class="text-xs font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                    {slug}
+                                </code>
+                            }
+                            .into_any()
+                        }
+                        "type" => {
+                            let b_type = item.bundle_type.clone();
+                            view! {
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
+                                    {b_type}
+                                </span>
+                            }
+                            .into_any()
+                        }
+                        "discount" => {
+                            let text = if item.discount_type == "none" {
+                                "-".to_string()
+                            } else {
+                                format!("{} ({})", item.discount_value, item.discount_type)
+                            };
+                            view! {
+                                <span class="text-xs text-muted-foreground font-mono">{text}</span>
+                            }
+                            .into_any()
+                        }
+                        "items" => {
+                            let count = item.items_count;
+                            view! {
+                                <span class="text-sm text-foreground font-mono">{count}</span>
+                            }
+                            .into_any()
+                        }
+                        "status" => {
+                            let is_active = item.status == "active";
+                            let status_label = item.status.clone();
+                            view! {
+                                <span class=format!(
+                                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {}",
+                                    if is_active {
+                                        "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                    } else {
+                                        "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400"
+                                    }
+                                )>
+                                    {status_label}
+                                </span>
+                            }
+                            .into_any()
+                        }
+                        "actions" => {
+                            let item_clone = item.clone();
+                            let id_for_del = item.id.clone();
+                            let edit_label = t(Some(cell_locale), "bundle.action-edit", "Edit");
+                            let del_label = t(Some(cell_locale), "bundle.delete", "Delete");
+                            view! {
+                                <div class="flex items-center justify-end gap-2 py-1">
+                                    <button
+                                        type="button"
+                                        class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 text-xs font-medium px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                                        on:click=move |_| {
+                                            cell_draft_slug.set(item_clone.slug.clone());
+                                            cell_draft_name.set(item_clone.name.clone());
+                                            cell_draft_description.set(item_clone.description.clone().unwrap_or_default());
+                                            cell_draft_bundle_type.set(item_clone.bundle_type.clone());
+                                            cell_draft_status.set(item_clone.status.clone());
+                                            cell_draft_discount_type.set(item_clone.discount_type.clone());
+                                            cell_draft_discount_value.set(item_clone.discount_value.clone());
+                                            cell_edit_bundle_id.set(Some(item_clone.id.clone()));
+                                        }
+                                    >
+                                        {edit_label}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 text-xs font-medium px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                                        on:click=move |_| cell_delete_confirm_id.set(Some(id_for_del.clone()))
+                                    >
+                                        {del_label}
+                                    </button>
+                                </div>
+                            }
+                            .into_any()
+                        }
+                        _ => ().into_any(),
+                    }
+                });
+
+                view! {
+                    <div class="space-y-4">
+                        // Search input
+                        <div class="flex flex-col sm:flex-row gap-4">
+                            <div class="flex-1">
+                                <input
+                                    type="text"
+                                    placeholder=t(Some(locale), "bundle.filter-searchPlaceholder", "Search by name or slug...")
+                                    class="w-full px-3 py-2 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                                    prop:value=move || search.get()
+                                    on:input=move |ev| search.set(event_target_value(&ev))
+                                />
+                            </div>
+                        </div>
+
+                        // Selection toolbar
+                        <Show when=move || !selection.get().is_empty()>
+                            <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-medium text-foreground">
+                                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "комплектов" } else { "bundles" })}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                                    on:click=move |_| selection.update(|s| s.clear())
+                                >
+                                    {if is_ru { "Снять выбор" } else { "Clear" }}
+                                </button>
+                            </div>
+                        </Show>
+
+                        // Directory Table with DataGrid
+                        <div class="bg-card rounded-xl border border-border overflow-hidden shadow-sm p-4">
+                            <Suspense fallback=move || view! {
+                                <div class="p-8 text-center text-muted-foreground text-sm">
+                                    {t(Some(locale), "bundle.loadingList", "Loading bundles...")}
+                                </div>
+                            }>
+                                {move || match directory.get() {
+                                    None => view! {
+                                        <div class="p-8 text-center text-muted-foreground text-sm">
+                                            {t(Some(locale), "bundle.loadingList", "Loading bundles...")}
+                                        </div>
+                                    }.into_any(),
+                                    Some(Err(e)) => view! {
+                                        <div class="p-8 text-center text-destructive text-sm">
+                                            {format!("Error: {e}")}
+                                        </div>
+                                    }.into_any(),
+                                    Some(Ok(_)) => {
+                                        let empty_msg = t(Some(locale), "bundle.empty", "No bundles found").to_string();
+                                        view! {
+                                            <DataGrid
+                                                columns=columns.clone()
+                                                data=Signal::derive(move || paged_bundles.get())
+                                                key_fn=|item: &BundleAdminListItem| item.id.clone()
+                                                cell_renderer=cell_renderer
+                                                is_loading=Signal::derive(move || busy.get() || directory.get().is_none())
+                                                empty_message=empty_msg
+                                                selection=selection
+                                                pagination=pagination
+                                                filters=filters
+                                                on_filter_change=on_filters_change
+                                                on_row_click=Callback::new(|_| ())
+                                            />
+                                        }.into_any()
+                                    }
+                                }}
+                            </Suspense>
+                        </div>
                     </div>
-                    <input
-                        type="text"
-                        class="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        placeholder=t(Some(locale), "bundle.filter-searchPlaceholder", "Search by name or slug...")
-                        prop:value=move || search.get()
-                        on:input=move |ev| search.set(event_target_value(&ev))
-                    />
-                </div>
-
-                <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
-                    <button
-                        type="button"
-                        class=move || format!(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {}",
-                            if status_filter.get().is_none() {
-                                "bg-blue-600 text-white"
-                            } else {
-                                "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                            }
-                        )
-                        on:click=move |_| status_filter.set(None)
-                    >
-                        {t(Some(locale), "bundle.filter-all", "All")}
-                    </button>
-                    <button
-                        type="button"
-                        class=move || format!(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {}",
-                            if status_filter.get().as_deref() == Some("active") {
-                                "bg-green-600 text-white"
-                            } else {
-                                "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                            }
-                        )
-                        on:click=move |_| status_filter.set(Some("active".to_string()))
-                    >
-                        {t(Some(locale), "bundle.statusActive", "Active")}
-                    </button>
-                    <button
-                        type="button"
-                        class=move || format!(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {}",
-                            if status_filter.get().as_deref() == Some("draft") {
-                                "bg-amber-600 text-white"
-                            } else {
-                                "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-                            }
-                        )
-                        on:click=move |_| status_filter.set(Some("draft".to_string()))
-                    >
-                        {t(Some(locale), "bundle.statusDraft", "Draft")}
-                    </button>
-                </div>
-            </div>
-
-            // Directory Table
-            <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-                <Suspense fallback=move || view! {
-                    <div class="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-                        {t(Some(locale), "bundle.loadingList", "Loading bundles...")}
-                    </div>
-                }>
-                    {move || {
-                        directory.get().map(|res| match res {
-                            Ok(dir) if dir.items.is_empty() => view! {
-                                <div class="p-12 text-center">
-                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                    </svg>
-                                    <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                                        {t(Some(locale), "bundle.empty", "No bundles found")}
-                                    </h3>
-                                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                        {t(Some(locale), "bundle.empty-hint", "Create the first product bundle for your catalog.")}
-                                    </p>
-                                </div>
-                            }.into_any(),
-                            Ok(dir) => view! {
-                                <div class="overflow-x-auto">
-                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-left text-sm">
-                                        <thead class="bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 font-medium">
-                                            <tr>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.name", "Name")}</th>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.slug", "Slug")}</th>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.type", "Type")}</th>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.column-discount", "Discount")}</th>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.itemsCount", "Items")}</th>
-                                                <th class="px-6 py-3">{t(Some(locale), "bundle.status", "Status")}</th>
-                                                <th class="px-6 py-3 text-right">{t(Some(locale), "bundle.actions", "Actions")}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
-                                            {dir.items.into_iter().map(|item| {
-                                                let id_for_edit = item.id.clone();
-                                                let id_for_del = item.id.clone();
-                                                let item_clone = item.clone();
-                                                let is_active = item.status == "active";
-
-                                                view! {
-                                                    <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors">
-                                                        <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
-                                                            {item.name}
-                                                        </td>
-                                                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400 font-mono text-xs">
-                                                            {item.slug}
-                                                        </td>
-                                                        <td class="px-6 py-4">
-                                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">
-                                                                {item.bundle_type}
-                                                            </span>
-                                                        </td>
-                                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-300 text-xs">
-                                                            {if item.discount_type == "none" {
-                                                                "-".to_string()
-                                                            } else {
-                                                                format!("{} ({})", item.discount_value, item.discount_type)
-                                                            }}
-                                                        </td>
-                                                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
-                                                            {item.items_count}
-                                                        </td>
-                                                        <td class="px-6 py-4">
-                                                            <span class=format!(
-                                                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {}",
-                                                                if is_active {
-                                                                    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                                                } else {
-                                                                    "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400"
-                                                                }
-                                                            )>
-                                                                {item.status}
-                                                            </span>
-                                                        </td>
-                                                        <td class="px-6 py-4 text-right space-x-2">
-                                                            <button
-                                                                type="button"
-                                                                class="text-blue-600 hover:text-blue-800 dark:text-blue-400 text-xs font-medium"
-                                                                on:click=move |_| {
-                                                                    draft_slug.set(item_clone.slug.clone());
-                                                                    draft_name.set(item_clone.name.clone());
-                                                                    draft_description.set(item_clone.description.clone().unwrap_or_default());
-                                                                    draft_bundle_type.set(item_clone.bundle_type.clone());
-                                                                    draft_status.set(item_clone.status.clone());
-                                                                    draft_discount_type.set(item_clone.discount_type.clone());
-                                                                    draft_discount_value.set(item_clone.discount_value.clone());
-                                                                    edit_bundle_id.set(Some(id_for_edit.clone()));
-                                                                }
-                                                            >
-                                                                {t(Some(locale), "bundle.action-edit", "Edit")}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                class="text-red-600 hover:text-red-800 dark:text-red-400 text-xs font-medium"
-                                                                on:click=move |_| delete_confirm_id.set(Some(id_for_del.clone()))
-                                                            >
-                                                                {t(Some(locale), "bundle.delete", "Delete")}
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            }).collect_view()}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            }.into_any(),
-                            Err(e) => view! {
-                                <div class="p-8 text-center text-red-600 dark:text-red-400 text-sm">
-                                    {format!("Error: {e}")}
-                                </div>
-                            }.into_any(),
-                        })
-                    }}
-                </Suspense>
-            </div>
+                }
+            }
 
             // Create Modal
             {
