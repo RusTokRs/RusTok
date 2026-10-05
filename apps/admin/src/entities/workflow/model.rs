@@ -152,7 +152,7 @@ pub struct WorkflowDetail {
     pub steps: Vec<WorkflowStep>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct WorkflowExecution {
     pub id: String,
     #[serde(rename = "workflowId")]
@@ -167,7 +167,7 @@ pub struct WorkflowExecution {
     pub step_executions: Vec<StepExecution>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct StepExecution {
     pub id: String,
     #[serde(rename = "stepId")]

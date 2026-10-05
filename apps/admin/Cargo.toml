@@ -75,6 +75,7 @@ hydrate = [
   "rustok-workflow-admin/hydrate",
   "rustok-auth-admin/hydrate",
   "rustok-blog-admin/hydrate",
+  "rustok-grid-leptos/hydrate",
 ]
 ssr = [
   "leptos/ssr",
@@ -133,9 +134,12 @@ ssr = [
   "rustok-workflow-admin/ssr",
   "rustok-auth-admin/ssr",
   "rustok-blog-admin/ssr",
+  "rustok-grid-leptos/ssr",
 ]
 
 [dependencies]
+rustok-grid.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }
 rustok-ui-auth.workspace = true
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }

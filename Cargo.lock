@@ -14411,6 +14411,8 @@ dependencies = [
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
  "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
  "rustok-groups-admin",
  "rustok-iggy-connector-admin",
  "rustok-index-admin",
