@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `7258ae8a46763cfb58ee4f05943729d158422375`  
+**Current main SHA:** `fd0df50e6537ad38fc708cbaebff1917ea5d9880`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -444,7 +444,7 @@ Hard limits for every iteration:
 - [x] **FS-22.05.28 — `apps/server/src/services/app_runtime.rs`** — reordered rate-limit runtime initialization ahead of GraphQL schema construction so Blog/Search GraphQL policies receive their shared limiter handles. Source-level fix and adjacent composition re-audit complete; maintainer-owned tests/build/runtime evidence remain pending.
 - [x] **FS-22.05 — GraphQL composition:** completed through FS-22.05.28 after the GraphQL runtime composition/rate-limit ordering fix and post-merge reconciliation. Remaining maintainer-owned scoped verification is explicitly recorded on the individual iterations.
 - [ ] **FS-22.06 — REST/controller composition:** decomposed below into ordered one-primary-module iterations; begin with the auth controller because it is the highest-risk self-service REST boundary.
-- [ ] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — audit route/extractor/response ownership, auth lifecycle delegation, session tenant isolation, token/reset/verification failure semantics, and Swagger contract parity.
+- [x] **FS-22.06.01 — `apps/server/src/controllers/auth.rs`** — auth lifecycle delegation and tenant-scoped session operations completed; public routes/DTOs unchanged. PR #4556 squash merged as `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
 - [ ] **FS-22.06.02 — `apps/server/src/controllers/users.rs`** — audit admin user REST authorization, tenant scope, pagination, mutation transactions, response projections, and lifecycle delegation.
 - [ ] **FS-22.06.03 — `apps/server/src/controllers/oauth.rs`** — audit OAuth token/authorize/consent/browser-session/revoke transport contracts, principal binding, CSRF/browser trust, and failure mapping.
 - [ ] **FS-22.06.04 — `apps/server/src/controllers/auth.rs` auxiliary reset/verification surface** — reserved for a separate iteration only if the primary auth audit uncovers an independent token/email lifecycle root cause.
@@ -463,8 +463,9 @@ Hard limits for every iteration:
 - **Regression audit:** expired/revoked refresh tokens now fail with the existing stable invalid-refresh-token transport error instead of being silently re-revoked; concurrent refresh can no longer rotate a token between controller lookup and mutation. Session list/revoke authorization and limits remain equivalent to the pre-existing lifecycle service implementations.
 - **Fresh second pass:** re-read the complete `auth.rs` controller after the refactor, searched for session SQL and lifecycle-method duplication, and found only the intentionally separate login-history read. Re-read the owner test block after adding the new regression; no additional in-scope root-cause defect was identified.
 - **Verification:** source/contract inspection, post-write reread, and branch comparison were performed. Local Cargo/tests/rustfmt/gatekeeper could not be executed because the repository workspace is not mounted and container DNS cannot reach GitHub; no runtime/CI pass is claimed. The changed Rust is ready for CI/maintainer verification.
-- **Status:** `FS-22.06.01` implementation complete on the dedicated branch; PR/integration pending.
-- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.02 — apps/server/src/controllers/users.rs`; keep auth reset/verification as a separate slice only when an independent root cause is confirmed.
+- **Status:** `FS-22.06.01` complete and integrated into `main` via PR #4556, squash merge `fd0df50e6537ad38fc708cbaebff1917ea5d9880`.
+- **Post-merge reconciliation:** refreshed `main` at `fd0df50e6537ad38fc708cbaebff1917ea5d9880`; comparison against the recorded base `9f1dbc6c22ef0937a9e0369801cff461ec604202` contains the expected auth controller, lifecycle service, and ledger changes plus the merge commit. No concurrent main changes touched the auth boundary.
+- **Next primary iteration:** `FS-22.06.02 — apps/server/src/controllers/users.rs`.
 
 
 ### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
