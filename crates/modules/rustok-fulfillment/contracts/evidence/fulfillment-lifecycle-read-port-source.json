@@ -41,6 +41,7 @@
     "read_policy_required": true,
     "tenant_parsed_from_port_context": true,
     "deadline_required_by_policy": true,
+    "deadline_runtime_enforced_in_process_adapter": true,
     "diagnostics_retain_actor_channel_locale_correlation": false,
     "diagnostics_retain_correlation_id": true,
     "diagnostics_retain_bounded_context_shape": true,
