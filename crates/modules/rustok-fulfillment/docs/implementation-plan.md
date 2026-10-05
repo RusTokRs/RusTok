@@ -15,6 +15,7 @@ GraphQL transports selected via `execute_selected_transport`. Selection identity
 seller_id`; legacy `seller_scope` is not accepted. Provider registry guards
 capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
+Provider-backed ship/reship/cancel retries are replay-safe after local persistence succeeds but journal commit is interrupted: persisted `metadata.provider_operation` identity is checked before lifecycle mutation, so recovery can complete the provider journal without duplicating the local state transition.
 
 Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands from
