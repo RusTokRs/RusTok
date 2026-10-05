@@ -52,8 +52,10 @@
     "batched_item_query_for_multi_row_reads": true,
     "item_ordering_preserved": true,
     "response_row_order_preserved": true,
-    "parent_and_items_share_repeatable_read_snapshot": true,
-    "snapshot_is_read_only": true,
+    "parent_and_items_share_one_transaction_snapshot": true,
+    "postgres_isolation_level_requested": "repeatable_read",
+    "read_only_access_mode_requested": true,
+    "sqlite_transaction_preserves_snapshot": true,
     "pagination_total_and_page_share_snapshot": true
   },
   "errors": {
