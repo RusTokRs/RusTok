@@ -21,6 +21,7 @@ const DEFAULT_STRIPE_API_BASE: &str = "https://api.stripe.com";
 const DEFAULT_WEBHOOK_TOLERANCE_SECONDS: i64 = 300;
 const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 const MAX_STRIPE_ID_LENGTH: usize = 191;
+const MAX_STRIPE_RESPONSE_BYTES: usize = 1024 * 1024;
 const WEBHOOK_OPERATION: &str = "webhook";
 
 #[derive(Clone)]
@@ -193,7 +194,37 @@ impl StripePaymentProvider {
         if !status.is_success() {
             return Err(map_stripe_status(status, operation));
         }
-        response.json::<T>().await.map_err(|_| {
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_STRIPE_RESPONSE_BYTES as u64)
+        {
+            return Err(PaymentError::provider_outcome_unknown(
+                STRIPE_PAYMENT_PROVIDER_ID,
+                operation,
+            ));
+        }
+
+        let mut body = Vec::with_capacity(
+            response
+                .content_length()
+                .map(|length| length as usize)
+                .unwrap_or(0)
+                .min(MAX_STRIPE_RESPONSE_BYTES),
+        );
+        let mut response = response;
+        while let Some(chunk) = response.chunk().await.map_err(|_| {
+            PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, operation)
+        })? {
+            if body.len().saturating_add(chunk.len()) > MAX_STRIPE_RESPONSE_BYTES {
+                return Err(PaymentError::provider_outcome_unknown(
+                    STRIPE_PAYMENT_PROVIDER_ID,
+                    operation,
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+
+        serde_json::from_slice::<T>(&body).map_err(|_| {
             PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, operation)
         })
     }
@@ -742,6 +773,11 @@ mod tests {
         assert!(validate_api_base("http://127.0.0.1:12111").is_ok());
         assert!(validate_api_base("http://localhost.evil.example").is_err());
         assert!(validate_api_base("https://api.stripe.com?secret=x").is_err());
+    }
+
+    #[test]
+    fn stripe_response_body_limit_is_one_mebibyte() {
+        assert_eq!(MAX_STRIPE_RESPONSE_BYTES, 1024 * 1024);
     }
 
     #[test]
