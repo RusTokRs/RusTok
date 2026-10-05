@@ -514,6 +514,45 @@ pub fn format_reading_time(minutes: u32, locale: Option<&str>) -> String {
     }
 }
 
+pub fn percent_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(b as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    result
+}
+
+pub fn telegram_share_url(url: &str, text: &str) -> String {
+    format!(
+        "https://t.me/share/url?url={}&text={}",
+        percent_encode(url),
+        percent_encode(text)
+    )
+}
+
+pub fn vk_share_url(url: &str, title: &str) -> String {
+    format!(
+        "https://vk.com/share.php?url={}&title={}",
+        percent_encode(url),
+        percent_encode(title)
+    )
+}
+
+pub fn twitter_share_url(url: &str, text: &str) -> String {
+    format!(
+        "https://twitter.com/intent/tweet?url={}&text={}",
+        percent_encode(url),
+        percent_encode(text)
+    )
+}
+
 #[cfg(test)]
 mod tests;
 

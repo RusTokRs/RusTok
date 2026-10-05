@@ -94,10 +94,54 @@ pub fn BlogView() -> impl IntoView {
 
 #[component]
 fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let selected_post_slug = data.selected_post.as_ref().and_then(|p| p.slug.clone());
+    let is_post_selected = data.selected_post.is_some();
+
+    let (other_posts, other_total) = if let Some(slug) = selected_post_slug.as_deref() {
+        let items: Vec<_> = data
+            .posts
+            .items
+            .into_iter()
+            .filter(|item| item.slug.as_deref() != Some(slug))
+            .collect();
+        let total = items.len() as u64;
+        (items, total)
+    } else {
+        let total = data.posts.total;
+        (data.posts.items, total)
+    };
+
+    let related_title = t(
+        locale.as_deref(),
+        "blog.related.title",
+        "Related articles",
+    );
+
     view! {
         <div class="space-y-6">
             <SelectedPostCard post=data.selected_post comments_page />
-            <PublishedPostsList items=data.posts.items total=data.posts.total />
+            {if is_post_selected {
+                if !other_posts.is_empty() {
+                    view! {
+                        <div class="mt-8 border-t border-border pt-6">
+                            <PublishedPostsList
+                                items=other_posts
+                                total=other_total
+                                list_title=Some(related_title)
+                            />
+                        </div>
+                    }
+                    .into_any()
+                } else {
+                    ().into_any()
+                }
+            } else {
+                view! {
+                    <PublishedPostsList items=other_posts total=other_total />
+                }
+                .into_any()
+            }}
         </div>
     }
 }
@@ -133,6 +177,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     };
 
     let post_id = post.id;
+    let title_str = post.title.clone();
     let effective_locale = post.effective_locale;
     let status = post.status;
     let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
@@ -183,6 +228,8 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         published_at.as_str(),
     );
     let author_profile = post.author_profile;
+    let featured_image_url = post.featured_image_url;
+    let share_slug = slug.clone();
     let reading_minutes = core::calculate_reading_time(&content_plain_text);
     let reading_time_label = core::format_reading_time(reading_minutes, locale.as_deref());
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
@@ -269,6 +316,16 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                 />
             </div>
             <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>
+            {featured_image_url.map(|url| view! {
+                <div class="mt-4 aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
+                    <img
+                        src=url
+                        alt=title_str.clone()
+                        loading="lazy"
+                        class="h-full w-full object-cover"
+                    />
+                </div>
+            })}
             {match content {
                 Some(content) => view! {
                     <RichTextHtml
@@ -305,6 +362,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
             } else {
                 ().into_any()
             }}
+            <BlogShareButtons title=title_str slug=share_slug />
             {if let Some(author) = author_profile {
                 let initial = author
                     .display_name
@@ -550,7 +608,11 @@ fn PublicCommentCard(comment: BlogCommentListItem) -> impl IntoView {
 }
 
 #[component]
-fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView {
+fn PublishedPostsList(
+    items: Vec<BlogPostListItem>,
+    total: u64,
+    #[prop(optional)] list_title: Option<String>,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
     let route_segment = core::route_segment_or_default(
@@ -559,8 +621,10 @@ fn PublishedPostsList(items: Vec<BlogPostListItem>, total: u64) -> impl IntoView
     );
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
+    let default_title = t(locale.as_deref(), "blog.list.title", "Published posts");
+    let header_title = list_title.unwrap_or(default_title);
     let header_view = core::published_posts_header_typed_view(
-        t(locale.as_deref(), "blog.list.title", "Published posts"),
+        header_title,
         total,
         &t(locale.as_deref(), "blog.list.total", "total"),
     );
@@ -706,5 +770,52 @@ fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
         <span class=badge_view.badge_css>
             {badge_view.label}
         </span>
+    }
+}
+
+#[component]
+pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let is_ru = locale.as_deref() == Some("ru");
+    let share_label = if is_ru { "Поделиться" } else { "Share" };
+    let telegram_label = "Telegram";
+    let vk_label = "VK";
+    let twitter_label = "X (Twitter)";
+
+    let article_url = format!("/blog?slug={}", core::percent_encode(&slug));
+    let tg_url = core::telegram_share_url(&article_url, &title);
+    let vk_url = core::vk_share_url(&article_url, &title);
+    let tw_url = core::twitter_share_url(&article_url, &title);
+
+    view! {
+        <div class="mt-6 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-4">
+            <span class="mr-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {share_label}
+            </span>
+            <a
+                href=tg_url
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition"
+            >
+                {telegram_label}
+            </a>
+            <a
+                href=vk_url
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition"
+            >
+                {vk_label}
+            </a>
+            <a
+                href=tw_url
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition"
+            >
+                {twitter_label}
+            </a>
+        </div>
     }
 }

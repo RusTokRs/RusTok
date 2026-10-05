@@ -490,3 +490,27 @@ use super::*;
         assert_eq!(super::format_reading_time(3, Some("ru")), "3 минуты чтения");
         assert_eq!(super::format_reading_time(5, Some("ru")), "5 минут чтения");
     }
+
+    #[test]
+    fn share_url_helpers_generate_valid_escaped_urls() {
+        assert_eq!(super::percent_encode("hello world"), "hello%20world");
+        assert_eq!(super::percent_encode("abc-123_.~"), "abc-123_.~");
+
+        let tg = super::telegram_share_url("/blog?slug=post-1", "My Post");
+        assert_eq!(
+            tg,
+            "https://t.me/share/url?url=%2Fblog%3Fslug%3Dpost-1&text=My%20Post"
+        );
+
+        let vk = super::vk_share_url("/blog?slug=post-1", "My Post");
+        assert_eq!(
+            vk,
+            "https://vk.com/share.php?url=%2Fblog%3Fslug%3Dpost-1&title=My%20Post"
+        );
+
+        let tw = super::twitter_share_url("/blog?slug=post-1", "My Post");
+        assert_eq!(
+            tw,
+            "https://twitter.com/intent/tweet?url=%2Fblog%3Fslug%3Dpost-1&text=My%20Post"
+        );
+    }
