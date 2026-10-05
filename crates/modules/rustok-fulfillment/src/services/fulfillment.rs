@@ -411,6 +411,26 @@ impl FulfillmentService {
     ///
     /// Durable orchestration journals use this ID as their local resource anchor so
     /// retries rebuild the same fulfillment instead of creating a second resource.
+    pub(crate) async fn create_fulfillment_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CreateFulfillmentInput,
+    ) -> FulfillmentResult<()> {
+        validate_tenant_id(tenant_id)?;
+        self.validate_create_fulfillment_input(tenant_id, &input).await?;
+        self.insert_fulfillment_in_txn(
+            txn,
+            tenant_id,
+            fulfillment_id,
+            input,
+            None,
+            Utc::now(),
+        )
+        .await
+    }
+
     pub(crate) async fn create_fulfillment_with_id(
         &self,
         tenant_id: Uuid,
