@@ -997,6 +997,7 @@ Hard limits for every iteration:
 - **Status:** `FS-22.03.18` complete after PR #4277 merge. Continue to the next unchecked primary module in FS-22.03.
 
 ### FS-22.03.17 Iterations 1-4 — `apps/server/src/services/auth_admin_mutation_provider.rs`
+
 - **Base:** refreshed `main` at `8951800d7e53f12add957e2679041ec4ece9ce1d`; dedicated branch `codex/audit-fs-22.03.17-auth-admin-provider`. During implementation, `main` advanced with unrelated UI PR #4272; the final branch was merged with an explicit 3-way merge-tree so that unrelated `main` changes were preserved.
 - **Iteration 1 — user mutation fences:** SQLite user mutation locking now checks the conditional write fence, rereads the current row, and rejects unsupported backends without panic. User custom-field updates compare the pre-lock metadata snapshot with the locked row and fail with a conflict on concurrent metadata changes. This prevents stale snapshots from overwriting concurrent user changes.
 - **Iteration 2 — admin error boundary:** raw DB/service diagnostics in the user and OAuth admin providers now pass through `internal_admin_error`, logging server-side while exposing only `Auth administration operation failed`. Validation, permission, conflict and not-found categories remain stable and user-facing where appropriate.
