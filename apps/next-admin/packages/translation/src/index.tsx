@@ -31,6 +31,14 @@ import {
   TabsTrigger
 } from '@/shared/ui/shadcn/tabs';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/widgets/data-table';
 import { registerAdminModule } from '@/modules/registry';
 
 import { executeTranslationOperation } from './api';
@@ -542,35 +550,35 @@ export function TranslationAdminPage({
                 <CardContent>
                   {targets.length ? (
                     <div className='overflow-x-auto rounded-xl border'>
-                      <table className='w-full text-sm'>
-                        <thead className='bg-muted/50 text-muted-foreground text-left text-xs uppercase'>
-                          <tr>
-                            <th className='px-4 py-3'>
+                      <Table className='w-full text-sm'>
+                        <TableHeader className='bg-muted/50 text-muted-foreground text-left text-xs uppercase'>
+                          <TableRow>
+                            <TableHead className='px-4 py-3'>
                               {t('targets.provider')}
-                            </th>
-                            <th className='px-4 py-3'>{t('targets.target')}</th>
-                            <th className='px-4 py-3'>
+                            </TableHead>
+                            <TableHead className='px-4 py-3'>{t('targets.target')}</TableHead>
+                            <TableHead className='px-4 py-3'>
                               {t('targets.capabilities')}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className='divide-y'>
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody className='divide-y'>
                           {targets.map((target) => (
-                            <tr
+                            <TableRow
                               key={`${target.ownerSlug}/${target.resourceKind}`}
                             >
-                              <td className='px-4 py-3 font-medium'>
+                              <TableCell className='px-4 py-3 font-medium'>
                                 {target.ownerSlug}
-                              </td>
-                              <td className='px-4 py-3'>
+                              </TableCell>
+                              <TableCell className='px-4 py-3'>
                                 <div className='font-medium'>
                                   {target.displayName}
                                 </div>
                                 <div className='text-muted-foreground text-xs'>
                                   {target.resourceKind}
                                 </div>
-                              </td>
-                              <td className='px-4 py-3'>
+                              </TableCell>
+                              <TableCell className='px-4 py-3'>
                                 <div className='flex flex-wrap gap-1'>
                                   {target.capabilities.map((capability) => (
                                     <Badge key={capability} variant='outline'>
@@ -578,11 +586,11 @@ export function TranslationAdminPage({
                                     </Badge>
                                   ))}
                                 </div>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   ) : (
                     <EmptyState message={t('targets.empty')} />
@@ -813,43 +821,43 @@ export function TranslationAdminPage({
                       <EmptyState message={t('jobs.reviewersEmpty')} />
                     ) : (
                       <div className='overflow-x-auto rounded-xl border'>
-                        <table
+                        <Table
                           className='w-full text-sm'
                           data-testid='translation-reviewer-queue'
                         >
-                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
-                            <tr>
-                              <th className='px-3 py-2'>{t('field.itemId')}</th>
-                              <th className='px-3 py-2'>
+                          <TableHeader className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
+                            <TableRow>
+                              <TableHead className='px-3 py-2'>{t('field.itemId')}</TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.reviewer')}
-                              </th>
-                              <th className='px-3 py-2'>{t('field.status')}</th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>{t('field.status')}</TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.submittedAt')}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className='divide-y'>
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className='divide-y'>
                             {reviewerQueue.map((entry) => (
-                              <tr key={entry.proposalId}>
-                                <td className='px-3 py-2 font-mono text-xs'>
+                              <TableRow key={entry.proposalId}>
+                                <TableCell className='px-3 py-2 font-mono text-xs'>
                                   {entry.item.id}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {entry.item.assignee
                                     ? actorLabel(entry.item.assignee)
                                     : t('field.unassigned')}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {entry.item.status}
-                                </td>
-                                <td className='text-muted-foreground px-3 py-2 text-xs whitespace-nowrap'>
+                                </TableCell>
+                                <TableCell className='text-muted-foreground px-3 py-2 text-xs whitespace-nowrap'>
                                   {entry.submittedAt}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             ))}
-                          </tbody>
-                        </table>
+                          </TableBody>
+                        </Table>
                       </div>
                     )}
                   </div>
@@ -861,71 +869,71 @@ export function TranslationAdminPage({
                       <EmptyState message={t('jobs.reviewersEmpty')} />
                     ) : (
                       <div className='overflow-x-auto rounded-xl border'>
-                        <table
+                        <Table
                           className='w-full text-sm'
                           data-testid='translation-reviewer-workload'
                         >
-                          <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
-                            <tr>
-                              <th className='px-3 py-2'>
+                          <TableHeader className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
+                            <TableRow>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.reviewer')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.openItems')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.inReviewItems')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.approvedItems')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.rebaseRequiredItems')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.blockedItems')}
-                              </th>
-                              <th className='px-3 py-2'>
+                              </TableHead>
+                              <TableHead className='px-3 py-2'>
                                 {t('field.sourceCharacters')}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className='divide-y'>
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className='divide-y'>
                             {reviewerWorkload.map((workload) => (
-                              <tr
+                              <TableRow
                                 key={
                                   workload.assignee
                                     ? `${workload.assignee.kind}:${workload.assignee.id}`
                                     : 'unassigned'
                                 }
                               >
-                                <td className='px-3 py-2'>
+                                <TableCell className='px-3 py-2'>
                                   {workload.assignee
                                     ? actorLabel(workload.assignee)
                                     : t('field.unassigned')}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.openItems}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.inReviewItems}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.approvedItems}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.rebaseRequiredItems}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.blockedItems}
-                                </td>
-                                <td className='px-3 py-2'>
+                                </TableCell>
+                                <TableCell className='px-3 py-2'>
                                   {workload.sourceCharacters}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             ))}
-                          </tbody>
-                        </table>
+                          </TableBody>
+                        </Table>
                       </div>
                     )}
                   </div>
@@ -1164,39 +1172,39 @@ export function TranslationAdminPage({
                   <EmptyState message={t('jobs.interchangeArtifactsEmpty')} />
                 ) : (
                   <div className='overflow-x-auto rounded-xl border'>
-                    <table
+                    <Table
                       className='w-full text-sm'
                       data-testid='translation-interchange-artifacts'
                     >
-                      <thead className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
-                        <tr>
-                          <th className='px-3 py-2'>
+                      <TableHeader className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
+                        <TableRow>
+                          <TableHead className='px-3 py-2'>
                             {t('field.interchangeArtifactId')}
-                          </th>
-                          <th className='px-3 py-2'>
+                          </TableHead>
+                          <TableHead className='px-3 py-2'>
                             {t('field.interchangeDirection')}
-                          </th>
-                          <th className='px-3 py-2'>{t('field.status')}</th>
-                          <th className='px-3 py-2'>{t('field.expiresAt')}</th>
-                          <th className='px-3 py-2'>{t('field.totalItems')}</th>
-                          <th className='px-3 py-2'>{t('field.actions')}</th>
-                        </tr>
-                      </thead>
-                      <tbody className='divide-y'>
+                          </TableHead>
+                          <TableHead className='px-3 py-2'>{t('field.status')}</TableHead>
+                          <TableHead className='px-3 py-2'>{t('field.expiresAt')}</TableHead>
+                          <TableHead className='px-3 py-2'>{t('field.totalItems')}</TableHead>
+                          <TableHead className='px-3 py-2'>{t('field.actions')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody className='divide-y'>
                         {interchangeArtifacts.map((artifact) => (
-                          <tr key={artifact.id}>
-                            <td className='px-3 py-2 font-mono text-xs'>
+                          <TableRow key={artifact.id}>
+                            <TableCell className='px-3 py-2 font-mono text-xs'>
                               {artifact.id}
-                            </td>
-                            <td className='px-3 py-2'>{artifact.direction}</td>
-                            <td className='px-3 py-2'>
+                            </TableCell>
+                            <TableCell className='px-3 py-2'>{artifact.direction}</TableCell>
+                            <TableCell className='px-3 py-2'>
                               <Badge variant='outline'>{artifact.status}</Badge>
-                            </td>
-                            <td className='px-3 py-2'>{artifact.expiresAt}</td>
-                            <td className='px-3 py-2'>
+                            </TableCell>
+                            <TableCell className='px-3 py-2'>{artifact.expiresAt}</TableCell>
+                            <TableCell className='px-3 py-2'>
                               {artifact.report?.totalItems ?? '—'}
-                            </td>
-                            <td className='px-3 py-2'>
+                            </TableCell>
+                            <TableCell className='px-3 py-2'>
                               <Button
                                 size='sm'
                                 variant='ghost'
@@ -1210,11 +1218,11 @@ export function TranslationAdminPage({
                               >
                                 {t('action.readInterchangeArtifact')}
                               </Button>
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
               </CardContent>

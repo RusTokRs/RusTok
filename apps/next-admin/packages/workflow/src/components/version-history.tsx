@@ -24,27 +24,16 @@ export function VersionHistory({
   }
 
   return (
-    <div className='rounded-md border'>
-      <table className='w-full text-sm'>
-        <thead>
-          <tr className='bg-muted/50 border-b text-left'>
-            <th className='px-4 py-2 font-medium'>Version</th>
-            <th className='px-4 py-2 font-medium'>Saved</th>
-            <th className='px-4 py-2 font-medium' />
-          </tr>
-        </thead>
-        <tbody>
-          {versions.map((v) => (
-            <VersionRow
-              key={v.version}
-              workflowId={workflowId}
-              version={v}
-              opts={opts}
-              onRestored={onRestored}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className='divide-border border-border overflow-hidden rounded-xl border divide-y'>
+      {versions.map((v) => (
+        <VersionRow
+          key={v.version}
+          workflowId={workflowId}
+          version={v}
+          opts={opts}
+          onRestored={onRestored}
+        />
+      ))}
     </div>
   );
 }
@@ -76,23 +65,25 @@ function VersionRow({
   }
 
   return (
-    <tr className='hover:bg-muted/30 border-b last:border-0'>
-      <td className='px-4 py-2 font-mono text-xs'>v{version.version}</td>
-      <td className='text-muted-foreground px-4 py-2'>
-        {new Date(version.createdAt).toLocaleString()}
-      </td>
-      <td className='px-4 py-2 text-right'>
-        {error && (
-          <span className='text-destructive mr-2 text-xs'>{error}</span>
-        )}
+    <div className='hover:bg-muted/30 flex items-center justify-between px-4 py-3 transition-colors'>
+      <div className='flex items-center gap-3'>
+        <span className='font-mono text-xs font-semibold text-foreground'>
+          v{version.version}
+        </span>
+        <span className='text-muted-foreground text-xs'>
+          {new Date(version.createdAt).toLocaleString()}
+        </span>
+      </div>
+      <div className='flex items-center gap-2'>
+        {error && <span className='text-destructive text-xs'>{error}</span>}
         <button
           onClick={handleRestore}
           disabled={pending}
-          className='hover:bg-muted rounded border px-2 py-1 text-xs disabled:opacity-50'
+          className='hover:bg-muted rounded border border-border px-2.5 py-1 text-xs font-medium text-foreground transition disabled:opacity-50'
         >
           {pending ? '…' : 'Restore'}
         </button>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }

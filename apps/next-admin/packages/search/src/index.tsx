@@ -2,6 +2,14 @@
 
 import React from 'react';
 import type { AdminGraphqlExecutor } from '@/lib/graphql';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/widgets/data-table';
 
 type SearchAdminTab = 'overview' | 'playground' | 'analytics' | 'dictionaries';
 
@@ -2558,24 +2566,24 @@ function DictionaryTable(props: {
       <div className='mt-5'>
         {props.rows.length ? (
           <div className='overflow-hidden rounded-2xl border border-zinc-200'>
-            <table className='w-full text-sm'>
-              <thead className='border-b border-zinc-200 bg-zinc-50'>
-                <tr>
+            <Table>
+              <TableHeader className='border-b border-zinc-200 bg-zinc-50'>
+                <TableRow>
                   {props.headers.map((header) => (
                     <Th key={header}>{header}</Th>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {props.rows.map((row) => (
-                  <tr key={row.key} className='border-t border-zinc-100'>
+                  <TableRow key={row.key} className='border-t border-zinc-100'>
                     {row.cells.map((cell, index) => (
                       <Td key={`${row.key}-${index}`}>{cell}</Td>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         ) : (
           <EmptyPanel title={props.emptyTitle} body={props.emptyBody} />
@@ -2599,20 +2607,20 @@ function LaggingTable({
     );
   return (
     <div className='overflow-hidden rounded-2xl border border-zinc-200'>
-      <table className='w-full text-sm'>
-        <thead className='border-b border-zinc-200 bg-zinc-50'>
-          <tr>
+      <Table>
+        <TableHeader className='border-b border-zinc-200 bg-zinc-50'>
+          <TableRow>
             <Th>Title</Th>
             <Th>Type</Th>
             <Th>Locale</Th>
             <Th>Lag</Th>
             <Th>Indexed</Th>
             <Th>Updated</Th>
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr key={row.documentKey} className='border-t border-zinc-100'>
+            <TableRow key={row.documentKey} className='border-t border-zinc-100'>
               <Td>
                 <div className='font-medium text-zinc-900'>{row.title}</div>
                 <div className='mt-1 text-xs text-zinc-500'>
@@ -2628,10 +2636,10 @@ function LaggingTable({
               </Td>
               <Td>{row.indexedAt}</Td>
               <Td>{row.updatedAt}</Td>
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -2651,25 +2659,25 @@ function ConsistencyTable({
   }
   return (
     <div className='overflow-hidden rounded-2xl border border-zinc-200'>
-      <table className='w-full text-sm'>
-        <thead className='border-b border-zinc-200 bg-zinc-50'>
-          <tr>
+      <Table>
+        <TableHeader className='border-b border-zinc-200 bg-zinc-50'>
+          <TableRow>
             <Th>Issue</Th>
             <Th>Title</Th>
             <Th>Type</Th>
             <Th>Locale</Th>
             <Th>Updated</Th>
             <Th>Indexed</Th>
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => {
             const badgeClass =
               row.issueKind === 'missing'
                 ? 'border-rose-200 bg-rose-50 text-rose-700'
                 : 'border-orange-200 bg-orange-50 text-orange-700';
             return (
-              <tr
+              <TableRow
                 key={`${row.issueKind}:${row.documentKey}`}
                 className='border-t border-zinc-100'
               >
@@ -2690,11 +2698,11 @@ function ConsistencyTable({
                 <Td>{row.locale}</Td>
                 <Td>{row.updatedAt}</Td>
                 <Td>{row.indexedAt ?? 'not indexed'}</Td>
-              </tr>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -2714,9 +2722,9 @@ function AnalyticsTable({
 
   return (
     <div className='overflow-hidden rounded-2xl border border-zinc-200'>
-      <table className='w-full text-sm'>
-        <thead className='border-b border-zinc-200 bg-white'>
-          <tr>
+      <Table>
+        <TableHeader className='border-b border-zinc-200 bg-white'>
+          <TableRow>
             <Th>Query</Th>
             <Th>Hits</Th>
             <Th>Zero hits</Th>
@@ -2726,11 +2734,11 @@ function AnalyticsTable({
             <Th>Avg latency</Th>
             <Th>Avg results</Th>
             <Th>Last seen</Th>
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr
+            <TableRow
               key={`${row.query}-${row.lastSeenAt}`}
               className='border-t border-zinc-100'
             >
@@ -2745,10 +2753,10 @@ function AnalyticsTable({
               <Td>{`${row.avgTookMs.toFixed(1)} ms`}</Td>
               <Td>{row.avgResults.toFixed(1)}</Td>
               <Td>{row.lastSeenAt}</Td>
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -2769,20 +2777,20 @@ function IntelligenceTable({
 
   return (
     <div className='overflow-hidden rounded-2xl border border-zinc-200'>
-      <table className='w-full text-sm'>
-        <thead className='border-b border-zinc-200 bg-white'>
-          <tr>
+      <Table>
+        <TableHeader className='border-b border-zinc-200 bg-white'>
+          <TableRow>
             <Th>Query</Th>
             <Th>Hits</Th>
             <Th>Zero hits</Th>
             <Th>Clicks</Th>
             <Th>CTR</Th>
             <Th>Recommendation</Th>
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr
+            <TableRow
               key={`${row.query}-${row.recommendation}`}
               className='border-t border-zinc-100'
             >
@@ -2792,10 +2800,10 @@ function IntelligenceTable({
               <Td>{String(row.clicks)}</Td>
               <Td>{`${(row.clickThroughRate * 100).toFixed(1)}%`}</Td>
               <Td>{row.recommendation}</Td>
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -2869,15 +2877,15 @@ function Field({
 
 function Th({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <th className='px-4 py-3 text-left text-xs font-semibold tracking-[0.14em] text-zinc-500 uppercase'>
+    <TableHead className='px-4 py-3 text-left text-xs font-semibold tracking-[0.14em] text-zinc-500 uppercase'>
       {children}
-    </th>
+    </TableHead>
   );
 }
 
 function Td({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <td className='px-4 py-3 align-top text-xs text-zinc-600'>{children}</td>
+    <TableCell className='px-4 py-3 align-top text-xs text-zinc-600'>{children}</TableCell>
   );
 }
 

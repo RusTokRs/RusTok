@@ -937,42 +937,49 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
             Refresh
           </button>
         </div>
-        <div className='overflow-x-auto'>
-          <table className='w-full min-w-[720px] text-left text-sm'>
-            <thead className='text-muted-foreground border-b'>
-              <tr>
-                <th className='px-2 py-2 font-medium'>Time</th>
-                <th className='px-2 py-2 font-medium'>Action</th>
-                <th className='px-2 py-2 font-medium'>Outcome</th>
-                <th className='px-2 py-2 font-medium'>Tool</th>
-                <th className='px-2 py-2 font-medium'>Actor</th>
-                <th className='px-2 py-2 font-medium'>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditEvents.map((event) => (
-                <tr
-                  className='border-border border-b last:border-0'
-                  key={event.id}
-                >
-                  <td className='px-2 py-2 whitespace-nowrap'>
-                    {event.createdAt}
-                  </td>
-                  <td className='px-2 py-2 font-medium'>{event.action}</td>
-                  <td className='px-2 py-2'>{event.outcome}</td>
-                  <td className='px-2 py-2'>
-                    {event.toolName ?? 'Control plane'}
-                  </td>
-                  <td className='px-2 py-2'>{event.actorType ?? 'Unknown'}</td>
-                  <td className='max-w-64 truncate px-2 py-2'>
-                    {event.reason ?? '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {auditEvents.length === 0 && !loading ? (
+        {auditEvents.length ? (
+          <div className='divide-border border-border overflow-hidden rounded-xl border divide-y'>
+            <div className='bg-muted/50 text-muted-foreground grid grid-cols-6 px-4 py-2.5 text-xs font-semibold uppercase'>
+              <span>Time</span>
+              <span>Action</span>
+              <span>Outcome</span>
+              <span>Tool</span>
+              <span>Actor</span>
+              <span>Reason</span>
+            </div>
+            {auditEvents.map((event) => (
+              <div
+                key={event.id}
+                className='hover:bg-muted/30 grid grid-cols-6 items-center px-4 py-3 text-sm transition-colors'
+              >
+                <span className='text-muted-foreground whitespace-nowrap text-xs'>
+                  {event.createdAt}
+                </span>
+                <span className='text-foreground font-medium'>{event.action}</span>
+                <span>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      event.outcome === 'SUCCESS' || event.outcome === 'ALLOWED'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-destructive/10 text-destructive'
+                    }`}
+                  >
+                    {event.outcome}
+                  </span>
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {event.toolName ?? 'Control plane'}
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {event.actorType ?? 'Unknown'}
+                </span>
+                <span className='text-muted-foreground truncate text-xs'>
+                  {event.reason ?? '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : !loading ? (
           <p className='text-muted-foreground text-sm'>No audit events.</p>
         ) : null}
       </section>
