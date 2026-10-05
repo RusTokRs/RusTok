@@ -4776,3 +4776,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Integration:** squash-merged as `2205c57edf0179881b8619b04e71ae0267576584` via PR #4535; post-merge `main` was refreshed at the merge SHA and the Fulfillment service, shipping-option read verifier, local diagnostic-safety document, and ledger entry were re-read. The post-merge diff contains only the four intended files.
 - **Status:** `FS-22.06.130` complete and integrated; mounted projection parity, deadline/failure, restart, and remote-adapter runtime evidence remain unproven.
 - **Next primary iteration:** continue the same Fulfillment owner boundary with a fresh second pass, focusing on remaining write-side translation mutation semantics separately from this read-side tenant-scope remediation; keep all runtime evidence explicitly unpromoted.
+
+
+### FS-22.06.131 Assessment — shipping-option translation write tenant scope
+
+- **Base:** `6fced721cd69f17d41443270ebf9a9e176ed207d`; dedicated branch `codex/audit-fs-22.06.131-shipping-translation-write-scope`.
+- **Primary scope:** the Fulfillment owner mutation helper `synchronize_translations` in `crates/modules/rustok-fulfillment/src/services/fulfillment.rs`.
+- **Invariant map:** `shipping_option_translations` has no standalone tenant key, so update/delete mutations must remain bound to the tenant-scoped `shipping_options` parent inside the mutation query itself; caller-side parent validation is not the only ownership guard.
+- **Confirmed finding FULFILLMENT-22.06.131-01:** translation synchronization converted scoped child reads into `ActiveModel::update` and `delete_by_id` operations that addressed the child only by primary key. The parent shipping option was already tenant-locked in the surrounding transaction, but the child mutation SQL did not independently retain the tenant relation predicate.
+- **Production remediation:** translation updates now use `Entity::update_many` constrained by child id, `shipping_option_id`, and a tenant-scoped `EXISTS` predicate over `shipping_options`; deletes use the same relation-based predicate. Each operation requires exactly one affected row and converts an unexpected zero-row mutation into `DbErr::RecordNotUpdated`.
+- **Schema decision:** no tenant column was added to `shipping_option_translations`; tenant ownership remains derived from the canonical parent relation.
+- **Verifier remediation:** new `scripts/verify/verify-fulfillment-shipping-translation-write-scope.mjs` locks the update/delete query shape, parent relation, tenant predicate, cardinality guard, and absence of the old blind mutation calls.
+- **Documentation:** the Fulfillment README translation-ownership contract now explicitly requires tenant-scoped update/delete mutation queries through the parent shipping option.
+- **Immediate re-audit:** the synchronization helper contains one update branch and one delete branch; both carry child identity, parent identity, tenant-scoped parent existence, and exactly-one-row guards. The old `ActiveModel::update` and `delete_by_id` forms are absent from the helper.
+- **Fresh second pass:** re-read the modified service block, translation entity relation, local owner README, verifier, and diff. No schema duplication or alternate translation mutation path was found in the primary service.
+- **Adjacent-boundary audit:** the parent shipping option remains selected and locked with `TenantId` before synchronization; locale normalization, CAS revision checking, change-journal append, and transaction rollback semantics remain unchanged.
+- **Verification:** repository-content inspection, mutation-path enumeration, relation/schema comparison, exact branch diff review, and independent source invariant checks only. No Cargo/tests/Clippy/rustfmt/verifier/gatekeeper/runtime commands were executed by the agent because the repository is not mounted in the active runtime; maintainer/CI verification remains required.
+- **Status:** source remediation complete on the dedicated branch; pending PR integration and post-merge reconciliation.
+- **Next primary iteration:** after integration, continue the same Fulfillment write boundary with a fresh second pass, focusing on insert-side ownership and concurrency semantics separately; keep all runtime evidence explicitly unpromoted.
