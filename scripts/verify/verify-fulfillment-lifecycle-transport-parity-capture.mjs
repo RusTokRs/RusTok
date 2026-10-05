@@ -43,7 +43,7 @@ const expectedSourceFiles = [
   'crates/modules/rustok-commerce/src/graphql/query.rs',
   'crates/modules/rustok-commerce/src/graphql/safe_query.rs',
   'crates/modules/rustok-commerce/src/graphql_runtime.rs',
-  'crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs',
+  'crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs',
   'crates/modules/rustok-fulfillment/src/fulfillment_read.rs',
   'crates/modules/rustok-fulfillment/contracts/evidence/fulfillment-lifecycle-read-port-source.json',
 ];
