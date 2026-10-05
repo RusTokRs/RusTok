@@ -281,6 +281,7 @@ disable/reconciliation matrix in
 - [x] Make provider-backed `create_label` result persistence owner-atomic: provider result facts, reserved `provider_operation` metadata, and journal `COMMITTED` transition share one Fulfillment transaction; recovery reuses the same owner boundary.
 - [x] Bound durable provider-operation request/result JSON to 32 KiB at the provider SPI and journal/recovery boundaries; oversized results are rejected before external execution or recovery persistence.
 - [x] Reject restricted sensitive/raw provider-result metadata keys recursively before external-result persistence or manual recovery; durable provider journal data remains limited to normalized, non-sensitive provider facts.
+- [x] Apply the same restricted-key privacy guard to provider request metadata before durable journal admission, so caller-supplied operation metadata cannot persist obvious secret/raw transport fields.
 - [x] Provider lifecycle calls honor the declared `PortContext` deadline; timeout is fail-closed as `reconciliation_required` for unknown external outcomes, with checkpoint failure remaining unavailable/reconciliation-required rather than retryable.
 - [x] Durable provider-result writers revalidate provider ID and external reference against the journaled operation before persistence, with the same metadata/tracking safety checks used by recovery.
 
