@@ -4561,6 +4561,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Verification: repository-content inspection and cross-file contract review only. No failure harness, verifier, Cargo, test, formatting, workflow, CI, or runtime execution was run by the agent.
 - Status: FS-22.06.118 source/evidence remediation complete; pending integration and post-merge reconciliation.
 - Next primary iteration: after merge, continue the remaining maintainer-owned runtime evidence gates for projection parity and deadline/failure execution, while keeping restart/external-adapter/remote-adapter claims separate.
+### FS-22.06.118 Assessment — Fulfillment lifecycle failure-contract REST forbidden status drift
+
+- Base: b524579d5342dbc9b6dff3d3cb3b7b29bc5a46e2; implementation branch codex/audit-fs-22.06.118-rest-forbidden-contract.
+- Primary scope: the deterministic Fulfillment lifecycle read failure-contract boundary spanning the machine contract, admin REST harness, verifier, and failure-contract documentation.
+- Confirmed finding FULFILLMENT-22.06.118-01: the locked failure contract and its integration harness expected authenticated admin REST PortErrorKind::Forbidden as HTTP 401, while the actual Fulfillment admin read mapper returns HTTP 403. The harness therefore encoded a guaranteed false runtime expectation.
+- Remediation: aligned the failure contract, harness, and documentation to HTTP 403; strengthened the source verifier to read the canonical admin controller and require the actual StatusCode::FORBIDDEN + commerce_permission_denied mapping, preventing future drift from being hidden by the harness.
+- Re-audit: GraphQL error matrix, optional not-found semantics, two-second context deadlines, owner-message redaction, and all other REST error mappings remain unchanged. The difference is limited to the authenticated REST Forbidden status semantics.
+- Verification: repository-content inspection and cross-file contract review only. No failure harness, verifier, Cargo, test, formatting, workflow, CI, or runtime execution was run by the agent.
+- Integration: squash-merged as ee412d485092ffa4ea09d9b661c0d4984ffb3fd0 via PR #4513; post-merge main was re-read at the merge SHA and the contract, harness, verifier, documentation, and admin mapper were reconciled.
+- Status: FS-22.06.118 complete and integrated; maintainer-owned runtime deadline/failure evidence remains unproven.
+- Next primary iteration: continue the remaining runtime-evidence source audit, then maintainer-owned execution of projection parity and deterministic deadline/failure capture before promoting runtime evidence.
 ### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
 
 - Base: b093d073de50528a576aca07474a595a668bc8c8; fresh main was refreshed before implementation and post-merge main is 5d0f4dc18698a492dc9c13b4bd70484671b7407c.
