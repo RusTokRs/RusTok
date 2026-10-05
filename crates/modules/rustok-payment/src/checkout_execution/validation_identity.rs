@@ -1,9 +1,11 @@
-struct JournaledProviderResult {
+use super::*;
+
+pub(super) struct JournaledProviderResult {
     operation_id: Uuid,
     result: PaymentProviderOperationResult,
 }
 
-fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError> {
+pub(super) fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError> {
     if identity.checkout_operation_id.is_nil()
         || identity.cart_id.is_nil()
         || identity.order_id.is_nil()
@@ -35,7 +37,7 @@ fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError
     Ok(())
 }
 
-fn validate_optional_collection_identity(
+pub(super) fn validate_optional_collection_identity(
     collection: &PaymentCollectionResponse,
     identity: &CheckoutPaymentIdentity,
 ) -> Result<(), PortError> {
@@ -63,7 +65,7 @@ fn validate_optional_collection_identity(
     Ok(())
 }
 
-fn validate_collection(
+pub(super) fn validate_collection(
     collection: &PaymentCollectionResponse,
     tenant_id: Uuid,
     identity: &CheckoutPaymentIdentity,
@@ -106,7 +108,7 @@ fn validate_collection(
     Ok(())
 }
 
-fn checkout_stage_metadata(base: Value, identity: &CheckoutPaymentIdentity, stage: &str) -> Value {
+pub(super) fn checkout_stage_metadata(base: Value, identity: &CheckoutPaymentIdentity, stage: &str) -> Value {
     let mut root = match base {
         Value::Object(root) => root,
         _ => Default::default(),
@@ -139,7 +141,7 @@ fn checkout_stage_metadata(base: Value, identity: &CheckoutPaymentIdentity, stag
     Value::Object(root)
 }
 
-fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
+pub(super) fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String {
     collection
         .provider_id
         .clone()
