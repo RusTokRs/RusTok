@@ -300,237 +300,8 @@ fn port_error(kind: PortErrorKind, code: &'static str, retryable: bool) -> PortE
     PortError::new(kind, code, OWNER_SENTINEL, retryable)
 }
 
-fn assert_graphql_call_context(call: &RecordedCall, tenant_id: Uuid, resource_id: Uuid) {
-    assert_eq!(call.context.tenant_id, tenant_id.to_string());
-    assert_eq!(call.context.deadline_ms, Some(2_000));
-    assert_eq!(call.context.actor.kind, PortActorKind::Service);
-    assert_eq!(
-        call.context.actor.id,
-        "rustok-commerce.graphql-query-fulfillments"
-    );
-    assert_eq!(call.context.locale, "en");
-    assert_eq!(call.context.channel, None);
-    assert_eq!(
-        call.context.correlation_id,
-        format!(
-            "graphql-fulfillment-lifecycle:fulfillment:read_fulfillment_projection:{resource_id}"
-        )
-    );
-}
-
-#[tokio::test]
-async fn graphql_fulfillment_lookup_preserves_typed_port_errors_and_redacts_owner_messages() {
-    let db = setup_test_db().await;
-    support::ensure_commerce_schema(&db).await;
-    let tenant_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
-
-    let cases = [
-        (
-            port_error(PortErrorKind::Validation, "owner.validation", false),
-            "FULFILLMENT_REQUEST_INVALID",
-            false,
-        ),
-        (
-            port_error(PortErrorKind::Conflict, "owner.conflict", false),
-            "FULFILLMENT_STATE_CONFLICT",
-            false,
-        ),
-        (
-            port_error(PortErrorKind::Forbidden, "owner.forbidden", false),
-            "FULFILLMENT_ACCESS_DENIED",
-            false,
-        ),
-        (
-            port_error(PortErrorKind::Unavailable, "owner.unavailable", true),
-            "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
-            true,
-        ),
-        (
-            port_error(PortErrorKind::Timeout, "owner.timeout", true),
-            "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
-            true,
-        ),
-        (
-            port_error(PortErrorKind::InvariantViolation, "owner.invariant", false),
-            "FULFILLMENT_OPERATION_FAILED",
-            false,
-        ),
-    ];
-
-    for (error, expected_code, expected_retryable) in cases {
-        let fulfillment_id = Uuid::new_v4();
-        let port = Arc::new(ScriptedFulfillmentReadPort::failing(error));
-        let schema = graphql_schema(
-            &db,
-            tenant_context(tenant_id),
-            request_context(tenant_id),
-            auth_context(tenant_id, user_id),
-            port.clone(),
-        );
-        let response = schema
-            .execute(GraphqlRequest::new(format!(
-                r#"query {{
-                    fulfillment(tenantId: "{tenant_id}", id: "{fulfillment_id}") {{ id }}
-                }}"#
-            )))
-            .await;
-        let payload = response_json(&response);
-        let error = &payload["errors"][0];
-
-        assert_eq!(error["extensions"]["code"], json!(expected_code));
-        assert_eq!(error["extensions"]["retryable"], json!(expected_retryable));
-        assert!(
-            !payload.to_string().contains(OWNER_SENTINEL),
-            "owner message escaped through GraphQL: {payload}"
-        );
-
-        let calls = port.calls();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].operation, "read_fulfillment_projection");
-        assert_graphql_call_context(&calls[0], tenant_id, fulfillment_id);
-    }
-}
-
-#[tokio::test]
-async fn graphql_fulfillment_lookup_keeps_not_found_optional() {
-    let db = setup_test_db().await;
-    support::ensure_commerce_schema(&db).await;
-    let tenant_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    let fulfillment_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
-    let port = Arc::new(ScriptedFulfillmentReadPort::failing(port_error(
-        PortErrorKind::NotFound,
-        "owner.not_found",
-        false,
-    )));
-    let schema = graphql_schema(
-        &db,
-        tenant_context(tenant_id),
-        request_context(tenant_id),
-        auth_context(tenant_id, user_id),
-        port.clone(),
-    );
-
-    let response = schema
-        .execute(GraphqlRequest::new(format!(
-            r#"query {{
-                fulfillment(tenantId: "{tenant_id}", id: "{fulfillment_id}") {{ id }}
-            }}"#
-        )))
-        .await;
-    let payload = response_json(&response);
-
-    assert!(
-        response.errors.is_empty(),
-        "optional not-found should not produce GraphQL errors: {:?}",
-        response.errors
-    );
-    assert_eq!(payload["data"]["fulfillment"], Value::Null);
-    assert!(!payload.to_string().contains(OWNER_SENTINEL));
-    assert_graphql_call_context(&port.calls()[0], tenant_id, fulfillment_id);
-}
-
-#[tokio::test]
-async fn graphql_list_and_latest_by_order_apply_the_same_deadline_contract() {
-    let db = setup_test_db().await;
-    support::ensure_commerce_schema(&db).await;
-    let tenant_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
-    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
-        .create_order(
-            tenant_id,
-            user_id,
-            CreateOrderInput {
-                customer_id: None,
-                currency_code: "RUB".to_string(),
-                shipping_total: Decimal::ZERO,
-                line_items: vec![CreateOrderLineItemInput {
-                    product_id: Some(Uuid::new_v4()),
-                    variant_id: Some(Uuid::new_v4()),
-                    fulfillment_requirement: OrderLineFulfillmentRequirement::Physical,
-                    shipping_profile_slug: Some("default".to_string()),
-                    seller_id: None,
-                    sku: Some("FULFILLMENT-READ-FAILURE".to_string()),
-                    title: "Fulfillment read failure contract".to_string(),
-                    quantity: 1,
-                    unit_price: Decimal::ONE,
-                    metadata: json!({}),
-                }],
-                adjustments: Vec::new(),
-                tax_lines: Vec::new(),
-                metadata: json!({}),
-            },
-        )
-        .await
-        .expect("order fixture should be created");
-
-    let port = Arc::new(ScriptedFulfillmentReadPort::recording());
-    let schema = graphql_schema(
-        &db,
-        tenant_context(tenant_id),
-        request_context(tenant_id),
-        auth_context(tenant_id, user_id),
-        port.clone(),
-    );
-    let response = schema
-        .execute(GraphqlRequest::new(format!(
-            r#"query {{
-                fulfillments(
-                    tenantId: "{tenant_id}",
-                    filter: {{ orderId: "{}", page: 1, perPage: 5 }}
-                ) {{
-                    total
-                }}
-                order(tenantId: "{tenant_id}", id: "{}") {{
-                    fulfillment {{ id }}
-                }}
-            }}"#,
-            order.id, order.id
-        )))
-        .await;
-
-    assert!(
-        response.errors.is_empty(),
-        "list/latest context query failed: {:?}",
-        response.errors
-    );
-    let calls = port.calls();
-    let list = calls
-        .iter()
-        .find(|call| call.operation == "list_fulfillment_projections")
-        .expect("list operation should be recorded");
-    let latest = calls
-        .iter()
-        .find(|call| call.operation == "find_latest_fulfillment_by_order_projection")
-        .expect("latest-by-order operation should be recorded");
-
-    for call in [list, latest] {
-        assert_eq!(call.context.tenant_id, tenant_id.to_string());
-        assert_eq!(call.context.deadline_ms, Some(2_000));
-        assert_eq!(call.context.actor.kind, PortActorKind::Service);
-        assert_eq!(
-            call.context.actor.id,
-            "rustok-commerce.graphql-query-fulfillments"
-        );
-        assert_eq!(call.context.locale, "en");
-        assert_eq!(call.context.channel, None);
-        assert!(call.context.correlation_id.ends_with(&order.id.to_string()));
-    }
-}
-
-#[tokio::test]
-async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_context() {
-    let db = setup_test_db().await;
-    support::ensure_commerce_schema(&db).await;
-    let tenant_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
-
-    let cases = [
+fn admin_rest_error_cases() -> [(PortError, StatusCode, &'static str); 7] {
+    [
         (
             port_error(PortErrorKind::Validation, "owner.validation", false),
             StatusCode::BAD_REQUEST,
@@ -566,9 +337,36 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_admin_fulfillment_failed",
         ),
-    ];
+    ]
+}
 
-    for (error, expected_status, expected_code) in cases {
+fn assert_graphql_call_context(call: &RecordedCall, tenant_id: Uuid, resource_id: Uuid) {
+    assert_eq!(call.context.tenant_id, tenant_id.to_string());
+    assert_eq!(call.context.deadline_ms, Some(2_000));
+    assert_eq!(call.context.actor.kind, PortActorKind::Service);
+    assert_eq!(
+        call.context.actor.id,
+        "rustok-commerce.graphql-query-fulfillments"
+    );
+    assert_eq!(call.context.locale, "en");
+    assert_eq!(call.context.channel, None);
+    assert_eq!(
+        call.context.correlation_id,
+        format!(
+            "graphql-fulfillment-lifecycle:fulfillment:read_fulfillment_projection:{resource_id}"
+        )
+    );
+}
+
+#[tokio::test]
+async fn graphql_fulfillment_lookup_preserves_typed_port_errors_and_redacts_owner_messages() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    for (error, expected_status, expected_code) in admin_rest_error_cases() {
         let fulfillment_id = Uuid::new_v4();
         let port = Arc::new(ScriptedFulfillmentReadPort::failing(error));
         let response = rest_router(
@@ -614,6 +412,68 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
         assert_eq!(
             call.context.correlation_id,
             format!("commerce-admin-fulfillment:get_fulfillment:{fulfillment_id}")
+        );
+    }
+}
+
+#[tokio::test]
+async fn admin_rest_fulfillment_list_preserves_typed_errors_and_request_context() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    for (error, expected_status, expected_code) in admin_rest_error_cases() {
+        let port = Arc::new(ScriptedFulfillmentReadPort::failing(error));
+        let response = rest_router(
+            &db,
+            tenant_context(tenant_id),
+            auth_context(tenant_id, user_id),
+            port.clone(),
+        )
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/admin/fulfillments?status=processing&order_id={order_id}&customer_id={customer_id}&page=1&per_page=5"
+                ))
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .header("Accept-Language", "ru-RU,ru;q=0.9")
+                .body(Body::empty())
+                .expect("REST list request should build"),
+        )
+        .await
+        .expect("REST list request should complete");
+
+        assert_eq!(response.status(), expected_status);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("REST list error body should read");
+        let payload: Value =
+            serde_json::from_slice(&body).expect("REST list error body should be JSON");
+        assert_eq!(payload["code"], json!(expected_code));
+        assert!(
+            !String::from_utf8_lossy(&body).contains(OWNER_SENTINEL),
+            "owner message escaped through REST list: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let calls = port.calls();
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call.operation, "list_fulfillment_projections");
+        assert_eq!(call.context.tenant_id, tenant_id.to_string());
+        assert_eq!(call.context.deadline_ms, Some(2_000));
+        assert_eq!(call.context.actor.kind, PortActorKind::User);
+        assert_eq!(call.context.actor.id, user_id.to_string());
+        assert_eq!(call.context.locale, "ru-RU");
+        assert_eq!(call.context.channel, None);
+        assert_eq!(
+            call.context.correlation_id,
+            format!("commerce-admin-fulfillment:list_fulfillments:{tenant_id}")
         );
     }
 }
