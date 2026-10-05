@@ -18,9 +18,6 @@ pub const PROVIDER_OPERATION_ERROR: &str = "provider_error";
 pub const PROVIDER_OPERATION_RECONCILIATION_REQUIRED: &str = "reconciliation_required";
 pub const PROVIDER_OPERATION_COMMITTED: &str = "committed";
 
-/// Maximum serialized JSON retained in the durable provider-operation journal.
-pub const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
-
 #[derive(Clone, Debug)]
 pub struct BeginProviderOperation {
     pub tenant_id: Uuid,
