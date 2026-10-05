@@ -622,10 +622,19 @@ async fn check_search_index_lag(
 
     let (status, reason) = match ctx.db().query_one_raw(stmt).await {
         Ok(Some(row)) => {
-            let lag_seconds = row
-                .try_get::<i64>("", "max_lag_seconds")
-                .unwrap_or(0)
-                .max(0);
+            let lag_seconds = match row.try_get::<i64>("", "max_lag_seconds") {
+                Ok(value) => value.max(0),
+                Err(_) => {
+                    return ReadinessCheck {
+                        name: "search_index_lag".to_string(),
+                        kind: "lag",
+                        criticality: DependencyCriticality::NonCritical,
+                        status: ReadinessStatus::Degraded,
+                        latency_ms: started_at.elapsed().as_millis(),
+                        reason: Some("search lag check failed".to_string()),
+                    };
+                }
+            };
             if lag_seconds > threshold {
                 (
                     ReadinessStatus::Degraded,
