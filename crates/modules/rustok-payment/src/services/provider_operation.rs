@@ -642,12 +642,72 @@ fn normalize_error(value: String) -> String {
 mod tests {
     use super::*;
 
+    fn test_operation() -> provider_operation::Model {
+        let now = chrono::Utc::now().fixed_offset();
+        provider_operation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            payment_collection_id: Uuid::new_v4(),
+            refund_id: None,
+            operation: "authorize".to_string(),
+            provider_id: "gateway".to_string(),
+            idempotency_key: "test-operation".to_string(),
+            status: PROVIDER_OPERATION_EXECUTING.to_string(),
+            request_payload: serde_json::json!({}),
+            provider_reference: None,
+            provider_result: None,
+            error_message: None,
+            created_at: now,
+            updated_at: now,
+            provider_completed_at: None,
+            committed_at: None,
+        }
+    }
+
     #[test]
     fn provider_reference_boundary_is_enforced() {
-        assert!(validate_provider_reference(None).is_ok());
-        assert!(validate_provider_reference(Some("reference-1")).is_ok());
-        assert!(validate_provider_reference(Some("   ")).is_err());
-        assert!(validate_provider_reference(Some(&"r".repeat(192))).is_err());
+        let current = test_operation();
+        assert!(validate_provider_reference(&current, None).is_ok());
+        assert!(validate_provider_reference(&current, Some("reference-1")).is_ok());
+        assert!(validate_provider_reference(&current, Some("   ")).is_err());
+        assert!(validate_provider_reference(&current, Some(&"r".repeat(192))).is_err());
+    }
+
+    #[test]
+    fn journal_provider_result_identity_is_enforced() {
+        let current = test_operation();
+        let valid = serde_json::to_value(PaymentProviderOperationResult {
+            provider_id: "gateway".to_string(),
+            external_reference: Some("reference-1".to_string()),
+            authorized_amount: rust_decimal::Decimal::new(100, 0),
+            captured_amount: rust_decimal::Decimal::ZERO,
+            metadata: serde_json::json!({}),
+        })
+        .expect("provider result should serialize");
+
+        assert_eq!(
+            validate_provider_result_for_operation(
+                &current,
+                Some("reference-1".to_string()),
+                &valid,
+            )
+            .expect("valid provider result should pass"),
+            Some("reference-1".to_string())
+        );
+        assert!(
+            validate_provider_result_for_operation(
+                &current,
+                Some("other-reference".to_string()),
+                &valid,
+            )
+            .is_err(),
+            "supplied provider reference must match the external reference"
+        );
+        assert!(
+            validate_provider_result_for_operation(&current, None, &serde_json::Value::Null)
+                .is_err(),
+            "non-object provider result must be rejected"
+        );
     }
 
     #[test]
