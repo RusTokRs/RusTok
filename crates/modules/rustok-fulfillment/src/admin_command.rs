@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
@@ -629,20 +630,52 @@ impl InProcessFulfillmentAdminCommandPort {
         }
 
         let tenant_id = request.tenant_id;
-        let provider_result = match operation {
+        let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
+        let provider_future = match operation {
             "ship" | "reship" => {
-                self.provider_registry
-                    .execute_ship(provider_id, request)
-                    .await
+                self.provider_registry.execute_ship(provider_id, request)
             }
-            "cancel" => {
-                self.provider_registry
-                    .execute_cancel(provider_id, request)
-                    .await
+            "cancel" => self.provider_registry.execute_cancel(provider_id, request),
+            _ => {
+                return Err(PortError::validation(
+                    "fulfillment.provider_operation_invalid",
+                    "unsupported fulfillment provider operation",
+                ));
             }
-            _ => Err(FulfillmentError::Validation(
-                "unsupported fulfillment provider operation".to_string(),
-            )),
+        };
+        let provider_result = match tokio::time::timeout(deadline, provider_future).await {
+            Ok(result) => result,
+            Err(_) => {
+                if let Err(checkpoint_error) = self
+                    .operation_journal
+                    .mark_execution_reconciliation_required(
+                        tenant_id,
+                        journal_operation.id,
+                        None,
+                        None,
+                        "fulfillment provider operation exceeded its declared deadline; external outcome is unknown",
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        boundary = ADMIN_COMMAND_BOUNDARY,
+                        owner_operation,
+                        operation,
+                        provider_operation_id_non_nil = !journal_operation.id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "provider deadline reconciliation could not be checkpointed"
+                    );
+                    return Err(PortError::unavailable(
+                        "fulfillment.provider_journal_failed",
+                        "fulfillment provider operation could not be safely checkpointed",
+                    ));
+                }
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "fulfillment provider operation exceeded its deadline and requires reconciliation",
+                ));
+            }
         };
         let provider_result = match provider_result {
             Ok(result) => result,
