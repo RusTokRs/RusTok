@@ -74,6 +74,11 @@ The locked REST matrix is:
 | `Timeout` | 503 | `commerce_admin_fulfillment_storage_unavailable` |
 | `InvariantViolation` | 500 | `commerce_admin_fulfillment_failed` |
 
+The failure-contract source verifier isolates the canonical
+`fulfillment_command_error_policy` mapper in the admin controller and locks
+each status/code pair above, so a production mapping change cannot leave the
+machine contract and scripted harness silently out of sync.
+
 ## Context and redaction assertions
 
 The harness records every `PortContext` received by the scripted owner port and

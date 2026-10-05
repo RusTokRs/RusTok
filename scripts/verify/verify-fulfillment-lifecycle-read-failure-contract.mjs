@@ -46,11 +46,66 @@ const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 const sameRecord = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const between = (source, start, end, label) => {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) {
+    failures.push(`${label}: unable to isolate source block`);
+    return '';
+  }
+  return source.slice(startIndex, endIndex);
+};
+
+const fulfillmentCommandErrorPolicy = between(
+  adminRest,
+  'fn fulfillment_command_error_policy(',
+  'fn map_fulfillment_command_error(',
+  'REST fulfillment command/read error policy',
+);
 
 for (const [source, value, label] of [
-  [adminRest, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
-  [adminRest, 'StatusCode::FORBIDDEN,', 'REST forbidden status'],
-  [adminRest, '"commerce_permission_denied"', 'REST forbidden code'],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::Validation => (
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_fulfillment_invalid",`,
+    'REST validation status/code mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::NotFound => (
+                StatusCode::NOT_FOUND,
+                "commerce_admin_not_found",`,
+    'REST not-found status/code mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::Conflict => (
+                StatusCode::CONFLICT,
+                "commerce_admin_fulfillment_state_conflict",`,
+    'REST conflict status/code mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "commerce_permission_denied",`,
+    'REST forbidden status/code mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "commerce_admin_fulfillment_storage_unavailable",`,
+    'REST unavailable/timeout status/code mapping',
+  ],
+  [
+    fulfillmentCommandErrorPolicy,
+    `PortErrorKind::InvariantViolation => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "commerce_admin_fulfillment_failed",`,
+    'REST invariant status/code mapping',
+  ],
   [
     ownerSource,
     'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout',
@@ -119,7 +174,7 @@ for (const [source, value, label] of [
   ],
   [ownerNote, 'Typed GraphQL boundary', 'owner note section'],
   [plan, 'deterministic lifecycle read deadline and typed-failure harness', 'plan checkpoint'],
-]) requireText(source, value, label);
+]) requireText(source, value, label);;
 
 for (const [value, label] of [
   [
