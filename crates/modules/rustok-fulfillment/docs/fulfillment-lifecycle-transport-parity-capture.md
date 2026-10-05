@@ -71,8 +71,14 @@ source revision, external-adapter identity, or process identity.
 4. A missing fulfillment must return GraphQL `null` without errors and REST
    `404 commerce_admin_not_found`.
 
-Fulfillment items are sorted by id before hashing. Top-level list order remains
-transport-visible and must match. Equivalent RFC3339 timestamps are normalized to UTC millisecond form before comparison so `Z` and `+00:00` formatting do not create false mismatches. Projection string values such as status, carrier, tracking number, notes, and reasons are compared exactly; leading/trailing whitespace is not discarded because it is part of the transport-visible value. Metadata is excluded from the retained projection boundary.
+Fulfillment item order remains transport-visible and is compared exactly. The owner
+projection already supplies deterministic item order; the parity capture does not
+sort or otherwise reorder items before comparison. Equivalent RFC3339 timestamps are
+normalized to UTC millisecond form before comparison so `Z` and `+00:00` formatting
+do not create false mismatches. Projection string values such as status, carrier,
+tracking number, notes, and reasons are compared exactly; leading/trailing
+whitespace is not discarded because it is part of the transport-visible value.
+Metadata is excluded from the retained projection boundary.
 
 ## Capture command
 
