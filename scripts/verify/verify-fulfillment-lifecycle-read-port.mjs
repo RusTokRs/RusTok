@@ -17,6 +17,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 
 const ownerRoot = read('crates/modules/rustok-fulfillment/src/lib.rs');
 const ownerSource = read('crates/modules/rustok-fulfillment/src/fulfillment_read.rs');
+const ownerService = read('crates/modules/rustok-fulfillment/src/services/fulfillment.rs');
 const commerceRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const hostRuntime = read('apps/server/src/services/commerce_provider_runtime.rs');
 const commerceHttp = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
@@ -63,6 +64,10 @@ for (const [source, value, label] of [
   [ownerSource, '.list_fulfillments(', 'list delegation'],
   [ownerSource, '.find_by_order(tenant_id, request.order_id)', 'latest delegation'],
   [ownerSource, 'PortError::new(kind, code, message, retryable)', 'stable owner error'],
+  [ownerService, 'async fn build_fulfillment_responses(', 'batch fulfillment item materialization'],
+  [ownerService, 'FulfillmentId.is_in(fulfillment_ids)', 'batch item query'],
+  [ownerService, 'order_by_asc(entities::fulfillment_item::Column::CreatedAt)', 'batch item created ordering'],
+  [ownerService, 'items_by_fulfillment', 'batch item grouping'],
 ]) requireText(source, value, label);
 
 for (const value of [
@@ -155,6 +160,16 @@ for (const value of [
   'DbErr::Custom("fulfillment storage is temporarily unavailable"',
   'FulfillmentError::Validation("fulfillment query is not permitted"',
 ]) forbidText(compatibilityFacade, value, 'GraphQL concrete or downgraded delegate');
+
+const listMaterialization = between(
+  ownerService,
+  'pub async fn list_fulfillments(',
+  'pub async fn ship_fulfillment(',
+  'lifecycle list materialization',
+);
+if (!listMaterialization.includes('self.build_fulfillment_responses(rows).await?')) {
+  failures.push('lifecycle list must use batched fulfillment item materialization');
+}
 
 const ownerReadImplementation = between(
   ownerSource,

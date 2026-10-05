@@ -48,6 +48,11 @@
     "raw_tenant_actor_channel_locale_logged": false,
     "tenant_parser_payload_logged": false
   },
+  "projection_materialization": {
+    "batched_item_query_for_multi_row_reads": true,
+    "item_ordering_preserved": true,
+    "response_row_order_preserved": true
+  },
   "errors": {
     "type": "PortError",
     "owner_message_control_flow": false,

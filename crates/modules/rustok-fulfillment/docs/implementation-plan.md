@@ -280,6 +280,7 @@ disable/reconciliation matrix in
   and latest-by-order reads.
 - [x] Preserve the existing `FulfillmentResponse`, list filters, pagination total,
   latest-created ordering, and optional latest-by-order result.
+- [x] Batch-load fulfillment items for multi-row lifecycle reads while preserving fulfillment row ordering and item ordering.
 - [x] Require read policy and parse tenant identity from `PortContext`.
 - [x] Map every current `FulfillmentError` variant to stable owner `PortError`
   values without owner-message control flow.

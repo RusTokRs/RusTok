@@ -728,7 +728,9 @@ impl FulfillmentService {
             .await?;
 
         let mut records = Vec::with_capacity(rows.len());
-        for row in rows {
+        let (rows, fulfillments) = self.build_fulfillment_responses(rows).await?;
+
+        for (row, fulfillment) in rows.into_iter().zip(fulfillments) {
             let index = row.checkout_fulfillment_index.ok_or_else(|| {
                 FulfillmentError::Validation(
                     "checkout fulfillment identity index is missing".to_string(),
@@ -739,13 +741,10 @@ impl FulfillmentService {
                     "checkout fulfillment identity index is out of range".to_string(),
                 )
             })?;
-            let order_id = row.order_id;
-            let plan_hash = row.checkout_plan_hash.clone();
-            let fulfillment = self.build_fulfillment_response(row).await?;
             records.push(CheckoutFulfillmentRecord {
                 index,
-                order_id,
-                plan_hash,
+                order_id: row.order_id,
+                plan_hash: row.checkout_plan_hash,
                 fulfillment,
             });
         }
@@ -786,10 +785,7 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        let mut items = Vec::with_capacity(rows.len());
-        for row in rows {
-            items.push(self.build_fulfillment_response(row).await?);
-        }
+        let (_, items) = self.build_fulfillment_responses(rows).await?;
         Ok(items)
     }
 
@@ -825,10 +821,7 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        let mut items = Vec::with_capacity(rows.len());
-        for row in rows {
-            items.push(self.build_fulfillment_response(row).await?);
-        }
+        let (_, items) = self.build_fulfillment_responses(rows).await?;
 
         Ok((items, total))
     }
@@ -1452,6 +1445,50 @@ impl FulfillmentService {
             .one(&self.db)
             .await?
             .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))
+    }
+
+    async fn build_fulfillment_responses(
+        &self,
+        fulfillments: Vec<entities::fulfillment::Model>,
+    ) -> FulfillmentResult<(
+        Vec<entities::fulfillment::Model>,
+        Vec<FulfillmentResponse>,
+    )> {
+        if fulfillments.is_empty() {
+            return Ok((fulfillments, Vec::new()));
+        }
+
+        let fulfillment_ids = fulfillments
+            .iter()
+            .map(|fulfillment| fulfillment.id)
+            .collect::<Vec<_>>();
+        let item_rows = entities::fulfillment_item::Entity::find()
+            .filter(entities::fulfillment_item::Column::FulfillmentId.is_in(fulfillment_ids))
+            .order_by_asc(entities::fulfillment_item::Column::FulfillmentId)
+            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .order_by_asc(entities::fulfillment_item::Column::Id)
+            .all(&self.db)
+            .await?;
+
+        let mut items_by_fulfillment = HashMap::<Uuid, Vec<entities::fulfillment_item::Model>>::new();
+        for item in item_rows {
+            items_by_fulfillment
+                .entry(item.fulfillment_id)
+                .or_default()
+                .push(item);
+        }
+
+        let mut responses = Vec::with_capacity(fulfillments.len());
+        for fulfillment in &fulfillments {
+            responses.push(map_fulfillment(
+                fulfillment.clone(),
+                items_by_fulfillment
+                    .remove(&fulfillment.id)
+                    .unwrap_or_default(),
+            ));
+        }
+
+        Ok((fulfillments, responses))
     }
 
     async fn build_fulfillment_response(
