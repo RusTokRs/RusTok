@@ -987,14 +987,18 @@ pub(crate) fn validate_payment_metadata(
     value: &serde_json::Value,
     operation: &str,
 ) -> PaymentResult<()> {
+    if payment_metadata_exceeds_depth(value, MAX_PAYMENT_METADATA_DEPTH) {
+        return Err(PaymentError::Validation(format!(
+            "payment {operation} metadata exceeds size or depth limits"
+        )));
+    }
+
     let encoded = serde_json::to_vec(value).map_err(|error| {
         PaymentError::Validation(format!(
             "payment {operation} metadata could not be encoded: {error}"
         ))
     })?;
-    if encoded.len() > MAX_PAYMENT_METADATA_BYTES
-        || payment_json_depth(value) > MAX_PAYMENT_METADATA_DEPTH
-    {
+    if encoded.len() > MAX_PAYMENT_METADATA_BYTES {
         return Err(PaymentError::Validation(format!(
             "payment {operation} metadata exceeds size or depth limits"
         )));
@@ -1002,16 +1006,26 @@ pub(crate) fn validate_payment_metadata(
     Ok(())
 }
 
-fn payment_json_depth(value: &serde_json::Value) -> usize {
-    match value {
-        serde_json::Value::Array(values) => {
-            1 + values.iter().map(payment_json_depth).max().unwrap_or(0)
+fn payment_metadata_exceeds_depth(value: &serde_json::Value, max_depth: usize) -> bool {
+    let mut stack = vec![(value, 1usize)];
+    while let Some((value, depth)) = stack.pop() {
+        if depth > max_depth {
+            return true;
         }
-        serde_json::Value::Object(values) => {
-            1 + values.values().map(payment_json_depth).max().unwrap_or(0)
+        match value {
+            serde_json::Value::Array(values) => {
+                stack.extend(values.iter().map(|value| (value, depth + 1)));
+            }
+            serde_json::Value::Object(values) => {
+                stack.extend(values.values().map(|value| (value, depth + 1)));
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
         }
-        _ => 1,
     }
+    false
 }
 
 fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde_json::Value {
@@ -1029,6 +1043,24 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn payment_metadata_is_bounded_by_bytes_and_depth() {
+        assert!(validate_payment_metadata(
+            &serde_json::json!({"note": "ok"}),
+            "test"
+        )
+        .is_ok());
+
+        let oversized = serde_json::json!({"note": "x".repeat(MAX_PAYMENT_METADATA_BYTES)});
+        assert!(validate_payment_metadata(&oversized, "test").is_err());
+
+        let mut nested = serde_json::json!({});
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+        assert!(validate_payment_metadata(&nested, "test").is_err());
+    }
 
     #[test]
     fn normalize_collection_status_filter_accepts_supported_values() {
