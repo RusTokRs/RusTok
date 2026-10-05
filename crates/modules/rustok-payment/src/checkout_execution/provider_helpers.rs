@@ -88,7 +88,13 @@ impl InProcessCheckoutPaymentExecutionPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(context, owner_operation, existing.id, provider_operation)
+            self.mark_journal_committed(
+                context,
+                owner_operation,
+                tenant_id,
+                existing.id,
+                provider_operation,
+            )
                 .await?;
         }
         Ok(())
