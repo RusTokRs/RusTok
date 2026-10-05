@@ -1720,4 +1720,3 @@ impl FulfillmentService {
         map_shipping_option(option, translation_rows, None, None)
     }
 }
-}
