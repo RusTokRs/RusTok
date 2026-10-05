@@ -56,6 +56,13 @@ const between = (source, start, end, label) => {
   return source.slice(startIndex, endIndex);
 };
 
+const fulfillmentCommandErrorPolicy = between(
+  adminRest,
+  'fn fulfillment_command_error_policy(',
+  'fn map_fulfillment_command_error(',
+  'REST fulfillment command/read error policy',
+);
+
 for (const [source, value, label] of [
   [
     fulfillmentCommandErrorPolicy,
