@@ -8,13 +8,8 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
-use chrono::Utc;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    sea_query::Expr,
-};
 use std::net::SocketAddr;
 
 use crate::auth::{
@@ -23,10 +18,7 @@ use crate::auth::{
 };
 use crate::common::{RustokSettings, RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
-use crate::models::{
-    sessions,
-    users::{self, Entity as Users},
-};
+use crate::models::users::{self, Entity as Users};
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
     EmailVerificationEmail, PasswordResetEmail, email_service_from_ctx, password_reset_url,
@@ -184,21 +176,16 @@ async fn logout(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
-    let token_hash = hash_refresh_token(&params.refresh_token);
-    let session =
-        sessions::Entity::find_by_token_hash(ctx.runtime_ctx().db(), tenant.id, &token_hash)
-            .await?
-            .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
-
-    if session.revoked_at.is_none() {
-        let mut session_model: sessions::ActiveModel = session.into();
-        session_model.revoked_at = Set(Some(Utc::now().into()));
-        session_model.update(ctx.runtime_ctx().db()).await?;
-    }
+    AuthLifecycleService::logout_by_refresh_token_runtime(
+        ctx.runtime_ctx(),
+        tenant.id,
+        &params.refresh_token,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     Ok(json_response(LogoutResponse { status: "ok" }))
 }
-
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Current user info", body = UserResponse),(status = 401, description = "Unauthorized")))]
 async fn me(
