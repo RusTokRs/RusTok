@@ -661,7 +661,7 @@ fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
     }
 }
 
-fn validate_durable_json_payload(value: &Value, field: &'static str) -> FulfillmentResult<()> {
+pub(crate) fn validate_durable_json_payload(value: &Value, field: &'static str) -> FulfillmentResult<()> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         FulfillmentError::Validation(format!(
             "provider operation {field} could not be serialized: {error}"
