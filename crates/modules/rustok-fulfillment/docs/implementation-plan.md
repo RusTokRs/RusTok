@@ -284,6 +284,7 @@ disable/reconciliation matrix in
 - [x] Apply the same restricted-key privacy guard to provider request metadata before durable journal admission, so caller-supplied operation metadata cannot persist obvious secret/raw transport fields.
 - [x] Provider lifecycle calls honor the declared `PortContext` deadline; timeout is fail-closed as `reconciliation_required` for unknown external outcomes, with checkpoint failure remaining unavailable/reconciliation-required rather than retryable.
 - [x] Durable provider-result writers revalidate provider ID and external reference against the journaled operation before persistence, with the same metadata/tracking safety checks used by recovery.
+- [x] Create-label lifecycle recovery uses only the canonical `metadata.provider_operation.id` receipt locator; secondary label metadata cannot become an alternate provider-operation identity.
 
 ## Fulfillment lifecycle read source checklist
 
