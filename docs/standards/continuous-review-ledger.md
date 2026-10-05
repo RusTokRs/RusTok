@@ -4706,5 +4706,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Remediation: item normalization now preserves the response order exactly. The parity contract explicitly requires `projection_items_preserve_order=true`, and the verifier isolates `normalizeItems` and forbids the old UUID sort. The runbook now states that owner-provided item order is transport-visible and compared exactly.
 - Re-audit: the owner service already establishes deterministic `(created_at, id)` ordering for lifecycle item materialization, so removing the parity-side sort makes the capture stricter without changing application behavior. Timestamp canonicalization, exact string preservation, response-size bounds, top-level list order, and metadata exclusion remain unchanged.
 - Verification: repository-content inspection only. No Node verifier, capture runner, Cargo, test, formatting, workflow, CI, or runtime command was executed by the agent.
-- Status: source/evidence-tool remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
-- Next primary iteration: after integration, re-read the item normalization and verifier boundary, then continue the remaining Fulfillment parity evidence audit.
+- Integration: squash-merged as `6bfa81b97b94e1234a43cba92a1624b43290fc2d` via PR #4527; post-merge main was re-read at the merge SHA and the item normalization, parity verifier, runbook, contract, and audit ledger were reconciled.
+- Status: FS-22.06.126 complete and integrated; mounted runtime evidence remains unproven.
+- Next primary iteration: continue the remaining Fulfillment parity evidence-boundary audit without promoting runtime parity, deadline/failure, restart, or remote-adapter evidence before maintainer-owned execution.
