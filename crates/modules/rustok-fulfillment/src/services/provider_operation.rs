@@ -410,6 +410,91 @@ impl FulfillmentProviderOperationJournal {
         self.get(tenant_id, operation_id).await
     }
 
+    pub(crate) async fn mark_committed_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
+        let current = provider_operation::Entity::find_by_id(operation_id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentError::Validation(format!(
+                    "provider operation {operation_id} was not found for tenant {tenant_id}"
+                ))
+            })?;
+
+        if current.status == PROVIDER_OPERATION_COMMITTED {
+            return Ok(current);
+        }
+        ensure_transition(&current.status, PROVIDER_OPERATION_COMMITTED)?;
+
+        let now = Utc::now();
+        let provider_completed_at = if current.provider_completed_at.is_none() {
+            Expr::value(Some(now))
+        } else {
+            Expr::col(provider_operation::Column::ProviderCompletedAt)
+        };
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_COMMITTED),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                provider_operation::Column::ProviderCompletedAt,
+                provider_completed_at,
+            )
+            .col_expr(
+                provider_operation::Column::CommittedAt,
+                Expr::value(Some(now)),
+            )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
+            .filter(provider_operation::Column::Status.is_in([
+                PROVIDER_OPERATION_SUCCEEDED,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            ]))
+            .exec(txn)
+            .await?;
+
+        if update.rows_affected == 0 {
+            let current = provider_operation::Entity::find_by_id(operation_id)
+                .filter(provider_operation::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    FulfillmentError::Validation(format!(
+                        "provider operation {operation_id} was not found for tenant {tenant_id}"
+                    ))
+                })?;
+            if current.status == PROVIDER_OPERATION_COMMITTED {
+                return Ok(current);
+            }
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_COMMITTED.to_string(),
+            });
+        }
+
+        provider_operation::Entity::find_by_id(operation_id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| {
+                FulfillmentError::Validation(format!(
+                    "provider operation {operation_id} disappeared after commit"
+                ))
+            })
+    }
+
     pub async fn mark_committed(
         &self,
         tenant_id: Uuid,
