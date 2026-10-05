@@ -572,8 +572,10 @@ mod tests {
         assert_eq!(error.message, "Shipping option query is invalid");
         assert!(!error.message.contains("database stack detail"));
         assert_eq!(
-            error.extensions.get("code").and_then(|value| value.as_str()),
-            Some("SHIPPING_OPTION_REQUEST_INVALID")
+            error.extensions.as_ref().and_then(|ext| ext.get("code")),
+            Some(&::async_graphql::Value::String(
+                "SHIPPING_OPTION_REQUEST_INVALID".to_string(),
+            ))
         );
         let _ = ShippingOptionGraphqlMessage::new(
             &context,

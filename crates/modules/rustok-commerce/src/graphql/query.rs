@@ -32,7 +32,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    CommerceError, ShippingProfileService, StoreContextService,
+    StoreContextService,
     storefront_channel::{
         is_metadata_visible_for_public_channel, normalize_public_channel_slug,
         public_channel_slug_from_request,
@@ -430,12 +430,12 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        if let Some(auth) = ctx.data_opt::<AuthContext>() {
-            if auth.tenant_id != tenant.id {
-                return Err(<FieldError as GraphQLError>::permission_denied(
-                    "Authenticated actor is not bound to the current tenant",
-                ));
-            }
+        if let Some(auth) = ctx.data_opt::<AuthContext>()
+            && auth.tenant_id != tenant.id
+        {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Authenticated actor is not bound to the current tenant",
+            ));
         }
         if tenant_id.is_some_and(|requested_tenant_id| requested_tenant_id != tenant.id) {
             return Err(<FieldError as GraphQLError>::permission_denied(

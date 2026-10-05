@@ -481,6 +481,7 @@ mod tests {
     use crate::dto::ShippingOptionResponse;
     use chrono::Utc;
     use rust_decimal::Decimal;
+    use rustok_api::PortError;
     use std::collections::BTreeSet;
     use uuid::Uuid;
 

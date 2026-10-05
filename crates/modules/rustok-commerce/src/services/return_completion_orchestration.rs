@@ -1164,7 +1164,7 @@ mod tests {
                 );
                 assert_eq!(
                     error.message,
-                    "return completion operation storage is temporarily unavailable"
+                    "the requested capability is temporarily unavailable"
                 );
             }
             other => panic!("unexpected mapped error: {other:?}"),

@@ -155,9 +155,7 @@ impl ShippingOptionFailure {
 
     fn inactive(shipping_option_id: Uuid) -> Self {
         Self {
-            message: Some(format!(
-                "Shipping option {shipping_option_id} is not active"
-            )),
+            message: Some("Shipping option is not active".to_string()),
             ..Self::local(
                 ShippingOptionFailureKind::Inactive,
                 "validate_active_state",

@@ -57,3 +57,7 @@ mod fulfillment_query_boundary;
 mod fulfillment_query_service;
 
 pub(crate) use fulfillment_query_service::FulfillmentService;
+pub(crate) use ::rustok_fulfillment::{
+    ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
+    ReadShippingOptionProjectionRequest,
+};

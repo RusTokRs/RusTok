@@ -8,6 +8,14 @@ pub(crate) mod types {
     pub(crate) use super::super::types::*;
 }
 
+pub(crate) fn current_tenant_scope(
+    ctx: &::async_graphql::Context<'_>,
+    requested_tenant_id: Option<uuid::Uuid>,
+    operation: &str,
+) -> Result<uuid::Uuid, query_error_boundary::BoundaryError> {
+    super::current_tenant_scope(ctx, requested_tenant_id, operation).map_err(Into::into)
+}
+
 pub(crate) fn product_query_tenant(
     ctx: &::async_graphql::Context<'_>,
     requested_tenant_id: uuid::Uuid,

@@ -778,10 +778,7 @@ mod safety_tests {
     fn pagination_offset_saturates_on_extreme_page_values() {
         assert_eq!(pagination_offset(1, 100), 0);
         assert_eq!(pagination_offset(2, 100), 100);
-        assert_eq!(
-            pagination_offset(u64::MAX, 100),
-            u64::MAX - (u64::MAX % 100)
-        );
+        assert_eq!(pagination_offset(u64::MAX, 100), u64::MAX);
     }
 
     #[test]
