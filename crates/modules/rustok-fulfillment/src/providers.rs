@@ -1012,6 +1012,84 @@ mod boundary_tests {
     }
 
     #[test]
+    fn registration_requires_degraded_mode_for_non_ready_health() {
+        let registration = ExternalFulfillmentProviderRegistration {
+            descriptor: FulfillmentProviderDescriptor::manual(),
+            health: FulfillmentProviderHealth::Degraded,
+            degraded_mode: None,
+        };
+        assert!(registration.validate("manual").is_err());
+    }
+
+    #[test]
+    fn unavailable_default_provider_registration_is_rejected() {
+        let registration = ExternalFulfillmentProviderRegistration {
+            descriptor: FulfillmentProviderDescriptor::manual(),
+            health: FulfillmentProviderHealth::Unavailable,
+            degraded_mode: Some(FulfillmentProviderDegradedMode {
+                reason: "maintenance".to_string(),
+                fallback_profile: "manual".to_string(),
+            }),
+        };
+        assert!(registration.validate("manual").is_err());
+    }
+
+    #[test]
+    fn degraded_runtime_mode_keeps_execution_allowed_and_propagates_fallback() {
+        let mut registry = FulfillmentProviderRegistry::new();
+        let registration = ExternalFulfillmentProviderRegistration {
+            descriptor: FulfillmentProviderDescriptor::manual(),
+            health: FulfillmentProviderHealth::Degraded,
+            degraded_mode: Some(FulfillmentProviderDegradedMode {
+                reason: "carrier latency".to_string(),
+                fallback_profile: "manual".to_string(),
+            }),
+        };
+        registry
+            .register_external("manual", Arc::new(ManualFulfillmentProvider), registration)
+            .expect("degraded registration is valid");
+
+        let mode = registry
+            .runtime_mode("manual", "ship")
+            .expect("ship is a supported manual operation");
+        assert!(mode.can_execute);
+        assert_eq!(
+            mode.degraded_mode.expect("degraded mode must propagate").fallback_profile,
+            "manual"
+        );
+    }
+
+    #[test]
+    fn unavailable_runtime_mode_blocks_execution() {
+        let mut registry = FulfillmentProviderRegistry::new();
+        let mut descriptor = FulfillmentProviderDescriptor::manual();
+        descriptor.default_for_manual_options = false;
+        let registration = ExternalFulfillmentProviderRegistration {
+            descriptor,
+            health: FulfillmentProviderHealth::Unavailable,
+            degraded_mode: Some(FulfillmentProviderDegradedMode {
+                reason: "offline".to_string(),
+                fallback_profile: "manual".to_string(),
+            }),
+        };
+        registry
+            .register_external("manual", Arc::new(ManualFulfillmentProvider), registration)
+            .expect("unavailable non-default registration is valid");
+
+        let mode = registry
+            .runtime_mode("manual", "ship")
+            .expect("capability check must pass before health gating");
+        assert!(!mode.can_execute);
+        assert!(registry.executable_provider("manual", "ship").is_err());
+    }
+
+    #[test]
+    fn runtime_mode_rejects_unknown_or_unsupported_operations() {
+        let registry = FulfillmentProviderRegistry::with_manual_provider();
+        assert!(registry.runtime_mode("manual", "rate_quote").is_err());
+        assert!(registry.runtime_mode("manual", "not-an-operation").is_err());
+    }
+    #[test]
     fn rejects_non_object_operation_result_metadata() {
         let result = FulfillmentProviderOperationResult {
             provider_id: "carrier".to_string(),
