@@ -276,7 +276,7 @@ disable/reconciliation matrix in
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
 
-- [x] Make shipping-option admin create durable and replay-safe through the shared owner-operation receipt ledger; changed-payload idempotency-key reuse conflicts fail closed.
+- [x] Make all four shipping-option admin commands (create/update/deactivate/reactivate) durable and replay-safe through the shared owner-operation receipt ledger; changed-payload and cross-operation idempotency-key reuse conflicts fail closed.
 
 ## Fulfillment lifecycle read source checklist
 
