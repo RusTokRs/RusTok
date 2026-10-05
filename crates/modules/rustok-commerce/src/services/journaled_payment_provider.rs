@@ -142,6 +142,7 @@ pub(crate) async fn execute_journaled_provider_operation(
     {
         let _ = journal
             .mark_reconciliation_required(
+                journal_operation.tenant_id,
                 journal_operation.id,
                 "provider success could not be durably checkpointed",
             )
@@ -332,6 +333,7 @@ pub(crate) async fn mark_local_persistence_failed(
 ) {
     let _ = journal
         .mark_reconciliation_required(
+            tenant_id,
             operation_id,
             format!("local {operation} persistence failed: {source}"),
         )

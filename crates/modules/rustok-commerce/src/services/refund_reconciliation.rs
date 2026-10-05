@@ -100,7 +100,7 @@ impl RefundReconciliationService {
         }
         if operation.status == PROVIDER_OPERATION_SUCCEEDED {
             self.provider_operation_journal
-                .mark_committed(operation.id)
+                .mark_committed(tenant_id, operation.id)
                 .await
                 .map_err(
                     |_| PaymentOrchestrationError::ProviderAfterRefundReservation {
@@ -145,11 +145,11 @@ impl RefundReconciliationService {
             Err(source) => {
                 let journal_result = if source.requires_provider_reconciliation() {
                     self.provider_operation_journal
-                        .mark_reconciliation_required(operation.id, source.to_string())
+                        .mark_reconciliation_required(tenant_id, operation.id, source.to_string())
                         .await
                 } else {
                     self.provider_operation_journal
-                        .mark_provider_error(operation.id, source.to_string())
+                        .mark_provider_error(tenant_id, operation.id, source.to_string())
                         .await
                 };
                 let source = if journal_result.is_err() {
@@ -169,6 +169,7 @@ impl RefundReconciliationService {
                 let _ = self
                     .provider_operation_journal
                     .mark_reconciliation_required(
+                        tenant_id,
                         operation.id,
                         "refund provider result serialization failed after external success",
                     )
@@ -183,6 +184,7 @@ impl RefundReconciliationService {
         if self
             .provider_operation_journal
             .mark_provider_succeeded(
+                tenant_id,
                 operation.id,
                 provider_result.external_reference.clone(),
                 provider_result_payload,
@@ -193,6 +195,7 @@ impl RefundReconciliationService {
             let _ = self
                 .provider_operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation.id,
                     "refund provider success could not be durably checkpointed",
                 )
@@ -204,13 +207,14 @@ impl RefundReconciliationService {
         }
         if self
             .provider_operation_journal
-            .mark_committed(operation.id)
+            .mark_committed(tenant_id, operation.id)
             .await
             .is_err()
         {
             let _ = self
                 .provider_operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation.id,
                     "refund provider journal commit failed after external success",
                 )

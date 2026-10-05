@@ -1,4 +1,3 @@
-use chrono::Utc;
 use rustok_fulfillment::entities::provider_operation;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
@@ -10,7 +9,6 @@ use rustok_fulfillment::{
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
-use serde_json::Value;
 use uuid::Uuid;
 
 use super::fulfillment_orchestration::{
@@ -156,7 +154,7 @@ impl FulfillmentCreateLabelRecoveryService {
                     fulfillment_id: operation.fulfillment_id,
                     operation: "create_label",
                     source: rustok_fulfillment::error::FulfillmentError::Validation(
-                        "provider result could not be serialized",
+                        "provider result could not be serialized".to_string(),
                     ),
                 });
             }
@@ -247,6 +245,7 @@ fn validate_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     #[test]
     fn create_label_result_replay_requires_valid_provider_result() {
