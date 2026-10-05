@@ -252,9 +252,14 @@ fn fulfillment_owner_error_facts(error: &crate::FulfillmentError) -> Fulfillment
             0,
             false,
         ),
-        crate::FulfillmentError::ProviderResultInvalid(value) => {
-            ("provider_result_invalid", 1, value.chars().count(), 0, 0, false)
-        }
+        crate::FulfillmentError::ProviderResultInvalid(value) => (
+            "provider_result_invalid",
+            1,
+            value.chars().count(),
+            0,
+            0,
+            false,
+        ),
         crate::FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     FulfillmentOwnerErrorFacts {

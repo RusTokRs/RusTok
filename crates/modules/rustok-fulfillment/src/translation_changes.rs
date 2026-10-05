@@ -251,9 +251,9 @@ WHERE shipping_options.id = ?
         ))
         .await?;
     if result.rows_affected() != 1 {
-        return Err(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
-            shipping_option_id,
-        ));
+        return Err(
+            ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(shipping_option_id),
+        );
     }
     Ok(())
 }

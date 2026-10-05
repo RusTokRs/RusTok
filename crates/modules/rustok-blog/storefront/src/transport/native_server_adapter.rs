@@ -154,9 +154,16 @@ async fn fetch_storefront_blog_server(
     category_id: Option<String>,
     comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
-    storefront_blog_native(tenant_slug, post_slug, locale, tag, category_id, comments_page)
-        .await
-        .map_err(ApiError::from)
+    storefront_blog_native(
+        tenant_slug,
+        post_slug,
+        locale,
+        tag,
+        category_id,
+        comments_page,
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 #[cfg(feature = "ssr")]
@@ -333,7 +340,14 @@ async fn storefront_blog_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_slug, post_slug, locale, tag, category_id, comments_page);
+        let _ = (
+            tenant_slug,
+            post_slug,
+            locale,
+            tag,
+            category_id,
+            comments_page,
+        );
         Err(ServerFnError::new(
             "blog/storefront-data requires the `ssr` feature",
         ))

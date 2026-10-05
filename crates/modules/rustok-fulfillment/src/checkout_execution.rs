@@ -137,11 +137,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             )
             .await
             .map_err(|error| {
-                fulfillment_error_to_port_error(
-                    context,
-                    "ensure_checkout_fulfillment_set",
-                    error,
-                )
+                fulfillment_error_to_port_error(context, "ensure_checkout_fulfillment_set", error)
             })?;
 
         if records.len() != request.plans.len() {
@@ -177,7 +173,10 @@ impl InProcessCheckoutFulfillmentExecutionPort {
             })?;
         }
 
-        Ok(records.into_iter().map(|record| record.fulfillment).collect())
+        Ok(records
+            .into_iter()
+            .map(|record| record.fulfillment)
+            .collect())
     }
 
     async fn read(

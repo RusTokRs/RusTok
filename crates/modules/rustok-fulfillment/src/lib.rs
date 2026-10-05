@@ -71,14 +71,13 @@ pub use translation_target::{
 pub use error::{FulfillmentError, FulfillmentResult};
 pub use services::{
     BeginProviderOperation, FulfillmentProviderOperationJournal,
-    MAX_PROVIDER_OPERATION_PAYLOAD_BYTES,
-    FulfillmentProviderOperationRecovery, FulfillmentService, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
-    ShippingOptionTranslationExactLocaleApply, ShippingOptionTranslationExactLocaleApplyReceipt,
-    ShippingOptionTranslationExactLocaleError, ShippingOptionTranslationExactLocaleRecord,
-    ShippingOptionTranslationExactLocaleResult, ShippingOptionTranslationExactLocaleSnapshot,
-    ShippingOptionTranslationService,
+    FulfillmentProviderOperationRecovery, FulfillmentService, MAX_PROVIDER_OPERATION_PAYLOAD_BYTES,
+    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
+    PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED, ShippingOptionTranslationExactLocaleApply,
+    ShippingOptionTranslationExactLocaleApplyReceipt, ShippingOptionTranslationExactLocaleError,
+    ShippingOptionTranslationExactLocaleRecord, ShippingOptionTranslationExactLocaleResult,
+    ShippingOptionTranslationExactLocaleSnapshot, ShippingOptionTranslationService,
 };
 
 pub struct FulfillmentModule;

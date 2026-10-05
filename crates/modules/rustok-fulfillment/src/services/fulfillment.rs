@@ -3,7 +3,8 @@ use rust_decimal::Decimal;
 use sea_orm::{
     AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
     DatabaseTransaction, EntityTrait, IsolationLevel, JoinType, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait, sea_query::{Expr, OnConflict, Query},
+    QueryOrder, QuerySelect, RelationTrait, Set, TransactionTrait,
+    sea_query::{Expr, OnConflict, Query},
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -15,6 +16,10 @@ use rustok_core::generate_id;
 
 use rustok_api::{TenantLocale, UNKNOWN_PROVENANCE_LOCALE, normalize_locale_tag};
 
+use super::provider_operation::{
+    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+};
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
     DeliverFulfillmentInput, FulfillmentItemQuantityInput, FulfillmentItemResponse,
@@ -24,11 +29,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::validate_provider_metadata_safety;
-use super::provider_operation::{
-    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
-};
+use crate::providers::{validate_provider_id, validate_provider_metadata_safety};
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
 };
@@ -416,7 +417,7 @@ impl FulfillmentService {
     ///
     /// Durable orchestration journals use this ID as their local resource anchor so
     /// retries rebuild the same fulfillment instead of creating a second resource.
-    pub(crate) async fn create_fulfillment_with_id(
+    pub async fn create_fulfillment_with_id(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -473,20 +474,12 @@ impl FulfillmentService {
             index: 0,
             plan_hash: checkout_plan_hash.clone(),
         };
-        self.ensure_checkout_identity_anchor(
-            &txn,
-            tenant_id,
-            order_id,
-            customer_id,
-            &anchor,
-        )
-        .await?;
+        self.ensure_checkout_identity_anchor(&txn, tenant_id, order_id, customer_id, &anchor)
+            .await?;
 
         let existing_rows = entities::fulfillment::Entity::find()
             .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(
-                entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id),
-            )
+            .filter(entities::fulfillment::Column::CheckoutOperationId.eq(checkout_operation_id))
             .lock_exclusive()
             .all(&txn)
             .await?;
@@ -598,6 +591,20 @@ impl FulfillmentService {
         txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
+    }
+
+    pub(crate) async fn create_fulfillment_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: CreateFulfillmentInput,
+    ) -> FulfillmentResult<()> {
+        self.validate_create_fulfillment_input(tenant_id, &input)
+            .await?;
+        let now = Utc::now();
+        self.insert_fulfillment_in_txn(txn, tenant_id, fulfillment_id, input, None, now)
+            .await
     }
 
     async fn validate_create_fulfillment_input(
@@ -725,8 +732,8 @@ impl FulfillmentService {
         identity: &CheckoutFulfillmentIdentity,
     ) -> FulfillmentResult<()> {
         let now = Utc::now();
-        let _ = entities::checkout_identity::Entity::insert(
-            entities::checkout_identity::ActiveModel {
+        let _ =
+            entities::checkout_identity::Entity::insert(entities::checkout_identity::ActiveModel {
                 tenant_id: Set(tenant_id),
                 checkout_operation_id: Set(identity.operation_id),
                 order_id: Set(order_id),
@@ -734,22 +741,21 @@ impl FulfillmentService {
                 plan_hash: Set(identity.plan_hash.clone()),
                 created_at: Set(now.into()),
                 updated_at: Set(now.into()),
-            },
-        )
-        .on_conflict(
-            OnConflict::columns([
-                entities::checkout_identity::Column::TenantId,
-                entities::checkout_identity::Column::CheckoutOperationId,
-            ])
-            .do_nothing_on([
-                entities::checkout_identity::Column::TenantId,
-                entities::checkout_identity::Column::CheckoutOperationId,
-            ])
-            .to_owned(),
-        )
-        .try_insert()
-        .exec(txn)
-        .await?;
+            })
+            .on_conflict(
+                OnConflict::columns([
+                    entities::checkout_identity::Column::TenantId,
+                    entities::checkout_identity::Column::CheckoutOperationId,
+                ])
+                .do_nothing_on([
+                    entities::checkout_identity::Column::TenantId,
+                    entities::checkout_identity::Column::CheckoutOperationId,
+                ])
+                .to_owned(),
+            )
+            .try_insert()
+            .exec(txn)
+            .await?;
 
         let existing = entities::checkout_identity::Entity::find()
             .filter(entities::checkout_identity::Column::TenantId.eq(tenant_id))
@@ -965,7 +971,9 @@ impl FulfillmentService {
             )));
         }
 
-        let fulfillment = self.load_fulfillment_for_update(&txn, tenant_id, fulfillment_id).await?;
+        let fulfillment = self
+            .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
+            .await?;
         if let Some(stored_operation_id) = create_label_provider_operation_id(&fulfillment.metadata)
             && stored_operation_id != operation_id
         {
@@ -975,35 +983,36 @@ impl FulfillmentService {
             });
         }
 
-        let updated = if create_label_provider_operation_id(&fulfillment.metadata) == Some(operation_id) {
-            fulfillment
-        } else {
-            let carrier_missing = fulfillment
-                .carrier
-                .as_deref()
-                .map(|carrier| carrier.trim().is_empty())
-                .unwrap_or(true);
-            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
-            let current_metadata = active.metadata.clone().take().unwrap_or_default();
-            active.metadata = Set(prepare_create_label_result_metadata(
-                current_metadata,
-                result,
-                operation_id,
-            )?);
-            if carrier_missing {
-                active.carrier = Set(Some(result.provider_id.clone()));
-            }
-            if let Some(tracking_number) = result
-                .tracking_number
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                active.tracking_number = Set(Some(tracking_number.to_string()));
-            }
-            active.updated_at = Set(Utc::now().into());
-            active.update(&txn).await?
-        };
+        let updated =
+            if create_label_provider_operation_id(&fulfillment.metadata) == Some(operation_id) {
+                fulfillment
+            } else {
+                let carrier_missing = fulfillment
+                    .carrier
+                    .as_deref()
+                    .map(|carrier| carrier.trim().is_empty())
+                    .unwrap_or(true);
+                let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+                let current_metadata = active.metadata.clone().take().unwrap_or_default();
+                active.metadata = Set(prepare_create_label_result_metadata(
+                    current_metadata,
+                    result,
+                    operation_id,
+                )?);
+                if carrier_missing {
+                    active.carrier = Set(Some(result.provider_id.clone()));
+                }
+                if let Some(tracking_number) = result
+                    .tracking_number
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    active.tracking_number = Set(Some(tracking_number.to_string()));
+                }
+                active.updated_at = Set(Utc::now().into());
+                active.update(&txn).await?
+            };
 
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
         journal
@@ -1058,11 +1067,11 @@ impl FulfillmentService {
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
-        input.metadata = match provider_result {
+        input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
-                provider_metadata,
-                operation_id,
+                provider_metadata.clone(),
+                *operation_id,
                 "ship",
             )?,
             None => strip_provider_operation_metadata(input.metadata),
@@ -1074,11 +1083,7 @@ impl FulfillmentService {
             .await?;
 
         if let Some((_, operation_id)) = provider_result.as_ref()
-            && has_matching_provider_operation(
-                &fulfillment.metadata,
-                *operation_id,
-                "ship",
-            )
+            && has_matching_provider_operation(&fulfillment.metadata, *operation_id, "ship")
         {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
@@ -1093,7 +1098,9 @@ impl FulfillmentService {
                 to: STATUS_SHIPPED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
+        let items = self
+            .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+            .await?;
         if items.is_empty() {
             if fulfillment.status != STATUS_PENDING {
                 return Err(FulfillmentError::InvalidTransition {
@@ -1210,7 +1217,9 @@ impl FulfillmentService {
                 to: STATUS_DELIVERED.to_string(),
             });
         }
-        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
+        let items = self
+            .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+            .await?;
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
             let now = Utc::now();
@@ -1314,7 +1323,9 @@ impl FulfillmentService {
 
         match fulfillment.status.as_str() {
             STATUS_CANCELLED => {
-                let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
+                let items = self
+                    .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+                    .await?;
                 let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                 let metadata = active.metadata.clone().take().unwrap_or_default();
                 let status_after = reopened_status_for_cancelled(&items, &active);
@@ -1339,7 +1350,9 @@ impl FulfillmentService {
                 self.get_fulfillment(tenant_id, fulfillment_id).await
             }
             STATUS_DELIVERED => {
-                let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
+                let items = self
+                    .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+                    .await?;
                 if items.is_empty() {
                     let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                     let metadata = active.metadata.clone().take().unwrap_or_default();
@@ -1458,11 +1471,11 @@ impl FulfillmentService {
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
-        input.metadata = match provider_result {
+        input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
-                provider_metadata,
-                operation_id,
+                provider_metadata.clone(),
+                *operation_id,
                 "reship",
             )?,
             None => strip_provider_operation_metadata(input.metadata),
@@ -1474,11 +1487,7 @@ impl FulfillmentService {
             .await?;
 
         if let Some((_, operation_id)) = provider_result.as_ref()
-            && has_matching_provider_operation(
-                &fulfillment.metadata,
-                *operation_id,
-                "reship",
-            )
+            && has_matching_provider_operation(&fulfillment.metadata, *operation_id, "reship")
         {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
@@ -1494,7 +1503,9 @@ impl FulfillmentService {
             });
         }
 
-        let items = self.load_fulfillment_items(&txn, tenant_id, fulfillment.id).await?;
+        let items = self
+            .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+            .await?;
         let now = Utc::now();
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
@@ -1611,11 +1622,11 @@ impl FulfillmentService {
         input
             .validate()
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
-        input.metadata = match provider_result {
+        input.metadata = match provider_result.as_ref() {
             Some((provider_metadata, operation_id)) => prepare_provider_lifecycle_metadata(
                 input.metadata,
-                provider_metadata,
-                operation_id,
+                provider_metadata.clone(),
+                *operation_id,
                 "cancel",
             )?,
             None => strip_provider_operation_metadata(input.metadata),
@@ -1626,11 +1637,7 @@ impl FulfillmentService {
             .await?;
 
         if let Some((_, operation_id)) = provider_result.as_ref()
-            && has_matching_provider_operation(
-                &fulfillment.metadata,
-                *operation_id,
-                "cancel",
-            )
+            && has_matching_provider_operation(&fulfillment.metadata, *operation_id, "cancel")
         {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
@@ -1675,7 +1682,10 @@ impl FulfillmentService {
         // SQLite adapter does not support those two configuration knobs, but the
         // transaction itself still keeps every read on one SQLite snapshot.
         self.db
-            .begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))
+            .begin_with_config(
+                Some(IsolationLevel::RepeatableRead),
+                Some(AccessMode::ReadOnly),
+            )
             .await
             .map_err(Into::into)
     }
@@ -1701,10 +1711,7 @@ impl FulfillmentService {
         db: &C,
         tenant_id: Uuid,
         fulfillments: Vec<entities::fulfillment::Model>,
-    ) -> FulfillmentResult<(
-        Vec<entities::fulfillment::Model>,
-        Vec<FulfillmentResponse>,
-    )>
+    ) -> FulfillmentResult<(Vec<entities::fulfillment::Model>, Vec<FulfillmentResponse>)>
     where
         C: ConnectionTrait,
     {
@@ -1729,7 +1736,8 @@ impl FulfillmentService {
             .all(db)
             .await?;
 
-        let mut items_by_fulfillment = HashMap::<Uuid, Vec<entities::fulfillment_item::Model>>::new();
+        let mut items_by_fulfillment =
+            HashMap::<Uuid, Vec<entities::fulfillment_item::Model>>::new();
         for item in item_rows {
             items_by_fulfillment
                 .entry(item.fulfillment_id)
@@ -2046,16 +2054,14 @@ fn prepare_create_label_result_metadata(
     )
 }
 
-fn has_matching_provider_operation(
-    metadata: &Value,
-    operation_id: Uuid,
-    operation: &str,
-) -> bool {
+fn has_matching_provider_operation(metadata: &Value, operation_id: Uuid, operation: &str) -> bool {
     if operation_id.is_nil() {
         return false;
     }
 
-    let Some(provider_operation) = metadata.get("provider_operation").and_then(Value::as_object)
+    let Some(provider_operation) = metadata
+        .get("provider_operation")
+        .and_then(Value::as_object)
     else {
         return false;
     };
@@ -2069,10 +2075,7 @@ fn has_matching_provider_operation(
     };
 
     stored_id == operation_id
-        && provider_operation
-            .get("operation")
-            .and_then(Value::as_str)
-            == Some(operation)
+        && provider_operation.get("operation").and_then(Value::as_str) == Some(operation)
 }
 
 fn prepare_provider_lifecycle_metadata(
@@ -2802,16 +2805,11 @@ async fn synchronize_translations(
                         entities::shipping_option_translation::Column::ShippingOptionId
                             .eq(shipping_option_id),
                     )
-                    .filter(shipping_option_tenant_exists(
-                        tenant_id,
-                        shipping_option_id,
-                    ))
+                    .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;
                 if update_result.rows_affected != 1 {
-                    return Err(FulfillmentError::Database(
-                        sea_orm::DbErr::RecordNotUpdated,
-                    ));
+                    return Err(FulfillmentError::Database(sea_orm::DbErr::RecordNotUpdated));
                 }
                 changed = true;
             }
@@ -2822,16 +2820,11 @@ async fn synchronize_translations(
                         entities::shipping_option_translation::Column::ShippingOptionId
                             .eq(shipping_option_id),
                     )
-                    .filter(shipping_option_tenant_exists(
-                        tenant_id,
-                        shipping_option_id,
-                    ))
+                    .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(db)
                     .await?;
                 if delete_result.rows_affected != 1 {
-                    return Err(FulfillmentError::Database(
-                        sea_orm::DbErr::RecordNotUpdated,
-                    ));
+                    return Err(FulfillmentError::Database(sea_orm::DbErr::RecordNotUpdated));
                 }
                 changed = true;
             }
@@ -2981,8 +2974,8 @@ fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentI
 #[cfg(test)]
 mod tests {
     use super::{
-        fulfillment_list_offset, map_shipping_option, validate_persisted_shipping_option_locales,
-        CheckoutFulfillmentIdentity, FulfillmentService,
+        CheckoutFulfillmentIdentity, FulfillmentService, fulfillment_list_offset,
+        map_shipping_option, validate_persisted_shipping_option_locales,
     };
     use crate::entities::{self, shipping_option, shipping_option_translation};
     use chrono::Utc;

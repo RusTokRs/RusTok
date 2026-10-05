@@ -180,19 +180,20 @@ impl ShippingOptionTranslationService {
         }
 
         let option_ids = options.iter().map(|option| option.id).collect::<Vec<_>>();
-        let mut translations = load_translations_for_shipping_options(&self.db, tenant_id, &option_ids)
-            .await?
-            .into_iter()
-            .fold(
-                HashMap::<Uuid, Vec<shipping_option_translation::Model>>::new(),
-                |mut grouped, translation| {
-                    grouped
-                        .entry(translation.shipping_option_id)
-                        .or_default()
-                        .push(translation);
-                    grouped
-                },
-            );
+        let mut translations =
+            load_translations_for_shipping_options(&self.db, tenant_id, &option_ids)
+                .await?
+                .into_iter()
+                .fold(
+                    HashMap::<Uuid, Vec<shipping_option_translation::Model>>::new(),
+                    |mut grouped, translation| {
+                        grouped
+                            .entry(translation.shipping_option_id)
+                            .or_default()
+                            .push(translation);
+                        grouped
+                    },
+                );
 
         let mut snapshots = Vec::with_capacity(options.len());
         for option in options {
@@ -322,10 +323,7 @@ impl ShippingOptionTranslationService {
                         shipping_option_translation::Column::ShippingOptionId
                             .eq(shipping_option_id),
                     )
-                    .filter(shipping_option_tenant_exists(
-                        tenant_id,
-                        shipping_option_id,
-                    ))
+                    .filter(shipping_option_tenant_exists(tenant_id, shipping_option_id))
                     .exec(&txn)
                     .await?;
                 if update_result.rows_affected != 1 {
@@ -503,9 +501,9 @@ WHERE id = ? AND tenant_id = ?
         ))
         .await?;
     if result.rows_affected() != 1 {
-        return Err(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
-            shipping_option_id,
-        ));
+        return Err(
+            ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(shipping_option_id),
+        );
     }
     Ok(())
 }

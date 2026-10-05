@@ -67,7 +67,6 @@ struct PostsFilter {
     per_page: u64,
 }
 
-
 async fn request<V, T>(query: &str, variables: V, token: Option<String>) -> Result<T, ApiError>
 where
     V: Serialize,

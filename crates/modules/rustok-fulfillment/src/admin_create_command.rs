@@ -11,7 +11,7 @@ use validator::Validate;
 
 use crate::dto::{CreateFulfillmentInput, FulfillmentResponse};
 use crate::entities::provider_operation;
-use crate::error::{FulfillmentError, FulfillmentResult};
+use crate::error::{FulfillmentError, map_fulfillment_error_without_context};
 use crate::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
     FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID,
@@ -45,7 +45,6 @@ pub struct InProcessFulfillmentAdminCreateCommandPort {
     provider_registry: FulfillmentProviderRegistry,
 }
 
-
 impl InProcessFulfillmentAdminCreateCommandPort {
     async fn create_local_fulfillment_and_begin_operation(
         &self,
@@ -68,11 +67,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             .await
         {
             drop(txn);
-            return Err(map_fulfillment_error(
-                context,
-                owner_operation,
-                error,
-            ));
+            return Err(map_fulfillment_error(context, owner_operation, error));
         }
 
         let operation = match self
@@ -135,11 +130,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         }
 
         txn.commit().await.map_err(|error| {
-            map_fulfillment_error(
-                context,
-                owner_operation,
-                FulfillmentError::Database(error),
-            )
+            map_fulfillment_error(context, owner_operation, FulfillmentError::Database(error))
         })?;
 
         let fulfillment = self
@@ -289,17 +280,16 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
                 })?;
             (existing, fulfillment)
         } else {
-            self
-                .create_local_fulfillment_and_begin_operation(
-                    tenant_id,
-                    provider_id.as_str(),
-                    idempotency_key,
-                    request_payload.clone(),
-                    request.input.clone(),
-                    &context,
-                    OPERATION,
-                )
-                .await?
+            self.create_local_fulfillment_and_begin_operation(
+                tenant_id,
+                provider_id.as_str(),
+                idempotency_key,
+                request_payload.clone(),
+                request.input.clone(),
+                &context,
+                OPERATION,
+            )
+            .await?
         };
 
         if operation.status == PROVIDER_OPERATION_EXECUTING {
@@ -385,13 +375,8 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
         ) {
             let result = deserialize_create_label_result(context, owner_operation, &operation)?;
-            self.commit_create_label_provider_result(
-                context,
-                owner_operation,
-                &operation,
-                &result,
-            )
-            .await?;
+            self.commit_create_label_provider_result(context, owner_operation, &operation, &result)
+                .await?;
             return Ok(result);
         }
         if operation.status == PROVIDER_OPERATION_EXECUTING {
@@ -438,7 +423,8 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
         let result = match tokio::time::timeout(
             deadline,
-            self.provider_registry.execute_create_label(provider_id, request),
+            self.provider_registry
+                .execute_create_label(provider_id, request),
         )
         .await
         {
@@ -566,13 +552,8 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
-        self.commit_create_label_provider_result(
-            context,
-            owner_operation,
-            &operation,
-            &result,
-        )
-        .await?;
+        self.commit_create_label_provider_result(context, owner_operation, &operation, &result)
+            .await?;
         Ok(result)
     }
 
@@ -607,6 +588,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                     tracing::error!(
                         boundary = ADMIN_CREATE_BOUNDARY,
                         owner_operation,
+                        correlation_id = %context.correlation_id,
                         provider_operation_id_non_nil = !operation.id.is_nil(),
                         fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
                         checkpoint_failed = true,
@@ -617,6 +599,7 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                 tracing::error!(
                     boundary = ADMIN_CREATE_BOUNDARY,
                     owner_operation,
+                    correlation_id = %context.correlation_id,
                     provider_operation_id_non_nil = !operation.id.is_nil(),
                     fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
                     local_commit_failed = true,
@@ -668,36 +651,6 @@ fn ensure_create_label_request_unchanged(
         ));
     }
     Ok(())
-}
-
-fn map_fulfillment_error_without_context(error: FulfillmentError) -> PortError {
-    match error {
-        FulfillmentError::Validation(_) => {
-            PortError::validation("fulfillment.validation", "fulfillment request is invalid")
-        }
-        FulfillmentError::ProviderResultInvalid(_) => PortError::conflict(
-            "fulfillment.reconciliation_required",
-            "fulfillment provider result requires reconciliation",
-        ),
-        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => {
-            PortError::not_found(
-                "fulfillment.not_found",
-                "fulfillment resource was not found",
-            )
-        }
-        FulfillmentError::InvalidTransition { .. } => PortError::conflict(
-            "fulfillment.invalid_transition",
-            "fulfillment operation conflicts with the current state",
-        ),
-        FulfillmentError::ShippingOptionTranslationRevisionConflict(_) => PortError::conflict(
-            "fulfillment.shipping_option_translation_revision_conflict",
-            "shipping option translation revision conflicts with the current state",
-        ),
-        FulfillmentError::Database(_) => PortError::unavailable(
-            "fulfillment.database_unavailable",
-            "fulfillment storage is temporarily unavailable",
-        ),
-    }
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
@@ -811,11 +764,9 @@ mod tests {
 
     #[test]
     fn invalid_provider_result_maps_to_reconciliation_conflict() {
-        let error = map_fulfillment_error_without_context(
-            FulfillmentError::ProviderResultInvalid(
-                "tracking number exceeds 100 characters".to_string(),
-            ),
-        );
+        let error = map_fulfillment_error_without_context(FulfillmentError::ProviderResultInvalid(
+            "tracking number exceeds 100 characters".to_string(),
+        ));
 
         assert!(matches!(error.kind, rustok_api::PortErrorKind::Conflict));
         assert_eq!(error.code, "fulfillment.reconciliation_required");

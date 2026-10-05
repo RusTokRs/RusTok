@@ -109,12 +109,16 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let mut categories_map = std::collections::BTreeMap::new();
     for post in &data.posts.items {
         if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
-            categories_map.entry(id.clone()).or_insert_with(|| name.clone());
+            categories_map
+                .entry(id.clone())
+                .or_insert_with(|| name.clone());
         }
     }
     if let Some(ref sel) = data.selected_post {
         if let (Some(id), Some(name)) = (&sel.category_id, &sel.category_name) {
-            categories_map.entry(id.clone()).or_insert_with(|| name.clone());
+            categories_map
+                .entry(id.clone())
+                .or_insert_with(|| name.clone());
         }
     }
 
@@ -132,11 +136,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         (data.posts.items, total)
     };
 
-    let related_title = t(
-        locale.as_deref(),
-        "blog.related.title",
-        "Related articles",
-    );
+    let related_title = t(locale.as_deref(), "blog.related.title", "Related articles");
 
     let search_query = use_route_query_value("q");
     let tag_query = use_route_query_value("tag");
@@ -145,15 +145,25 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let active_tag = tag_query.get();
     let active_category = category_query.get();
 
-    let (other_posts, other_total) = if let Some(q) = active_search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let (other_posts, other_total) = if let Some(q) = active_search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         let q_lower = q.to_lowercase();
         let items: Vec<_> = other_posts
             .into_iter()
             .filter(|p| {
                 p.title.to_lowercase().contains(&q_lower)
-                    || p.excerpt.as_deref().map(|e| e.to_lowercase().contains(&q_lower)).unwrap_or(false)
+                    || p.excerpt
+                        .as_deref()
+                        .map(|e| e.to_lowercase().contains(&q_lower))
+                        .unwrap_or(false)
                     || p.tags.iter().any(|t| t.to_lowercase().contains(&q_lower))
-                    || p.category_name.as_deref().map(|c| c.to_lowercase().contains(&q_lower)).unwrap_or(false)
+                    || p.category_name
+                        .as_deref()
+                        .map(|c| c.to_lowercase().contains(&q_lower))
+                        .unwrap_or(false)
             })
             .collect();
         let total = items.len() as u64;
@@ -162,7 +172,8 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         (other_posts, other_total)
     };
 
-    let has_active_filter = active_tag.is_some() || active_category.is_some() || active_search.is_some();
+    let has_active_filter =
+        active_tag.is_some() || active_category.is_some() || active_search.is_some();
     let filter_bar = if has_active_filter {
         view! {
             <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/40 p-3 text-xs">
@@ -1001,7 +1012,11 @@ fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
 pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let is_ru = locale.as_deref() == Some("ru");
-    let share_label = if is_ru { "Поделиться" } else { "Share" };
+    let share_label = if is_ru {
+        "Поделиться"
+    } else {
+        "Share"
+    };
     let telegram_label = "Telegram";
     let vk_label = "VK";
     let twitter_label = "X (Twitter)";

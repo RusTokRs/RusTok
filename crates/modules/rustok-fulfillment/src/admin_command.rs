@@ -14,10 +14,10 @@ use crate::dto::{
     ReshipFulfillmentInput, ShipFulfillmentInput,
 };
 use crate::entities::provider_operation;
-use crate::error::FulfillmentError;
+use crate::error::{FulfillmentError, map_fulfillment_error_without_context};
 use crate::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
-    FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID,
+    FulfillmentProviderRegistry, MANUAL_FULFILLMENT_PROVIDER_ID, validate_provider_metadata_safety,
 };
 use crate::services::{
     BeginProviderOperation, FulfillmentProviderOperationJournal, FulfillmentService,
@@ -631,11 +631,21 @@ impl InProcessFulfillmentAdminCommandPort {
 
         let tenant_id = request.tenant_id;
         let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
-        let provider_future = match operation {
+        let provider_result = match operation {
             "ship" | "reship" => {
-                self.provider_registry.execute_ship(provider_id, request)
+                tokio::time::timeout(
+                    deadline,
+                    self.provider_registry.execute_ship(provider_id, request),
+                )
+                .await
             }
-            "cancel" => self.provider_registry.execute_cancel(provider_id, request),
+            "cancel" => {
+                tokio::time::timeout(
+                    deadline,
+                    self.provider_registry.execute_cancel(provider_id, request),
+                )
+                .await
+            }
             _ => {
                 return Err(PortError::validation(
                     "fulfillment.provider_operation_invalid",
@@ -643,7 +653,7 @@ impl InProcessFulfillmentAdminCommandPort {
                 ));
             }
         };
-        let provider_result = match tokio::time::timeout(deadline, provider_future).await {
+        let provider_result = match provider_result {
             Ok(result) => result,
             Err(_) => {
                 if let Err(checkpoint_error) = self
@@ -1091,7 +1101,6 @@ mod tests {
 
     use super::*;
 
-
     #[test]
     fn invalid_provider_result_maps_to_reconciliation_conflict() {
         let context = PortContext::new(
@@ -1166,13 +1175,8 @@ mod tests {
         )
         .with_idempotency_key("caller-owned-key");
 
-        let error = operation_request(
-            &context,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Value::Null,
-        )
-        .expect_err("provider metadata must be structured before execution");
+        let error = operation_request(&context, Uuid::new_v4(), Uuid::new_v4(), Value::Null)
+            .expect_err("provider metadata must be structured before execution");
 
         assert!(matches!(error.kind, PortErrorKind::Validation));
         assert_eq!(error.code, "fulfillment.provider_metadata_invalid");

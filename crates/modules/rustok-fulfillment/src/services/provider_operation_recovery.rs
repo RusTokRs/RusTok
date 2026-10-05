@@ -157,7 +157,7 @@ impl FulfillmentProviderOperationRecovery {
                 "provider_result must be a JSON object".to_string(),
             ));
         }
-        validate_durable_json_payload(&provider_result, "provider_result")?;
+        validate_durable_provider_payload(&provider_result, "provider_result")?;
         let existing = self.get(tenant_id, operation_id).await?;
         if existing.status != PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             || existing.provider_result.is_some()
@@ -297,12 +297,69 @@ fn normalize_error(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::MAX_PROVIDER_OPERATION_PAYLOAD_BYTES;
+    use crate::services::provider_operation::{
+        BeginProviderOperation, FulfillmentProviderOperationJournal,
+    };
+    use rustok_test_utils::db::setup_test_db;
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, Schema, Set};
     use serde_json::json;
+
+    async fn ensure_schema(db: &DatabaseConnection) {
+        let builder = db.get_database_backend();
+        let schema = Schema::new(builder);
+        let statement1 = schema
+            .create_table_from_entity(crate::entities::fulfillment::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(builder.build(&statement1))
+            .await
+            .expect("fulfillment table should be created");
+        let statement2 = schema
+            .create_table_from_entity(crate::entities::provider_operation::Entity)
+            .if_not_exists()
+            .to_owned();
+        db.execute_raw(builder.build(&statement2))
+            .await
+            .expect("provider operation table should be created");
+    }
+
+    async fn insert_test_fulfillment(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+    ) {
+        let now = Utc::now().fixed_offset();
+        crate::entities::fulfillment::ActiveModel {
+            id: Set(fulfillment_id),
+            tenant_id: Set(tenant_id),
+            order_id: Set(Uuid::new_v4()),
+            shipping_option_id: Set(None),
+            customer_id: Set(None),
+            checkout_operation_id: Set(None),
+            checkout_fulfillment_index: Set(None),
+            checkout_plan_hash: Set(None),
+            status: Set("pending".to_string()),
+            carrier: Set(None),
+            tracking_number: Set(None),
+            delivered_note: Set(None),
+            cancellation_reason: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(now),
+            updated_at: Set(now),
+            shipped_at: Set(None),
+            delivered_at: Set(None),
+            cancelled_at: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("test fulfillment should be inserted");
+    }
 
     #[tokio::test]
     async fn oversized_unknown_success_result_is_rejected_before_persistence() {
         let db = setup_test_db().await;
-        support::ensure_fulfillment_schema(&db).await;
+        ensure_schema(&db).await;
         let journal = FulfillmentProviderOperationJournal::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let fulfillment_id = Uuid::new_v4();
@@ -338,18 +395,20 @@ mod tests {
             "provider_id": "carrier",
             "external_reference": "shipment-1",
             "tracking_number": "TRACK-1",
-            "metadata": "x".repeat(rustok_fulfillment::MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            "metadata": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
         });
         let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
         let error = recovery
-            .resolve_unknown_as_succeeded(tenant_id, operation.id, Some("shipment-1".to_string()), oversized)
+            .resolve_unknown_as_succeeded(
+                tenant_id,
+                operation.id,
+                Some("shipment-1".to_string()),
+                oversized,
+            )
             .await
             .expect_err("oversized provider result must be rejected");
 
-        assert!(matches!(
-            error,
-            rustok_fulfillment::error::FulfillmentError::Validation(_)
-        ));
+        assert!(matches!(error, FulfillmentError::Validation(_)));
         let current = recovery
             .resolve_unknown_as_failed(tenant_id, operation.id, "confirmed no shipment")
             .await
@@ -360,7 +419,7 @@ mod tests {
     #[tokio::test]
     async fn oversized_recovery_provider_reference_is_rejected_before_persistence() {
         let db = setup_test_db().await;
-        support::ensure_fulfillment_schema(&db).await;
+        ensure_schema(&db).await;
         let journal = FulfillmentProviderOperationJournal::new(db.clone());
         let tenant_id = Uuid::new_v4();
         let fulfillment_id = Uuid::new_v4();
@@ -409,10 +468,7 @@ mod tests {
             .await
             .expect_err("oversized provider reference must be rejected");
 
-        assert!(matches!(
-            error,
-            rustok_fulfillment::error::FulfillmentError::Validation(_)
-        ));
+        assert!(matches!(error, FulfillmentError::Validation(_)));
 
         let current = recovery
             .resolve_unknown_as_failed(tenant_id, operation.id, "confirmed no shipment")

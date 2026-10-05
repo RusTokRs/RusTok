@@ -571,4 +571,3 @@ pub fn twitter_share_url(url: &str, text: &str) -> String {
 
 #[cfg(test)]
 mod tests;
-

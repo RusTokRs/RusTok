@@ -17,11 +17,11 @@ fn migration_named(name: &str) -> Box<dyn MigrationTrait> {
         .unwrap_or_else(|| panic!("migration {name} should exist"))
 }
 
-async fn apply_typed_checkout_identity_migration(db: &sea_orm::DatabaseConnection) {
-    migration_named("m20260925_000119_type_checkout_fulfillment_identity")
+async fn apply_legacy_checkout_identity_migration(db: &sea_orm::DatabaseConnection) {
+    migration_named("m20260713_000117_enforce_checkout_fulfillment_identity")
         .up(&SchemaManager::new(db))
         .await
-        .expect("typed checkout identity migration should install");
+        .expect("legacy checkout identity migration should install");
 }
 
 async fn apply_checkout_identity_anchor_migration(db: &sea_orm::DatabaseConnection) {
@@ -338,7 +338,7 @@ async fn checkout_identity_anchor_migration_collapses_consistent_operation_bindi
 async fn checkout_identity_rejects_insert_without_operation_id() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    apply_typed_checkout_identity_migration(&db).await;
+    apply_legacy_checkout_identity_migration(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let result = insert_fulfillment(
@@ -362,7 +362,7 @@ async fn checkout_identity_rejects_insert_without_operation_id() {
 async fn checkout_identity_rejects_update_that_removes_operation_id() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    apply_typed_checkout_identity_migration(&db).await;
+    apply_legacy_checkout_identity_migration(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let fulfillment = insert_fulfillment(
@@ -396,7 +396,7 @@ async fn checkout_identity_rejects_update_that_removes_operation_id() {
 async fn checkout_identity_allows_unrelated_metadata_updates() {
     let db = setup_test_db().await;
     support::ensure_fulfillment_schema(&db).await;
-    apply_typed_checkout_identity_migration(&db).await;
+    apply_legacy_checkout_identity_migration(&db).await;
 
     let tenant_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();

@@ -56,13 +56,9 @@ fn selected_transport_path() -> UiTransportPath {
 #[cfg(feature = "ssr")]
 fn configured_fallback_tenant_slug(requested: Option<&str>) -> Result<String, ServerFnError> {
     let configured = configured_tenant_slug().ok_or_else(|| {
-        ServerFnError::new(
-            "Blog storefront server function requires a configured tenant fallback",
-        )
+        ServerFnError::new("Blog storefront server function requires a configured tenant fallback")
     })?;
-    let requested = requested
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    let requested = requested.map(str::trim).filter(|value| !value.is_empty());
     if let Some(requested) = requested
         && requested != configured
     {

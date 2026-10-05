@@ -10,7 +10,11 @@ use rustok_core::generate_id;
 
 use crate::entities::provider_operation;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::{FulfillmentProviderOperationResult, FULFILLMENT_TRACKING_NUMBER_MAX_LEN, validate_durable_provider_payload, validate_optional_boundary_text, validate_provider_metadata_safety, validate_provider_id};
+use crate::providers::{
+    FULFILLMENT_TRACKING_NUMBER_MAX_LEN, FulfillmentProviderOperationResult,
+    validate_durable_provider_payload, validate_optional_boundary_text, validate_provider_id,
+    validate_provider_metadata_safety,
+};
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
 pub const PROVIDER_OPERATION_EXECUTING: &str = "executing";
@@ -77,9 +81,7 @@ impl FulfillmentProviderOperationJournal {
         if let Some(existing) = provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(input.tenant_id))
             .filter(provider_operation::Column::ProviderId.eq(&input.provider_id))
-            .filter(
-                provider_operation::Column::IdempotencyKey.eq(&input.idempotency_key),
-            )
+            .filter(provider_operation::Column::IdempotencyKey.eq(&input.idempotency_key))
             .one(conn)
             .await?
         {
@@ -187,11 +189,8 @@ impl FulfillmentProviderOperationJournal {
         validate_operation_identity(tenant_id, operation_id)?;
         validate_durable_provider_payload(&provider_result, "provider_result")?;
         let current = self.get(tenant_id, operation_id).await?;
-        let provider_reference = validate_provider_result_for_operation(
-            &current,
-            provider_reference,
-            &provider_result,
-        )?;
+        let provider_reference =
+            validate_provider_result_for_operation(&current, provider_reference, &provider_result)?;
         let now = Utc::now();
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -584,8 +583,7 @@ fn validate_provider_result_for_operation(
             ))
         })?;
 
-    validate_provider_id(&typed_result.provider_id)
-        .map_err(provider_result_invalid)?;
+    validate_provider_id(&typed_result.provider_id).map_err(provider_result_invalid)?;
     validate_optional_boundary_text(
         "external_reference",
         typed_result.external_reference.as_deref(),
@@ -600,9 +598,10 @@ fn validate_provider_result_for_operation(
     .map_err(provider_result_invalid)?;
 
     if typed_result.provider_id != current.provider_id {
-        return Err(FulfillmentError::ProviderResultInvalid(
-            format!("provider_result provider_id {} does not match journal provider {}", typed_result.provider_id, current.provider_id),
-        ));
+        return Err(FulfillmentError::ProviderResultInvalid(format!(
+            "provider_result provider_id {} does not match journal provider {}",
+            typed_result.provider_id, current.provider_id
+        )));
     }
 
     if !typed_result.metadata.is_object() {
@@ -755,6 +754,7 @@ fn normalize_error(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::MAX_PROVIDER_OPERATION_PAYLOAD_BYTES;
 
     #[test]
     fn provider_operation_transition_matrix_is_fail_closed() {
@@ -811,7 +811,8 @@ mod tests {
 
     #[test]
     fn provider_operation_payloads_are_bounded() {
-        let oversized = serde_json::json!({"metadata": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)});
+        let oversized =
+            serde_json::json!({"metadata": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)});
         assert!(validate_durable_provider_payload(&oversized, "provider_result").is_err());
     }
 

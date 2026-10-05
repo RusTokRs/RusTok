@@ -140,7 +140,8 @@ impl FulfillmentReadPort for InProcessFulfillmentReadPort {
             &context,
             "read_fulfillment_projection",
             request_facts,
-            self.inner.get_fulfillment(tenant_id, request.fulfillment_id),
+            self.inner
+                .get_fulfillment(tenant_id, request.fulfillment_id),
         )
         .await
     }
@@ -334,9 +335,14 @@ fn fulfillment_lifecycle_owner_error_facts(
             0,
             false,
         ),
-        FulfillmentError::ProviderResultInvalid(value) => {
-            ("provider_result_invalid", 1, value.chars().count(), 0, 0, false)
-        }
+        FulfillmentError::ProviderResultInvalid(value) => (
+            "provider_result_invalid",
+            1,
+            value.chars().count(),
+            0,
+            0,
+            false,
+        ),
         FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     FulfillmentLifecycleOwnerErrorFacts {
@@ -573,4 +579,3 @@ mod tests {
         assert!(error.retryable);
     }
 }
-

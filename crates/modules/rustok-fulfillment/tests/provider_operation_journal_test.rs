@@ -351,7 +351,9 @@ async fn provider_result_writer_rejects_mismatched_journal_identity() {
             "provider outcome is unknown",
         )
         .await
-        .expect_err("reconciliation writer must reject oversized provider references without a result");
+        .expect_err(
+            "reconciliation writer must reject oversized provider references without a result",
+        );
     assert!(matches!(
         oversized_reconciliation_reference_error,
         rustok_fulfillment::error::FulfillmentError::Validation(_)
@@ -415,10 +417,7 @@ async fn provider_result_writer_rejects_mismatched_journal_identity() {
         )
         .await
         .expect("matching provider result should persist");
-    assert_eq!(
-        succeeded.provider_reference.as_deref(),
-        Some("shipment-1")
-    );
+    assert_eq!(succeeded.provider_reference.as_deref(), Some("shipment-1"));
 }
 
 #[tokio::test]

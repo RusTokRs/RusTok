@@ -775,8 +775,7 @@ fn validate_operation_result(
         ))
     })?;
     validate_provider_metadata_safety(&result.metadata)?;
-    validate_durable_provider_payload(&result_value, "result")
-        .map_err(provider_result_invalid)?;
+    validate_durable_provider_payload(&result_value, "result").map_err(provider_result_invalid)?;
     Ok(())
 }
 
@@ -1000,7 +999,10 @@ mod boundary_tests {
             "response_body",
         ] {
             let metadata = serde_json::json!({key: "sensitive"});
-            assert!(validate_provider_metadata_safety(&metadata).is_err(), "{key} must be rejected");
+            assert!(
+                validate_provider_metadata_safety(&metadata).is_err(),
+                "{key} must be rejected"
+            );
         }
     }
 
