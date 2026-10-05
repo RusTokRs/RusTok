@@ -229,7 +229,7 @@ for (const [value, label] of [
   ['new Date(milliseconds).toISOString()', 'UTC timestamp canonicalization'],
   ['function normalizeProjection(value, flavor, field)', 'projection normalization'],
   ['function normalizeItems(items, flavor, field)', 'item normalization'],
-  ['.sort((left, right) => left.id.localeCompare(right.id))', 'stable item ordering'],
+  ['return assertArray(items, field).map', 'order-preserving item mapping'],
   ['function projectionHash(value)', 'projection hashing'],
   ['function sourceHashes()', 'source hashing'],
   ['parity evidence already exists; remove it explicitly before a new capture', 'immutable output'],
