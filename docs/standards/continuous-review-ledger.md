@@ -4516,6 +4516,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 
+
+### FS-22.06.113 Assessment — mounted Fulfillment GraphQL pagination overflow
+
+- Base: 9919d553e597cb5c34e63a97bba20c070beb4fc8; fresh main was refreshed before implementation and post-merge main is 95cb2e4e666e923e123de7b918ff9e62785e139b.
+- Primary scope: one mounted Commerce GraphQL fulfillment lifecycle-read consumer, `fulfillments`, plus its focused source verifier.
+- Confirmed finding FULFILLMENT-22.06.113-01: the GraphQL pagination envelope computed `has_next` as `page * per_page < total`. GraphQL accepts `u64` page values, so sufficiently large page values could overflow that multiplication (or panic under checked arithmetic) and produce an incorrect pagination flag even though the owner read correctly uses saturating offset arithmetic.
+- Remediation: compute `has_next` as `page < total.div_ceil(per_page)`. Because `per_page` is already clamped to 1..100, this preserves normal pagination semantics and removes the multiplication overflow path.
+- Re-audit: the change is isolated to the fulfillment list block; the lookup/latest/order consumers are unchanged; tenant binding, host-selected facade/runtime, typed error mapping, and two-second owner deadline remain intact.
+- Verifier: `verify-commerce-graphql-query-fulfillment-context.mjs` now requires the overflow-safe expression specifically in the isolated fulfillment list query; the verifier source was parser-checked.
+- Integration: squash-merged as `95cb2e4e666e923e123de7b918ff9e62785e139b` via PR #4504.
+- Status: source remediation complete; Rust/Cargo/runtime execution remains maintainer-owned and unrun.
+- Next primary module iteration: continue the same Fulfillment lifecycle-read audit with another fresh second pass over projection materialization/error semantics; mounted transport parity and runtime failure/restart/remote evidence remain separate open gates.
 ### FS-22.06.112 Assessment — FulfillmentReadPort deadline enforcement
 
 - Base: f3e2bc9126848eacc49210726f12041910284eaa; fresh main was refreshed before implementation and the post-merge main is `643654d865fd9e0c12ee1d1b7a65c4eadb958fb3`.
