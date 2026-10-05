@@ -204,6 +204,9 @@ if (evidence.runtime_capture?.failure_contract_published !== true) {
 if (evidence.runtime_capture?.failure_harness_published !== true) {
   failures.push('source evidence must record published failure harness');
 }
+if (evidence.runtime_capture?.admin_rest_list_failure_harness !== true) {
+  failures.push('source evidence must record admin REST list failure coverage');
+}
 if (evidence.runtime_capture?.failure_harness_executed !== false) {
   failures.push('source evidence must retain failure harness as unexecuted');
 }
