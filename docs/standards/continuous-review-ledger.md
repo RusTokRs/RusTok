@@ -4697,3 +4697,14 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Verification: repository-content inspection only. No Node verifier, capture runner, Cargo, test, formatting, workflow, CI, or runtime command was executed by the agent.
 - Status: source/evidence-tool remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
 - Next primary iteration: after integration, re-read the normalization functions and verifier, then continue the remaining Fulfillment parity evidence-boundary audit.
+
+### FS-22.06.126 Assessment — fulfillment parity normalization hid item-order drift
+
+- Base: `0eef6ad751b28d3f26930c06680d3dd59405dd75`; dedicated branch `codex/audit-fs-22.06.126-preserve-item-order`.
+- Primary scope: the Fulfillment transport-parity capture runner's item-array normalization.
+- Confirmed finding FULFILLMENT-22.06.126-01: `normalizeItems` sorted fulfillment items by UUID before hashing. Because projection hashes preserve array order, this explicit sort erased transport-visible item ordering differences and could allow GraphQL/REST item order drift to pass parity evidence.
+- Remediation: item normalization now preserves the response order exactly. The parity contract explicitly requires `projection_items_preserve_order=true`, and the verifier isolates `normalizeItems` and forbids the old UUID sort. The runbook now states that owner-provided item order is transport-visible and compared exactly.
+- Re-audit: the owner service already establishes deterministic `(created_at, id)` ordering for lifecycle item materialization, so removing the parity-side sort makes the capture stricter without changing application behavior. Timestamp canonicalization, exact string preservation, response-size bounds, top-level list order, and metadata exclusion remain unchanged.
+- Verification: repository-content inspection only. No Node verifier, capture runner, Cargo, test, formatting, workflow, CI, or runtime command was executed by the agent.
+- Status: source/evidence-tool remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
+- Next primary iteration: after integration, re-read the item normalization and verifier boundary, then continue the remaining Fulfillment parity evidence audit.
