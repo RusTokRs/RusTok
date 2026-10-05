@@ -178,6 +178,18 @@ const verifyProviderSpiEvidence = ({
 }) => {
   const providerSpi = registry.provider_spi;
   const auditPolicy = webhookAuditPolicy(module);
+  if (module === 'fulfillment') {
+    const deadline = providerSpi.external_call_deadline;
+    if (
+      deadline?.source !== 'rustok_api::ports::PortContext.deadline_ms' ||
+      deadline?.required !== true ||
+      deadline?.timeout_outcome !== 'reconciliation_required' ||
+      !sameSet(deadline.applies_to, ['create_label', 'ship', 'reship', 'cancel'])
+    ) {
+      fail('fulfillment provider external-call deadline contract drift');
+    }
+  }
+
 
   if (!providerSpi) fail(`${module} registry lacks provider_spi`);
   if (evidence.schema_version !== 1) fail(`${module} provider SPI evidence schema_version must be 1`);
