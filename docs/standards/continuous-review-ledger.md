@@ -4674,3 +4674,14 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `513ccdb09c2114000c6fbba0c5ff76c311bcc4c6` via PR #4522; post-merge main was re-read at the merge SHA and the verifier's REST policy block, runbook, and audit entry were reconciled.
 - Status: FS-22.06.123 complete and integrated.
 - Next primary iteration: continue the remaining Fulfillment lifecycle runtime-evidence source audit; do not promote deadline/failure, projection-parity, restart, or remote-adapter evidence without maintainer-owned execution.
+
+### FS-22.06.124 Assessment — fulfillment parity capture response buffering bound
+
+- Base: `b880d554dc8359f0f74c51beb8f997508613a08c`; dedicated branch `codex/audit-fs-22.06.124-stream-response-cap`.
+- Primary scope: the Fulfillment transport-parity capture runner's HTTP response retention boundary.
+- Confirmed finding FULFILLMENT-22.06.124-01: `requestJson` rejected responses larger than the configured one-MiB boundary only after calling `response.arrayBuffer()` when `Content-Length` was absent or inconclusive. A chunked or otherwise unbounded response could therefore be fully buffered in the capture process before the size guard fired, defeating the intended memory bound.
+- Remediation: added `readResponseBytes`, which consumes `response.body` incrementally, cancels the reader immediately when the accumulated byte count crosses the contract limit, releases the reader, and assembles only the bounded payload for JSON parsing. Known oversized `Content-Length` responses remain rejected before body reads. The parity verifier now source-locks the streaming reader/cancellation path and forbids the old unbounded `response.arrayBuffer()` call.
+- Re-audit: the configured one-MiB retained boundary, client timeout, redirect rejection, JSON parsing, projection normalization, and evidence-retention rules remain unchanged. This is capture-process safety only; no mounted application runtime behavior changed.
+- Verification: repository-content inspection only. No Node verifier, capture runner, Cargo, test, formatting, workflow, CI, or runtime command was executed by the agent.
+- Status: source/evidence-tool remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation.
+- Next primary iteration: after integration, re-read the bounded response path and parity contract, then continue the remaining Fulfillment evidence-boundary audit.
