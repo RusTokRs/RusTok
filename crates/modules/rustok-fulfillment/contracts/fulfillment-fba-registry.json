@@ -110,6 +110,9 @@
     "side_effect_boundary": "provider adapters execute carrier effects; FulfillmentService owns persisted lifecycle transitions",
     "webhook_ingress": {
       "status": "planned",
+      "runtime_wired": false,
+      "runtime_owner": "rustok-fulfillment",
+      "implementation_note": "contract-only provider capability; no current ingress transport persists or dispatches carrier webhook deliveries",
       "idempotency_required": true,
       "replay_required": true,
       "adapter_operation": "handle_tracking_webhook",
