@@ -11,6 +11,23 @@ use crate::{FulfillmentError, FulfillmentResult};
 
 pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
+fn validate_durable_provider_payload(
+    value: &Value,
+    field: &'static str,
+) -> FulfillmentResult<()> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        FulfillmentError::Validation(format!(
+            "fulfillment provider {field} could not be serialized: {error}"
+        ))
+    })?;
+    if bytes.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider {field} must not exceed {MAX_PROVIDER_OPERATION_PAYLOAD_BYTES} serialized bytes"
+        )));
+    }
+    Ok(())
+}
+
 
 /// Stable identifier of the built-in manual fulfillment provider.
 pub const MANUAL_FULFILLMENT_PROVIDER_ID: &str = "manual";
