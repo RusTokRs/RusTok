@@ -221,6 +221,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                 self.mark_journal_committed(
                     &context,
                     OPERATION,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                 )
@@ -231,6 +232,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                 self.mark_local_persistence_failed(
                     &context,
                     OPERATION,
+                    tenant_id,
                     journaled.operation_id,
                     "authorize",
                     &error,
@@ -331,7 +333,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
             .await
         {
             Ok(collection) => {
-                self.mark_journal_committed(&context, OPERATION, journaled.operation_id, "capture")
+                self.mark_journal_committed(&context, OPERATION, tenant_id, journaled.operation_id, "capture")
                     .await?;
                 Ok(collection)
             }
@@ -339,6 +341,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                 self.mark_local_persistence_failed(
                     &context,
                     OPERATION,
+                    tenant_id,
                     journaled.operation_id,
                     "capture",
                     &error,
@@ -432,7 +435,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         {
             Ok(collection) => {
                 if let Some(operation_id) = provider_operation_id {
-                    self.mark_journal_committed(&context, OPERATION, operation_id, "cancel")
+                    self.mark_journal_committed(&context, OPERATION, tenant_id, operation_id, "cancel")
                         .await?;
                 }
                 Ok(collection)
@@ -524,13 +527,13 @@ impl InProcessPaymentAdminCollectionCommandPort {
 
         let claimed = self
             .operation_journal
-            .claim_execution(journal_operation.id)
+            .claim_execution(request.tenant_id, journal_operation.id)
             .await
             .map_err(|error| map_payment_error(context, owner_operation, error))?;
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(journal_operation.id)
+                .get(request.tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| map_payment_error(context, owner_operation, error))?;
             if let Some(result) = persisted_provider_result(&current)
@@ -576,6 +579,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 let checkpoint = if error.requires_provider_reconciliation() {
                     self.operation_journal
                         .mark_reconciliation_required(
+                            request.tenant_id,
                             journal_operation.id,
                             "payment.provider_outcome_requires_reconciliation",
                         )
@@ -583,6 +587,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 } else {
                     self.operation_journal
                         .mark_provider_error(
+                            request.tenant_id,
                             journal_operation.id,
                             "payment.provider_operation_failed",
                         )
@@ -605,6 +610,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 let _ = self
                     .operation_journal
                     .mark_reconciliation_required(
+                        request.tenant_id,
                         journal_operation.id,
                         "payment.provider_result_serialization_failed",
                     )
@@ -619,6 +625,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
         if self
             .operation_journal
             .mark_provider_succeeded(
+                request.tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
@@ -629,6 +636,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    request.tenant_id,
                     journal_operation.id,
                     "payment.provider_success_checkpoint_failed",
                 )
@@ -741,7 +749,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(context, owner_operation, existing.id, provider_operation)
+            self.mark_journal_committed(context, owner_operation, request.tenant_id, existing.id, provider_operation)
                 .await?;
         }
         Ok(())
@@ -751,18 +759,20 @@ impl InProcessPaymentAdminCollectionCommandPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        tenant_id: Uuid,
         operation_id: Uuid,
         provider_operation: &'static str,
     ) -> Result<(), PortError> {
         if self
             .operation_journal
-            .mark_committed(operation_id)
+            .mark_committed(tenant_id, operation_id)
             .await
             .is_err()
         {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation_id,
                     format!("payment.local_{provider_operation}_commit_checkpoint_failed"),
                 )
@@ -780,6 +790,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        tenant_id: Uuid,
         operation_id: Uuid,
         provider_operation: &'static str,
         error: &PaymentError,
@@ -787,6 +798,7 @@ impl InProcessPaymentAdminCollectionCommandPort {
         let _ = self
             .operation_journal
             .mark_reconciliation_required(
+                tenant_id,
                 operation_id,
                 format!("payment.local_{provider_operation}_persistence_failed"),
             )

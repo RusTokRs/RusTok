@@ -178,7 +178,7 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
                 provider_request,
             )
             .await?;
-        self.mark_refund_journal_committed(&context, OPERATION, refund.id, journaled.operation_id)
+        self.mark_refund_journal_committed(&context, OPERATION, tenant_id, refund.id, journaled.operation_id)
             .await?;
         Ok(refund)
     }
@@ -279,13 +279,13 @@ impl InProcessPaymentAdminRefundCommandPort {
 
         let claimed = self
             .operation_journal
-            .claim_execution(journal_operation.id)
+            .claim_execution(request.tenant_id, journal_operation.id)
             .await
             .map_err(|error| map_payment_error(context, owner_operation, error))?;
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(journal_operation.id)
+                .get(request.tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| map_payment_error(context, owner_operation, error))?;
             if let Some(result) = persisted_provider_result(&current)
@@ -312,6 +312,7 @@ impl InProcessPaymentAdminRefundCommandPort {
                 let checkpoint = if error.requires_provider_reconciliation() {
                     self.operation_journal
                         .mark_reconciliation_required(
+                            request.tenant_id,
                             journal_operation.id,
                             "payment.refund_provider_outcome_requires_reconciliation",
                         )
@@ -319,6 +320,7 @@ impl InProcessPaymentAdminRefundCommandPort {
                 } else {
                     self.operation_journal
                         .mark_provider_error(
+                            request.tenant_id,
                             journal_operation.id,
                             "payment.refund_provider_operation_failed",
                         )
@@ -341,6 +343,7 @@ impl InProcessPaymentAdminRefundCommandPort {
                 let _ = self
                     .operation_journal
                     .mark_reconciliation_required(
+                        request.tenant_id,
                         journal_operation.id,
                         "payment.refund_provider_result_serialization_failed",
                     )
@@ -355,6 +358,7 @@ impl InProcessPaymentAdminRefundCommandPort {
         if self
             .operation_journal
             .mark_provider_succeeded(
+                request.tenant_id,
                 journal_operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
@@ -365,6 +369,7 @@ impl InProcessPaymentAdminRefundCommandPort {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    request.tenant_id,
                     journal_operation.id,
                     "payment.refund_provider_success_checkpoint_failed",
                 )
@@ -464,18 +469,20 @@ impl InProcessPaymentAdminRefundCommandPort {
         &self,
         context: &PortContext,
         owner_operation: &'static str,
+        tenant_id: Uuid,
         refund_id: Uuid,
         operation_id: Uuid,
     ) -> Result<(), PortError> {
         if self
             .operation_journal
-            .mark_committed(operation_id)
+            .mark_committed(tenant_id, operation_id)
             .await
             .is_err()
         {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
+                    tenant_id,
                     operation_id,
                     "payment.refund_local_commit_checkpoint_failed",
                 )

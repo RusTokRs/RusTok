@@ -1,7 +1,9 @@
-const PAYMENT_EXECUTION_BOUNDARY: &str = "checkout_payment_execution_port";
+use super::*;
+
+pub(super) const PAYMENT_EXECUTION_BOUNDARY: &str = "checkout_payment_execution_port";
 
 #[derive(Debug)]
-struct CheckoutPaymentExecutionContextFacts {
+pub(super) struct CheckoutPaymentExecutionContextFacts {
     tenant_id_length: usize,
     actor_kind: &'static str,
     actor_id_length: usize,
@@ -19,7 +21,7 @@ struct CheckoutPaymentExecutionContextFacts {
     deadline_ms: Option<u64>,
 }
 
-fn checkout_payment_execution_context_facts(
+pub(super) fn checkout_payment_execution_context_facts(
     context: &PortContext,
 ) -> CheckoutPaymentExecutionContextFacts {
     let actor_kind = match &context.actor.kind {
@@ -56,13 +58,13 @@ fn checkout_payment_execution_context_facts(
 }
 
 #[derive(Debug)]
-struct CheckoutPaymentExecutionPortErrorFacts {
+pub(super) struct CheckoutPaymentExecutionPortErrorFacts {
     error_kind: &'static str,
     message_present: bool,
     message_length: usize,
 }
 
-fn checkout_payment_execution_port_error_facts(
+pub(super) fn checkout_payment_execution_port_error_facts(
     error: &PortError,
 ) -> CheckoutPaymentExecutionPortErrorFacts {
     let error_kind = match &error.kind {
@@ -82,7 +84,7 @@ fn checkout_payment_execution_port_error_facts(
 }
 
 #[derive(Debug)]
-struct CheckoutPaymentExecutionDiagnosticFacts {
+pub(super) struct CheckoutPaymentExecutionDiagnosticFacts {
     checkout_operation_id_non_nil: bool,
     cart_id_non_nil: bool,
     order_id_non_nil: bool,
@@ -99,7 +101,7 @@ struct CheckoutPaymentExecutionDiagnosticFacts {
     provider_payment_id_length: Option<usize>,
 }
 
-fn checkout_payment_execution_diagnostic_facts(
+pub(super) fn checkout_payment_execution_diagnostic_facts(
     identity: &CheckoutPaymentIdentity,
     collection_id: Option<Uuid>,
     requested_provider_id: Option<&str>,
@@ -123,7 +125,7 @@ fn checkout_payment_execution_diagnostic_facts(
     }
 }
 
-fn checkout_payment_execution_local_operation(
+pub(super) fn checkout_payment_execution_local_operation(
     operation: &'static str,
     code: &str,
 ) -> Option<&'static str> {

@@ -11,6 +11,7 @@ use crate::{FulfillmentError, FulfillmentResult};
 
 /// Maximum serialized JSON retained by durable provider-operation persistence.
 pub const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+const MAX_PROVIDER_METADATA_DEPTH: usize = 16;
 
 fn normalize_provider_metadata_key(key: &str) -> String {
     key.chars()
@@ -20,50 +21,89 @@ fn normalize_provider_metadata_key(key: &str) -> String {
 }
 
 pub(crate) fn validate_provider_metadata_safety(value: &Value) -> FulfillmentResult<()> {
-    match value {
-        Value::Object(object) => {
-            for (key, child) in object {
-                let normalized = normalize_provider_metadata_key(key);
-                if [
-                    "authorization",
-                    "apikey",
-                    "accesstoken",
-                    "refreshtoken",
-                    "idtoken",
-                    "clientsecret",
-                    "secret",
-                    "password",
-                    "privatekey",
-                    "cookie",
-                    "setcookie",
-                    "rawpayload",
-                    "requestbody",
-                    "responsebody",
-                ]
-                .iter()
-                .any(|forbidden| normalized.contains(forbidden))
-                {
-                    return Err(FulfillmentError::ProviderResultInvalid(
-                        "provider metadata contains a restricted sensitive/raw field".to_string(),
-                    ));
+    let mut stack = vec![(value, 1usize)];
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_PROVIDER_METADATA_DEPTH {
+            return Err(FulfillmentError::Validation(format!(
+                "provider metadata exceeds maximum JSON depth of {MAX_PROVIDER_METADATA_DEPTH}"
+            )));
+        }
+
+        match value {
+            Value::Object(object) => {
+                for (key, child) in object {
+                    let normalized = normalize_provider_metadata_key(key);
+                    if [
+                        "authorization",
+                        "apikey",
+                        "accesstoken",
+                        "refreshtoken",
+                        "idtoken",
+                        "clientsecret",
+                        "secret",
+                        "password",
+                        "privatekey",
+                        "cookie",
+                        "setcookie",
+                        "rawpayload",
+                        "requestbody",
+                        "responsebody",
+                    ]
+                    .iter()
+                    .any(|forbidden| normalized.contains(forbidden))
+                    {
+                        return Err(FulfillmentError::ProviderResultInvalid(
+                            "provider metadata contains a restricted sensitive/raw field"
+                                .to_string(),
+                        ));
+                    }
+                    stack.push((child, depth + 1));
                 }
-                validate_provider_metadata_safety(child)?;
             }
-        }
-        Value::Array(values) => {
-            for child in values {
-                validate_provider_metadata_safety(child)?;
+            Value::Array(values) => {
+                stack.extend(values.iter().map(|child| (child, depth + 1)));
             }
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_) => {}
         }
-        _ => {}
     }
     Ok(())
+}
+
+fn provider_payload_exceeds_depth(value: &Value) -> bool {
+    let mut stack = vec![(value, 1usize)];
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_PROVIDER_METADATA_DEPTH {
+            return true;
+        }
+        match value {
+            Value::Object(object) => {
+                stack.extend(object.values().map(|child| (child, depth + 1)));
+            }
+            Value::Array(values) => {
+                stack.extend(values.iter().map(|child| (child, depth + 1)));
+            }
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_) => {}
+        }
+    }
+    false
 }
 
 pub(crate) fn validate_durable_provider_payload(
     value: &Value,
     field: &'static str,
 ) -> FulfillmentResult<()> {
+    if provider_payload_exceeds_depth(value) {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider {field} exceeds maximum JSON depth of {MAX_PROVIDER_METADATA_DEPTH}"
+        )));
+    }
+
     let bytes = serde_json::to_vec(value).map_err(|error| {
         FulfillmentError::Validation(format!(
             "fulfillment provider {field} could not be serialized: {error}"
@@ -943,6 +983,17 @@ mod boundary_tests {
             validate_operation_result("carrier", "ship", &result),
             Err(FulfillmentError::ProviderResultInvalid(_))
         ));
+    }
+
+    #[test]
+    fn provider_json_depth_is_bounded_without_recursive_traversal() {
+        let mut nested = Value::Object(Default::default());
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+
+        assert!(validate_provider_metadata_safety(&nested).is_err());
+        assert!(validate_durable_provider_payload(&nested, "provider_result").is_err());
     }
 
     #[test]

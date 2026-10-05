@@ -1,5 +1,7 @@
+use super::*;
+
 impl InProcessCheckoutPaymentExecutionPort {
-    async fn capture(
+    pub(super) async fn capture(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -145,7 +147,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         }
     }
 
-    async fn execute_journaled_provider_operation(
+    pub(super) async fn execute_journaled_provider_operation(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -383,7 +385,7 @@ impl InProcessCheckoutPaymentExecutionPort {
 
 
 #[cfg(test)]
-fn capture_provider_amount(collection: &PaymentCollectionResponse) -> Decimal {
+pub(super) fn capture_provider_amount(collection: &PaymentCollectionResponse) -> Decimal {
     collection.authorized_amount
 }
 
@@ -392,7 +394,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capture_uses_persisted_authorized_amount_for_partial_authorization() {
+    pub(super) fn capture_uses_persisted_authorized_amount_for_partial_authorization() {
         let collection = PaymentCollectionResponse {
             id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),

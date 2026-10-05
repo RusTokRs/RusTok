@@ -1,3 +1,5 @@
+use super::*;
+
 impl InProcessCheckoutPaymentExecutionPort {
     pub fn new(db: DatabaseConnection) -> Self {
         Self::with_provider_registry(db, PaymentProviderRegistry::with_manual_provider())
@@ -14,7 +16,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         }
     }
 
-    async fn prepare(
+    pub(super) async fn prepare(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -61,7 +63,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(collection)
     }
 
-    async fn authorize(
+    pub(super) async fn authorize(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
