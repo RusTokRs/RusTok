@@ -4795,3 +4795,63 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Integration:** squash-merged as `b89a108064b41ac69c60717530773b77f022253c` via PR #4537; post-merge `main` was refreshed at the merge SHA and the Fulfillment mutation block, owner README, focused write-scope verifier, and ledger were re-read. The merge contained only the four intended files.
 - **Status:** `FS-22.06.131` complete and integrated; mounted projection parity, deadline/failure, restart, and remote-adapter runtime evidence remain unproven.
 - **Next primary iteration:** continue the same Fulfillment write boundary with a fresh second pass, focusing on insert-side ownership and concurrency semantics separately; keep all runtime evidence explicitly unpromoted.
+
+
+### FS-22.06.132 Assessment — exact-locale shipping-option translation write/read tenant scope
+
+- **Base:** `80d88e80ca24a4f6c9f573ef560f033c0ea9e650`; direct-main implementation on the refreshed `main`.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/services/shipping_option_translation.rs`, covering exact-locale TranslationTarget reads, target update, new-target insert, and concurrency serialization against the tenant-owned shipping-option parent.
+- **Invariant map:** `shipping_option_translations` has no standalone tenant key, so exact-locale child reads and writes must inherit tenant ownership through `shipping_options`. The authoritative write boundary is the owner transaction: parent selection is tenant-filtered and exclusively locked, child mutations retain the tenant relation predicate, and `(shipping_option_id, locale)` uniqueness remains the database duplicate guard.
+- **Confirmed finding FULFILLMENT-22.06.132-01:** the exact-locale service loaded translation rows by `shipping_option_id` alone and updated an existing target through `ActiveModel::update`. The parent row was already tenant-filtered/locked, so no direct cross-tenant escape was reachable through the current public owner method, but the child SQL did not preserve the same tenant-scope invariant established for the bulk writer in FS-22.06.131.
+- **Confirmed finding FULFILLMENT-22.06.132-02:** creating a missing target used a bare child-table `ActiveModel::insert`, relying entirely on the preceding parent admission. The new insert path now derives `shipping_option_id` from a tenant-filtered parent in the SQL `INSERT ... SELECT` itself; zero-row admission is rejected before the translation mutation can be treated as committed.
+- **Production remediation:** exact-locale child loaders now join `shipping_options` and filter `tenant_id`; existing target updates use `update_many` constrained by child id, parent id, and a tenant-scoped `EXISTS`, with an exactly-one-row guard; missing targets use a backend-aware tenant-filtered `INSERT ... SELECT` and require exactly one inserted row.
+- **Concurrency:** the existing exclusive lock on the tenant-owned parent remains the serialization point across the exact-locale and bulk shipping-option translation writers. The database unique index on `(shipping_option_id, locale)` remains the final duplicate-insert guard.
+- **Re-audit:** enumerated exact-locale read and write helper call sites after the change; no tenantless `shipping_option_translations` query remains in the primary service. No alternate repository writer for this owner was introduced or left outside the audited scope.
+- **Documentation:** Fulfillment README and implementation plan now state the exact-locale tenant-query and concurrency contract.
+- **Verification:** repository-content inspection, call-site enumeration, relation/schema comparison, source-shape review, and immediate diff construction only. No Cargo/tests/Clippy/rustfmt/verifier/runtime commands were executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.132` implementation complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment translation write boundary with a fresh pass over journal insert tenant/parent integrity and concurrent change-record semantics separately.
+
+
+### FS-22.06.133 Assessment — translation change-journal parent/tenant integrity
+
+- **Base:** `1a54c776da1b790420facb9b2fd93c9e8a32e8bc`; refreshed `main` before the journal remediation.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/translation_changes.rs`, specifically `record_shipping_option_translation_change_in_tx` and its durable write path.
+- **Invariant map:** translation change evidence must identify the same tenant-owned shipping option whose localized state produced the recorded revision. Because the journal stores both `tenant_id` and `shipping_option_id`, the owner must not trust those paired caller values independently; the database write should derive both from the canonical tenant-owned parent.
+- **Confirmed finding FULFILLMENT-22.06.133-01:** journal INSERT previously wrote caller-supplied `tenant_id` and `shipping_option_id` directly. The helper is crate-private and all current callers validate/lock the parent first, so this was not an externally reachable cross-tenant write through the mounted API, but the durable evidence boundary itself did not enforce parent/tenant coherence.
+- **Production remediation:** journal INSERT now uses backend-aware `INSERT ... SELECT` from `shipping_options`, requiring matching `id` and `tenant_id`; the stored tenant and shipping-option identifiers come from the selected parent row, and exactly one inserted row is required. A zero-row result maps to the existing typed shipping-option-not-found error.
+- **Concurrency check:** the journal's advisory previous-revision comparison remains non-authoritative. Normal mutation callers serialize on the tenant-owned shipping-option parent lock before journal append; the journal sequence remains append-only and uniquely keyed by `(operation_id, shipping_option_id)`.
+- **Verifier remediation:** the existing shipping-translation write-scope verifier now also rejects the old direct journal `VALUES` insert shape and requires the tenant-bound parent `INSERT ... SELECT`.
+- **Documentation:** Fulfillment README and implementation plan now state that durable translation evidence derives its tenant/resource identity from the canonical parent row.
+- **Verification:** repository-content inspection, all-callers enumeration, migration/entity comparison, source-shape review, and post-write reread only. No Cargo/tests/Clippy/rustfmt/verifier/runtime commands were executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.133` implementation complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the translation journal/concurrency boundary with a fresh pass over operation-id uniqueness, retry semantics, and rollback/reapply evidence separately.
+
+
+### FS-22.06.134 Assessment — PostgreSQL translation journal parameter mapping
+
+- **Base:** `76a2b8358bff03abd3054f95e44ffa9bb11d0db1`; post-FS-22.06.133 re-audit of `translation_changes.rs`.
+- **Primary scope:** the backend-aware SQL inside `record_shipping_option_translation_change_in_tx`, with emphasis on placeholder ordering and equivalence between PostgreSQL and SQLite/MySQL paths.
+- **Confirmed finding FULFILLMENT-22.06.134-01:** the PostgreSQL `INSERT ... SELECT` introduced in FS-22.06.133 bound `resource_revision`, `lifecycle`, and `shipping_option_id` to the wrong placeholders relative to the argument vector. Specifically, the query used `$3/$4` for the inserted revision/lifecycle and `$2` for the parent id while the vector supplied revision at position 2, lifecycle at 3, and shipping-option id at 4. This would fail to match the intended parent row and record the wrong values on PostgreSQL, while the SQLite/MySQL positional form remained correct.
+- **Production remediation:** PostgreSQL now uses `SELECT $1, parent.tenant_id, parent.id, $2, $3` with `WHERE parent.id = $4 AND parent.tenant_id = $5`, exactly matching the common argument vector and the non-PostgreSQL parameter semantics.
+- **Verifier remediation:** the shipping-translation write-scope verifier now locks the PostgreSQL placeholder mapping explicitly, including `$2` revision, `$3` lifecycle, and `$4` shipping-option identity.
+- **Fresh second pass:** compared both backend branches side by side after the fix and verified that the argument vector positions are semantically identical: operation id, resource revision, lifecycle, shipping-option id, tenant id.
+- **Runtime note:** this is a source-level remediation only; no PostgreSQL/SQLite/MySQL execution, Cargo, tests, formatter, or verifier command was run.
+- **Status:** `FS-22.06.134` complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the translation change-journal boundary with a fresh pass over duplicate-operation behavior, rollback/reapply semantics, and change-cursor monotonicity.
+
+
+### FS-22.06.135 Assessment — translation journal operation uniqueness/retry/cursor semantics
+
+- **Base:** `5d160085296a2160cc4726cba82764859a2effdc`; fresh post-FS-22.06.134 review.
+- **Primary scope:** translation change-journal uniqueness, idempotency retry/replay interaction, previous-revision deduplication, rollback safety, and tenant-scoped change-cursor progression.
+- **Operation identity audit:** TranslationTarget obtains one durable owner-operation lease from `rustok_outbox::idempotency` using tenant scope, owner slug, operation name, idempotency key, and canonical request hash. The same lease operation UUID is passed to the owner apply path and persisted in the translation journal; a completed receipt replays without rerunning the owner mutation, while a stale processing receipt is reclaimed with the same operation UUID.
+- **Uniqueness audit:** the journal unique index on `(operation_id, shipping_option_id)` matches the owner operation identity: one admitted operation can produce at most one journal record for one shipping option. The UUID operation id is generated by the durable idempotency receipt table, so tenant is already part of the operation namespace rather than requiring it to be duplicated in this unique key.
+- **Deduplication audit:** the previous-revision comparison is advisory optimization only. Correctness is preserved by parent-row serialization before mutation and journal append; identical state snapshots may be deduplicated, while distinct serialized revisions receive independent change sequence values.
+- **Cursor audit:** high-water and range reads are tenant-filtered; change sequences are positive, ordered, global append-only identifiers; cursor advancement uses returned sequence values through the stable high-water boundary. No backward or cross-tenant cursor path was found.
+- **Rollback audit:** journal rollback remains fail-closed while evidence exists, preventing cursor/history loss. Empty-table rollback remains permitted.
+- **Fresh second pass:** re-read `translation_changes.rs`, journal migration/unique indexes, TranslationTarget apply/replay handling, outbox idempotency admission/reclaim/completion, and current journal integration tests. No additional repository-owned production defect was confirmed in this bounded slice.
+- **Verification:** source inspection, call-site enumeration, SQL/index comparison, retry state-flow review, and post-fix reread only. No Cargo/tests/Clippy/rustfmt/verifier/runtime commands were executed.
+- **Status:** `FS-22.06.135` complete as a clean source assessment; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment Translation boundary with a fresh pass over journal lifecycle/event semantics and whether every durable translation change is externally observable exactly once.
+

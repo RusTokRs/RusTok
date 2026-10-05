@@ -7,8 +7,9 @@ use rustok_api::{PortError, TenantLocale, UNKNOWN_PROVENANCE_LOCALE, sha256_dige
 use rustok_core::generate_id;
 use rustok_outbox::idempotency;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, Statement, TransactionTrait,
+    sea_query::{Expr, ExprTrait, Query},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -179,7 +180,7 @@ impl ShippingOptionTranslationService {
         }
 
         let option_ids = options.iter().map(|option| option.id).collect::<Vec<_>>();
-        let mut translations = load_translations_for_shipping_options(&self.db, &option_ids)
+        let mut translations = load_translations_for_shipping_options(&self.db, tenant_id, &option_ids)
             .await?
             .into_iter()
             .fold(
@@ -225,7 +226,7 @@ impl ShippingOptionTranslationService {
         validate_locale_pair(&source_locale, &target_locale)?;
 
         let option = load_shipping_option(&self.db, tenant_id, shipping_option_id).await?;
-        let translations = load_translations(&self.db, shipping_option_id).await?;
+        let translations = load_translations(&self.db, tenant_id, shipping_option_id).await?;
         build_snapshot(option, translations, source_locale, target_locale)
     }
 
@@ -282,7 +283,7 @@ impl ShippingOptionTranslationService {
                     shipping_option_id,
                 ),
             )?;
-        let translations = load_translations(&txn, shipping_option_id).await?;
+        let translations = load_translations(&txn, tenant_id, shipping_option_id).await?;
         let source = exact_locale_row(&translations, &source_locale).ok_or_else(|| {
             ShippingOptionTranslationExactLocaleError::SourceLocaleNotFound {
                 shipping_option_id,
@@ -311,22 +312,40 @@ impl ShippingOptionTranslationService {
         let unchanged = target.is_some_and(|existing| existing.name == target_name);
         if !unchanged {
             if let Some(existing) = target.cloned() {
-                let mut active: shipping_option_translation::ActiveModel = existing.into();
-                active.name = Set(target_name);
-                active.update(&txn).await?;
-            } else {
-                shipping_option_translation::ActiveModel {
-                    id: Set(generate_id()),
-                    shipping_option_id: Set(shipping_option_id),
-                    locale: Set(target_locale.clone()),
-                    name: Set(target_name),
+                let update_result = shipping_option_translation::Entity::update_many()
+                    .col_expr(
+                        shipping_option_translation::Column::Name,
+                        Expr::value(target_name.clone()),
+                    )
+                    .filter(shipping_option_translation::Column::Id.eq(existing.id))
+                    .filter(
+                        shipping_option_translation::Column::ShippingOptionId
+                            .eq(shipping_option_id),
+                    )
+                    .filter(shipping_option_tenant_exists(
+                        tenant_id,
+                        shipping_option_id,
+                    ))
+                    .exec(&txn)
+                    .await?;
+                if update_result.rows_affected != 1 {
+                    return Err(ShippingOptionTranslationExactLocaleError::Database(
+                        sea_orm::DbErr::RecordNotUpdated,
+                    ));
                 }
-                .insert(&txn)
+            } else {
+                insert_translation_for_tenant(
+                    &txn,
+                    tenant_id,
+                    shipping_option_id,
+                    &target_locale,
+                    &target_name,
+                )
                 .await?;
             }
         }
 
-        let translations_after = load_translations(&txn, shipping_option_id).await?;
+        let translations_after = load_translations(&txn, tenant_id, shipping_option_id).await?;
         let target_after = exact_locale_row(&translations_after, &target_locale)
             .cloned()
             .ok_or_else(|| {
@@ -385,12 +404,18 @@ where
 
 async fn load_translations<C>(
     db: &C,
+    tenant_id: Uuid,
     shipping_option_id: Uuid,
 ) -> ShippingOptionTranslationExactLocaleResult<Vec<shipping_option_translation::Model>>
 where
     C: ConnectionTrait,
 {
     Ok(shipping_option_translation::Entity::find()
+        .join(
+            sea_orm::JoinType::InnerJoin,
+            shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(shipping_option::Column::TenantId.eq(tenant_id))
         .filter(shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id))
         .order_by_asc(shipping_option_translation::Column::Locale)
         .all(db)
@@ -399,6 +424,7 @@ where
 
 async fn load_translations_for_shipping_options<C>(
     db: &C,
+    tenant_id: Uuid,
     shipping_option_ids: &[Uuid],
 ) -> ShippingOptionTranslationExactLocaleResult<Vec<shipping_option_translation::Model>>
 where
@@ -408,6 +434,11 @@ where
         return Ok(Vec::new());
     }
     Ok(shipping_option_translation::Entity::find()
+        .join(
+            sea_orm::JoinType::InnerJoin,
+            shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(shipping_option::Column::TenantId.eq(tenant_id))
         .filter(
             shipping_option_translation::Column::ShippingOptionId
                 .is_in(shipping_option_ids.to_vec()),
@@ -416,6 +447,67 @@ where
         .order_by_asc(shipping_option_translation::Column::Locale)
         .all(db)
         .await?)
+}
+
+fn shipping_option_tenant_exists(
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+) -> sea_orm::sea_query::SimpleExpr {
+    Expr::exists(
+        Query::select()
+            .column(shipping_option::Column::Id)
+            .from(shipping_option::Entity)
+            .and_where(shipping_option::Column::Id.eq(shipping_option_id))
+            .and_where(shipping_option::Column::TenantId.eq(tenant_id))
+            .to_owned(),
+    )
+}
+
+async fn insert_translation_for_tenant(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    shipping_option_id: Uuid,
+    locale: &str,
+    name: &str,
+) -> ShippingOptionTranslationExactLocaleResult<()> {
+    let backend = txn.get_database_backend();
+    let sql = match backend {
+        DatabaseBackend::Postgres => {
+            r#"
+INSERT INTO shipping_option_translations (id, shipping_option_id, locale, name)
+SELECT $1, id, $2, $3
+FROM shipping_options
+WHERE id = $4 AND tenant_id = $5
+"#
+        }
+        _ => {
+            r#"
+INSERT INTO shipping_option_translations (id, shipping_option_id, locale, name)
+SELECT ?, id, ?, ?
+FROM shipping_options
+WHERE id = ? AND tenant_id = ?
+"#
+        }
+    };
+    let result = txn
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
+            sql.to_string(),
+            vec![
+                generate_id().into(),
+                locale.to_string().into(),
+                name.to_string().into(),
+                shipping_option_id.into(),
+                tenant_id.into(),
+            ],
+        ))
+        .await?;
+    if result.rows_affected != 1 {
+        return Err(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
+            shipping_option_id,
+        ));
+    }
+    Ok(())
 }
 
 fn build_snapshot(
