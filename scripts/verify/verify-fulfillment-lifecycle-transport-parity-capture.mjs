@@ -137,6 +137,8 @@ for (const [value, label] of [
   ['function isLocalCaptureHost(hostname)', 'local HTTP host boundary'],
   ["['localhost', '127.0.0.1', '[::1]', '::1']", 'local HTTP host allowlist'],
   ['function endpoint(value, field)', 'URL validation'],
+  ['function graphqlEndpoint(value)', 'canonical GraphQL endpoint validation'],
+  ['parsed.pathname !== contract.request_policy.graphql_mounted_path', 'GraphQL mounted path enforcement'],
   ['parsed.username || parsed.password || parsed.search || parsed.hash', 'URL credential/query rejection'],
   ["parsed.protocol === 'http:' && !isLocalCaptureHost(parsed.hostname)", 'remote HTTPS requirement'],
   ['must use https unless the mounted endpoint is localhost or loopback', 'remote HTTP rejection'],
