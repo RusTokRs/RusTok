@@ -160,7 +160,7 @@ impl InProcessCheckoutPaymentCompensationPort {
         for operation in operations {
             if operation.operation == "cancel" && operation.status == PROVIDER_OPERATION_SUCCEEDED {
                 self.operation_journal
-                    .mark_committed(operation.id)
+                    .mark_committed(tenant_id, operation.id)
                     .await
                     .map_err(|error| {
                         log_checkout_payment_compensation_payment_error(
@@ -277,13 +277,13 @@ impl InProcessCheckoutPaymentCompensationPort {
 
         let claimed = self
             .operation_journal
-            .claim_execution(operation.id)
+            .claim_execution(tenant_id, operation.id)
             .await
             .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
         if claimed.is_none() {
             let current = self
                 .operation_journal
-                .get(operation.id)
+                .get(tenant_id, operation.id)
                 .await
                 .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?;
             if let Some(result) = persisted_cancel_result(context, owner_operation, &current)? {
@@ -309,11 +309,11 @@ impl InProcessCheckoutPaymentCompensationPort {
                 let code = stable_payment_error_code(&error);
                 let checkpoint = if error.requires_provider_reconciliation() {
                     self.operation_journal
-                        .mark_reconciliation_required(operation.id, code)
+                        .mark_reconciliation_required(tenant_id, operation.id, code)
                         .await
                 } else {
                     self.operation_journal
-                        .mark_provider_error(operation.id, code)
+                        .mark_provider_error(tenant_id, operation.id, code)
                         .await
                 };
                 if let Err(checkpoint_error) = checkpoint {
@@ -353,6 +353,7 @@ impl InProcessCheckoutPaymentCompensationPort {
         })?;
         self.operation_journal
             .mark_provider_succeeded(
+                tenant_id,
                 operation.id,
                 provider_result.external_reference.clone(),
                 result_payload,
@@ -578,7 +579,7 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
             .await?;
         if let Some(outcome) = provider_cancel {
             self.operation_journal
-                .mark_committed(outcome.operation_id)
+                .mark_committed(tenant_id, outcome.operation_id)
                 .await
                 .map_err(|error| {
                     log_checkout_payment_compensation_payment_error(
