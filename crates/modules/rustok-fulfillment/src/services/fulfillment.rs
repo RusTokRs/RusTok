@@ -917,7 +917,7 @@ impl FulfillmentService {
     ///
     /// The public service entrypoint strips caller-supplied provider receipts; only this
     /// crate-internal path can attach the journal-owned receipt to the lifecycle write.
-    pub(crate) async fn ship_fulfillment_with_provider_result(
+    pub async fn ship_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -1317,7 +1317,7 @@ impl FulfillmentService {
     }
 
     /// Apply a provider-backed reship result after the provider operation has been journaled.
-    pub(crate) async fn reship_fulfillment_with_provider_result(
+    pub async fn reship_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
@@ -1470,7 +1470,7 @@ impl FulfillmentService {
     }
 
     /// Apply a provider-backed cancellation result after the provider operation has been journaled.
-    pub(crate) async fn cancel_fulfillment_with_provider_result(
+    pub async fn cancel_fulfillment_with_provider_result(
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
