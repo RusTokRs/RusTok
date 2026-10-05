@@ -897,6 +897,35 @@ mod boundary_tests {
     }
 
     #[test]
+    fn rejects_oversized_operation_request_metadata_before_execution() {
+        let request = FulfillmentProviderOperationRequest {
+            tenant_id: Uuid::new_v4(),
+            fulfillment_id: Uuid::new_v4(),
+            idempotency_key: Some("request-key".to_string()),
+            metadata: serde_json::json!({
+                "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            }),
+        };
+        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_operation_result_before_journal_persistence() {
+        let result = FulfillmentProviderOperationResult {
+            provider_id: "carrier".to_string(),
+            external_reference: Some("label-1".to_string()),
+            tracking_number: None,
+            metadata: serde_json::json!({
+                "payload": "x".repeat(MAX_PROVIDER_OPERATION_PAYLOAD_BYTES)
+            }),
+        };
+        assert!(matches!(
+            validate_operation_result("carrier", "ship", &result),
+            Err(FulfillmentError::ProviderResultInvalid(_))
+        ));
+    }
+
+    #[test]
     fn rejects_non_object_operation_result_metadata() {
         let result = FulfillmentProviderOperationResult {
             provider_id: "carrier".to_string(),
