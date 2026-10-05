@@ -24,13 +24,18 @@ import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { RichTextHtml } from "@rustok/richtext/view";
 import {
   fetchPublishedPost,
+  fetchPublishedPosts,
   BlogCommentComposer,
   AuthorMiniBadge,
   AuthorBioCard,
   BlogTableOfContents,
+  BlogShareButtons,
   CommentsPagination,
+  PostCard,
   calculateReadingTime,
   formatReadingTime,
+  buildArticleJsonLd,
+  type BlogPostSummary,
 } from "@rustok/blog-frontend";
 
 interface BlogPostPageProps {
@@ -125,6 +130,26 @@ export default async function BlogPostPage({
   const readingMinutes = calculateReadingTime(post.contentPlainText);
   const readingTimeLabel = formatReadingTime(readingMinutes, locale);
 
+  let relatedPosts: BlogPostSummary[] = [];
+  try {
+    const relatedRes = await fetchPublishedPosts(
+      storefrontGraphql,
+      tenantId,
+      tenantSlug,
+      1,
+      4
+    );
+    relatedPosts = relatedRes.items.filter((p) => p.slug !== slug).slice(0, 3);
+  } catch {
+    relatedPosts = [];
+  }
+
+  const articleUrl = `/${locale}/blog/${encodeURIComponent(slug)}`;
+  const jsonLd = buildArticleJsonLd({
+    post,
+    url: articleUrl,
+  });
+
   const comments = post.publicComments;
   const degradedCommentsMessage =
     comments.availability === "UNAVAILABLE"
@@ -151,6 +176,12 @@ export default async function BlogPostPage({
 
   return (
     <main className="min-h-screen bg-background">
+      {/* Schema.org JSON-LD structured data for article */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <article className="mx-auto max-w-6xl px-4 sm:px-6 py-10 space-y-8">
         {/* Navigation Breadcrumb */}
         <div>
@@ -237,11 +268,41 @@ export default async function BlogPostPage({
               />
             </div>
 
+            {/* Social Share Buttons */}
+            <BlogShareButtons
+              title={post.title}
+              url={articleUrl}
+              locale={locale}
+            />
+
             {/* Author Bio Card */}
             {post.authorProfile && (
-              <div className="pt-4">
+              <div className="pt-2">
                 <AuthorBioCard author={post.authorProfile} locale={locale} />
               </div>
+            )}
+
+            {/* Related Articles */}
+            {relatedPosts.length > 0 && (
+              <section className="pt-8 border-t border-border space-y-4">
+                <h3 className="text-xl font-bold text-foreground">
+                  {isRu ? "Читайте также" : "Related Articles"}
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {relatedPosts.map((related) => (
+                    <PostCard
+                      key={related.id}
+                      post={related}
+                      locale={locale}
+                      href={
+                        related.slug
+                          ? `/${locale}/blog/${encodeURIComponent(related.slug)}`
+                          : null
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
             )}
 
             {/* Comments Section */}

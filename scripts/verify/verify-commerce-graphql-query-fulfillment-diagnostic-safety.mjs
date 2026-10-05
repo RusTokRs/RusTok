@@ -47,14 +47,8 @@ const requireBefore = (content, first, second, label) => {
 const helperBlock = between(
   boundary,
   'struct FulfillmentQueryDiagnosticError;',
-  '#[allow(clippy::too_many_arguments)]\nfn log_shipping_option_port_error(',
-  'diagnostic helper block',
-);
-const shippingLog = between(
-  boundary,
-  'fn log_shipping_option_port_error(',
   '#[allow(clippy::too_many_arguments)]\nfn log_fulfillment_port_error(',
-  'shipping-option logger',
+  'diagnostic helper block',
 );
 const fulfillmentLog = boundary.slice(
   boundary.indexOf('fn log_fulfillment_port_error('),
@@ -85,119 +79,82 @@ for (const [value, label] of [
   ['Some(value) if value.is_nil() => "nil"', 'nil UUID shape'],
   ['Some(_) => "non_nil"', 'non-nil UUID shape'],
   ['fn text_presence_shape(value: &str)', 'text presence helper'],
+  ['if value.is_empty() { "empty" } else { "present" }', 'text presence branch'],
 ]) requireText(helperBlock, value, label);
 
-for (const [content, label, values] of [
-  [
-    shippingLog,
-    'shipping-option logger',
-    [
-      'let facts = fulfillment_query_context_facts(context);',
-      'let shipping_option_id_shape = optional_uuid_shape(shipping_option_id);',
-      'let owner_message_presence = text_presence_shape(&error.message);',
-      'let owner_message_length = error.message.chars().count();',
-      'let diagnostic_error = FulfillmentQueryDiagnosticError;',
-      'error = ?diagnostic_error',
-      'tenant_id_length = facts.tenant_id_length',
-      'actor_kind = facts.actor_kind',
-      'actor_id_length = facts.actor_id_length',
-      'claim_count = facts.claim_count',
-      'role_count = facts.role_count',
-      'correlation_id_length = facts.correlation_id_length',
-      'context_locale_length = facts.context_locale_length',
-      'channel_present = facts.channel_present',
-      'channel_length = ?facts.channel_length',
-      'deadline_ms = ?facts.deadline_ms',
-      'shipping_option_id_shape',
-      'requested_locale_length = requested_locale.map(str::len)',
-      'tenant_default_locale_length = tenant_default_locale.map(str::len)',
-      'owner_code = %error.code',
-      'owner_kind = error_kind',
-      'owner_message_presence',
-      'owner_message_length',
-      'owner_retryable = error.retryable',
-      'public_code',
-      'public_retryable',
-      'boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY',
-    ],
-  ],
-  [
-    fulfillmentLog,
-    'fulfillment logger',
-    [
-      'let facts = fulfillment_query_context_facts(context);',
-      'let error_kind = port_error_kind_name(&error.kind);',
-      'let fulfillment_id_shape = optional_uuid_shape(fulfillment_id);',
-      'let order_id_shape = optional_uuid_shape(order_id);',
-      'let owner_message_presence = text_presence_shape(&error.message);',
-      'let owner_message_length = error.message.chars().count();',
-      'let public_message_presence = text_presence_shape(public_message);',
-      'let public_message_length = public_message.chars().count();',
-      'let diagnostic_error = FulfillmentQueryDiagnosticError;',
-      'error = ?diagnostic_error',
-      'tenant_id_length = facts.tenant_id_length',
-      'actor_kind = facts.actor_kind',
-      'actor_id_length = facts.actor_id_length',
-      'correlation_id_length = facts.correlation_id_length',
-      'deadline_ms = ?facts.deadline_ms',
-      'fulfillment_id_shape',
-      'order_id_shape',
-      'owner_code = %error.code',
-      'owner_kind = error_kind',
-      'owner_message_presence',
-      'owner_message_length',
-      'owner_retryable = error.retryable',
-      'public_message_presence',
-      'public_message_length',
-      'public_code',
-      'public_retryable',
-      'boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY',
-    ],
-  ],
-]) {
-  for (const value of values) requireText(content, value, label);
-  requireText(content, 'tracing::error!(', `${label} technical severity`);
-  requireText(content, 'tracing::warn!(', `${label} rejection severity`);
-  requireBefore(
-    content,
-    'let diagnostic_error = FulfillmentQueryDiagnosticError;',
-    'tracing::error!(',
-    `${label} redaction ordering`,
-  );
-}
+for (const [value, label] of [
+  ['let facts = fulfillment_query_context_facts(context);', 'context facts derivation'],
+  ['let fulfillment_id_shape = optional_uuid_shape(fulfillment_id);', 'fulfillment id fact'],
+  ['let order_id_shape = optional_uuid_shape(order_id);', 'order id fact'],
+  ['let owner_message_presence = text_presence_shape(&error.message);', 'owner message presence fact'],
+  ['let owner_message_length = error.message.chars().count();', 'owner message length fact'],
+  ['let diagnostic_error = FulfillmentQueryDiagnosticError;', 'diagnostic error binding'],
+  ['error = ?diagnostic_error', 'redacted error field'],
+  ['owner = "rustok_fulfillment"', 'owner tag'],
+  ['tenant_id_length = facts.tenant_id_length', 'tenant length field'],
+  ['actor_kind = facts.actor_kind', 'actor kind field'],
+  ['actor_id_length = facts.actor_id_length', 'actor length field'],
+  ['claim_count = facts.claim_count', 'claim count field'],
+  ['role_count = facts.role_count', 'role count field'],
+  ['correlation_id_length = facts.correlation_id_length', 'correlation length field'],
+  ['context_locale_length = facts.context_locale_length', 'locale length field'],
+  ['channel_present = facts.channel_present', 'channel presence field'],
+  ['channel_length = ?facts.channel_length', 'channel length field'],
+  ['deadline_ms = ?facts.deadline_ms', 'deadline field'],
+  ['fulfillment_id_shape', 'fulfillment id field'],
+  ['order_id_shape', 'order id field'],
+  ['owner_code = %error.code', 'owner code field'],
+  ['owner_kind = error_kind', 'owner kind field'],
+  ['owner_message_presence', 'owner message presence field'],
+  ['owner_message_length', 'owner message length field'],
+  ['owner_retryable = error.retryable', 'owner retryable field'],
+  ['public_code', 'public code field'],
+  ['public_retryable', 'public retryable field'],
+  ['boundary = GRAPHQL_QUERY_FULFILLMENT_BOUNDARY', 'boundary constant field'],
+]) requireText(fulfillmentLog, value, label);
 
-for (const [content, label] of [
-  [shippingLog, 'shipping-option logger'],
-  [fulfillmentLog, 'fulfillment logger'],
-]) {
-  for (const value of [
-    'error = ?error',
-    'error = %error',
-    'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
-    'actor = ?context.actor',
-    'owner_kind = ?error.kind',
-    'owner_message = %error.message',
-    'message = %error.message',
-    'public_message,',
-  ]) forbidText(content, value, `${label} raw diagnostic`);
-}
+requireText(
+  fulfillmentLog,
+  'tracing::error!(',
+  'fulfillment logger technical severity',
+);
+requireText(
+  fulfillmentLog,
+  'tracing::warn!(',
+  'fulfillment logger rejection severity',
+);
+requireBefore(
+  fulfillmentLog,
+  'let diagnostic_error = FulfillmentQueryDiagnosticError;',
+  'tracing::error!(',
+  'fulfillment logger redaction ordering',
+);
+
 for (const value of [
-  'shipping_option_id = ?shipping_option_id',
-  'shipping_option_id = %shipping_option_id',
-]) forbidText(shippingLog, value, 'shipping-option raw identity');
-for (const value of [
+  'error = ?error',
+  'error = %error',
+  'owner_message =',
+  'error_message =',
+  'error.message,',
+  'correlation_id = %context.correlation_id',
+  'tenant_id = %context.tenant_id',
+  'actor = ?context.actor',
+  'actor = %context.actor',
+  'channel = %context.channel',
+  'channel = ?context.channel',
   'fulfillment_id = ?fulfillment_id',
   'fulfillment_id = %fulfillment_id',
   'order_id = ?order_id',
   'order_id = %order_id',
-]) forbidText(fulfillmentLog, value, 'fulfillment raw identity');
+  'owner_kind = ?error.kind',
+  'public_message,',
+]) forbidText(boundary, value, 'raw diagnostic leak');
 
 for (const [pattern, expected, label] of [
-  [/let diagnostic_error = FulfillmentQueryDiagnosticError;/g, 2, 'diagnostic token count'],
-  [/error = \?diagnostic_error/g, 4, 'redacted error field count'],
-  [/tracing::error!\(/g, 2, 'technical event count'],
-  [/tracing::warn!\(/g, 2, 'rejection event count'],
+  [/struct FulfillmentQueryDiagnosticError;/g, 1, 'diagnostic token count'],
+  [/error = \?diagnostic_error/g, 2, 'redacted error field count'],
+  [/tracing::error!\(/g, 1, 'technical event count'],
+  [/tracing::warn!\(/g, 1, 'rejection event count'],
 ]) {
   const count = boundary.match(pattern)?.length ?? 0;
   if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
@@ -217,18 +174,13 @@ for (const [content, value, label] of [
   [boundary, '"FULFILLMENT_TEMPORARILY_UNAVAILABLE"', 'unavailable code'],
   [boundary, '"FULFILLMENT_ACCESS_DENIED"', 'forbidden code'],
   [boundary, '"FULFILLMENT_OPERATION_FAILED"', 'invariant code'],
-  [boundary, 'if optional_not_found {', 'shipping optional not-found'],
-  [boundary, 'FulfillmentError::ShippingOptionNotFound(shipping_option_id)', 'option not-found bridge'],
   [boundary, 'if matches!(&error.kind, PortErrorKind::NotFound)', 'fulfillment optional not-found'],
   [boundary, 'FulfillmentError::FulfillmentNotFound(', 'fulfillment not-found bridge'],
-  [service, '.read_shipping_option_projection(', 'shipping owner lookup'],
-  [service, '.list_shipping_option_projections(', 'shipping owner list'],
-  [service, '.list_all_shipping_option_projections(', 'shipping admin owner list'],
   [service, '.read_fulfillment_projection(', 'fulfillment owner lookup'],
   [service, '.list_fulfillment_projections(', 'fulfillment owner list'],
   [service, '.find_latest_fulfillment_by_order_projection(', 'fulfillment latest owner read'],
-  [shim, 'include!("fulfillment_query_service.rs");', 'service inclusion'],
-  [shim, 'include!("fulfillment_query_boundary.rs");', 'boundary inclusion'],
+  [shim, 'mod fulfillment_query_service;', 'service module declaration'],
+  [shim, 'mod fulfillment_query_boundary;', 'boundary module declaration'],
   [shim, 'const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str = "commerce_graphql_query_fulfillment_facade";', 'boundary constant'],
 ]) requireText(content, value, label);
 

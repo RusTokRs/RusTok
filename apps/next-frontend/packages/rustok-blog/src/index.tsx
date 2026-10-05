@@ -17,7 +17,9 @@ export { BlogTableOfContents } from "./components/blog-toc";
 export { AuthorMiniBadge, AuthorBioCard } from "./components/author-card";
 export { CommentsPagination } from "./components/comments-pagination";
 export { BlogPagination } from "./components/blog-pagination";
+export { BlogShareButtons } from "./components/blog-share-buttons";
 export { calculateReadingTime, formatReadingTime } from "./utils/reading-time";
+export { buildArticleJsonLd } from "./utils/seo-json-ld";
 
 registerStorefrontModule({
   id: "blog-latest-posts",

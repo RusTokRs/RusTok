@@ -7,8 +7,8 @@ use rustok_api::{PortError, TenantLocale, UNKNOWN_PROVENANCE_LOCALE, sha256_dige
 use rustok_core::generate_id;
 use rustok_outbox::idempotency;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set, Statement, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, RelationTrait, Statement, TransactionTrait,
     sea_query::{Expr, ExprTrait, Query},
 };
 use serde::{Deserialize, Serialize};
@@ -502,7 +502,7 @@ WHERE id = ? AND tenant_id = ?
             ],
         ))
         .await?;
-    if result.rows_affected != 1 {
+    if result.rows_affected() != 1 {
         return Err(ShippingOptionTranslationExactLocaleError::ShippingOptionNotFound(
             shipping_option_id,
         ));

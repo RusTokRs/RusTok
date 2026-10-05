@@ -76,7 +76,7 @@ for (const [source, value, label] of [
   [ownerSource, 'PortError::new(kind, code, message, retryable)', 'stable owner error'],
   [ownerService, 'async fn begin_read_transaction(&self)', 'shared lifecycle read snapshot helper'],
   [ownerService, 'begin_with_config(Some(IsolationLevel::RepeatableRead), Some(AccessMode::ReadOnly))', 'repeatable-read read-only snapshot'],
-  [ownerService, 'async fn build_fulfillment_responses(', 'batch fulfillment item materialization'],
+  [ownerService, 'async fn build_fulfillment_responses<C>(', 'batch fulfillment item materialization'],
   [ownerService, 'FulfillmentId.is_in(fulfillment_ids)', 'batch item query'],
   [ownerService, 'order_by_asc(entities::fulfillment_item::Column::CreatedAt)', 'batch item created ordering'],
   [ownerService, 'items_by_fulfillment', 'batch item grouping'],
@@ -115,7 +115,7 @@ for (const [source, value, label] of [
 const constructor = between(
   fulfillmentShim,
   'pub fn new(db: DatabaseConnection) -> Self {',
-  'pub async fn get_shipping_option(',
+  'pub async fn get_fulfillment(',
   'GraphQL facade constructor',
 );
 const lookup = between(
@@ -133,13 +133,13 @@ const list = between(
 const latest = between(
   fulfillmentShim,
   'pub async fn find_by_order(',
-  'fn shipping_option_query_context(',
+  'pub(super) fn fulfillment_query_context(',
   'GraphQL latest-by-order',
 );
 
 for (const [source, value, label] of [
   [fulfillmentShim, 'fulfillment_reads: Arc<dyn FulfillmentReadPort>', 'facade owner port'],
-  [constructor, 'fulfillment_lifecycle_read_runtime_for_current_graphql_scope(db)', 'scoped runtime resolution'],
+  [constructor, 'fulfillment_lifecycle_read_runtime_for_current_graphql_scope', 'scoped runtime resolution'],
   [constructor, 'fulfillment_reads: fulfillment_lifecycle_runtime.fulfillment_read_port()', 'scoped port injection'],
   [lookup, '.read_fulfillment_projection(', 'GraphQL owner lookup'],
   [lookup, 'ReadFulfillmentProjectionRequest { fulfillment_id: id }', 'typed lookup request'],
@@ -243,13 +243,13 @@ if ((ownerReadImplementation.match(/execute_fulfillment_read\(/g) || []).length 
 const adminList = between(
   adminRest,
   'pub async fn list_fulfillments(',
-  '/// Create admin fulfillment',
+  'pub async fn show_fulfillment(',
   'admin list',
 );
 const adminShow = between(
   adminRest,
   'pub async fn show_fulfillment(',
-  '/// Ship admin fulfillment',
+  'pub async fn create_fulfillment(',
   'admin show',
 );
 for (const [source, value, label] of [

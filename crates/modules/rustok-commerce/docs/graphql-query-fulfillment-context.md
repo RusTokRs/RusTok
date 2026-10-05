@@ -38,8 +38,10 @@ GraphQL consumes both runtimes through manifest data and one mounted
 `CommerceShippingOptionReadScope`. The extension nests both runtime task-local
 values plus a request-owned fulfillment call context for each resolver execution.
 The call context contains only the normalized public channel derived from trusted
-`RequestContext` data. The private query facade clones all three owner ports and
-does not construct `FulfillmentService` or root in-process read providers.
+`RequestContext` data. The private fulfillment query facade holds `Arc<dyn FulfillmentReadPort>`
+and does not construct concrete `FulfillmentService` or root in-process read providers,
+while shipping-option reads in `query.rs` consume `CommerceShippingOptionReadRuntime` directly
+through owner read ports with typed error boundary.
 
 Commerce HTTP router construction consumes the same typed runtimes from
 `HostRuntimeContext`. HTTP startup fails closed when either required runtime is
@@ -140,8 +142,7 @@ The private GraphQL fulfillment facade now emits only:
 - error/warn severity selected from `PortErrorKind`;
 - tenant, actor, correlation, locale, channel, claims, roles, and deadline as
   bounded lengths, counts, presence flags, or static kinds;
-- shipping-option, fulfillment, and order identity as `absent`, `nil`, or
-  `non_nil` shapes;
+- fulfillment and order identity as `absent`, `nil`, or `non_nil` shapes;
 - owner and public message presence and length without message content;
 - a zero-sized diagnostic token whose `Debug` output is always `redacted`.
 
