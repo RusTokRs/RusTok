@@ -71,6 +71,15 @@
       ],
       "@rustok/search-frontend": [
         "./packages/search/src/index.tsx"
+      ],
+      "@rustok/profiles-frontend": [
+        "./packages/rustok-profiles/src/index.tsx"
+      ],
+      "@rustok/pricing-frontend": [
+        "./packages/rustok-pricing/src/index.tsx"
+      ],
+      "@rustok/notifications-frontend": [
+        "./packages/rustok-notifications/src/index.tsx"
       ]
     }
   },
