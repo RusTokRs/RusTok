@@ -440,8 +440,10 @@ impl PaymentService {
         let now = Utc::now();
         let mut active: entities::refund::ActiveModel = refund.into();
         let current_metadata = active.metadata.clone().take().unwrap_or_default();
+        let merged_metadata = merge_metadata(current_metadata, input.metadata);
+        validate_payment_metadata(&merged_metadata, "complete refund merged metadata")?;
         active.status = Set(STATUS_REFUNDED.to_string());
-        active.metadata = Set(merge_metadata(current_metadata, input.metadata));
+        active.metadata = Set(merged_metadata);
         active.updated_at = Set(now.into());
         active.refunded_at = Set(Some(now.into()));
         active.update(&txn).await?;
@@ -472,9 +474,11 @@ impl PaymentService {
         let fallback_reason = refund.reason.clone();
         let mut active: entities::refund::ActiveModel = refund.into();
         let current_metadata = active.metadata.clone().take().unwrap_or_default();
+        let merged_metadata = merge_metadata(current_metadata, input.metadata);
+        validate_payment_metadata(&merged_metadata, "cancel refund merged metadata")?;
         active.status = Set(STATUS_REFUND_CANCELLED.to_string());
         active.reason = Set(normalize_optional_reason(input.reason).or(fallback_reason));
-        active.metadata = Set(merge_metadata(current_metadata, input.metadata));
+        active.metadata = Set(merged_metadata);
         active.updated_at = Set(now.into());
         active.cancelled_at = Set(Some(now.into()));
         active.update(&txn).await?;
@@ -492,6 +496,7 @@ impl PaymentService {
         input
             .validate()
             .map_err(|error| PaymentError::Validation(error.to_string()))?;
+        validate_payment_metadata(&input.metadata, "authorize collection")?;
 
         let txn = self.db.begin().await?;
         let collection = self
