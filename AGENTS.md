@@ -99,6 +99,24 @@ Stale-branch assumptions are therefore a correctness risk.
 
 A PR description SHOULD record the relevant base SHA when concurrent platform work is active.
 
+
+### 3.1 Parallel agent execution for complex work
+
+For non-trivial repository work, contributors and AI agents SHOULD use the strongest available parallel execution model when the tooling supports it. Parallelism is a quality mechanism for broader independent review, not a substitute for ownership, sequencing, or verification.
+
+When parallel execution is used:
+
+1. A lead agent MUST establish the task boundary, canonical owner, base `main` SHA, applicable ledger phase, and the write/integration boundary before delegating work.
+2. Independent agents SHOULD be assigned orthogonal review dimensions where practical, such as domain/architecture invariants, persistence and migrations, concurrency/idempotency, tenant/auth/policy boundaries, public transports, UI/operator surfaces, tests/tooling, and documentation. Avoid assigning the same investigative scope to multiple agents unless deliberate independent review is desired.
+3. Read-only investigation and evidence gathering SHOULD run concurrently whenever the work items do not depend on one another. Each agent MUST return concrete findings, affected paths, evidence, and explicit uncertainty rather than a generic "looks good" conclusion.
+4. Code-writing agents MUST use dedicated branches. Two agents MUST NOT concurrently modify the same branch, and overlapping writes to the same file MUST be serialized through one designated owner/integrator.
+5. Agents MUST NOT start a later ledger phase merely because a parallel subtask finished early. Parallel tasks remain inside the same phase until the lead agent reconciles their findings and the phase is integrated according to the normal PR/main sequence.
+6. Before integration, the lead agent MUST reconcile all parallel findings against the refreshed `main`, re-read the combined affected change surface, resolve contradictions, remove duplicate or superseded implementations, and run the required scoped verification for the resulting change.
+7. Stronger parallel agents MAY be used for architecture synthesis, adversarial review, and high-risk correctness analysis; narrower agents MAY be used for focused static checks and evidence collection. Agent specialization MUST NOT weaken the repository governance contract or verification requirements.
+8. Parallel execution MUST increase coverage or reduce independent validation blind spots. It MUST NOT be used to split one ownership decision across multiple conflicting implementations, bypass the canonical owner, avoid a required ADR, or create untracked follow-up work.
+
+The final integrated change is owned by the lead agent/contributor, regardless of which parallel agent discovered or implemented an individual part.
+
 ## 4. Ideal platform implementation standard
 
 Treat every change as work on an ideal, long-lived, production-grade platform.
