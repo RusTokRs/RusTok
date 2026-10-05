@@ -288,40 +288,38 @@ function projectionHash(value) {
 }
 
 function normalizeItems(items, flavor, field) {
-  return assertArray(items, field)
-    .map((item, index) => {
-      const source = assertObject(item, `${field}[${index}]`);
-      const camel = flavor === 'graphql';
-      return {
-        id: uuid(source.id, `${field}[${index}].id`),
-        fulfillment_id: uuid(
-          source[camel ? 'fulfillmentId' : 'fulfillment_id'],
-          `${field}[${index}].fulfillment_id`,
-        ),
-        order_line_item_id: uuid(
-          source[camel ? 'orderLineItemId' : 'order_line_item_id'],
-          `${field}[${index}].order_line_item_id`,
-        ),
-        quantity: requiredInteger(source.quantity, `${field}[${index}].quantity`),
-        shipped_quantity: requiredInteger(
-          source[camel ? 'shippedQuantity' : 'shipped_quantity'],
-          `${field}[${index}].shipped_quantity`,
-        ),
-        delivered_quantity: requiredInteger(
-          source[camel ? 'deliveredQuantity' : 'delivered_quantity'],
-          `${field}[${index}].delivered_quantity`,
-        ),
-        created_at: timestamp(
-          source[camel ? 'createdAt' : 'created_at'],
-          `${field}[${index}].created_at`,
-        ),
-        updated_at: timestamp(
-          source[camel ? 'updatedAt' : 'updated_at'],
-          `${field}[${index}].updated_at`,
-        ),
-      };
-    })
-    .sort((left, right) => left.id.localeCompare(right.id));
+  return assertArray(items, field).map((item, index) => {
+    const source = assertObject(item, `${field}[${index}]`);
+    const camel = flavor === 'graphql';
+    return {
+      id: uuid(source.id, `${field}[${index}].id`),
+      fulfillment_id: uuid(
+        source[camel ? 'fulfillmentId' : 'fulfillment_id'],
+        `${field}[${index}].fulfillment_id`,
+      ),
+      order_line_item_id: uuid(
+        source[camel ? 'orderLineItemId' : 'order_line_item_id'],
+        `${field}[${index}].order_line_item_id`,
+      ),
+      quantity: requiredInteger(source.quantity, `${field}[${index}].quantity`),
+      shipped_quantity: requiredInteger(
+        source[camel ? 'shippedQuantity' : 'shipped_quantity'],
+        `${field}[${index}].shipped_quantity`,
+      ),
+      delivered_quantity: requiredInteger(
+        source[camel ? 'deliveredQuantity' : 'delivered_quantity'],
+        `${field}[${index}].delivered_quantity`,
+      ),
+      created_at: timestamp(
+        source[camel ? 'createdAt' : 'created_at'],
+        `${field}[${index}].created_at`,
+      ),
+      updated_at: timestamp(
+        source[camel ? 'updatedAt' : 'updated_at'],
+        `${field}[${index}].updated_at`,
+      ),
+    };
+  });
 }
 
 function normalizeProjection(value, flavor, field) {
