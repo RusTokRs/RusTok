@@ -3,7 +3,150 @@ use crate::i18n::t;
 use crate::{PageBuilderAdminProviderState, PageBuilderAdminProviderStatus};
 use fly_ui::{EditorCapability, EditorProviderState};
 use leptos::prelude::*;
+use rustok_grid::{
+    ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType, GridPagination,
+    RowSelection,
+};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityPolicyRowModel {
+    pub capability: EditorCapability,
+    pub capability_id: String,
+    pub requested: Option<bool>,
+    pub tenant: Option<bool>,
+    pub permission: Option<bool>,
+    pub effective: bool,
+    pub effective_label: String,
+}
+
+pub fn capability_policy_grid_columns(
+    capability_label: &str,
+    requested_label: &str,
+    tenant_label: &str,
+    permission_label: &str,
+    effective_label: &str,
+    filter_placeholder: &str,
+) -> Vec<GridColumnDef> {
+    vec![
+        GridColumnDef::new("capability", capability_label)
+            .min_width(160)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(filter_placeholder.to_string()),
+            }),
+        GridColumnDef::new("requested", requested_label)
+            .min_width(110)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Text {
+                placeholder: Some(filter_placeholder.to_string()),
+            }),
+        GridColumnDef::new("tenant", tenant_label)
+            .min_width(110)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Text {
+                placeholder: Some(filter_placeholder.to_string()),
+            }),
+        GridColumnDef::new("permission", permission_label)
+            .min_width(110)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Text {
+                placeholder: Some(filter_placeholder.to_string()),
+            }),
+        GridColumnDef::new("effective", effective_label)
+            .min_width(110)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Text {
+                placeholder: Some(filter_placeholder.to_string()),
+            }),
+    ]
+}
+
+pub fn matches_capability_policy_filter(
+    row: &CapabilityPolicyRowModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("capability", FilterValue::Text(q)) => {
+                if !row
+                    .capability_id
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("requested", FilterValue::Text(q)) => {
+                let term = q.trim().to_ascii_lowercase();
+                let matches_yes = term == "yes" || term == "да" || term == "true";
+                let matches_no = term == "no" || term == "нет" || term == "false";
+                match row.requested {
+                    Some(true) if !matches_yes => return false,
+                    Some(false) if !matches_no => return false,
+                    None if !term.is_empty() && term != "—" && term != "-" => return false,
+                    _ => {}
+                }
+            }
+            ("tenant", FilterValue::Text(q)) => {
+                let term = q.trim().to_ascii_lowercase();
+                let matches_yes = term == "yes" || term == "да" || term == "true";
+                let matches_no = term == "no" || term == "нет" || term == "false";
+                match row.tenant {
+                    Some(true) if !matches_yes => return false,
+                    Some(false) if !matches_no => return false,
+                    None if !term.is_empty() && term != "—" && term != "-" => return false,
+                    _ => {}
+                }
+            }
+            ("permission", FilterValue::Text(q)) => {
+                let term = q.trim().to_ascii_lowercase();
+                let matches_yes = term == "yes" || term == "да" || term == "true";
+                let matches_no = term == "no" || term == "нет" || term == "false";
+                match row.permission {
+                    Some(true) if !matches_yes => return false,
+                    Some(false) if !matches_no => return false,
+                    None if !term.is_empty() && term != "—" && term != "-" => return false,
+                    _ => {}
+                }
+            }
+            ("effective", FilterValue::Text(q)) => {
+                if !row
+                    .effective_label
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_capability_policy_rows(
+    rows: &[CapabilityPolicyRowModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<CapabilityPolicyRowModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.capability_id.to_ascii_lowercase().contains(&term)
+                    && !row.effective_label.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_capability_policy_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
 
 #[component]
 pub(crate) fn CapabilityFieldset(
@@ -33,6 +176,7 @@ pub(crate) fn CapabilityPolicyPanel(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
     let title = t(
         locale.as_deref(),
         "page_builder.capabilityPolicy.title",
@@ -119,6 +263,12 @@ pub(crate) fn CapabilityPolicyPanel(
         "page_builder.capabilityPolicy.none",
         "none",
     );
+    let empty_message = t(
+        locale.as_deref(),
+        "page_builder.capabilityPolicy.empty",
+        "No capabilities found",
+    );
+    let filter_placeholder = if is_ru { "Фильтр..." } else { "Filter..." };
 
     let evaluation = runtime.editor_capability_evaluation.clone();
     let host_provider = evaluation
@@ -179,6 +329,133 @@ pub(crate) fn CapabilityPolicyPanel(
         .filter(|reasons| !reasons.is_empty())
         .unwrap_or_else(|| none_label.clone());
 
+    let columns = capability_policy_grid_columns(
+        &capability_label,
+        &requested_label,
+        &tenant_label,
+        &permission_label,
+        &effective_label,
+        filter_placeholder,
+    );
+
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, EditorCapability::ALL.len() as u64));
+
+    let rows = Memo::new({
+        let runtime = runtime.clone();
+        let evaluation = evaluation.clone();
+        let enabled_label = enabled_label.clone();
+        let disabled_label = disabled_label.clone();
+        move |_| {
+            EditorCapability::ALL
+                .into_iter()
+                .map(|capability| {
+                    let requested = evaluation
+                        .as_ref()
+                        .map(|evaluation| evaluation.requested_allows(capability));
+                    let tenant = evaluation
+                        .as_ref()
+                        .map(|evaluation| evaluation.tenant_allows(capability));
+                    let permission = evaluation
+                        .as_ref()
+                        .map(|evaluation| evaluation.permission_allows(capability));
+                    let effective = runtime.capability_enabled(capability);
+                    let effective_label = if effective {
+                        enabled_label.clone()
+                    } else {
+                        disabled_label.clone()
+                    };
+                    CapabilityPolicyRowModel {
+                        capability,
+                        capability_id: capability.as_str().to_string(),
+                        requested,
+                        tenant,
+                        permission,
+                        effective,
+                        effective_label,
+                    }
+                })
+                .collect::<Vec<_>>()
+        }
+    });
+
+    let filtered_rows = Memo::new(move |_| {
+        let all = rows.get();
+        let q = search.get();
+        let f = filters.get();
+        filter_capability_policy_rows(
+            &all,
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let count = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(count));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = {
+        let yes_label = yes_label.clone();
+        let no_label = no_label.clone();
+        Callback::new(move |(row, col_id): (CapabilityPolicyRowModel, String)| {
+            match col_id.as_str() {
+                "capability" => view! {
+                    <span data-fly-capability-row=row.capability.as_str() class="font-medium text-xs">
+                        <code>{row.capability.as_str()}</code>
+                    </span>
+                }
+                .into_any(),
+                "requested" => view! {
+                    <CapabilitySourceCell
+                        value=row.requested
+                        yes_label=yes_label.clone()
+                        no_label=no_label.clone()
+                    />
+                }
+                .into_any(),
+                "tenant" => view! {
+                    <CapabilitySourceCell
+                        value=row.tenant
+                        yes_label=yes_label.clone()
+                        no_label=no_label.clone()
+                    />
+                }
+                .into_any(),
+                "permission" => view! {
+                    <CapabilitySourceCell
+                        value=row.permission
+                        yes_label=yes_label.clone()
+                        no_label=no_label.clone()
+                    />
+                }
+                .into_any(),
+                "effective" => {
+                    let class = if row.effective {
+                        "px-1 py-1 text-xs text-emerald-700 font-medium"
+                    } else {
+                        "px-1 py-1 text-xs text-destructive font-medium"
+                    };
+                    view! { <span class=class>{row.effective_label}</span> }.into_any()
+                }
+                _ => ().into_any(),
+            }
+        })
+    };
+
     view! {
         <section
             class="space-y-3 rounded-xl border border-border bg-card p-3"
@@ -201,52 +478,32 @@ pub(crate) fn CapabilityPolicyPanel(
                     {policy_note}
                 </p>
             })}
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
-                    <thead>
-                        <tr class="border-b border-border text-muted-foreground">
-                            <th class="px-1 py-1">{capability_label}</th>
-                            <th class="px-1 py-1">{requested_label}</th>
-                            <th class="px-1 py-1">{tenant_label}</th>
-                            <th class="px-1 py-1">{permission_label}</th>
-                            <th class="px-1 py-1">{effective_label}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {EditorCapability::ALL.into_iter().map(|capability| {
-                            let row_runtime = runtime.clone();
-                            let evaluation = evaluation.clone();
-                            let enabled_label = enabled_label.clone();
-                            let disabled_label = disabled_label.clone();
-                            let yes_label = yes_label.clone();
-                            let no_label = no_label.clone();
-                            let requested = evaluation
-                                .as_ref()
-                                .map(|evaluation| evaluation.requested_allows(capability));
-                            let tenant = evaluation
-                                .as_ref()
-                                .map(|evaluation| evaluation.tenant_allows(capability));
-                            let permission = evaluation
-                                .as_ref()
-                                .map(|evaluation| evaluation.permission_allows(capability));
-                            view! {
-                                <tr class="border-b border-border/60" data-fly-capability-row=capability.as_str()>
-                                    <th class="px-1 py-1 font-medium"><code>{capability.as_str()}</code></th>
-                                    <CapabilitySourceCell value=requested yes_label=yes_label.clone() no_label=no_label.clone() />
-                                    <CapabilitySourceCell value=tenant yes_label=yes_label.clone() no_label=no_label.clone() />
-                                    <CapabilitySourceCell value=permission yes_label=yes_label no_label=no_label />
-                                    <td class="px-1 py-1">
-                                        {move || if row_runtime.capability_enabled(capability) {
-                                            enabled_label.clone()
-                                        } else {
-                                            disabled_label.clone()
-                                        }}
-                                    </td>
-                                </tr>
-                            }
-                        }).collect_view()}
-                    </tbody>
-                </table>
+            <div class="space-y-3">
+                <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                    <input
+                        type="text"
+                        placeholder=if is_ru { "Поиск по возможностям..." } else { "Search capabilities..." }
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                        class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-64 font-normal"
+                    />
+                    <div class="text-xs text-muted-foreground">
+                        {move || format!("{} {}", filtered_rows.get().len(), if is_ru { "возможностей" } else { "capabilities" })}
+                    </div>
+                </div>
+
+                <DataGrid
+                    columns=columns
+                    data=Signal::derive(move || paged_rows.get())
+                    key_fn=|row: &CapabilityPolicyRowModel| row.capability_id.clone()
+                    cell_renderer=cell_renderer
+                    empty_message=empty_message
+                    selection=selection
+                    pagination=pagination
+                    filters=filters
+                    on_filter_change=on_filters_change
+                    on_row_click=Callback::new(|_| ())
+                />
             </div>
         </section>
     }
@@ -255,11 +512,11 @@ pub(crate) fn CapabilityPolicyPanel(
 #[component]
 fn CapabilitySourceCell(value: Option<bool>, yes_label: String, no_label: String) -> impl IntoView {
     let (label, class) = match value {
-        Some(true) => (yes_label, "px-1 py-1 text-emerald-700"),
-        Some(false) => (no_label, "px-1 py-1 text-destructive"),
-        None => ("—".to_string(), "px-1 py-1 text-muted-foreground"),
+        Some(true) => (yes_label, "px-1 py-1 text-xs text-emerald-700 font-medium"),
+        Some(false) => (no_label, "px-1 py-1 text-xs text-destructive font-medium"),
+        None => ("—".to_string(), "px-1 py-1 text-xs text-muted-foreground"),
     };
-    view! { <td class=class>{label}</td> }
+    view! { <span class=class>{label}</span> }
 }
 
 #[cfg(test)]
@@ -276,5 +533,57 @@ mod tests {
                     .all(|character| character.is_ascii_lowercase() || character == '_')
             );
         }
+    }
+
+    #[test]
+    fn capability_policy_grid_columns_initialization() {
+        let cols = capability_policy_grid_columns(
+            "Capability",
+            "Requested",
+            "Tenant",
+            "Permission",
+            "Effective",
+            "Filter...",
+        );
+        assert_eq!(cols.len(), 5);
+        assert_eq!(cols[0].id.as_str(), "capability");
+        assert_eq!(cols[1].id.as_str(), "requested");
+        assert_eq!(cols[2].id.as_str(), "tenant");
+        assert_eq!(cols[3].id.as_str(), "permission");
+        assert_eq!(cols[4].id.as_str(), "effective");
+    }
+
+    #[test]
+    fn capability_policy_filtering_by_search_and_column() {
+        let rows = vec![
+            CapabilityPolicyRowModel {
+                capability: EditorCapability::Edit,
+                capability_id: "edit".to_string(),
+                requested: Some(true),
+                tenant: Some(true),
+                permission: Some(true),
+                effective: true,
+                effective_label: "enabled".to_string(),
+            },
+            CapabilityPolicyRowModel {
+                capability: EditorCapability::Publish,
+                capability_id: "publish".to_string(),
+                requested: Some(false),
+                tenant: Some(true),
+                permission: Some(false),
+                effective: false,
+                effective_label: "disabled".to_string(),
+            },
+        ];
+
+        let mut filters = ColumnFilters::default();
+        let result = filter_capability_policy_rows(&rows, &filters, Some("edit"));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].capability_id, "edit");
+
+        filters.set("effective", FilterValue::Text("disabled".to_string()));
+        let result2 = filter_capability_policy_rows(&rows, &filters, None);
+        assert_eq!(result2.len(), 1);
+        assert_eq!(result2[0].capability_id, "publish");
     }
 }

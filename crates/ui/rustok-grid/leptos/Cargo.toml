@@ -20,7 +20,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["ssr"]
-ssr = ["leptos/ssr"]
+ssr = ["leptos/ssr", "leptos-use/ssr"]
 hydrate = ["leptos/hydrate"]
 csr = ["leptos/csr"]
 

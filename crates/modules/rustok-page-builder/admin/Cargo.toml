@@ -12,9 +12,9 @@ crate-type = ["rlib"]
 default = ["ssr", "browser-js"]
 browser-js = ["dep:wasm-bindgen", "dep:web-sys"]
 wasm-client = ["fly-leptos/wasm-client", "browser-js"]
-csr = ["leptos/csr", "wasm-client"]
-hydrate = ["leptos/hydrate", "wasm-client"]
-ssr = ["leptos/ssr", "fly-leptos/ssr"]
+csr = ["leptos/csr", "wasm-client", "rustok-grid-leptos/csr"]
+hydrate = ["leptos/hydrate", "wasm-client", "rustok-grid-leptos/hydrate"]
+ssr = ["leptos/ssr", "fly-leptos/ssr", "rustok-grid-leptos/ssr"]
 dioxus-ui = ["dep:dioxus", "dep:fly-dioxus"]
 
 [dependencies]
@@ -28,6 +28,8 @@ dioxus = { workspace = true, optional = true }
 rustok-page-builder = { path = "..", default-features = false }
 rustok-ui-core.workspace = true
 rustok-ui-i18n.workspace = true
+rustok-grid.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }
 leptos.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

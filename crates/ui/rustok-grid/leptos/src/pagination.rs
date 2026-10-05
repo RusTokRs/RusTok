@@ -1,6 +1,7 @@
 use leptos::ev::Event;
 use leptos::html::Div;
 use leptos::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use leptos_use::use_intersection_observer;
 
 use rustok_grid::{GridPagination, PaginationMode};
@@ -27,6 +28,7 @@ pub fn GridPaginationBar(
         StoredValue::new(page_size_options.unwrap_or_else(|| DEFAULT_PAGE_SIZE_OPTIONS.to_vec()));
 
     // Infinite scroll: load the next page when the sentinel becomes visible.
+    #[cfg(target_arch = "wasm32")]
     let _ = use_intersection_observer(sentinel_ref, move |entries, _| {
         if !entries.iter().any(|entry| entry.is_intersecting()) {
             return;
@@ -36,6 +38,9 @@ pub fn GridPaginationBar(
             on_load_more.run(());
         }
     });
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = on_load_more;
 
     let current_page = move || pagination.get().page;
     let total_pages = move || pagination.get().total_pages();
