@@ -1,11 +1,13 @@
+use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::{
     BeginProviderOperation, CreatePaymentCollectionInput, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PaymentProviderOperationJournal, PaymentService,
+    entities::provider_operation,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, Set, Statement};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -100,4 +102,102 @@ async fn seed_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
     ))
     .await
     .expect("tenant fixture must be inserted");
+}
+
+
+#[tokio::test]
+async fn provider_operation_tenant_ownership_is_enforced_at_service_and_database_boundaries() {
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+    let owner_tenant = Uuid::new_v4();
+    let foreign_tenant = Uuid::new_v4();
+    seed_tenant(&db, owner_tenant).await;
+    seed_tenant(&db, foreign_tenant).await;
+
+    let collection = PaymentService::new(db.clone())
+        .create_collection(
+            owner_tenant,
+            CreatePaymentCollectionInput {
+                cart_id: None,
+                order_id: None,
+                customer_id: None,
+                currency_code: "USD".to_string(),
+                amount: Decimal::new(1_000, 2),
+                metadata: serde_json::json!({"source": "tenant-ownership-test"}),
+            },
+        )
+        .await
+        .expect("payment collection fixture must be created");
+
+    let journal = PaymentProviderOperationJournal::new(db.clone());
+    let operation = journal
+        .begin(BeginProviderOperation {
+            tenant_id: owner_tenant,
+            payment_collection_id: collection.id,
+            refund_id: None,
+            operation: "capture".to_string(),
+            provider_id: "stripe".to_string(),
+            idempotency_key: format!("tenant-ownership:{owner_tenant}"),
+            request_payload: serde_json::json!({
+                "collection_id": collection.id,
+                "amount": "10.00",
+                "currency_code": "USD"
+            }),
+        })
+        .await
+        .expect("owner tenant must be able to create provider operation");
+
+    assert!(
+        journal.get(foreign_tenant, operation.id).await.is_err(),
+        "foreign tenant must not read provider operation"
+    );
+    assert!(
+        journal
+            .claim_execution(foreign_tenant, operation.id)
+            .await
+            .expect("foreign claim should be evaluated")
+            .is_none(),
+        "foreign tenant must not claim provider operation"
+    );
+    assert!(
+        journal
+            .mark_reconciliation_required(
+                foreign_tenant,
+                operation.id,
+                "foreign tenant must not mutate provider operation",
+            )
+            .await
+            .is_err(),
+        "foreign tenant must not transition provider operation"
+    );
+
+    let now = Utc::now().fixed_offset();
+    let direct_insert = provider_operation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(foreign_tenant),
+        payment_collection_id: Set(collection.id),
+        refund_id: Set(None),
+        operation: Set("capture".to_string()),
+        provider_id: Set("stripe".to_string()),
+        idempotency_key: Set("tenant-ownership-direct-insert".to_string()),
+        status: Set("pending".to_string()),
+        request_payload: Set(serde_json::json!({
+            "collection_id": collection.id,
+            "amount": "10.00",
+            "currency_code": "USD"
+        })),
+        provider_reference: Set(None),
+        provider_result: Set(None),
+        error_message: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+        provider_completed_at: Set(None),
+        committed_at: Set(None),
+    }
+    .insert(&db)
+    .await;
+
+    assert!(
+        direct_insert.is_err(),
+        "database ownership guard must reject a provider operation under the wrong tenant"
+    );
 }
