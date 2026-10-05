@@ -272,7 +272,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_ERROR {
                 return Ok(current);
             }
@@ -282,7 +282,7 @@ impl PaymentProviderOperationJournal {
             });
         }
 
-        self.get(id).await
+        self.get(tenant_id, id).await
     }
 
     /// Record an operation whose external outcome cannot be safely retried.
@@ -327,7 +327,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
                 return Ok(current);
             }
@@ -390,7 +390,7 @@ impl PaymentProviderOperationJournal {
             .await?;
 
         if update.rows_affected == 0 {
-            let current = self.get(id).await?;
+            let current = self.get(tenant_id, id).await?;
             if current.status == PROVIDER_OPERATION_COMMITTED {
                 return Ok(current);
             }
