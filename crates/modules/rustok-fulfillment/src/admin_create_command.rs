@@ -384,10 +384,13 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                 | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
         ) {
             let result = deserialize_create_label_result(context, owner_operation, &operation)?;
-            if operation.status != PROVIDER_OPERATION_COMMITTED {
-                self.commit_create_label(operation.tenant_id, owner_operation, operation.id)
-                    .await?;
-            }
+            self.commit_create_label_provider_result(
+                context,
+                owner_operation,
+                &operation,
+                &result,
+            )
+            .await?;
             return Ok(result);
         }
         if operation.status == PROVIDER_OPERATION_EXECUTING {
@@ -416,10 +419,13 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                     | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             ) {
                 let result = deserialize_create_label_result(context, owner_operation, &current)?;
-                if current.status != PROVIDER_OPERATION_COMMITTED {
-                    self.commit_create_label(operation.tenant_id, owner_operation, current.id)
-                        .await?;
-                }
+                self.commit_create_label_provider_result(
+                    context,
+                    owner_operation,
+                    &current,
+                    &result,
+                )
+                .await?;
                 return Ok(result);
             }
             return Err(PortError::conflict(
@@ -524,54 +530,69 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
-        self.commit_create_label(operation.tenant_id, owner_operation, operation.id)
-            .await?;
+        self.commit_create_label_provider_result(
+            context,
+            owner_operation,
+            &operation,
+            &result,
+        )
+        .await?;
         Ok(result)
     }
 
-    async fn commit_create_label(
+    async fn commit_create_label_provider_result(
         &self,
-        tenant_id: Uuid,
+        context: &PortContext,
         owner_operation: &'static str,
-        operation_id: Uuid,
+        operation: &provider_operation::Model,
+        result: &FulfillmentProviderOperationResult,
     ) -> Result<(), PortError> {
-        if let Err(error) = self
-            .operation_journal
-            .mark_committed(tenant_id, operation_id)
+        match self
+            .service
+            .commit_create_label_provider_result(
+                operation.tenant_id,
+                operation.fulfillment_id,
+                operation.id,
+                result,
+            )
             .await
         {
-            if let Err(checkpoint_error) = self
-                .operation_journal
-                .mark_reconciliation_required(
-                    tenant_id,
-                    operation_id,
-                    "create_label provider succeeded but journal commit failed",
-                )
-                .await
-            {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                if let Err(checkpoint_error) = self
+                    .operation_journal
+                    .mark_reconciliation_required(
+                        operation.tenant_id,
+                        operation.id,
+                        "create_label provider result could not be committed locally",
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        boundary = ADMIN_CREATE_BOUNDARY,
+                        owner_operation,
+                        provider_operation_id_non_nil = !operation.id.is_nil(),
+                        fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                        checkpoint_failed = true,
+                        internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
+                        "create-label local persistence reconciliation marker could not be persisted"
+                    );
+                }
                 tracing::error!(
                     boundary = ADMIN_CREATE_BOUNDARY,
                     owner_operation,
-                    provider_operation_id_non_nil = !operation_id.is_nil(),
-                    checkpoint_failed = true,
-                    internal_code = %map_fulfillment_error_without_context(checkpoint_error).code,
-                    "create-label journal reconciliation marker could not be persisted"
+                    provider_operation_id_non_nil = !operation.id.is_nil(),
+                    fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                    local_commit_failed = true,
+                    internal_code = %map_fulfillment_error_without_context(error).code,
+                    "create-label provider result could not be committed locally"
                 );
+                Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "fulfillment create-label operation requires reconciliation",
+                ))
             }
-            tracing::error!(
-                boundary = ADMIN_CREATE_BOUNDARY,
-                owner_operation,
-                provider_operation_id_non_nil = !operation_id.is_nil(),
-                commit_failed = true,
-                internal_code = %map_fulfillment_error_without_context(error).code,
-                "create-label journal commit failed"
-            );
-            return Err(PortError::conflict(
-                "fulfillment.reconciliation_required",
-                "fulfillment create-label operation requires reconciliation",
-            ));
         }
-        Ok(())
     }
 }
 
