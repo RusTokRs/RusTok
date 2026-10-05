@@ -11,6 +11,16 @@ pub struct BlogStorefrontRouteState {
     pub selected_slug: String,
     pub selected_slug_query_key: &'static str,
     pub route_segment: String,
+    pub tag: Option<String>,
+    pub category_id: Option<String>,
+}
+
+impl BlogStorefrontRouteState {
+    pub fn with_filters(mut self, tag: Option<String>, category_id: Option<String>) -> Self {
+        self.tag = tag.as_deref().and_then(normalize_ui_text);
+        self.category_id = category_id.as_deref().and_then(normalize_ui_text);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +35,8 @@ pub struct BlogStorefrontShellViewModel {
 pub struct BlogStorefrontFetchRequest {
     pub post_slug: String,
     pub locale: Option<String>,
+    pub tag: Option<String>,
+    pub category_id: Option<String>,
 }
 
 pub fn build_storefront_route_state(
@@ -35,6 +47,8 @@ pub fn build_storefront_route_state(
         selected_slug: selected_slug_or_default(route_slug, DEFAULT_POST_SLUG),
         selected_slug_query_key: SELECTED_POST_QUERY_KEY,
         route_segment: route_segment_or_default(route_segment, DEFAULT_ROUTE_SEGMENT),
+        tag: None,
+        category_id: None,
     }
 }
 
@@ -69,6 +83,8 @@ pub fn build_storefront_fetch_request(
             DEFAULT_POST_SLUG,
         ),
         locale: locale.as_deref().and_then(normalize_ui_text),
+        tag: route_state.tag.clone(),
+        category_id: route_state.category_id.clone(),
     }
 }
 

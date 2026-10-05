@@ -30,6 +30,8 @@ pub async fn fetch_blog(
         configured_tenant_slug(),
         request.post_slug,
         request.locale,
+        request.tag,
+        request.category_id,
         comments_page,
     )
     .await
@@ -148,9 +150,11 @@ async fn fetch_storefront_blog_server(
     tenant_slug: Option<String>,
     post_slug: String,
     locale: Option<String>,
+    tag: Option<String>,
+    category_id: Option<String>,
     comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
-    storefront_blog_native(tenant_slug, post_slug, locale, comments_page)
+    storefront_blog_native(tenant_slug, post_slug, locale, tag, category_id, comments_page)
         .await
         .map_err(ApiError::from)
 }
@@ -173,6 +177,8 @@ async fn storefront_blog_native(
     tenant_slug: Option<String>,
     post_slug: String,
     locale: Option<String>,
+    tag: Option<String>,
+    category_id: Option<String>,
     comments_page: u64,
 ) -> Result<StorefrontBlogData, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -286,13 +292,24 @@ async fn storefront_blog_native(
             None
         };
 
+        let category_uuid = category_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+        let tag_normalized = tag
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned);
+
         let posts = service
             .list_public_visible_with_locale_fallback(
                 tenant_id,
                 PostListQuery {
                     status: Some(BlogPostStatus::Published),
-                    category_id: None,
-                    tag: None,
+                    category_id: category_uuid,
+                    tag: tag_normalized,
                     author_id: None,
                     locale: Some(requested_locale),
                     page: Some(1),
@@ -316,7 +333,7 @@ async fn storefront_blog_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_slug, post_slug, locale, comments_page);
+        let _ = (tenant_slug, post_slug, locale, tag, category_id, comments_page);
         Err(ServerFnError::new(
             "blog/storefront-data requires the `ssr` feature",
         ))

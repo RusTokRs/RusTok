@@ -42,10 +42,23 @@ use super::*;
             Some("blog".to_string()),
         );
 
+        let filtered_state = route_state
+            .clone()
+            .with_filters(Some("  rust  ".to_string()), Some("  cat-1  ".to_string()));
+        assert_eq!(filtered_state.tag.as_deref(), Some("rust"));
+        assert_eq!(filtered_state.category_id.as_deref(), Some("cat-1"));
+
+        let filtered_request =
+            build_storefront_fetch_request(&filtered_state, Some("ru".to_string()));
+        assert_eq!(filtered_request.tag.as_deref(), Some("rust"));
+        assert_eq!(filtered_request.category_id.as_deref(), Some("cat-1"));
+
         let request = build_storefront_fetch_request(&route_state, Some("  ru  ".to_string()));
 
         assert_eq!(request.post_slug, "release-notes".to_string());
         assert_eq!(request.locale.as_deref(), Some("ru"));
+        assert_eq!(request.tag, None);
+        assert_eq!(request.category_id, None);
 
         let empty_locale_request =
             build_storefront_fetch_request(&route_state, Some("   ".to_string()));

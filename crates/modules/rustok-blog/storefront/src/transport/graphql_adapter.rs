@@ -94,8 +94,8 @@ pub async fn fetch_blog(
             post_slug: fetch_request.post_slug,
             filter: PostsFilter {
                 status: Some("PUBLISHED".to_string()),
-                category_id: None,
-                tag: None,
+                category_id: fetch_request.category_id,
+                tag: fetch_request.tag,
                 locale: fetch_request.locale.clone(),
                 page: 1,
                 per_page: 6,

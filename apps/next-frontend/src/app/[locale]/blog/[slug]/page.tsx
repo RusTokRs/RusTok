@@ -198,9 +198,16 @@ export default async function BlogPostPage({
         <header className="space-y-4 border-b border-border pb-6">
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             {post.categoryName && (
-              <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-xs">
+              <Link
+                href={
+                  post.categoryId
+                    ? `/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`
+                    : `/${locale}/blog?category=${encodeURIComponent(post.categoryName)}`
+                }
+                className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-xs hover:bg-secondary/80 transition-colors"
+              >
                 {post.categoryName}
-              </span>
+              </Link>
             )}
 
             {post.authorProfile && (

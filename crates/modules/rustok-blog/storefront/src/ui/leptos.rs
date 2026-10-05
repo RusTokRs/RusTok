@@ -18,21 +18,29 @@ pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_locale = route_context.locale.clone();
     let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
-    let route_state = core::build_storefront_route_state(
-        read_route_query_value(&route_context, core::SELECTED_POST_QUERY_KEY),
-        route_context.route_segment.as_ref().cloned(),
-    );
-    let fetch_request = core::build_storefront_fetch_request(&route_state, selected_locale.clone());
+    let tag_query = use_route_query_value("tag");
+    let category_query = use_route_query_value("category");
     let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
     let badge = shell_view.badge;
     let title = shell_view.title;
     let subtitle = shell_view.subtitle;
     let load_error = shell_view.load_error;
 
+    let route_context_for_fetch = route_context.clone();
+    let selected_locale_for_fetch = selected_locale.clone();
     let posts_resource = Resource::new_blocking(
         move || {
+            let route_state = core::build_storefront_route_state(
+                read_route_query_value(&route_context_for_fetch, core::SELECTED_POST_QUERY_KEY),
+                route_context_for_fetch.route_segment.as_ref().cloned(),
+            )
+            .with_filters(tag_query.get(), category_query.get());
+            let fetch_request = core::build_storefront_fetch_request(
+                &route_state,
+                selected_locale_for_fetch.clone(),
+            );
             (
-                fetch_request.clone(),
+                fetch_request,
                 comments_pagination::comments_page_from_query(comments_page_query.get()),
             )
         },
@@ -118,8 +126,43 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         "Related articles",
     );
 
+    let tag_query = use_route_query_value("tag");
+    let category_query = use_route_query_value("category");
+    let active_tag = tag_query.get();
+    let active_category = category_query.get();
+
+    let has_active_filter = active_tag.is_some() || active_category.is_some();
+    let filter_bar = if has_active_filter {
+        view! {
+            <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/40 p-3 text-xs">
+                <span class="font-medium text-muted-foreground">
+                    {t(locale.as_deref(), "blog.filter.active", "Active filters:")}
+                </span>
+                {active_category.map(|cat| view! {
+                    <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+                        {format!("Category: {cat}")}
+                        <a href="?category=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                    </span>
+                })}
+                {active_tag.map(|tag| view! {
+                    <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                        {format!("#{tag}")}
+                        <a href="?tag=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                    </span>
+                })}
+                <a href="?category=&tag=" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
+                    {t(locale.as_deref(), "blog.filter.clear", "Clear all")}
+                </a>
+            </div>
+        }
+        .into_any()
+    } else {
+        ().into_any()
+    };
+
     view! {
         <div class="space-y-6">
+            {filter_bar}
             <SelectedPostCard post=data.selected_post comments_page />
             {if is_post_selected {
                 if !other_posts.is_empty() {
@@ -229,6 +272,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     );
     let author_profile = post.author_profile;
     let category_name = post.category_name;
+    let category_id = post.category_id;
     let featured_image_url = post.featured_image_url;
     let share_slug = slug.clone();
     let reading_minutes = core::calculate_reading_time(&content_plain_text);
@@ -292,9 +336,21 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                {category_name.map(|name| view! {
-                    <span class="font-semibold text-foreground">{name}</span>
-                    <span>{selected_post_header.meta.separator}</span>
+                {category_name.map(|name| {
+                    let cat_link = if let Some(cat_id) = category_id {
+                        format!("?category={}", cat_id)
+                    } else {
+                        format!("?category={}", core::percent_encode(&name))
+                    };
+                    view! {
+                        <a
+                            href=cat_link
+                            class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
+                        >
+                            {name}
+                        </a>
+                        <span>{selected_post_header.meta.separator}</span>
+                    }
                 })}
                 {if let Some(author) = author_profile.as_ref() {
                     view! {
@@ -354,10 +410,14 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                             .items
                             .into_iter()
                             .map(|tag| {
+                                let tag_link = format!("?tag={}", core::percent_encode(&tag));
                                 view! {
-                                    <span class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                                        {tag}
-                                    </span>
+                                    <a
+                                        href=tag_link
+                                        class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+                                    >
+                                        {format!("#{tag}")}
+                                    </a>
                                 }
                             })
                             .collect_view()}
@@ -718,10 +778,20 @@ fn PublishedPostsList(
                                         status=post_card_view.status
                                         unknown_label=unknown_status_label.clone()
                                     />
-                                    {post.category_name.as_deref().map(|cat| view! {
-                                        <span class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                                            {cat.to_string()}
-                                        </span>
+                                    {post.category_name.as_deref().map(|cat| {
+                                        let cat_link = if let Some(cat_id) = post.category_id {
+                                            format!("?category={}", cat_id)
+                                        } else {
+                                            format!("?category={}", core::percent_encode(cat))
+                                        };
+                                        view! {
+                                            <a
+                                                href=cat_link
+                                                class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                                            >
+                                                {cat.to_string()}
+                                            </a>
+                                        }
                                     })}
                                 </div>
                                 {if let Some(author) = post.author_profile.as_ref() {
@@ -746,10 +816,16 @@ fn PublishedPostsList(
                                             {post.tags
                                                 .iter()
                                                 .cloned()
-                                                .map(|tag| view! {
-                                                    <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                                        {tag}
-                                                    </span>
+                                                .map(|tag| {
+                                                    let tag_link = format!("?tag={}", core::percent_encode(&tag));
+                                                    view! {
+                                                        <a
+                                                            href=tag_link
+                                                            class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                                                        >
+                                                            {format!("#{tag}")}
+                                                        </a>
+                                                    }
                                                 })
                                                 .collect_view()}
                                         </div>

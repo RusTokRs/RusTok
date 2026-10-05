@@ -72,9 +72,16 @@ export function PostCard({
         {/* Meta row: Category, Author & Date */}
         <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
           {post.categoryName && (
-            <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px]">
+            <Link
+              href={
+                post.categoryId
+                  ? `/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`
+                  : `/${locale}/blog?category=${encodeURIComponent(post.categoryName)}`
+              }
+              className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px] hover:bg-secondary/80 transition-colors"
+            >
               {post.categoryName}
-            </span>
+            </Link>
           )}
 
           {post.authorProfile ? (
@@ -116,12 +123,13 @@ export function PostCard({
         <div className="mt-auto pt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/50">
           <div className="flex flex-wrap gap-1">
             {post.tags.slice(0, 3).map((tag) => (
-              <span
+              <Link
                 key={tag}
-                className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+                href={`/${locale}/blog?tag=${encodeURIComponent(tag)}`}
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
               >
                 #{tag}
-              </span>
+              </Link>
             ))}
             {post.tags.length > 3 && (
               <span className="text-[11px] text-muted-foreground self-center">
