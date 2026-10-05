@@ -759,6 +759,38 @@ impl AuthLifecycleService {
         Ok(())
     }
 
+    /// Revoke the session identified by the supplied refresh token.
+    ///
+    /// The lookup and revocation share one transaction so a concurrent refresh
+    /// cannot rotate the token between an initial read and the revoke write.
+    pub async fn logout_by_refresh_token_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        refresh_token: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let token_hash = hash_refresh_token(refresh_token);
+
+        let session = Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
+            .await?
+            .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+
+        if !session.is_active() {
+            return Err(AuthLifecycleError::InvalidRefreshToken);
+        }
+
+        let now = Utc::now();
+        let mut session_model: sessions::ActiveModel = session.into();
+        session_model.revoked_at = Set(Some(now.into()));
+        session_model
+            .update(&txn)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        txn.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(())
+    }
+
     /// Revoke the current session (logout).
     pub async fn logout_runtime(
         ctx: &ServerRuntimeContext,
