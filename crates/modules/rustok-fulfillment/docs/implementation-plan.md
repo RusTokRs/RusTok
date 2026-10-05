@@ -48,8 +48,8 @@ responses now expose a deterministic translation-resource revision. Exact-locale
 requires that revision when translations are supplied; a stale revision fails as a typed owner conflict
 before any mutation. The module-owned admin editor round-trips all loaded translations plus the revision
 so editing one locale cannot silently delete untouched locales.
-Shipping-option admin create is owner-idempotent: the caller key is admitted through the shared receipt ledger,
-and the new option, translations, change evidence, and completed receipt commit in one owner transaction. Storage-only `und` remains visible only
+Shipping-option admin create/update/deactivate/reactivate are owner-idempotent: the caller key is admitted through the shared tenant-scoped receipt ledger,
+and each mutation, required translation change evidence, and completed receipt commit in one owner transaction. Storage-only `und` remains visible only
 as raw persisted provenance and is excluded from runtime locale resolution and outbound admin translation
 writes. Root
 in-process adapters own `FulfillmentService` construction, require read policy,
