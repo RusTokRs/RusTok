@@ -1,6 +1,7 @@
 use crate::core::{
-    CreateOAuthAppForm, OAuthAppListItemViewModel, oauth_app_list_item_view,
-    oauth_app_type_defaults, prepare_create_oauth_app_input, prepare_update_oauth_app_input,
+    CreateOAuthAppForm, OAuthAppListItemViewModel, filter_oauth_apps, oauth_app_grid_columns,
+    oauth_app_list_item_view, oauth_app_type_defaults, prepare_create_oauth_app_input,
+    prepare_update_oauth_app_input,
 };
 use crate::i18n::t;
 use crate::model::{AppType, OAuthApp};
@@ -13,6 +14,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Badge, BadgeVariant};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 #[derive(Clone, PartialEq)]
@@ -50,125 +53,204 @@ pub fn OAuthAppsList(
     on_rotate_secret: Callback<OAuthApp>,
     on_revoke_app: Callback<OAuthApp>,
 ) -> impl IntoView {
-    let rows_apps = apps.clone();
-    let is_empty = apps.is_empty();
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = route_context.locale;
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = oauth_app_grid_columns(locale.as_deref());
+
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, apps.len() as u64));
+
+    let view_items: Vec<OAuthAppListItemViewModel> = apps.into_iter().map(oauth_app_list_item_view).collect();
+
+    let filtered_items = Memo::new({
+        let view_items = view_items.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = filter_oauth_apps(&view_items, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_items = Memo::new(move |_| {
+        let list = filtered_items.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_on_edit = on_edit_app;
+    let cell_on_rotate = on_rotate_secret;
+    let cell_on_revoke = on_revoke_app;
+
+    let cell_renderer = Callback::new(move |(item, col_id): (OAuthAppListItemViewModel, String)| {
+        match col_id.as_str() {
+            "name" => {
+                let name = item.app.name.clone();
+                let slug = item.app.slug.clone();
+                let desc = item.description.clone();
+                let cap = item.capability_label;
+                view! {
+                    <div class="py-1">
+                        <div class="font-medium text-foreground">{name}</div>
+                        <div class="text-xs text-muted-foreground font-mono">{slug}</div>
+                        {desc.map(|d| view! {
+                            <div class="mt-1 max-w-xs text-xs text-muted-foreground truncate">{d}</div>
+                        })}
+                        <div class="mt-1.5 inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {cap}
+                        </div>
+                    </div>
+                }
+                .into_any()
+            }
+            "type" => {
+                let app_type = item.app.app_type.clone();
+                view! {
+                    <div class="flex items-center justify-center py-1">
+                        <AppTypeBadge app_type=app_type />
+                    </div>
+                }
+                .into_any()
+            }
+            "scopes_grants" => {
+                let scopes = item.scopes_summary.clone();
+                let grants = item.grants_summary.clone();
+                view! {
+                    <div class="text-xs space-y-1 py-1">
+                        <div>
+                            <span class="font-medium text-foreground">"Scopes: "</span>
+                            <span class="text-muted-foreground">{scopes}</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-foreground">"Grants: "</span>
+                            <span class="text-muted-foreground">{grants}</span>
+                        </div>
+                    </div>
+                }
+                .into_any()
+            }
+            "client_id" => {
+                let cid = item.client_id.clone();
+                view! {
+                    <span class="font-mono text-xs text-muted-foreground truncate max-w-[160px] inline-block">{cid}</span>
+                }
+                .into_any()
+            }
+            "tokens" => {
+                let tokens = item.app.active_token_count;
+                view! {
+                    <span class="font-mono text-xs text-foreground">{tokens}</span>
+                }
+                .into_any()
+            }
+            "last_used" => {
+                let last = item.last_used_at.clone();
+                view! {
+                    <span class="text-xs text-muted-foreground font-mono">{last}</span>
+                }
+                .into_any()
+            }
+            "actions" => {
+                let app_for_edit = item.app.clone();
+                let app_for_rotate = item.app.clone();
+                let app_for_revoke = item.app.clone();
+                let can_edit = item.app.can_edit;
+                let can_rotate = item.app.can_rotate_secret;
+                let can_revoke = item.app.can_revoke;
+                let on_edit = cell_on_edit;
+                let on_rotate = cell_on_rotate;
+                let on_revoke = cell_on_revoke;
+                view! {
+                    <div class="flex items-center justify-end gap-1.5 py-1">
+                        <Button
+                            class="h-7 bg-transparent px-2.5 text-xs text-foreground shadow-none ring-1 ring-border hover:bg-accent disabled:opacity-40"
+                            disabled=Signal::derive(move || !can_edit)
+                            on_click=Callback::new(move |_| on_edit.run(app_for_edit.clone()))
+                        >
+                            "Edit"
+                        </Button>
+                        <Button
+                            class="h-7 bg-transparent px-2.5 text-xs text-foreground shadow-none ring-1 ring-border hover:bg-accent disabled:opacity-40"
+                            disabled=Signal::derive(move || !can_rotate)
+                            on_click=Callback::new(move |_| on_rotate.run(app_for_rotate.clone()))
+                        >
+                            "Rotate Secret"
+                        </Button>
+                        <Button
+                            class="h-7 bg-destructive px-2.5 text-xs text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40"
+                            disabled=Signal::derive(move || !can_revoke)
+                            on_click=Callback::new(move |_| on_revoke.run(app_for_revoke.clone()))
+                        >
+                            "Revoke"
+                        </Button>
+                    </div>
+                }
+                .into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
 
     view! {
-        <div class="overflow-x-auto rounded-md border">
-            <table class="w-full min-w-[960px] text-left text-sm">
-                <thead class="bg-muted/50 text-xs uppercase text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-3 font-medium">"App"</th>
-                        <th class="px-4 py-3 font-medium">"Type"</th>
-                        <th class="px-4 py-3 font-medium">"Scopes / Grants"</th>
-                        <th class="px-4 py-3 font-medium">"Client ID"</th>
-                        <th class="px-4 py-3 font-medium">"Tokens"</th>
-                        <th class="px-4 py-3 font-medium">"Last Used"</th>
-                        <th class="px-4 py-3 text-right font-medium">"Actions"</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y">
-                    <Show when=move || loading>
-                        <tr>
-                            <td colspan="7" class="h-24 text-center text-muted-foreground">
-                                "Loading app connections..."
-                            </td>
-                        </tr>
-                    </Show>
-                    {rows_apps
-                        .into_iter()
-                        .map(oauth_app_list_item_view)
-                        .map(|item| {
-                            let OAuthAppListItemViewModel {
-                                app,
-                                description,
-                                scopes_summary,
-                                grants_summary,
-                                capability_label,
-                                client_id,
-                                last_used_at,
-                            } = item;
-                            let app_for_edit = app.clone();
-                            let app_for_rotate = app.clone();
-                            let app_for_revoke = app.clone();
-                            let has_description = description.is_some();
-                            let description = description.unwrap_or_default();
+        <div class="space-y-4">
+            // Search input
+            <div class="flex flex-col sm:flex-row gap-4">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по названию, slug, client ID..." } else { "Search by app name, slug, client ID..." }}
+                        class="w-full px-3 py-2 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
 
-                            view! {
-                                <tr class="transition-colors hover:bg-muted/40">
-                                    <td class="px-4 py-3 align-top">
-                                        <div class="font-medium text-slate-900">{app.name.clone()}</div>
-                                        <div class="text-xs text-muted-foreground">{app.slug.clone()}</div>
-                                        <Show when=move || has_description>
-                                            <div class="mt-1 max-w-xs text-xs text-muted-foreground">
-                                                {description.clone()}
-                                            </div>
-                                        </Show>
-                                        <div class="mt-2 inline-flex rounded-full border px-2 py-1 text-xs text-muted-foreground">
-                                            {capability_label}
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3 align-top">
-                                        <AppTypeBadge app_type=app.app_type.clone() />
-                                    </td>
-                                    <td class="px-4 py-3 align-top text-xs text-slate-600">
-                                        <div>
-                                            <span class="font-medium text-slate-900">"Scopes: "</span>
-                                            {scopes_summary.clone()}
-                                        </div>
-                                        <div class="mt-1">
-                                            <span class="font-medium text-slate-900">"Grants: "</span>
-                                            {grants_summary.clone()}
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3 align-top font-mono text-xs text-slate-500">
-                                        {client_id}
-                                    </td>
-                                    <td class="px-4 py-3 align-top text-slate-500">
-                                        {app.active_token_count}
-                                    </td>
-                                    <td class="px-4 py-3 align-top text-xs text-slate-500">
-                                        {last_used_at}
-                                    </td>
-                                    <td class="px-4 py-3 align-top">
-                                        <div class="flex justify-end gap-2">
-                                            <Button
-                                                class="h-8 bg-transparent px-3 py-1 text-xs text-foreground shadow-none ring-1 ring-border hover:bg-accent"
-                                                disabled=Signal::derive(move || !app.can_edit)
-                                                on_click=Callback::new(move |_| on_edit_app.run(app_for_edit.clone()))
-                                            >
-                                                "Edit"
-                                            </Button>
-                                            <Button
-                                                class="h-8 bg-transparent px-3 py-1 text-xs text-foreground shadow-none ring-1 ring-border hover:bg-accent"
-                                                disabled=Signal::derive(move || !app.can_rotate_secret)
-                                                on_click=Callback::new(move |_| on_rotate_secret.run(app_for_rotate.clone()))
-                                            >
-                                                "Rotate Secret"
-                                            </Button>
-                                            <Button
-                                                class="h-8 bg-destructive px-3 py-1 text-xs text-destructive-foreground hover:bg-destructive/90"
-                                                disabled=Signal::derive(move || !app.can_revoke)
-                                                on_click=Callback::new(move |_| on_revoke_app.run(app_for_revoke.clone()))
-                                            >
-                                                "Revoke"
-                                            </Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
+            // Selection toolbar
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="font-medium text-foreground">
+                            {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "приложений" } else { "apps" })}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                        on:click=move |_| selection.update(|s| s.clear())
+                    >
+                        {if is_ru { "Снять выбор" } else { "Clear" }}
+                    </button>
+                </div>
+            </Show>
 
-                    <Show when=move || !loading && is_empty>
-                        <tr>
-                            <td colspan="7" class="h-24 text-center text-muted-foreground">
-                                "No app connections found."
-                            </td>
-                        </tr>
-                    </Show>
-                </tbody>
-            </table>
+            // Modern DataGrid
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_items.get())
+                key_fn=|item: &OAuthAppListItemViewModel| item.app.id.to_string()
+                cell_renderer=cell_renderer
+                is_loading=Signal::derive(move || loading)
+                empty_message=if is_ru { "Подключенные приложения не найдены.".to_string() } else { "No app connections found.".to_string() }
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
         </div>
     }
 }

@@ -530,6 +530,127 @@ pub fn oauth_app_list_item_view(app: crate::model::OAuthApp) -> OAuthAppListItem
     }
 }
 
+pub fn oauth_app_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("name", if is_ru { "Приложение" } else { "App" })
+            .width(240)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр приложений...".to_string()
+                } else {
+                    "Filter apps...".to_string()
+                }),
+            }),
+        GridColumnDef::new("type", if is_ru { "Тип" } else { "Type" })
+            .width(130)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Select {
+                options: vec![
+                    FilterOption {
+                        value: "ThirdParty".to_string(),
+                        label: if is_ru { "Third Party".to_string() } else { "Third Party".to_string() },
+                    },
+                    FilterOption {
+                        value: "FirstParty".to_string(),
+                        label: if is_ru { "First Party".to_string() } else { "First Party".to_string() },
+                    },
+                    FilterOption {
+                        value: "Mobile".to_string(),
+                        label: if is_ru { "Mobile".to_string() } else { "Mobile".to_string() },
+                    },
+                    FilterOption {
+                        value: "Service".to_string(),
+                        label: if is_ru { "Service".to_string() } else { "Service".to_string() },
+                    },
+                    FilterOption {
+                        value: "Embedded".to_string(),
+                        label: if is_ru { "Embedded".to_string() } else { "Embedded".to_string() },
+                    },
+                ],
+                placeholder: Some(if is_ru {
+                    "Все типы".to_string()
+                } else {
+                    "All types".to_string()
+                }),
+            }),
+        GridColumnDef::new("scopes_grants", if is_ru { "Области / Доступы" } else { "Scopes / Grants" })
+            .width(220)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("client_id", if is_ru { "Client ID" } else { "Client ID" })
+            .width(160)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("tokens", if is_ru { "Токены" } else { "Tokens" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("last_used", if is_ru { "Использовано" } else { "Last Used" })
+            .width(140)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(240)
+            .align(ColumnAlign::Right)
+            .not_sortable(),
+    ]
+}
+
+pub fn matches_oauth_app_filter(
+    item: &OAuthAppListItemViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("name", FilterValue::Text(q)) => {
+                let term = q.to_lowercase();
+                if !item.app.name.to_lowercase().contains(&term)
+                    && !item.app.slug.to_lowercase().contains(&term)
+                    && !item.client_id.to_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            ("type", FilterValue::Select(s)) => {
+                let app_type_str = format!("{:?}", item.app.app_type);
+                if !app_type_str.eq_ignore_ascii_case(s) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_oauth_apps(
+    apps: &[OAuthAppListItemViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<OAuthAppListItemViewModel> {
+    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+
+    apps
+        .iter()
+        .filter(|item| {
+            if let Some(ref term) = search_term {
+                let matches_global = item.app.name.to_lowercase().contains(term)
+                    || item.app.slug.to_lowercase().contains(term)
+                    || item.client_id.to_lowercase().contains(term)
+                    || item
+                        .description
+                        .as_deref()
+                        .map(|d| d.to_lowercase().contains(term))
+                        .unwrap_or(false);
+                if !matches_global {
+                    return false;
+                }
+            }
+
+            matches_oauth_app_filter(item, filters)
+        })
+        .cloned()
+        .collect()
+}
+
 pub fn graphql_user_view(user: GraphqlUser, missing_value: String) -> GraphqlUserViewModel {
     let edit_form = UserEditFormValues {
         name: user.name.clone().unwrap_or_default(),
@@ -966,5 +1087,81 @@ mod tests {
         let res = filter_users(&list, &filters, None);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].id, "1");
+    }
+
+    #[test]
+    fn oauth_app_grid_columns_localization() {
+        let cols_en = oauth_app_grid_columns(Some("en"));
+        assert_eq!(cols_en[0].title, "App");
+        assert_eq!(cols_en[1].title, "Type");
+        assert_eq!(cols_en[6].title, "Actions");
+
+        let cols_ru = oauth_app_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Приложение");
+        assert_eq!(cols_ru[1].title, "Тип");
+        assert_eq!(cols_ru[6].title, "Действия");
+    }
+
+    #[test]
+    fn filter_oauth_apps_by_search_and_type() {
+        let app1 = crate::model::OAuthApp {
+            id: uuid::Uuid::nil(),
+            name: "Mobile Client".into(),
+            slug: "mobile-client".into(),
+            description: Some("Android and iOS app".into()),
+            icon_url: None,
+            app_type: AppType::Mobile,
+            client_id: uuid::Uuid::nil(),
+            redirect_uris: vec![],
+            scopes: vec!["read".into()],
+            grant_types: vec!["authorization_code".into()],
+            manifest_ref: None,
+            auto_created: false,
+            managed_by_manifest: false,
+            is_active: true,
+            can_edit: true,
+            can_rotate_secret: true,
+            can_revoke: true,
+            active_token_count: 5,
+            last_used_at: None,
+            created_at: Utc::now(),
+        };
+        let app2 = crate::model::OAuthApp {
+            id: uuid::Uuid::new_v4(),
+            name: "Third Party ERP".into(),
+            slug: "erp-sync".into(),
+            description: None,
+            icon_url: None,
+            app_type: AppType::ThirdParty,
+            client_id: uuid::Uuid::new_v4(),
+            redirect_uris: vec![],
+            scopes: vec!["write".into()],
+            grant_types: vec!["client_credentials".into()],
+            manifest_ref: None,
+            auto_created: false,
+            managed_by_manifest: false,
+            is_active: true,
+            can_edit: true,
+            can_rotate_secret: false,
+            can_revoke: true,
+            active_token_count: 0,
+            last_used_at: None,
+            created_at: Utc::now(),
+        };
+        let item1 = oauth_app_list_item_view(app1);
+        let item2 = oauth_app_list_item_view(app2);
+        let list = vec![item1.clone(), item2.clone()];
+
+        // Filter by search
+        let res = filter_oauth_apps(&list, &ColumnFilters::new(), Some("mobile"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].app.name, "Mobile Client");
+
+        // Filter by type
+        let mut filters = ColumnFilters::new();
+        filters.set("type", FilterValue::Select("ThirdParty".into()));
+        let res = filter_oauth_apps(&list, &filters, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].app.name, "Third Party ERP");
     }
 }
