@@ -54,13 +54,15 @@ for (const marker of [
   'context.require_write_semantics()',
   'error = ?error',
   'error.to_string()',
-])
+]) {
+  forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
+}
+
 for (const marker of [
   'service.create_shipping_option(tenant_id, request.input)',
-  'let lease = match idempotency::admit(',
-  'idempotency::complete(&txn, lease, &created)',
-]) forbid(owner, marker, 'shipping option create must use durable owner receipt');
- forbid(owner, marker, 'shipping option owner bounded replay/diagnostic contract');
+]) {
+  forbid(owner, marker, 'shipping option create must use durable owner receipt');
+}
 
 for (const marker of [
   'mod shipping_option_admin_command;',
@@ -102,13 +104,13 @@ for (const marker of [
   '`ShippingOptionAdminCommandPort`',
   '`ShippingOptionAdminCommandRuntime`',
   'claims durable idempotent replay for shipping-option create',
-  'no tests, Cargo commands, Node verifiers, formatter',
+  'new create-idempotency source path is covered by a focused regression test and source verifier',
 ]) need(record, marker, 'owner capability source record');
 
 for (const marker of [
   'Status: `source_complete_unvalidated`',
   'Those handlers no longer construct `rustok_fulfillment::FulfillmentService`',
-  'does **not** claim',
+  'shipping-option create has durable owner receipt/replay semantics',
 ]) need(cutoverRecord, marker, 'consumer cutover source record');
 
 if (failures.length > 0) {
