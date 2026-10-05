@@ -84,27 +84,17 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
-        if journal
-            .claim_execution(tenant_id, operation_id)
-            .await?
-            .is_none()
+        let request: FulfillmentProviderOperationRequest =
+            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
+                FulfillmentOrchestrationError::Validation(format!(
+                    "create_label operation {operation_id} contains invalid request_payload: {error}"
+                ))
+            })?;
+        if request.tenant_id != tenant_id
+            || request.fulfillment_id != operation.fulfillment_id
+            || request.idempotency_key.as_deref().map(str::trim)
+                != Some(operation.idempotency_key.as_str())
         {
-            let current = journal.get(tenant_id, operation_id).await?;
-            return Err(FulfillmentOrchestrationError::Validation(format!(
-                "create_label operation {operation_id} is now `{}` and was not claimed for retry",
-                current.status
-            )));
-        }
-
-        let request: FulfillmentProviderOperationRequest = serde_json::from_value(
-            operation.request_payload.clone(),
-        )
-        .map_err(|error| {
-            FulfillmentOrchestrationError::Validation(format!(
-                "create_label operation {operation_id} contains invalid request_payload: {error}"
-            ))
-        })?;
-        if request.tenant_id != tenant_id || request.fulfillment_id != operation.fulfillment_id {
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "create_label operation {operation_id} request identity does not match the journal"
             )));
@@ -128,11 +118,38 @@ impl FulfillmentCreateLabelRecoveryService {
                 return Err(source.into());
             }
         };
-        let payload = serde_json::to_value(&result).map_err(|error| {
-            FulfillmentOrchestrationError::Validation(format!(
-                "failed to serialize create_label retry result for operation {operation_id}: {error}"
-            ))
-        })?;
+        let payload = match serde_json::to_value(&result) {
+            Ok(payload) => payload,
+            Err(_) => {
+                if let Err(checkpoint_error) = journal
+                    .mark_execution_reconciliation_required(
+                        tenant_id,
+                        operation_id,
+                        result.external_reference.clone(),
+                        None,
+                        "create_label provider result could not be serialized",
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        boundary = "commerce_fulfillment_create_label_recovery",
+                        operation_id_non_nil = !operation_id.is_nil(),
+                        fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                        checkpoint_failed = true,
+                        provider_outcome = "success",
+                        checkpoint_error = %checkpoint_error,
+                        "create-label recovery could not checkpoint an unserializable provider result"
+                    );
+                }
+                return Err(FulfillmentOrchestrationError::ProviderAfterPersistence {
+                    fulfillment_id: operation.fulfillment_id,
+                    operation: "create_label",
+                    source: rustok_fulfillment::error::FulfillmentError::Validation(
+                        "provider result could not be serialized",
+                    ),
+                });
+            }
+        };
         let operation = journal
             .mark_provider_succeeded(
                 tenant_id,
