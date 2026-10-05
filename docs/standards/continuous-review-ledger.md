@@ -4541,6 +4541,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Integration: squash-merged as `1879bf9a7e93a49c5b71a2754172df63368c27ea` via PR #4510; post-merge main was re-read at the merge SHA and the changed owner service, transaction helper, batch projection path, and ledger entry were reconciled.
 - Status: FS-22.06.116 complete and integrated; maintainer-owned Cargo/test/runtime evidence remains open and must not be inferred from source inspection.
 - Next primary iteration: move to the remaining maintainer-owned runtime evidence gates for the Fulfillment lifecycle-read boundary before advancing to a new production module.
+### FS-22.06.117 Assessment — Fulfillment lifecycle transport-parity source inventory reconciliation
+
+- Base: fbf92134e8fc7b0cc78b81a203511969830e7f2b; dedicated branch codex/audit-fs-22.06.117-parity-source-path.
+- Primary scope: the mounted Fulfillment lifecycle transport-parity evidence boundary: execution contract, capture runner, and capture verifier.
+- Confirmed finding FULFILLMENT-22.06.117-01: the locked parity contract and runner/verifier source allowlists still referenced the deleted Commerce controller path crates/modules/rustok-commerce/src/controllers/admin/fulfillments.rs. The canonical admin lifecycle-read consumer now lives in fulfillments_owner_commands.rs, so a capture could not hash the actual mounted admin read source and the verifier would remain tied to a nonexistent path.
+- Remediation: reconciled the source inventory in the JSON execution contract, capture runner, and capture verifier to crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs. No runtime capture behavior, scenario semantics, secret-retention policy, or evidence promotion rules were changed.
+- Re-audit: the old path is absent from all three primary evidence files, the canonical owner-command file exists on current main, and the source allowlist remains otherwise unchanged. The separate failure harness contract was re-read and does not depend on the stale admin file path.
+- Verification: repository-content inspection and branch-diff review only. No verifier execution, capture execution, Cargo, tests, formatting, workflow, CI, or runtime commands were run by the agent.
+- Status: FS-22.06.117 source/evidence remediation complete; pending integration and post-merge reconciliation.
+- Next primary iteration: after merge, reconcile the updated evidence boundary, then continue with the remaining maintainer-owned runtime execution gates (projection parity, deadline/failure, restart, external-adapter identity, and remote-adapter behavior).
 ### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
 
 - Base: b093d073de50528a576aca07474a595a668bc8c8; fresh main was refreshed before implementation and post-merge main is 5d0f4dc18698a492dc9c13b4bd70484671b7407c.
