@@ -1,17 +1,8 @@
----
-id: doc://docs/standards/continuous-review-ledger.md
-kind: project_overview
-language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: active
----
-
 ## Deep Full-Stack Audit Cycle — 2026-09-28
 
 **Status:** ACTIVE  
 **Active phase:** FS-22 — `apps/server` composition root  
-**Current main SHA:** `9b5958cc5731bbe3e880a2735e84c4b133455c6e`  
+**Current main SHA:** `7258ae8a46763cfb58ee4f05943729d158422375`  
 **Active branch:** `main`
 
 **Purpose:** perform a fresh, sequential, root-to-leaf audit of the entire repository. Older ACRE component-round completion and the 2026-09-27 FS-00..FS-20 audit are historical evidence only; no current component is considered closed merely because it was previously audited.
@@ -5152,5 +5143,6 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Adjacent re-audit:** re-read `graphql_schema.rs`, Blog and Search host adapters, the Blog rate-limit owner policy/evidence, and the rate-limit construction path. Both optional GraphQL policies now read the same shared handles from the context after those handles are populated; backend-unavailable behavior remains fail-closed and tenant/principal key construction remains owner-defined.
 - **Fresh second pass:** re-read the changed bootstrap sequence after the first write and caught/fixed the missing statement terminator before recording the result. The final source ordering is `init_rate_limit_layers` followed by `init_graphql_schema`; the branch diff is limited to the intended bootstrap file.
 - **Verification:** repository source inspection, ownership/contract tracing, post-write reread, and branch compare only. No Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution was performed; maintainer/CI verification remains required.
-- **Status:** `FS-22.05.28` implementation complete at source level on the dedicated branch; PR/integration pending.
-- **Next primary iteration:** after integration, refresh `main` and continue the next unchecked GraphQL composition module from the living ledger without widening scope.
+- **Status:** `FS-22.05.28` complete and integrated into `main` via PR #4554, squash merge `7258ae8a46763cfb58ee4f05943729d158422375`.
+- **Post-merge reconciliation:** refreshed `main` at `7258ae8a46763cfb58ee4f05943729d158422375`; the merge commit has parent `2eb60a5c0108d10c625a71ea6061d748a9c9476e` and contains the expected `apps/server/src/services/app_runtime.rs` plus ledger update. No concurrent `main` changes required reconciliation.
+- **Next primary iteration:** continue with the next unchecked GraphQL composition module from the living ledger without widening scope.
