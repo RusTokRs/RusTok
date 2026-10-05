@@ -24,7 +24,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
-use crate::providers::validate_provider_metadata_safety;
+use crate::providers::{validate_durable_provider_payload, validate_provider_metadata_safety};
 use super::provider_operation::{
     FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
@@ -1073,6 +1073,42 @@ impl FulfillmentService {
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
 
+        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
+            validate_journal_owned_provider_metadata(
+                &txn,
+                tenant_id,
+                fulfillment_id,
+                *operation_id,
+                "cancel",
+                provider_metadata,
+            )
+            .await?;
+        }
+
+        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
+            validate_journal_owned_provider_metadata(
+                &txn,
+                tenant_id,
+                fulfillment_id,
+                *operation_id,
+                "reship",
+                provider_metadata,
+            )
+            .await?;
+        }
+
+        if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
+            validate_journal_owned_provider_metadata(
+                &txn,
+                tenant_id,
+                fulfillment_id,
+                *operation_id,
+                "ship",
+                provider_metadata,
+            )
+            .await?;
+        }
+
         if let Some((_, operation_id)) = provider_result.as_ref()
             && has_matching_provider_operation(
                 &fulfillment.metadata,
@@ -2044,6 +2080,64 @@ fn prepare_create_label_result_metadata(
             }
         }),
     )
+}
+
+async fn validate_journal_owned_provider_metadata(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    operation_id: Uuid,
+    operation: &str,
+    provider_metadata: &Value,
+) -> FulfillmentResult<()> {
+    if operation_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "fulfillment provider operation id must not be nil".to_string(),
+        ));
+    }
+    validate_durable_provider_payload(provider_metadata, "provider lifecycle metadata")?;
+    let journaled = entities::provider_operation::Entity::find_by_id(operation_id)
+        .filter(entities::provider_operation::Column::TenantId.eq(tenant_id))
+        .filter(entities::provider_operation::Column::FulfillmentId.eq(fulfillment_id))
+        .filter(entities::provider_operation::Column::Operation.eq(operation))
+        .one(txn)
+        .await?
+        .ok_or_else(|| {
+            FulfillmentError::ProviderResultInvalid(format!(
+                "provider lifecycle receipt does not belong to fulfillment {fulfillment_id}"
+            ))
+        })?;
+    if !matches!(
+        journaled.status.as_str(),
+        PROVIDER_OPERATION_SUCCEEDED
+            | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            | PROVIDER_OPERATION_COMMITTED
+    ) {
+        return Err(FulfillmentError::InvalidTransition {
+            from: journaled.status,
+            to: PROVIDER_OPERATION_COMMITTED.to_string(),
+        });
+    }
+    let Some(journaled_result) = journaled.provider_result else {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider lifecycle receipt is missing from the journal".to_string(),
+        ));
+    };
+    let journaled_metadata = journaled_result
+        .get("metadata")
+        .ok_or_else(|| {
+            FulfillmentError::ProviderResultInvalid(
+                "provider lifecycle journal result has no metadata".to_string(),
+            )
+        })?;
+    if journaled_metadata != provider_metadata {
+        return Err(FulfillmentError::ProviderResultInvalid(
+            "provider lifecycle metadata does not match the journaled provider result"
+                .to_string(),
+        ));
+    }
+    validate_provider_metadata_safety(journaled_metadata)?;
+    Ok(())
 }
 
 fn has_matching_provider_operation(
