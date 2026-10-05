@@ -7,9 +7,10 @@ license.workspace = true
 [features]
 default = []
 csr = ["leptos/csr"]
-hydrate = ["leptos/hydrate"]
+hydrate = ["leptos/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "leptos/ssr",
+  "rustok-grid-leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-blog",
   "dep:rustok-core",
@@ -21,6 +22,8 @@ ssr = [
 [dependencies]
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
+rustok-grid.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos_router.workspace = true

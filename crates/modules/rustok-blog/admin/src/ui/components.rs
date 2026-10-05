@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 use rustok_api::RichTextDocument;
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core;
@@ -104,146 +106,182 @@ pub(super) fn BlogPostsTable(
             delete: t(locale.as_deref(), "blog.table.delete", "Delete"),
         },
     );
-    if table.is_empty {
-        return view! {
-            <div class=table_classes.empty_state>
-                <p class=table_classes.total_label>
-                    {table.empty_message}
-                </p>
-            </div>
-        }
-        .into_any();
-    }
+    let columns = core::blog_post_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, total));
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+
+    let rows_store = StoredValue::new(table.rows);
+
+    let filtered_rows = Memo::new(move |_| {
+        let rows = rows_store.get_value();
+        let q = search.get();
+        let f = filters.get();
+        core::filter_blog_posts(
+            &rows,
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let count = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(count));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = {
+        let tc = table_classes.clone();
+        Callback::new(move |(row, col_id): (core::BlogPostAdminTableRowViewModel, String)| {
+            let post_id_edit = row.post_id.clone();
+            let post_id_publish = row.post_id.clone();
+            let post_id_archive = row.post_id.clone();
+            let post_id_restore = row.post_id.clone();
+            let post_id_delete = row.post_id.clone();
+            let post_locale_edit = row.locale.clone();
+            let post_locale_publish = row.locale.clone();
+            let post_locale_archive = row.locale.clone();
+            let post_locale_restore = row.locale.clone();
+
+            match col_id.as_str() {
+                "title" => view! {
+                    <div class="space-y-0.5">
+                        <div class=tc.title_text>{row.title.clone()}</div>
+                        <div class=tc.excerpt_text>{row.excerpt.clone()}</div>
+                    </div>
+                }.into_any(),
+                "slug" => view! {
+                    <span class=tc.muted_cell>{row.slug.clone()}</span>
+                }.into_any(),
+                "status" => view! {
+                    <StatusBadge status=row.status.clone() />
+                }.into_any(),
+                "locale" => view! {
+                    <span class=tc.muted_cell>{row.locale.clone()}</span>
+                }.into_any(),
+                "actions" => view! {
+                    <div class=tc.actions_group>
+                        <button
+                            type="button"
+                            class=tc.primary_action_button
+                            disabled=row.is_busy
+                            on:click={
+                                move |_| on_edit.run((post_id_edit.clone(), post_locale_edit.clone()))
+                            }
+                        >
+                            {row.edit_label.clone()}
+                        </button>
+                        {if row.show_publish_action {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=tc.primary_action_button
+                                    disabled=row.is_busy
+                                    on:click={
+                                        move |_| on_toggle_publish.run((
+                                            post_id_publish.clone(),
+                                            row.next_publish_state,
+                                            post_locale_publish.clone(),
+                                        ))
+                                    }
+                                >
+                                    {row.publish_label.clone()}
+                                </button>
+                            }
+                            .into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                        {if row.show_archive_action {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=tc.primary_action_button
+                                    disabled=row.is_busy
+                                    on:click={
+                                        move |_| on_archive.run((post_id_archive.clone(), post_locale_archive.clone()))
+                                    }
+                                >
+                                    {row.archive_label.clone()}
+                                </button>
+                            }
+                            .into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                        {if row.show_restore_action {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=tc.primary_action_button
+                                    disabled=row.is_busy
+                                    on:click={
+                                        move |_| on_restore.run((post_id_restore.clone(), post_locale_restore.clone()))
+                                    }
+                                >
+                                    {row.restore_label.clone()}
+                                </button>
+                            }
+                            .into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                        <button
+                            type="button"
+                            class=tc.destructive_action_button
+                            disabled=row.is_busy
+                            on:click={
+                                move |_| on_delete.run(post_id_delete.clone())
+                            }
+                        >
+                            {row.delete_label.clone()}
+                        </button>
+                    </div>
+                }.into_any(),
+                _ => ().into_any(),
+            }
+        })
+    };
 
     view! {
         <div class="space-y-4">
-            <div class=table_classes.total_label>
-                {table.total_label.clone()}
+            <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <input
+                    type="text"
+                    placeholder=if is_ru { "Поиск по статьям блога..." } else { "Search blog posts..." }
+                    prop:value=move || search.get()
+                    on:input=move |ev| search.set(event_target_value(&ev))
+                    class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-64 font-normal"
+                />
+                <div class=table_classes.total_label>
+                    {table.total_label}
+                </div>
             </div>
-            <div class=table_classes.table_container>
-                <table class=table_classes.table>
-                    <thead class=table_classes.table_head>
-                        <tr>
-                            <th class=table_classes.header_cell>{table.title_header.clone()}</th>
-                            <th class=table_classes.header_cell>{table.slug_header.clone()}</th>
-                            <th class=table_classes.header_cell>{table.status_header.clone()}</th>
-                            <th class=table_classes.header_cell>{table.locale_header.clone()}</th>
-                            <th class=table_classes.actions_header_cell></th>
-                        </tr>
-                    </thead>
-                    <tbody class=table_classes.table_body>
-                        {table.rows
-                            .into_iter()
-                            .map(|row| {
-                                let post_id_edit = row.post_id.clone();
-                                let post_id_publish = row.post_id.clone();
-                                let post_id_archive = row.post_id.clone();
-                                let post_id_restore = row.post_id.clone();
-                                let post_id_delete = row.post_id.clone();
-                                let post_locale_edit = row.locale.clone();
-                                let post_locale_publish = row.locale.clone();
-                                let post_locale_archive = row.locale.clone();
-                                let post_locale_restore = row.locale.clone();
 
-                                view! {
-                                    <tr class=table_classes.row>
-                                        <td class=table_classes.title_cell>
-                                            <div class=table_classes.title_text>{row.title.clone()}</div>
-                                            <div class=table_classes.excerpt_text>
-                                                {row.excerpt.clone()}
-                                            </div>
-                                        </td>
-                                        <td class=table_classes.muted_cell>{row.slug.clone()}</td>
-                                        <td class=table_classes.title_cell>
-                                            <StatusBadge status=row.status.clone() />
-                                        </td>
-                                        <td class=table_classes.muted_cell>{row.locale.clone()}</td>
-                                        <td class=table_classes.actions_cell>
-                                            <div class=table_classes.actions_group>
-                                                <button
-                                                    type="button"
-                                                    class=table_classes.primary_action_button
-                                                    disabled=row.is_busy
-                                                    on:click={
-                                                        move |_| on_edit.run((post_id_edit.clone(), post_locale_edit.clone()))
-                                                    }
-                                                >
-                                                    {row.edit_label.clone()}
-                                                </button>
-                                                {if row.show_publish_action {
-                                                    view! {
-                                                        <button
-                                                            type="button"
-                                                            class=table_classes.primary_action_button
-                                                            disabled=row.is_busy
-                                                            on:click={
-                                                                move |_| on_toggle_publish.run((
-                                                                    post_id_publish.clone(),
-                                                                    row.next_publish_state,
-                                                                    post_locale_publish.clone(),
-                                                                ))
-                                                            }
-                                                        >
-                                                            {row.publish_label.clone()}
-                                                        </button>
-                                                    }
-                                                    .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
-                                                {if row.show_archive_action {
-                                                    view! {
-                                                        <button
-                                                            type="button"
-                                                            class=table_classes.primary_action_button
-                                                            disabled=row.is_busy
-                                                            on:click={
-                                                                move |_| on_archive.run((post_id_archive.clone(), post_locale_archive.clone()))
-                                                            }
-                                                        >
-                                                            {row.archive_label.clone()}
-                                                        </button>
-                                                    }
-                                                    .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
-                                                {if row.show_restore_action {
-                                                    view! {
-                                                        <button
-                                                            type="button"
-                                                            class=table_classes.primary_action_button
-                                                            disabled=row.is_busy
-                                                            on:click={
-                                                                move |_| on_restore.run((post_id_restore.clone(), post_locale_restore.clone()))
-                                                            }
-                                                        >
-                                                            {row.restore_label.clone()}
-                                                        </button>
-                                                    }
-                                                    .into_any()
-                                                } else {
-                                                    ().into_any()
-                                                }}
-                                                <button
-                                                    type="button"
-                                                    class=table_classes.destructive_action_button
-                                                    disabled=row.is_busy
-                                                    on:click={
-                                                        move |_| on_delete.run(post_id_delete.clone())
-                                                    }
-                                                >
-                                                    {row.delete_label.clone()}
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            })
-                            .collect_view()}
-                    </tbody>
-                </table>
-            </div>
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::BlogPostAdminTableRowViewModel| row.post_id.clone()
+                cell_renderer=cell_renderer
+                empty_message=table.empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
         </div>
     }
     .into_any()
