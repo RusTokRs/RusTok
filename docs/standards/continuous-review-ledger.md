@@ -4569,8 +4569,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Remediation: introduced a dedicated graphqlEndpoint validator that requires the configured URL pathname to equal contract.request_policy.graphql_mounted_path; the source verifier now locks that path to /api/graphql and requires the runner to enforce it. Capture behavior, response normalization, secret-retention rules, and scenario semantics are unchanged.
 - Re-audit: local HTTP allowance, remote HTTPS requirement, credential/query/fragment rejection, response-size bounds, redirect rejection, source hashing, and REST base-url handling remain unchanged.
 - Verification: repository-content inspection only. No capture runner, verifier, Cargo, tests, formatting, workflow, CI, or runtime commands were executed by the agent.
-- Status: FS-22.06.119 source remediation complete; pending integration and post-merge reconciliation.
-- Next primary iteration: after merge, continue the source audit of remaining runtime-evidence tooling, then hand execution to the maintainer-owned projection-parity and deadline/failure runners.
+- Integration: squash-merged as d7780e4c07de7f7dfc9567442c861b1b0581659c via PR #4515; the post-merge reread found one verifier-only duplicate condition, isolated below as FS-22.06.120.
+- Status: FS-22.06.119 integrated; the underlying GraphQL endpoint-path contract is closed.
+### FS-22.06.120 Assessment — Fulfillment parity verifier duplicate condition
+
+- Base: d7780e4c07de7f7dfc9567442c861b1b0581659c; dedicated branch codex/audit-fs-22.06.120-verifier-dup.
+- Primary scope: the transport-parity source verifier only.
+- Confirmed finding FULFILLMENT-22.06.120-01: the verifier repeated the same graphql_mounted_path == /api/graphql predicate twice in one request-policy condition. The duplicate was harmless but contradicted the evidence-layer cognitive-bloat/clean-diff requirement and was introduced during the 119 remediation.
+- Remediation: removed the duplicate predicate; all other request-policy assertions remain unchanged.
+- Verification: repository-content inspection only. No verifier execution, capture execution, Cargo, tests, formatting, workflow, CI, or runtime commands were run by the agent.
+- Status: FS-22.06.120 source cleanup complete; pending integration and post-merge reconciliation.
+- Next primary iteration: complete the post-merge fresh pass of the parity evidence boundary; then hand actual projection-parity and deadline/failure execution to the maintainer.
 
 ### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
 
