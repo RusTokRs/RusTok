@@ -35,6 +35,37 @@ const translationEntity = read(
   'crates/modules/rustok-fulfillment/src/entities/shipping_option_translation.rs',
 );
 
+const translationOwnerService = read(
+  'crates/modules/rustok-fulfillment/src/services/shipping_option_translation.rs',
+);
+
+for (const marker of [
+  'pub struct ShippingOptionTranslationService',
+  'lock_exclusive()',
+  'shipping_option_translation::Entity::update_many()',
+  'rows_affected != 1',
+  'insert_translation_for_tenant(',
+  'INSERT INTO shipping_option_translations (id, shipping_option_id, locale, name)',
+  'SELECT $1, id, $2, $3',
+  'WHERE id = $4 AND tenant_id = $5',
+]) {
+  requireText(translationOwnerService, marker, 'exact-locale translation owner scope');
+}
+for (const marker of [
+  'shipping_option_translation::Relation::ShippingOption.def()',
+  'shipping_option::Column::TenantId.eq(tenant_id)',
+  'load_translations(&txn, tenant_id, shipping_option_id)',
+]) {
+  requireText(translationOwnerService, marker, 'exact-locale tenant-scoped child reads');
+}
+for (const value of [
+  'active.update(&txn).await?',
+  'load_translations(&txn, shipping_option_id)',
+  'load_translations(&self.db, shipping_option_id)',
+]) {
+  forbidText(translationOwnerService, value, 'exact-locale tenantless child mutation/read');
+}
+
 for (const marker of [
   '## Translation ownership',
   'Shipping-option translation updates and deletes remain tenant-scoped at the mutation-query layer',
