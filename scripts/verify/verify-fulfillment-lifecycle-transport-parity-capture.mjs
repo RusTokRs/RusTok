@@ -102,6 +102,12 @@ if (
 ) {
   failures.push('execution contract request policy mismatch');
 }
+if (
+  contract.normalization?.timestamp_canonicalization !== 'UTC' ||
+  contract.normalization?.projection_strings_preserve_whitespace !== true
+) {
+  failures.push('execution contract normalization policy mismatch');
+}
 const responseReaderChecks = [
   ['async function readResponseBytes(response, operation)', 'bounded response reader'],
   ['response.body.getReader()', 'streaming response reader'],
