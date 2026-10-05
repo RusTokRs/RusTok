@@ -47,7 +47,9 @@ administrative list-all uses the separate `ShippingOptionAdminReadPort`. Shippin
 responses now expose a deterministic translation-resource revision. Exact-locale TranslationTarget reads and mutations retain tenant ownership at the child-query boundary by joining/filtering the tenant-owned shipping_option parent; existing-target updates use scoped update-many with one-row cardinality guards, and new-target inserts use a tenant-filtered INSERT ... SELECT. Parent-row locking plus the unique (shipping_option_id, locale) constraint remains the concurrency boundary for exact-locale CAS. The translation change journal follows the same parent-owned integrity rule: journal INSERTs derive tenant_id and shipping_option_id from a tenant-filtered shipping_options row, with exactly-one-row admission. Every bulk translation update
 requires that revision when translations are supplied; a stale revision fails as a typed owner conflict
 before any mutation. The module-owned admin editor round-trips all loaded translations plus the revision
-so editing one locale cannot silently delete untouched locales. Storage-only `und` remains visible only
+so editing one locale cannot silently delete untouched locales.
+Shipping-option admin create is owner-idempotent: the caller key is admitted through the shared receipt ledger,
+and the new option, translations, change evidence, and completed receipt commit in one owner transaction. Storage-only `und` remains visible only
 as raw persisted provenance and is excluded from runtime locale resolution and outbound admin translation
 writes. Root
 in-process adapters own `FulfillmentService` construction, require read policy,
@@ -273,6 +275,8 @@ disable/reconciliation matrix in
   capture runner, fail-closed verifier, and operator runbook.
 - [ ] Execute compile, mounted GraphQL/REST active-list/list-all/lookup parity,
   deadline, locale, channel, optional-not-found, failure, and remote evidence.
+
+- [x] Make shipping-option admin create durable and replay-safe through the shared owner-operation receipt ledger; changed-payload idempotency-key reuse conflicts fail closed.
 
 ## Fulfillment lifecycle read source checklist
 
