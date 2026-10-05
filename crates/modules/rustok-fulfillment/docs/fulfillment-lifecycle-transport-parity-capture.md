@@ -38,7 +38,10 @@ The runner requires full mounted URLs and validates the canonical mounted paths:
 
 Remote mounted endpoints must use HTTPS. Plain HTTP is accepted only for
 `localhost`, `127.0.0.1`, or IPv6 loopback so the bearer token is not sent over an
-unencrypted remote connection. Redirect responses are rejected.
+unencrypted remote connection. Redirect responses are rejected. Response bodies
+are streamed and capped at the contract's one-MiB retained boundary before the
+runner buffers them for JSON parsing, so chunked responses cannot grow the
+capture process without bound.
 
 The bearer token must carry both `fulfillments:read` and `orders:read`, because the
 latest-by-order scenario reads `order.fulfillment` as well as fulfillment roots.
