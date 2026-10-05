@@ -115,8 +115,22 @@ for (const [value, label] of responseReaderChecks) {
 }
 forbidText(runner, 'response.arrayBuffer()', 'unbounded full-response buffering');
 
+const projectionStringChecks = [
+  ['function requiredString(value, field)', 'required projection string validator'],
+  ['function optionalString(value, field)', 'optional projection string validator'],
+  ['return value;\n}\n\nfunction timestamp', 'required projection strings preserve exact value'],
+];
+for (const [value, label] of projectionStringChecks) {
+  requireText(runner, value, label);
+}
 for (const [value, label] of [
-  [contract.retained_boundary?.bearer_token_retained, 'bearer token retention'],
+  ['const line = value.trim();', 'projection-wide whitespace trimming'],
+  ['return line;\n}\n\nfunction timestamp', 'trimmed projection string return'],
+]) {
+  forbidText(runner, value, label);
+}
+
+for (const [value, label] of [
   [contract.retained_boundary?.raw_response_bodies_retained, 'raw response retention'],
   [contract.retained_boundary?.fulfillment_metadata_retained, 'metadata retention'],
 ]) {
