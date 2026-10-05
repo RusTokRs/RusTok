@@ -128,7 +128,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                             <PublishedPostsList
                                 items=other_posts
                                 total=other_total
-                                list_title=Some(related_title)
+                                list_title=related_title
                             />
                         </div>
                     }
