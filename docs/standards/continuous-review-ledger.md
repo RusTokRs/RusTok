@@ -507,8 +507,9 @@ Hard limits for every iteration:
 - **Regression audit:** liveness/basic health remain public; readiness remains 200 for `ok`/`degraded` and 503 for `unhealthy`; protected diagnostics remain bearer-gated in production; disabled search indexing still skips search-lag checks; search decode errors no longer become false healthy state.
 - **Fresh second pass:** independently searched the complete controller for raw backend diagnostics, silent error conversion, panics, unbounded health work, feature-gating drift, and stale OpenAPI status/security metadata. Remaining `unwrap_or_default()` uses are confined to bounded URL parser string-slicing fallbacks; no additional health defect was confirmed.
 - **Verification:** source/contract inspection, historical health-audit comparison, search schema comparison, middleware authorization tracing, immediate re-audit, and branch diff review only. Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution were unavailable because the workspace is not mounted and local DNS cannot reach GitHub; no CI/runtime pass is claimed.
-- **Status:** `FS-22.06.05` implementation complete on the dedicated branch; PR/integration pending.
-- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.06 — apps/server/src/controllers/metrics.rs`.
+- **Status:** `FS-22.06.05` complete and integrated into `main` via PR #4562, squash merge `4db4057f3f06dccd39b9263c550315c13e4da739`.
+- **Post-merge reconciliation:** refreshed `main` at `4db4057f3f06dccd39b9263c550315c13e4da739`; the merged health controller contains the fail-closed search-lag decode and matching readiness/security OpenAPI metadata, with no unrelated files in the implementation PR.
+- **Next primary iteration:** `FS-22.06.06 — apps/server/src/controllers/metrics.rs`.
 
 ### FS-22.06.01 Assessment — `apps/server/src/controllers/auth.rs`
 
