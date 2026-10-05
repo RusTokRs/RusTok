@@ -45,6 +45,7 @@ const transportPath = "crates/modules/rustok-fulfillment/admin/src/transport.rs"
 const legacyApiPath = "crates/modules/rustok-fulfillment/admin/src/api.rs";
 const graphqlAdapterPath = "crates/modules/rustok-fulfillment/admin/src/transport/graphql_adapter.rs";
 const implementationPlanPath = "crates/modules/rustok-fulfillment/docs/implementation-plan.md";
+const fulfillmentServicePath = "crates/modules/rustok-fulfillment/src/services/fulfillment.rs";
 const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [
@@ -68,6 +69,7 @@ const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
+const fulfillmentService = readRepo(fulfillmentServicePath);
 const registry = readRepo(registryPath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
@@ -130,6 +132,28 @@ assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: fulfill
 
 assertContains(implementationPlan, "verify-fulfillment-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fulfillment fast boundary guardrail`);
 assertContains(registry, "verify-fulfillment-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fulfillment fast boundary guardrail`);
+
+assertContains(
+  fulfillmentService,
+  "fn create_label_provider_operation_id(metadata: &Value) -> Option<Uuid>",
+  `${fulfillmentServicePath}: create-label recovery must have one canonical receipt locator`,
+);
+assertContains(
+  fulfillmentService,
+  '.get("provider_operation")',
+  `${fulfillmentServicePath}: create-label recovery must read the canonical provider_operation namespace`,
+);
+assertNotContains(
+  fulfillmentService,
+  `.get("label")
+                .and_then(|value| value.get("provider_operation_id"))`,
+  `${fulfillmentServicePath}: secondary label.provider_operation_id must not be a create-label recovery identity fallback`,
+);
+assertContains(
+  fulfillmentService,
+  "create_label_provider_operation_id_ignores_secondary_label_locator",
+  `${fulfillmentServicePath}: receipt regression test must reject secondary label operation locators`,
+);
 
 if (failures.length > 0) {
   console.error("fulfillment admin boundary verification failed:");
