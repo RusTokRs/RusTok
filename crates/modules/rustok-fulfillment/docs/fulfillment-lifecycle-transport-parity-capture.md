@@ -99,7 +99,7 @@ node scripts/evidence/capture-fulfillment-lifecycle-transport-parity.mjs
 
 Optional inputs control tenant header, locale, page, per-page, client timeout, and
 an operator-provided runtime-instance label. URLs containing credentials, query,
-or fragments are rejected. Existing evidence is never overwritten implicitly. Concurrent captures fail closed: the retained packet is published with an exclusive atomic link, so one capture cannot replace another.
+or fragments are rejected. Existing evidence is never overwritten implicitly. Concurrent captures fail closed: the retained packet is published with an exclusive atomic link, so one capture cannot replace another. The execution contract and all source-inventory files are snapshotted before requests and re-hashed after capture; any change aborts publication.
 
 ## Retained packet
 
