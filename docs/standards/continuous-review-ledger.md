@@ -4899,3 +4899,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.139` complete as a clean source assessment; runtime/build evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment Admin command boundary with a fresh audit of permission-to-operation mapping and whether each Shipping Option command enforces the correct authenticated permission before durable receipt admission.
 
+
+### FS-22.06.140 Assessment — Shipping Option admin permission-to-operation binding
+
+- **Base:** `f46bd46173cbc5ebdcd2d642b3bf56ed97bb46b1`; fresh assessment after the Admin reconciliation hardening.
+- **Primary scope:** mounted Commerce Shipping Option permission gates, `PortContext` propagation, Fulfillment owner command operation names, and durable receipt admission ordering.
+- **Permission mapping:** Commerce `create_shipping_option` requires `FULFILLMENTS_CREATE`; update/deactivate/reactivate require `FULFILLMENTS_UPDATE`. The owner command receives the authenticated `PortContext` only after those transport authorization checks and enforces the shared write policy/deadline/idempotency admission before touching owner persistence.
+- **Operation binding:** create/update/deactivate/reactivate use distinct durable operation names. The shared receipt primitive binds the idempotency key to the owner scope, operation name, and canonical request hash, so a key admitted for one Shipping Option command cannot silently authorize or replay a different command.
+- **Authorization ordering:** Commerce authorization occurs before owner receipt admission. A denied caller therefore cannot consume a durable receipt under a privileged operation name, and receipt replay does not replace the transport permission check.
+- **Finding:** no repository-owned permission-to-operation mismatch was confirmed in this bounded surface. The owner port follows the repository's established pattern where transport authorization is performed by the mounted controller and owner code enforces trusted context plus write policy; introducing a second incompatible permission engine would duplicate authorization ownership.
+- **Fresh second pass:** re-read the four mounted controller permission gates, command-context construction, owner operation dispatch, shared receipt admission, and current idempotency regression. All four operation names and permission mappings remain aligned.
+- **Status:** `FS-22.06.140` complete as a clean source assessment; runtime/build evidence remains unpromoted.
+- **Next primary iteration:** continue Fulfillment Admin provider-command hardening with a fresh pass over provider-operation request identity, journal tenant/resource binding, and recovery status transitions.
+
