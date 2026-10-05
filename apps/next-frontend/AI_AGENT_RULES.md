@@ -42,7 +42,8 @@ existing suppression in files touched by the task.
 ✅ **ALWAYS follow Feature-Sliced Design** orientation:
 - `src/app` — Next.js App Router, routes, layouts
 - `src/modules` — module composition
-- `src/shared` — shared contracts (lib, api)
+- `src/shared` — shared contracts (`lib`, `api`, `ui`)
+  - `src/shared/ui` — canonical shared storefront UI components (e.g. `TableOfContents`). Reused across blog, forum, product catalog, and wiki pages. Do NOT copy-paste ToC implementations across modules or create separate micro-packages.
 - `src/components` — shared UI components
 
 ❌ **NEVER place module storefront UI** inside host-owned routes

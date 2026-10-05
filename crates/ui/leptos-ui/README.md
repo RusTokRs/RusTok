@@ -24,7 +24,8 @@ This crate also provides:
 - `RichTextHtml` for rendering a typed, server-derived `RichTextView` without
   accepting arbitrary HTML strings;
 - `RichTextEditorFrame` for the isolated shared rich-text authoring runtime;
-- `SuccessMessage` through the `ui_success_message` re-export.
+- `SuccessMessage` through the `ui_success_message` re-export;
+- `TableOfContents` (and `extract_headings_from_html`) for sticky, accessible heading navigation across blog posts, forum threads, long product descriptions, and documentation.
 
 ## Interactions
 

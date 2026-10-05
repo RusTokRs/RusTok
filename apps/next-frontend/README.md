@@ -15,6 +15,7 @@
 - `src/app/*`
 - `src/modules/*`
 - `src/shared/lib/*`
+- `src/shared/ui/*` (shared cross-domain UI components like `TableOfContents`)
 - Next.js App Router entrypoints and layouts
 
 ## Interactions

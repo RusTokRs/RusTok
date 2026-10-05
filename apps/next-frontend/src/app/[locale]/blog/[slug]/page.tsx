@@ -22,13 +22,13 @@ import {
 import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { RichTextHtml } from "@rustok/richtext/view";
+import { TableOfContents } from "@/shared/ui/table-of-contents";
 import {
   fetchPublishedPost,
   fetchPublishedPosts,
   BlogCommentComposer,
   AuthorMiniBadge,
   AuthorBioCard,
-  BlogTableOfContents,
   BlogShareButtons,
   ReadingProgressBar,
   CommentsPagination,
@@ -401,7 +401,7 @@ export default async function BlogPostPage({
 
           {/* Sidebar with Sticky Table of Contents */}
           <aside className="hidden lg:block lg:col-span-4 min-w-0">
-            <BlogTableOfContents contentSelector="#article-body" locale={locale} />
+            <TableOfContents contentSelector="#article-body" locale={locale} />
           </aside>
         </div>
       </article>

@@ -69,6 +69,21 @@ Architecture classification: `apps/next-frontend` is a Next.js composition host,
 - `SeoStructuredDataBlock` in the shared TypeScript contract preserves backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` and payload; Next host does not classify schema.org types locally and renders JSON-LD blocks as runtime-provided scripts.
 - The Rust-host path is extracted into a separate support crate `rustok-seo-render`; the Next host remains a TypeScript adapter layer and does not attempt to share source-of-truth with it.
 
+## Shared Storefront UI Components
+
+Reusable storefront presentation components that are shared across multiple domain modules (blog, forum, product catalog, wiki) reside in `src/shared/ui/`:
+
+- `TableOfContents` (`src/shared/ui/table-of-contents.tsx`):
+  Universal, accessible Table of Contents navigation component with active section tracking via `IntersectionObserver`, auto-slug generation, smooth scrolling, and localized headers.
+  - Used by:
+    - Blog article detail (`/blog/[slug]`)
+    - Forum topics and discussion threads (`/forum/[slug]`)
+    - Long product descriptions and specification sheets (`/products/[slug]`)
+    - Documentation and knowledge base articles (`/docs/[slug]`)
+  - Architectural rule:
+    Do NOT create separate micro-packages (e.g. `@rustok/toc`) or copy-paste ToC implementations across `packages/*`. Module-owned packages render their content inside standard containers (e.g., `[data-richtext]` or semantic IDs), and host routes/layouts compose `TableOfContents` beside them.
+  - Key props: `contentSelector` (default: `'[data-richtext], #article-body, #product-description, #forum-post, main article'`), `locale`, `minHeadings` (default: 2), `levels` (default: `['h2', 'h3']`), `sticky` (default: true), `title`.
+
 ## D8/D9 SEO closeout contract
 
 - This host owns the compile-free SEO evidence fixture and verifier used for D8 lightweight gates.

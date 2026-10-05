@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::use_token;
-use leptos_ui::RichTextHtml;
+use leptos_ui::{RichTextHtml, TableOfContents};
 use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
 #[cfg(target_arch = "wasm32")]
 use rustok_comments_storefront_support::CommentComposer;
@@ -421,22 +421,37 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                     />
                 </div>
             })}
-            {match content {
-                Some(content) => view! {
-                    <RichTextHtml
-                        view=content
-                        content_locale=effective_locale.clone()
-                        class="mt-4 text-sm leading-7 text-foreground"
-                    />
+            {
+                let content_html = content.as_ref().map(|c| c.html.clone());
+                view! {
+                    <div class="mt-4 lg:grid lg:grid-cols-12 lg:gap-8 items-start">
+                        <div class="lg:col-span-8 min-w-0">
+                            {match content {
+                                Some(content) => view! {
+                                    <RichTextHtml
+                                        view=content
+                                        content_locale=effective_locale.clone()
+                                        class="text-sm leading-7 text-foreground"
+                                    />
+                                }
+                                .into_any(),
+                                None => view! {
+                                    <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">
+                                        {selected_post_content.body}
+                                    </p>
+                                }
+                                .into_any(),
+                            }}
+                        </div>
+                        <aside class="hidden lg:block lg:col-span-4 min-w-0">
+                            <TableOfContents
+                                html=content_html.unwrap_or_default()
+                                locale=effective_locale.clone()
+                            />
+                        </aside>
+                    </div>
                 }
-                .into_any(),
-                None => view! {
-                    <p class="mt-4 whitespace-pre-line text-sm leading-7 text-muted-foreground">
-                        {selected_post_content.body}
-                    </p>
-                }
-                .into_any(),
-            }}
+            }
             {if let Some(tags_view) = core::selected_post_tags_view(tags) {
                 view! {
                     <div class="mt-5 flex flex-wrap gap-2">

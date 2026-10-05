@@ -63,6 +63,7 @@ covered. Components not yet given that feature audit remain provisional.
 | Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | functional audit pending |
 | Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | functional audit pending |
 | Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | functional audit pending |
+| TableOfContents | `crates/ui/leptos-ui/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Blog, Forum, and Product Descriptions |
 
 `crates/ui/rustok-ui/leptos/src/lib.rs` and
 `apps/next-admin/src/shared/ui/shadcn/index.ts` are the component entry points being
@@ -117,6 +118,7 @@ because its base markup or class names match.
 - `RichTextHtml` for editor-free rendering of a typed, server-derived
   `RichTextView`
 - `RichTextEditorFrame` for the isolated shared authoring runtime
+- `TableOfContents` (and `extract_headings_from_html`) for sticky, accessible heading navigation across blog posts, forum topics, long product descriptions, and documentation
 
 This crate is needed where a simple shared primitive layer is insufficient and a stable package boundary within the Rust workspace is required.
 
