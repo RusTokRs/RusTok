@@ -29,7 +29,12 @@
     ],
     "admin_rest_operations": [
       "read_fulfillment_projection"
-    ]
+    ],
+    "owner_wall_clock_timeout_test": {
+      "crate": "rustok-fulfillment",
+      "name": "execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout",
+      "command": "cargo test -p rustok-fulfillment execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout -- --nocapture"
+    }
   },
   "graphql_error_matrix": [
     {
