@@ -50,6 +50,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::oauth::clear_browser_session_handler,
         crate::controllers::oauth::revoke_handler,
         crate::controllers::oauth::userinfo_handler,
+        crate::controllers::oauth::userinfo_post_handler,
         // Health
         crate::controllers::health::health,
         crate::controllers::health::live,

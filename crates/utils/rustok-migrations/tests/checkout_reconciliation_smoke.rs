@@ -130,7 +130,7 @@ async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_executio
     assert!(reconciled.lease_expires_at.is_none());
 
     let claim_error = provider_journal
-        .claim_execution(provider_operation.id)
+        .claim_execution(tenant_id, provider_operation.id)
         .await
         .expect_err("provider execution must be blocked during checkout reconciliation");
     assert!(

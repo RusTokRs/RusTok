@@ -356,8 +356,8 @@ pub(crate) async fn authorize_browser_handler(
     post,
     path = "/api/oauth/consent",
     tag = "oauth",
-    request_body(    security(("bearer_auth" = [])),
-
+    security(("bearer_auth" = [])),
+    request_body(
         content = ConsentRequest,
         content_type = "application/x-www-form-urlencoded"
     ),
@@ -977,6 +977,17 @@ async fn revoke_handler_inner(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
+pub(crate) async fn userinfo_handler(
+    current_user: CurrentUser, // Automatically extracts and validates Bearer token
+) -> axum::response::Response {
+    match userinfo_handler_inner(current_user).await {
+        Ok(response) => response.into_response(),
+        Err(error) => oauth_error_response(error),
+    }
+}
+
+/// OpenID Connect UserInfo Endpoint (RFC 5362)
+/// Allows clients with `openid` or `profile` scopes to fetch user details via POST.
 #[utoipa::path(
     post,
     path = "/api/oauth/userinfo",
@@ -989,13 +1000,10 @@ async fn revoke_handler_inner(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
-pub(crate) async fn userinfo_handler(
-    current_user: CurrentUser, // Automatically extracts and validates Bearer token
+pub(crate) async fn userinfo_post_handler(
+    current_user: CurrentUser,
 ) -> axum::response::Response {
-    match userinfo_handler_inner(current_user).await {
-        Ok(response) => response.into_response(),
-        Err(error) => oauth_error_response(error),
-    }
+    userinfo_handler(current_user).await
 }
 
 async fn userinfo_handler_inner(
@@ -1056,7 +1064,7 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/oauth/token", post(token_handler))
         .route(
             "/api/oauth/userinfo",
-            get(userinfo_handler).post(userinfo_handler),
+            get(userinfo_handler).post(userinfo_post_handler),
         )
         .route("/api/oauth/revoke", post(revoke_handler))
 }

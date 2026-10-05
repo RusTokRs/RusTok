@@ -13,7 +13,6 @@ use rustok_telemetry::metrics;
 use rustok_web::json_response;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    sea_query::Expr,
 };
 use std::net::SocketAddr;
 
