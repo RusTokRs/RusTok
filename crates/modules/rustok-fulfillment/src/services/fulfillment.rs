@@ -176,6 +176,7 @@ impl FulfillmentService {
 
         load_shipping_options_with_translations(
             &self.db,
+            tenant_id,
             rows,
             requested_locale,
             tenant_default_locale,
