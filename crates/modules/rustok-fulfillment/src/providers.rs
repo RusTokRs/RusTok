@@ -19,39 +19,42 @@ fn normalize_provider_metadata_key(key: &str) -> String {
 }
 
 pub(crate) fn validate_provider_metadata_safety(value: &Value) -> FulfillmentResult<()> {
-    let Value::Object(object) = value else {
-        return Err(FulfillmentError::ProviderResultInvalid(
-            "provider metadata must be a JSON object".to_string(),
-        ));
-    };
-    for (key, child) in object {
-        let normalized = normalize_provider_metadata_key(key);
-        if [
-            "authorization",
-            "apikey",
-            "accesstoken",
-            "refreshtoken",
-            "idtoken",
-            "clientsecret",
-            "secret",
-            "password",
-            "privatekey",
-            "cookie",
-            "setcookie",
-            "rawpayload",
-            "requestbody",
-            "responsebody",
-        ]
-        .iter()
-        .any(|forbidden| normalized.contains(forbidden))
-        {
-            return Err(FulfillmentError::ProviderResultInvalid(
-                "provider metadata contains a restricted sensitive/raw field".to_string(),
-            ));
+    match value {
+        Value::Object(object) => {
+            for (key, child) in object {
+                let normalized = normalize_provider_metadata_key(key);
+                if [
+                    "authorization",
+                    "apikey",
+                    "accesstoken",
+                    "refreshtoken",
+                    "idtoken",
+                    "clientsecret",
+                    "secret",
+                    "password",
+                    "privatekey",
+                    "cookie",
+                    "setcookie",
+                    "rawpayload",
+                    "requestbody",
+                    "responsebody",
+                ]
+                .iter()
+                .any(|forbidden| normalized.contains(forbidden))
+                {
+                    return Err(FulfillmentError::ProviderResultInvalid(
+                        "provider metadata contains a restricted sensitive/raw field".to_string(),
+                    ));
+                }
+                validate_provider_metadata_safety(child)?;
+            }
         }
-        if let Value::Object(_) = child {
-            validate_provider_metadata_safety(child)?;
+        Value::Array(values) => {
+            for child in values {
+                validate_provider_metadata_safety(child)?;
+            }
         }
+        _ => {}
     }
     Ok(())
 }
@@ -984,6 +987,17 @@ mod boundary_tests {
             let metadata = serde_json::json!({key: "sensitive"});
             assert!(validate_provider_metadata_safety(&metadata).is_err(), "{key} must be rejected");
         }
+    }
+
+    #[test]
+    fn provider_metadata_safety_rejects_restricted_fields_inside_arrays() {
+        let metadata = serde_json::json!({
+            "events": [
+                {"provider_event": "ok"},
+                {"debug": {"authorization": "Bearer secret"}}
+            ]
+        });
+        assert!(validate_provider_metadata_safety(&metadata).is_err());
     }
 
     #[test]
