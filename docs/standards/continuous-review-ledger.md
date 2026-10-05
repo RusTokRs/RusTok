@@ -4578,8 +4578,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Confirmed finding FULFILLMENT-22.06.120-01: the verifier repeated the same graphql_mounted_path == /api/graphql predicate twice in one request-policy condition. The duplicate was harmless but contradicted the evidence-layer cognitive-bloat/clean-diff requirement and was introduced during the 119 remediation.
 - Remediation: removed the duplicate predicate; all other request-policy assertions remain unchanged.
 - Verification: repository-content inspection only. No verifier execution, capture execution, Cargo, tests, formatting, workflow, CI, or runtime commands were run by the agent.
-- Status: FS-22.06.120 source cleanup complete; pending integration and post-merge reconciliation.
-- Next primary iteration: complete the post-merge fresh pass of the parity evidence boundary; then hand actual projection-parity and deadline/failure execution to the maintainer.
+- Integration: squash-merged as 312eff53192a532e14878b4e121e3dd63742d817 via PR #4516; post-merge fresh pass confirmed one canonical GraphQL path predicate and the runner-side path enforcement.
+- Status: FS-22.06.120 complete and integrated.
+- Next primary iteration: maintainer-owned execution of the published projection-parity and deterministic deadline/failure evidence contracts; restart, external-adapter identity, and remote-adapter behavior remain separate gates.
 
 ### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
 
