@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, Set, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -42,19 +42,44 @@ impl FulfillmentProviderOperationJournal {
         &self,
         input: BeginProviderOperation,
     ) -> FulfillmentResult<provider_operation::Model> {
+        self.begin_on_connection(&self.db, input).await
+    }
+
+    pub(crate) async fn begin_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        input: BeginProviderOperation,
+    ) -> FulfillmentResult<provider_operation::Model> {
+        self.begin_on_connection(txn, input).await
+    }
+
+    async fn begin_on_connection<C>(
+        &self,
+        conn: &C,
+        input: BeginProviderOperation,
+    ) -> FulfillmentResult<provider_operation::Model>
+    where
+        C: ConnectionTrait,
+    {
         let input = normalize_begin_input(input)?;
+
         let fulfillment_exists =
             crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
                 .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
-                .one(&self.db)
+                .one(conn)
                 .await?
                 .is_some();
         if !fulfillment_exists {
             return Err(FulfillmentError::FulfillmentNotFound(input.fulfillment_id));
         }
 
-        if let Some(existing) = self
-            .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
+        if let Some(existing) = provider_operation::Entity::find()
+            .filter(provider_operation::Column::TenantId.eq(input.tenant_id))
+            .filter(provider_operation::Column::ProviderId.eq(&input.provider_id))
+            .filter(
+                provider_operation::Column::IdempotencyKey.eq(&input.idempotency_key),
+            )
+            .one(conn)
             .await?
         {
             ensure_same_request(&existing, &input)?;
@@ -80,22 +105,12 @@ impl FulfillmentProviderOperationJournal {
             provider_completed_at: Set(None),
             committed_at: Set(None),
         }
-        .insert(&self.db)
+        .insert(conn)
         .await;
 
         match insert {
             Ok(model) => Ok(model),
-            Err(insert_error) => {
-                if let Some(existing) = self
-                    .find_by_key(input.tenant_id, &input.provider_id, &input.idempotency_key)
-                    .await?
-                {
-                    ensure_same_request(&existing, &input)?;
-                    Ok(existing)
-                } else {
-                    Err(insert_error.into())
-                }
-            }
+            Err(insert_error) => Err(insert_error.into()),
         }
     }
 
