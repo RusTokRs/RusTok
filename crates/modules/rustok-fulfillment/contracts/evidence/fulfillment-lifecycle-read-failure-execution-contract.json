@@ -28,6 +28,7 @@
       "find_latest_fulfillment_by_order_projection"
     ],
     "admin_rest_operations": [
+      "list_fulfillment_projections",
       "read_fulfillment_projection"
     ],
     "owner_wall_clock_timeout_test": {
@@ -117,7 +118,8 @@
     "graphql_correlation": true,
     "admin_rest_correlation": true,
     "admin_rest_locale": "ru-RU",
-    "owner_message_redacted": true
+    "owner_message_redacted": true,
+    "admin_rest_list_correlation": true
   },
   "excluded": [
     "mounted projection-parity capture execution",
