@@ -14,6 +14,8 @@ This slice closes the payload-diagnostic gap in the owner projection-read bounda
 
 The public traits, request/response DTOs, canonical factories, locale arguments, owner service calls, Commerce runtime composition, filters, optional-not-found behavior, and public `PortError` envelopes remain unchanged.
 
+The translation projection reads inherit tenant ownership through the `shipping_options` relation because `shipping_option_translations` has no independent tenant key. Both the batch translation projection and single-option translation row loader apply the tenant predicate in the child query; no duplicate tenant column is introduced.
+
 ## Retained diagnostic shape
 
 Events retain correlation id, static owner operation, stable code, retryability, severity, and boundary. Other context is limited to actor kind, character lengths, counts, presence flags, and deadline milliseconds.

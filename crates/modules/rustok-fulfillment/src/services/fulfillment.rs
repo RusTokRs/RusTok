@@ -116,7 +116,7 @@ impl FulfillmentService {
 
         insert_translations(&txn, shipping_option_id, &translations).await?;
         let translation_rows =
-            load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+            load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
         let resource_revision =
             shipping_option_translation_resource_revision(&option, &translation_rows);
         record_shipping_option_translation_change_in_tx(
@@ -152,6 +152,7 @@ impl FulfillmentService {
 
         load_shipping_options_with_translations(
             &self.db,
+            tenant_id,
             rows,
             requested_locale,
             tenant_default_locale,
@@ -175,6 +176,7 @@ impl FulfillmentService {
 
         load_shipping_options_with_translations(
             &self.db,
+            tenant_id,
             rows,
             requested_locale,
             tenant_default_locale,
@@ -239,7 +241,7 @@ impl FulfillmentService {
 
         if let Some(expected_revision) = expected_translation_revision.as_deref() {
             let current_translations =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let current_revision = shipping_option_translation_resource_revision(
                 &shipping_option,
                 &current_translations,
@@ -279,13 +281,13 @@ impl FulfillmentService {
 
         let localized_copy_changed = match translations.as_deref() {
             Some(translations) => {
-                synchronize_translations(&txn, shipping_option_id, translations).await?
+                synchronize_translations(&txn, tenant_id, shipping_option_id, translations).await?
             }
             None => false,
         };
         if localized_copy_changed {
             let translation_rows =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let resource_revision =
                 shipping_option_translation_resource_revision(&option, &translation_rows);
             record_shipping_option_translation_change_in_tx(
@@ -320,6 +322,7 @@ impl FulfillmentService {
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
         let items = load_shipping_options_with_translations(
             &self.db,
+            tenant_id,
             vec![option],
             requested_locale,
             tenant_default_locale,
@@ -1630,7 +1633,7 @@ impl FulfillmentService {
             option.updated_at = Set(Utc::now().into());
             let option = option.update(&txn).await?;
             let translation_rows =
-                load_shipping_option_translation_rows(&txn, shipping_option_id).await?;
+                load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
             let resource_revision =
                 shipping_option_translation_resource_revision(&option, &translation_rows);
             record_shipping_option_translation_change_in_tx(
@@ -2305,6 +2308,7 @@ fn reopened_status_for_cancelled(
 
 async fn load_shipping_options_with_translations(
     db: &DatabaseConnection,
+    tenant_id: Uuid,
     rows: Vec<entities::shipping_option::Model>,
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
@@ -2315,7 +2319,12 @@ async fn load_shipping_options_with_translations(
 
     let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
     let translations = entities::shipping_option_translation::Entity::find()
-        .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids.clone()))
+        .join(
+            JoinType::InnerJoin,
+            entities::shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
+        .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids))
         .order_by_asc(entities::shipping_option_translation::Column::ShippingOptionId)
         .order_by_asc(entities::shipping_option_translation::Column::Locale)
         .all(db)
@@ -2481,10 +2490,11 @@ async fn insert_translations(
 
 async fn synchronize_translations(
     db: &DatabaseTransaction,
+    tenant_id: Uuid,
     shipping_option_id: Uuid,
     translations: &[ShippingOptionTranslationInput],
 ) -> FulfillmentResult<bool> {
-    let existing = load_shipping_option_translation_rows(db, shipping_option_id).await?;
+    let existing = load_shipping_option_translation_rows(db, tenant_id, shipping_option_id).await?;
     let mut desired = translations
         .iter()
         .map(|translation| (translation.locale.clone(), translation.name.clone()))
@@ -2526,12 +2536,18 @@ async fn synchronize_translations(
 
 async fn load_shipping_option_translation_rows<C>(
     db: &C,
+    tenant_id: Uuid,
     shipping_option_id: Uuid,
 ) -> FulfillmentResult<Vec<entities::shipping_option_translation::Model>>
 where
     C: ConnectionTrait,
 {
     Ok(entities::shipping_option_translation::Entity::find()
+        .join(
+            JoinType::InnerJoin,
+            entities::shipping_option_translation::Relation::ShippingOption.def(),
+        )
+        .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
         .filter(
             entities::shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id),
         )
