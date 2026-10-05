@@ -45,6 +45,7 @@ const requireText = (source, value, label) => {
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
+const sameRecord = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 for (const [source, value, label] of [
   [adminRest, 'PortErrorKind::Forbidden => (', 'REST forbidden policy'],
@@ -109,7 +110,12 @@ for (const [source, value, label] of [
   [
     harness,
     'admin_rest_fulfillment_detail_preserves_typed_errors_and_request_context',
-    'REST failure matrix',
+    'REST detail failure matrix',
+  ],
+  [
+    harness,
+    'admin_rest_fulfillment_list_preserves_typed_errors_and_request_context',
+    'REST list failure matrix',
   ],
   [ownerNote, 'Typed GraphQL boundary', 'owner note section'],
   [plan, 'deterministic lifecycle read deadline and typed-failure harness', 'plan checkpoint'],
@@ -140,6 +146,14 @@ if (contract.deadline?.milliseconds !== 2000) {
   failures.push('contract deadline must be 2000 milliseconds');
 }
 if (
+  !sameRecord(contract.deadline?.admin_rest_operations, [
+    'list_fulfillment_projections',
+    'read_fulfillment_projection',
+  ])
+) {
+  failures.push('contract must cover both admin REST lifecycle read operations');
+}
+if (
   contract.deadline?.owner_wall_clock_timeout_test?.crate !== 'rustok-fulfillment' ||
   contract.deadline?.owner_wall_clock_timeout_test?.name !==
     'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout'
@@ -161,6 +175,9 @@ if (contract.source_fix?.query_source_changed !== false) {
 }
 if (contract.source_fix?.optional_not_found_preserved !== true) {
   failures.push('contract must preserve optional not-found');
+}
+if (contract.context_assertions?.admin_rest_list_correlation !== true) {
+  failures.push('contract must require admin REST list correlation coverage');
 }
 if (contract.context_assertions?.owner_message_redacted !== true) {
   failures.push('contract must require owner-message redaction');
@@ -186,6 +203,9 @@ if (evidence.runtime_capture?.failure_contract_published !== true) {
 }
 if (evidence.runtime_capture?.failure_harness_published !== true) {
   failures.push('source evidence must record published failure harness');
+}
+if (evidence.runtime_capture?.admin_rest_list_failure_harness !== true) {
+  failures.push('source evidence must record admin REST list failure coverage');
 }
 if (evidence.runtime_capture?.failure_harness_executed !== false) {
   failures.push('source evidence must retain failure harness as unexecuted');

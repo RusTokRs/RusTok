@@ -300,6 +300,46 @@ fn port_error(kind: PortErrorKind, code: &'static str, retryable: bool) -> PortE
     PortError::new(kind, code, OWNER_SENTINEL, retryable)
 }
 
+fn admin_rest_error_cases() -> [(PortError, StatusCode, &'static str); 7] {
+    [
+        (
+            port_error(PortErrorKind::Validation, "owner.validation", false),
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+        ),
+        (
+            port_error(PortErrorKind::NotFound, "owner.not_found", false),
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+        ),
+        (
+            port_error(PortErrorKind::Conflict, "owner.conflict", false),
+            StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+        ),
+        (
+            port_error(PortErrorKind::Forbidden, "owner.forbidden", false),
+            StatusCode::FORBIDDEN,
+            "commerce_permission_denied",
+        ),
+        (
+            port_error(PortErrorKind::Unavailable, "owner.unavailable", true),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+        ),
+        (
+            port_error(PortErrorKind::Timeout, "owner.timeout", true),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+        ),
+        (
+            port_error(PortErrorKind::InvariantViolation, "owner.invariant", false),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_fulfillment_failed",
+        ),
+    ]
+}
+
 fn assert_graphql_call_context(call: &RecordedCall, tenant_id: Uuid, resource_id: Uuid) {
     assert_eq!(call.context.tenant_id, tenant_id.to_string());
     assert_eq!(call.context.deadline_ms, Some(2_000));
@@ -530,45 +570,7 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
     let user_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
-    let cases = [
-        (
-            port_error(PortErrorKind::Validation, "owner.validation", false),
-            StatusCode::BAD_REQUEST,
-            "commerce_admin_fulfillment_invalid",
-        ),
-        (
-            port_error(PortErrorKind::NotFound, "owner.not_found", false),
-            StatusCode::NOT_FOUND,
-            "commerce_admin_not_found",
-        ),
-        (
-            port_error(PortErrorKind::Conflict, "owner.conflict", false),
-            StatusCode::CONFLICT,
-            "commerce_admin_fulfillment_state_conflict",
-        ),
-        (
-            port_error(PortErrorKind::Forbidden, "owner.forbidden", false),
-            StatusCode::FORBIDDEN,
-            "commerce_permission_denied",
-        ),
-        (
-            port_error(PortErrorKind::Unavailable, "owner.unavailable", true),
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_fulfillment_storage_unavailable",
-        ),
-        (
-            port_error(PortErrorKind::Timeout, "owner.timeout", true),
-            StatusCode::SERVICE_UNAVAILABLE,
-            "commerce_admin_fulfillment_storage_unavailable",
-        ),
-        (
-            port_error(PortErrorKind::InvariantViolation, "owner.invariant", false),
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "commerce_admin_fulfillment_failed",
-        ),
-    ];
-
-    for (error, expected_status, expected_code) in cases {
+    for (error, expected_status, expected_code) in admin_rest_error_cases() {
         let fulfillment_id = Uuid::new_v4();
         let port = Arc::new(ScriptedFulfillmentReadPort::failing(error));
         let response = rest_router(
@@ -614,6 +616,68 @@ async fn admin_rest_fulfillment_detail_preserves_typed_errors_and_request_contex
         assert_eq!(
             call.context.correlation_id,
             format!("commerce-admin-fulfillment:get_fulfillment:{fulfillment_id}")
+        );
+    }
+}
+
+#[tokio::test]
+async fn admin_rest_fulfillment_list_preserves_typed_errors_and_request_context() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let order_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    for (error, expected_status, expected_code) in admin_rest_error_cases() {
+        let port = Arc::new(ScriptedFulfillmentReadPort::failing(error));
+        let response = rest_router(
+            &db,
+            tenant_context(tenant_id),
+            auth_context(tenant_id, user_id),
+            port.clone(),
+        )
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/admin/fulfillments?status=processing&order_id={order_id}&customer_id={customer_id}&page=1&per_page=5"
+                ))
+                .header("X-Tenant-ID", tenant_id.to_string())
+                .header("Accept-Language", "ru-RU,ru;q=0.9")
+                .body(Body::empty())
+                .expect("REST list request should build"),
+        )
+        .await
+        .expect("REST list request should complete");
+
+        assert_eq!(response.status(), expected_status);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("REST list error body should read");
+        let payload: Value =
+            serde_json::from_slice(&body).expect("REST list error body should be JSON");
+        assert_eq!(payload["code"], json!(expected_code));
+        assert!(
+            !String::from_utf8_lossy(&body).contains(OWNER_SENTINEL),
+            "owner message escaped through REST list: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let calls = port.calls();
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call.operation, "list_fulfillment_projections");
+        assert_eq!(call.context.tenant_id, tenant_id.to_string());
+        assert_eq!(call.context.deadline_ms, Some(2_000));
+        assert_eq!(call.context.actor.kind, PortActorKind::User);
+        assert_eq!(call.context.actor.id, user_id.to_string());
+        assert_eq!(call.context.locale, "ru-RU");
+        assert_eq!(call.context.channel, None);
+        assert_eq!(
+            call.context.correlation_id,
+            format!("commerce-admin-fulfillment:list_fulfillments:{tenant_id}")
         );
     }
 }

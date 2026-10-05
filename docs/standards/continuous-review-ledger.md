@@ -4651,3 +4651,13 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Status: FS-22.06.121 complete and integrated; maintainer execution of both published deadline gates remains required before `deadline_failure_proven` may change.
 - Next primary iteration: continue the remaining Fulfillment lifecycle runtime-evidence source audit; do not promote deadline/failure, projection-parity, restart, or remote-adapter evidence without maintainer-owned execution.
 
+### FS-22.06.122 Assessment — admin REST fulfillment list failure-contract coverage
+
+- Base: `299a0cb6b213a9bed45909f41d0fd5a2d123ff5c`; dedicated branch `codex/audit-fs-22.06.122-rest-list-failure-v2`.
+- Primary scope: the deterministic Fulfillment lifecycle-read failure evidence boundary for the mounted Commerce admin REST consumers.
+- Confirmed finding FULFILLMENT-22.06.122-01: the failure harness exercised the full typed error matrix through `GET /admin/fulfillments/{id}`, but did not cross the public `GET /admin/fulfillments` list route. The production list consumer uses the same owner `FulfillmentReadPort` and error mapper, but that first-class transport boundary had no deterministic runtime failure/context evidence.
+- Remediation: extracted one canonical REST error-case matrix for the harness, reused it for detail and list, and added a list-route test covering status/order/customer filters, pagination, tenant identity, authenticated actor, locale, two-second deadline, correlation, stable public codes/statuses, and owner-message redaction. The machine contract now declares both REST read operations; the source evidence and verifier lock the list-failure coverage.
+- Re-audit: production fulfillment read/error behavior was unchanged. The list test crosses the public Commerce Axum controller while injecting the same scripted owner port used by the detail test. The owner wall-clock timeout proof remains a separate deterministic owner unit test; mounted server transport parity remains a separate gate.
+- Verification: repository-content and cross-file contract inspection only. No Cargo, test, verifier, formatting, workflow, CI, or runtime command was executed by the agent.
+- Status: source/evidence remediation complete on the dedicated branch; pending squash integration and post-merge reconciliation. Maintainer execution remains required before `deadline_failure_proven` may change.
+- Next primary iteration: after integration, perform a fresh post-merge reread of the REST list failure boundary, then continue only within the remaining Fulfillment lifecycle runtime-evidence source gaps.
