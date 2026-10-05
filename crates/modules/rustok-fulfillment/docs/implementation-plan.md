@@ -317,8 +317,9 @@ disable/reconciliation matrix in
   without claiming mounted runtime parity.
 - [x] Publish the mounted lifecycle projection-parity execution contract and capture runner.
 - [x] Publish the deterministic lifecycle read deadline and typed-failure harness.
+- [x] Add a deterministic owner unit test proving a pending lifecycle read maps through the wall-clock deadline to typed `PortErrorKind::Timeout`.
+- [ ] Execute the owner wall-clock timeout unit test and the deterministic Commerce deadline/failure harness, retaining their immutable results.
 - [ ] Execute the mounted GraphQL/REST projection-parity capture and retain its immutable packet.
-- [ ] Execute the deterministic deadline/failure harness and retain its immutable result.
 - [ ] Prove deadline/failure injection, process restart, and remote-adapter behavior separately.
 - [ ] Execute compile and remaining tenant/context/runtime evidence before any
   status promotion.
@@ -407,6 +408,7 @@ disable/reconciliation matrix in
 - `cargo check -p rustok-fulfillment --all-features`
 - `cargo check -p rustok-commerce --all-features`
 - `cargo test -p rustok-commerce --test fulfillment_read_port_failure_contract -- --nocapture`
+- `cargo test -p rustok-fulfillment execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout -- --nocapture`
 - Targeted checkout fulfillment identity/lifecycle/restart/contention tests.
 - Targeted shipping-option GraphQL/REST parity, context, error, and remote tests.
 - Targeted fulfillment lifecycle owner-port and mounted GraphQL/REST query tests.

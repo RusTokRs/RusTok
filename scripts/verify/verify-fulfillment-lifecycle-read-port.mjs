@@ -59,6 +59,16 @@ for (const [source, value, label] of [
   [ownerSource, 'context.require_policy(PortCallPolicy::read())?', 'read policy'],
   [ownerSource, 'async fn execute_fulfillment_read<T, F>', 'read deadline executor'],
   [ownerSource, 'tokio::time::timeout(deadline, future)', 'read wall-clock timeout'],
+  [
+    ownerSource,
+    'execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout',
+    'wall-clock timeout unit test',
+  ],
+  [
+    ownerSource,
+    'std::future::pending::<Result<(), FulfillmentError>>()',
+    'deterministic pending-future timeout proof',
+  ],
   [ownerSource, 'fulfillment.deadline_exceeded', 'typed deadline timeout code'],
   [ownerSource, '.get_fulfillment(tenant_id, request.fulfillment_id)', 'single delegation'],
   [ownerSource, '.list_fulfillments(', 'list delegation'],
@@ -216,6 +226,9 @@ if (evidence.status !== 'source_cutover_unvalidated') failures.push('evidence st
 if (evidence.owner?.port !== 'FulfillmentReadPort') failures.push('evidence owner mismatch');
 if (evidence.runtime_publication?.runtime !== 'CommerceFulfillmentLifecycleReadRuntime') {
   failures.push('evidence runtime mismatch');
+}
+if (evidence.runtime_capture?.owner_deadline_unit_test_present !== true) {
+  failures.push('evidence must record the deterministic owner deadline unit test');
 }
 for (const [value, label] of [
   [evidence.projection_materialization?.parent_and_items_share_one_transaction_snapshot, 'parent/item snapshot'],

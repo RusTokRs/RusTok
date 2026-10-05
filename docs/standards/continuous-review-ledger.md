@@ -4638,3 +4638,16 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Evidence: lifecycle source evidence now records both direct lifecycle GraphQL tenant binding and the embedded order fulfillment binding as proven source facts; runtime parity remains false.
 - Status: source remediation complete; compile/runtime/cross-tenant execution evidence remains unvalidated.
 - Next primary module iteration: continue the Fulfillment lifecycle read boundary with mounted REST consumer/failure-envelope parity.
+
+### FS-22.06.121 Assessment — Fulfillment lifecycle read deadline evidence gap
+
+- Base: `5a751ec2dc79bc04b4ea26b0a1a6ecc955cb5b8a`; dedicated branch `codex/audit-fs-22.06.121-deadline-proof`.
+- Primary scope: the Fulfillment lifecycle read deadline/failure evidence boundary, specifically the relationship between the owner wall-clock timeout implementation and the Commerce transport failure harness.
+- Confirmed finding FULFILLMENT-22.06.121-01: the published Commerce failure harness asserted that `deadline_ms = 2_000` is propagated and exercised typed `Timeout` mapping, but its scripted `FulfillmentReadPort` returns immediately. It therefore did not execute or prove the production owner's `tokio::time::timeout` enforcement; a future could accidentally lose wall-clock timeout behavior while the transport harness still passed.
+- Remediation: added a deterministic owner-level unit test using `std::future::pending::<Result<(), FulfillmentError>>()` to force the production `execute_fulfillment_read` helper through its wall-clock timeout and assert `PortErrorKind::Timeout`, stable code `fulfillment.deadline_exceeded`, and retryability. The machine contract now publishes the exact owner test and command; the source verifier and failure-contract verifier require the test to remain present.
+- Re-audit: production timeout behavior itself is unchanged. The Commerce harness remains responsible for transport-level typed error mapping, optional not-found semantics, request context, and redaction; the owner unit test covers the missing enforcement layer. Actual server-mounted GraphQL HTTP routing remains a separate projection-parity/runtime gate.
+- Verification: repository-content inspection only. No Cargo, test, verifier, formatting, workflow, CI, or runtime command was executed by the agent.
+- Integration: squash-merged as `0e764f8f31a812a6c65b9987d4323082be9d06a9` via PR #4518; post-merge main was re-read at the merge SHA and the owner timeout test, failure contract, source verifiers, runbook, plan, and evidence ledger were reconciled.
+- Status: FS-22.06.121 complete and integrated; maintainer execution of both published deadline gates remains required before `deadline_failure_proven` may change.
+- Next primary iteration: continue the remaining Fulfillment lifecycle runtime-evidence source audit; do not promote deadline/failure, projection-parity, restart, or remote-adapter evidence without maintainer-owned execution.
+

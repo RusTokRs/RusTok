@@ -543,3 +543,34 @@ fn map_owner_error(
 
     PortError::new(kind, code, message, retryable)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_api::{PortActor, PortContext};
+
+    #[tokio::test]
+    async fn execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout() {
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("test.fulfillment-read-timeout"),
+            "en",
+            "test-fulfillment-read-timeout",
+        )
+        .with_deadline(Duration::from_millis(1));
+
+        let result = execute_fulfillment_read(
+            &context,
+            "timeout_test",
+            fulfillment_lifecycle_read_request_facts(None, None, None, None),
+            std::future::pending::<Result<(), FulfillmentError>>(),
+        )
+        .await;
+
+        let error = result.expect_err("pending lifecycle read must hit the wall-clock deadline");
+        assert_eq!(error.kind, PortErrorKind::Timeout);
+        assert_eq!(error.code, "fulfillment.deadline_exceeded");
+        assert!(error.retryable);
+    }
+}
+
