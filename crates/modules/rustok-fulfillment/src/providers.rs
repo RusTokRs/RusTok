@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentResult};
 
-pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+pub const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
 
 fn normalize_provider_metadata_key(key: &str) -> String {
     key.chars()
