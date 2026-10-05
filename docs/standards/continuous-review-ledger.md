@@ -4795,3 +4795,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Integration:** squash-merged as `b89a108064b41ac69c60717530773b77f022253c` via PR #4537; post-merge `main` was refreshed at the merge SHA and the Fulfillment mutation block, owner README, focused write-scope verifier, and ledger were re-read. The merge contained only the four intended files.
 - **Status:** `FS-22.06.131` complete and integrated; mounted projection parity, deadline/failure, restart, and remote-adapter runtime evidence remain unproven.
 - **Next primary iteration:** continue the same Fulfillment write boundary with a fresh second pass, focusing on insert-side ownership and concurrency semantics separately; keep all runtime evidence explicitly unpromoted.
+
+
+### FS-22.06.132 Assessment — exact-locale shipping-option translation write/read tenant scope
+
+- **Base:** `80d88e80ca24a4f6c9f573ef560f033c0ea9e650`; direct-main implementation on the refreshed `main`.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/services/shipping_option_translation.rs`, covering exact-locale TranslationTarget reads, target update, new-target insert, and concurrency serialization against the tenant-owned shipping-option parent.
+- **Invariant map:** `shipping_option_translations` has no standalone tenant key, so exact-locale child reads and writes must inherit tenant ownership through `shipping_options`. The authoritative write boundary is the owner transaction: parent selection is tenant-filtered and exclusively locked, child mutations retain the tenant relation predicate, and `(shipping_option_id, locale)` uniqueness remains the database duplicate guard.
+- **Confirmed finding FULFILLMENT-22.06.132-01:** the exact-locale service loaded translation rows by `shipping_option_id` alone and updated an existing target through `ActiveModel::update`. The parent row was already tenant-filtered/locked, so no direct cross-tenant escape was reachable through the current public owner method, but the child SQL did not preserve the same tenant-scope invariant established for the bulk writer in FS-22.06.131.
+- **Confirmed finding FULFILLMENT-22.06.132-02:** creating a missing target used a bare child-table `ActiveModel::insert`, relying entirely on the preceding parent admission. The new insert path now derives `shipping_option_id` from a tenant-filtered parent in the SQL `INSERT ... SELECT` itself; zero-row admission is rejected before the translation mutation can be treated as committed.
+- **Production remediation:** exact-locale child loaders now join `shipping_options` and filter `tenant_id`; existing target updates use `update_many` constrained by child id, parent id, and a tenant-scoped `EXISTS`, with an exactly-one-row guard; missing targets use a backend-aware tenant-filtered `INSERT ... SELECT` and require exactly one inserted row.
+- **Concurrency:** the existing exclusive lock on the tenant-owned parent remains the serialization point across the exact-locale and bulk shipping-option translation writers. The database unique index on `(shipping_option_id, locale)` remains the final duplicate-insert guard.
+- **Re-audit:** enumerated exact-locale read and write helper call sites after the change; no tenantless `shipping_option_translations` query remains in the primary service. No alternate repository writer for this owner was introduced or left outside the audited scope.
+- **Documentation:** Fulfillment README and implementation plan now state the exact-locale tenant-query and concurrency contract.
+- **Verification:** repository-content inspection, call-site enumeration, relation/schema comparison, source-shape review, and immediate diff construction only. No Cargo/tests/Clippy/rustfmt/verifier/runtime commands were executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.132` implementation complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the Fulfillment translation write boundary with a fresh pass over journal insert tenant/parent integrity and concurrent change-record semantics separately.
+
