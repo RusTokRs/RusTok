@@ -450,6 +450,7 @@ Hard limits for every iteration:
 - **Implementation status:** complete and integrated into `main` via PR #4333, squash merge `9bf5c48a18f6b27f54f86ed4e878ef43193bb31d`.
 - **Post-merge reconciliation:** refreshed `main` at `9bf5c48a18f6b27f54f86ed4e878ef43193bb31d`; comparison against the recorded base `f440babe6f1d4b43cd2da86b33d712438b96033d` is exactly one merged commit with the expected FS-22.05.27 file set. No concurrent `main` changes required reconciliation.
 
+- [x] **FS-22.05.28 — `apps/server/src/services/app_runtime.rs`** — reordered rate-limit runtime initialization ahead of GraphQL schema construction so Blog/Search GraphQL policies receive their shared limiter handles. Source-level fix and adjacent composition re-audit complete; maintainer-owned tests/build/runtime evidence remain pending.
 - [ ] **FS-22.05 — GraphQL composition:** do not start as a broad subsystem pass; convert it into the same one-primary-module queue before execution.
 
 ### FS-22.04.11 Assessment — request-derived cache-key propagation across owner adapters
@@ -5139,3 +5140,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Verification:** local `node --check` and focused Node smoke-check of the new verifier assertion logic passed. Full repository verifier execution, Cargo tests/checks, database integration, and runtime/remote-adapter evidence cannot be run in this environment because the workspace is not mounted; refreshed PR CI is required for repository-wide validation.
 - **Status:** `FS-22.06.156` implementation/guard complete at source level on the refreshed dedicated branch; awaiting PR/CI integration and maintainer runtime evidence.
 - **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
+
+
+### FS-22.05.28 Assessment — GraphQL rate-limit runtime initialization order
+
+- **Base:** refreshed `main` at `2eb60a5c0108d10c625a71ea6061d748a9c9476e`; dedicated branch `codex/audit-fs-22.05.28-graphql-rate-limit-order` was created from that exact SHA.
+- **Primary scope:** `apps/server/src/services/app_runtime.rs` bootstrap ordering, `apps/server/src/services/graphql_schema.rs` GraphQL dependency assembly, the Blog/Search GraphQL rate-limit adapters, and the owner rate-limit policies that consume those handles.
+- **Invariant map:** GraphQL module policies consume shared runtime capabilities during schema construction; the rate-limit layer is host-composed in `ServerRuntimeContext`; missing optional capability handles are represented as `None`; configured backend failures are fail-closed inside the limiter contract.
+- **Confirmed finding GRAPHQLRATELIMIT-22.05.28-01:** `bootstrap_app_runtime` constructed the GraphQL schema before calling `init_rate_limit_layers`. Consequently `blog_graphql_rate_limiter_from_context` and `search_graphql_rate_limiter_from_context` could only observe an absent shared limiter and passed `None) into their schema policies. Because the policies capture that option during schema construction, the omission persisted for the lifetime of the schema and disabled field-aware Blog/Search GraphQL rate limiting even when rate limiting was enabled in configuration.
+- **Remediation:** moved `init_rate_limit_layers` ahead of `init_graphql_schema`. The limiter constructors now populate the shared runtime handles before the schema reads them, while the existing path middleware continues to receive the already-built combined state. No module-owned policy or authorization behavior was duplicated or changed.
+- **Adjacent re-audit:** re-read `graphql_schema.rs`, Blog and Search host adapters, the Blog rate-limit owner policy/evidence, and the rate-limit construction path. Both optional GraphQL policies now read the same shared handles from the context after those handles are populated; backend-unavailable behavior remains fail-closed and tenant/principal key construction remains owner-defined.
+- **Fresh second pass:** re-read the changed bootstrap sequence after the first write and caught/fixed the missing statement terminator before recording the result. The final source ordering is `init_rate_limit_layers` followed by `init_graphql_schema`; the branch diff is limited to the intended bootstrap file.
+- **Verification:** repository source inspection, ownership/contract tracing, post-write reread, and branch compare only. No Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution was performed; maintainer/CI verification remains required.
+- **Status:** `FS-22.05.28` implementation complete at source level on the dedicated branch; PR/integration pending.
+- **Next primary iteration:** after integration, refresh `main` and continue the next unchecked GraphQL composition module from the living ledger without widening scope.
