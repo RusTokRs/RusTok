@@ -84,7 +84,7 @@ The harness records every `PortContext` received by the scripted owner port and
 requires:
 
 - a two-second deadline for GraphQL lookup, filtered list,
-  latest-by-order, and admin REST detail;
+  latest-by-order, and both admin REST lifecycle reads (list and detail);
 - exact tenant identity;
 - the stable GraphQL service actor
   `rustok-commerce.graphql-query-fulfillments`;
