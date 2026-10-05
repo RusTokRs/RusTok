@@ -9,6 +9,9 @@ use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentResult};
 
+pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+
+
 /// Stable identifier of the built-in manual fulfillment provider.
 pub const MANUAL_FULFILLMENT_PROVIDER_ID: &str = "manual";
 
