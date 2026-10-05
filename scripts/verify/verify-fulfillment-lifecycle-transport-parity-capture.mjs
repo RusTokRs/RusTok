@@ -94,6 +94,7 @@ if (!sameRecord(contract.scenarios?.map((scenario) => scenario.id), expectedScen
 }
 if (
   contract.request_policy?.graphql_method !== 'POST' ||
+  contract.request_policy?.graphql_mounted_path !== '/api/graphql' ||
   contract.request_policy?.rest_method !== 'GET' ||
   contract.request_policy?.graphql_mounted_path !== '/api/graphql' ||
   contract.request_policy?.rest_list_path !== '/admin/fulfillments' ||
