@@ -1489,7 +1489,10 @@ impl FulfillmentService {
     ) -> FulfillmentResult<(
         Vec<entities::fulfillment::Model>,
         Vec<FulfillmentResponse>,
-    )> {
+    )>
+    where
+        C: ConnectionTrait,
+    {
         if fulfillments.is_empty() {
             return Ok((fulfillments, Vec::new()));
         }
@@ -1764,7 +1767,8 @@ fn prepare_provider_lifecycle_metadata(
             "fulfillment provider operation id must not be nil".to_string(),
         ));
     }
-    let input_metadata = strip_provider_operation_metadata(input_metadata);
+    let input_metadata =
+        strip_provider_operation_metadata(strip_fulfillment_audit_metadata(input_metadata));
     let merged = merge_fulfillment_metadata(input_metadata, provider_metadata)?;
     let mut object = match merged {
         Value::Object(object) => object,

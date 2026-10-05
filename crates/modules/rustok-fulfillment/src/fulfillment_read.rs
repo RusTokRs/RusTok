@@ -5,7 +5,10 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{FulfillmentError, FulfillmentResponse, FulfillmentService, ListFulfillmentsInput};
+use crate::{
+    FulfillmentError, FulfillmentResponse, FulfillmentResult, FulfillmentService,
+    ListFulfillmentsInput,
+};
 
 const FULFILLMENT_OWNER: &str = "rustok_fulfillment";
 const FULFILLMENT_LIFECYCLE_READ_BOUNDARY: &str = "fulfillment_lifecycle_read_port";
