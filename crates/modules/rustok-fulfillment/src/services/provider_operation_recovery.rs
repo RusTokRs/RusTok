@@ -282,6 +282,11 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
 
 fn normalize_error(value: String) -> String {
     let value = value.trim();
+    let value = if value.is_empty() {
+        "provider operation failed"
+    } else {
+        value
+    };
     if value.len() <= 2000 {
         value.to_string()
     } else {
@@ -416,6 +421,14 @@ mod tests {
         assert_eq!(current.status, PROVIDER_OPERATION_ERROR);
         assert!(current.provider_reference.is_none());
         assert!(current.provider_result.is_none());
+    }
+
+    #[test]
+    fn empty_recovery_error_is_normalized_to_safe_default() {
+        assert_eq!(
+            normalize_error("   ".to_string()),
+            "provider operation failed"
+        );
     }
 
     #[test]
