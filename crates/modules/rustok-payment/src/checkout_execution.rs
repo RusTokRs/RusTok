@@ -28,11 +28,21 @@ const AUTHORIZE_CHECKOUT_COLLECTION_OPERATION: &str = "authorize_checkout_collec
 const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection";
 const READ_CHECKOUT_COLLECTION_OPERATION: &str = "read_checkout_collection";
 
-include!("checkout_execution/types.rs");
-include!("checkout_execution/diagnostic_safety.rs");
-include!("checkout_execution/prepare_authorize.rs");
-include!("checkout_execution/capture_provider.rs");
-include!("checkout_execution/provider_helpers.rs");
-include!("checkout_execution/port_impl.rs");
-include!("checkout_execution/validation_identity.rs");
-include!("checkout_execution/validation_errors.rs");
+mod types;
+mod diagnostic_safety;
+mod prepare_authorize;
+mod capture_provider;
+mod provider_helpers;
+mod port_impl;
+mod validation_identity;
+mod validation_errors;
+
+pub use types::*;
+pub use port_impl::in_process_checkout_payment_execution_port;
+
+use diagnostic_safety::*;
+use prepare_authorize::*;
+use capture_provider::*;
+use provider_helpers::*;
+use validation_identity::*;
+use validation_errors::*;
