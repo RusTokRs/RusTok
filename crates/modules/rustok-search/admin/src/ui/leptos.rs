@@ -4,6 +4,8 @@ use leptos::task::spawn_local;
 use leptos::web_sys;
 use leptos_router::components::A;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
@@ -1217,37 +1219,89 @@ fn analytics_rows_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let rows = core::build_search_analytics_query_row_view_models(rows);
-    if rows.is_empty() {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let all_rows = core::build_search_analytics_query_row_view_models(rows);
+    if all_rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.query", "Query")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.hits", "Hits")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.zeroHits", "Zero hits")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.clicks", "Clicks")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.ctr", "CTR")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.abandonment", "Abandonment")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.avgLatency", "Avg latency")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.avgResults", "Avg results")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.lastSeen", "Last seen")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
-            <tr class="transition-colors hover:bg-muted/30">
-                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.query}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.click_through_rate}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.abandonment_rate}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.avg_took_ms}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.avg_results}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.last_seen_at}</td>
-            </tr>
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+    let columns = core::search_analytics_query_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, all_rows.len() as u64));
+
+    let rows_clone = all_rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_analytics_queries(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchAnalyticsQueryRowViewModel, String)| {
+        match col_id.as_str() {
+            "query" => view! { <span class="font-medium text-card-foreground">{row.query}</span> }.into_any(),
+            "hits" => view! { <span class="text-xs text-muted-foreground">{row.hits}</span> }.into_any(),
+            "zero_result_hits" => view! { <span class="text-xs text-muted-foreground">{row.zero_result_hits}</span> }.into_any(),
+            "clicks" => view! { <span class="text-xs text-muted-foreground">{row.clicks}</span> }.into_any(),
+            "ctr" => view! { <span class="text-xs text-muted-foreground">{row.click_through_rate}</span> }.into_any(),
+            "abandonment" => view! { <span class="text-xs text-muted-foreground">{row.abandonment_rate}</span> }.into_any(),
+            "avg_latency" => view! { <span class="text-xs text-muted-foreground">{row.avg_took_ms}</span> }.into_any(),
+            "avg_results" => view! { <span class="text-xs text-muted-foreground">{row.avg_results}</span> }.into_any(),
+            "last_seen" => view! { <span class="text-xs text-muted-foreground">{row.last_seen_at}</span> }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по запросам..." } else { "Search queries..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchAnalyticsQueryRowViewModel| row.query.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 fn intelligence_table(
@@ -1255,31 +1309,87 @@ fn intelligence_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let rows = core::build_search_analytics_insight_row_view_models(rows);
-    if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{t(locale, "search.analytics.intelligence.empty", "No query-intelligence candidates surfaced in the current window.")}</div> }.into_any();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let all_rows = core::build_search_analytics_insight_row_view_models(rows);
+    let empty_message = t(locale, "search.analytics.intelligence.empty", "No query-intelligence candidates surfaced in the current window.").to_string();
+    if all_rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.query", "Query")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.hits", "Hits")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.zeroHits", "Zero hits")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.clicks", "Clicks")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.ctr", "CTR")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.recommendation", "Recommendation")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
-            <tr class="transition-colors hover:bg-muted/30">
-                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.query}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.click_through_rate}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.recommendation}</td>
-            </tr>
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+    let columns = core::search_analytics_insight_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, all_rows.len() as u64));
+
+    let rows_clone = all_rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_analytics_insights(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchAnalyticsInsightRowViewModel, String)| {
+        match col_id.as_str() {
+            "query" => view! { <span class="font-medium text-card-foreground">{row.query}</span> }.into_any(),
+            "hits" => view! { <span class="text-xs text-muted-foreground">{row.hits}</span> }.into_any(),
+            "zero_result_hits" => view! { <span class="text-xs text-muted-foreground">{row.zero_result_hits}</span> }.into_any(),
+            "clicks" => view! { <span class="text-xs text-muted-foreground">{row.clicks}</span> }.into_any(),
+            "ctr" => view! { <span class="text-xs text-muted-foreground">{row.click_through_rate}</span> }.into_any(),
+            "recommendation" => view! { <span class="inline-flex rounded-full bg-accent/50 px-2.5 py-0.5 text-xs font-medium text-accent-foreground">{row.recommendation}</span> }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по рекомендациям..." } else { "Search recommendations..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchAnalyticsInsightRowViewModel| row.query.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 fn preview_result_action(
@@ -1338,30 +1448,92 @@ fn lagging_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let rows = core::build_lagging_search_document_row_view_models(rows);
-    if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.lagging.empty", "No lagging documents detected. Search projection is currently caught up.")}</p></div> }.into_any();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let all_rows = core::build_lagging_search_document_row_view_models(rows);
+    let empty_message = t(locale, "search.analytics.lagging.empty", "No lagging documents detected. Search projection is currently caught up.").to_string();
+    if all_rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{empty_message}</p></div> }.into_any();
     }
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.title", "Title")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.type", "Type")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.locale", "Locale")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.lag", "Lag")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.indexed", "Indexed")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
-            <tr class="transition-colors hover:bg-muted/30">
-                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.source_status_label}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
-                <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{row.lag}</span></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-            </tr>
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+
+    let columns = core::lagging_search_document_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, all_rows.len() as u64));
+
+    let rows_clone = all_rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_lagging_search_documents(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::LaggingSearchDocumentRowViewModel, String)| {
+        match col_id.as_str() {
+            "title" => view! {
+                <div>
+                    <div class="font-medium text-card-foreground">{row.title}</div>
+                    <div class="mt-0.5 text-xs text-muted-foreground">{row.document_key}</div>
+                </div>
+            }.into_any(),
+            "source" => view! { <span class="text-xs text-muted-foreground">{row.source_status_label}</span> }.into_any(),
+            "locale" => view! { <span class="text-xs font-mono text-muted-foreground">{row.locale}</span> }.into_any(),
+            "lag" => view! { <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{row.lag}</span> }.into_any(),
+            "indexed_at" => view! { <span class="text-xs text-muted-foreground">{row.indexed_at}</span> }.into_any(),
+            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по документам и источникам..." } else { "Search documents and sources..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::LaggingSearchDocumentRowViewModel| row.document_key.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 fn consistency_table(
@@ -1369,37 +1541,101 @@ fn consistency_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     let labels = core::SearchConsistencyIssueLabels {
         missing: t(locale, "search.issue.missing", "missing"),
         orphaned: t(locale, "search.issue.orphaned", "orphaned"),
         not_indexed: t(locale, "search.common.notIndexed", "not indexed"),
     };
-    let rows = core::build_search_consistency_issue_row_view_models(rows, &labels);
-    if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.consistency.empty", "No missing or orphaned search documents detected. Projection consistency is healthy.")}</p></div> }.into_any();
+    let all_rows = core::build_search_consistency_issue_row_view_models(rows, &labels);
+    let empty_message = t(locale, "search.analytics.consistency.empty", "No missing or orphaned search documents detected. Projection consistency is healthy.").to_string();
+    if all_rows.is_empty() {
+        return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{empty_message}</p></div> }.into_any();
     }
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.issue", "Issue")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.title", "Title")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.type", "Type")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.locale", "Locale")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.indexed", "Indexed")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
-            <tr class="transition-colors hover:bg-muted/30">
-                <td class="px-4 py-3 align-top">
-                    <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {}", row.issue_badge_class)>{row.issue_label}</span>
-                </td>
-                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.source_status_label}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
-            </tr>
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+
+    let columns = core::search_consistency_issue_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, all_rows.len() as u64));
+
+    let rows_clone = all_rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_consistency_issues(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchConsistencyIssueRowViewModel, String)| {
+        match col_id.as_str() {
+            "issue" => view! {
+                <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {}", row.issue_badge_class)>
+                    {row.issue_label}
+                </span>
+            }.into_any(),
+            "title" => view! {
+                <div>
+                    <div class="font-medium text-card-foreground">{row.title}</div>
+                    <div class="mt-0.5 text-xs text-muted-foreground">{row.document_key}</div>
+                </div>
+            }.into_any(),
+            "source" => view! { <span class="text-xs text-muted-foreground">{row.source_status_label}</span> }.into_any(),
+            "locale" => view! { <span class="text-xs font-mono text-muted-foreground">{row.locale}</span> }.into_any(),
+            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+            "indexed_at" => view! { <span class="text-xs text-muted-foreground">{row.indexed_at}</span> }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по проблемам консистентности..." } else { "Search consistency issues..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchConsistencyIssueRowViewModel| row.document_key.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 #[component]
@@ -1861,31 +2097,141 @@ fn synonyms_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let empty_message = t(locale, "search.dictionary.synonymGroups.empty", "No synonym groups configured yet.").to_string();
     if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.synonymGroups.empty", "No synonym groups configured yet.")}</div> }.into_any();
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.term", "Term")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.synonyms", "Synonyms")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.actions", "Actions")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
-            let synonym_id = row.id.clone();
-            view! {
-                <tr class="transition-colors hover:bg-muted/30">
-                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.term}</div></td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.synonyms_summary}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top">
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_synonym.run(synonym_id.clone())>{t(locale, "search.action.delete", "Delete")}</button>
-                    </td>
-                </tr>
+    let columns = core::search_synonym_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, rows.len() as u64));
+
+    let rows_clone = rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_synonyms(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = ui_locale.clone();
+    let cell_delete = delete_synonym.clone();
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchSynonymRowViewModel, String)| {
+        match col_id.as_str() {
+            "term" => view! { <span class="font-medium text-card-foreground">{row.term}</span> }.into_any(),
+            "synonyms" => view! { <span class="text-xs text-muted-foreground">{row.synonyms_summary}</span> }.into_any(),
+            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+            "actions" => {
+                let syn_id = row.id.clone();
+                let on_del = cell_delete.clone();
+                let btn_locale = cell_locale.clone();
+                view! {
+                    <button
+                        type="button"
+                        class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=move |_| on_del.run(syn_id.clone())
+                    >
+                        {t(btn_locale.as_deref(), "search.action.delete", "Delete")}
+                    </button>
+                }.into_any()
             }
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+            _ => ().into_any(),
+        }
+    });
+
+    let rows_for_batch = rows.clone();
+    let batch_delete = {
+        let on_del = delete_synonym.clone();
+        let rows_map = rows_for_batch.clone();
+        Callback::new(move |_: MouseEvent| {
+            let sel = selection.get();
+            for item in &rows_map {
+                if sel.is_selected(&item.id) {
+                    on_del.run(item.id.clone());
+                }
+            }
+            selection.update(|s| s.clear());
+        })
+    };
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по синонимам..." } else { "Search synonyms..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-destructive/20 bg-destructive/5 text-sm">
+                    <span class="font-medium text-foreground">
+                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "синонимов" } else { "synonyms" })}
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled=move || busy.get()
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                            on:click=move |ev| batch_delete.run(ev)
+                        >
+                            {if is_ru { "Удалить выбранные" } else { "Delete Selected" }}
+                        </button>
+                        <button
+                            type="button"
+                            class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                            on:click=move |_| selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </div>
+            </Show>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchSynonymRowViewModel| row.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 fn stop_words_table(
@@ -1895,29 +2241,140 @@ fn stop_words_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let empty_message = t(locale, "search.dictionary.stopWords.empty", "No stop words configured yet.").to_string();
     if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.stopWords.empty", "No stop words configured yet.")}</div> }.into_any();
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.value", "Value")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.actions", "Actions")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
-            let stop_word_id = row.id.clone();
-            view! {
-                <tr class="transition-colors hover:bg-muted/30">
-                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.value}</div></td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top">
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_stop_word.run(stop_word_id.clone())>{t(locale, "search.action.delete", "Delete")}</button>
-                    </td>
-                </tr>
+    let columns = core::search_stop_word_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, rows.len() as u64));
+
+    let rows_clone = rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_stop_words(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = ui_locale.clone();
+    let cell_delete = delete_stop_word.clone();
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchStopWordRowViewModel, String)| {
+        match col_id.as_str() {
+            "value" => view! { <span class="font-medium text-card-foreground">{row.value}</span> }.into_any(),
+            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+            "actions" => {
+                let stop_id = row.id.clone();
+                let on_del = cell_delete.clone();
+                let btn_locale = cell_locale.clone();
+                view! {
+                    <button
+                        type="button"
+                        class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=move |_| on_del.run(stop_id.clone())
+                    >
+                        {t(btn_locale.as_deref(), "search.action.delete", "Delete")}
+                    </button>
+                }.into_any()
             }
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+            _ => ().into_any(),
+        }
+    });
+
+    let rows_for_batch = rows.clone();
+    let batch_delete = {
+        let on_del = delete_stop_word.clone();
+        let rows_map = rows_for_batch.clone();
+        Callback::new(move |_: MouseEvent| {
+            let sel = selection.get();
+            for item in &rows_map {
+                if sel.is_selected(&item.id) {
+                    on_del.run(item.id.clone());
+                }
+            }
+            selection.update(|s| s.clear());
+        })
+    };
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по стоп-словам..." } else { "Search stop words..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-destructive/20 bg-destructive/5 text-sm">
+                    <span class="font-medium text-foreground">
+                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "слов" } else { "words" })}
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled=move || busy.get()
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                            on:click=move |ev| batch_delete.run(ev)
+                        >
+                            {if is_ru { "Удалить выбранные" } else { "Delete Selected" }}
+                        </button>
+                        <button
+                            type="button"
+                            class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                            on:click=move |_| selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </div>
+            </Show>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchStopWordRowViewModel| row.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 fn query_rules_table(
@@ -1927,39 +2384,156 @@ fn query_rules_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let empty_message = t(locale, "search.dictionary.pinRules.empty", "No pinned query rules configured yet.").to_string();
     if rows.is_empty() {
-        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale, "search.dictionary.pinRules.empty", "No pinned query rules configured yet.")}</div> }.into_any();
+        return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
 
-    view! { <div class="overflow-hidden rounded-xl border border-border"><table class="w-full text-sm">
-        <thead class="border-b border-border bg-muted/50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.query", "Query")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.target", "Target")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.position", "Position")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.actions", "Actions")}</th>
-        </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
-            let query_rule_id = row.id.clone();
-            view! {
-                <tr class="transition-colors hover:bg-muted/30">
-                    <td class="px-4 py-3 align-top">
-                        <div class="font-medium text-card-foreground">{row.query_text}</div>
-                        <div class="mt-1 text-xs text-muted-foreground">{row.query_normalized}</div>
-                    </td>
-                    <td class="px-4 py-3 align-top">
-                        <div class="font-medium text-card-foreground">{row.title}</div>
-                        <div class="mt-1 text-xs text-muted-foreground">{row.target_source_path}</div>
-                    </td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.pinned_position}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top">
-                        <button type="button" class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| delete_query_rule.run(query_rule_id.clone())>{t(locale, "search.action.delete", "Delete")}</button>
-                    </td>
-                </tr>
+    let columns = core::search_query_rule_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, rows.len() as u64));
+
+    let rows_clone = rows.clone();
+    let filtered_rows = Memo::new({
+        let rows = rows_clone.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = core::filter_search_query_rules(&rows, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_locale = ui_locale.clone();
+    let cell_delete = delete_query_rule.clone();
+
+    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchQueryRuleRowViewModel, String)| {
+        match col_id.as_str() {
+            "query" => view! {
+                <div>
+                    <div class="font-medium text-card-foreground">{row.query_text}</div>
+                    <div class="mt-0.5 text-xs text-muted-foreground">{row.query_normalized}</div>
+                </div>
+            }.into_any(),
+            "target" => view! {
+                <div>
+                    <div class="font-medium text-card-foreground">{row.title}</div>
+                    <div class="mt-0.5 text-xs text-muted-foreground">{row.target_source_path}</div>
+                </div>
+            }.into_any(),
+            "position" => view! {
+                <span class="inline-flex rounded-full bg-accent/50 px-2 py-0.5 text-xs font-semibold text-accent-foreground">
+                    {row.pinned_position}
+                </span>
+            }.into_any(),
+            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+            "actions" => {
+                let rule_id = row.id.clone();
+                let on_del = cell_delete.clone();
+                let btn_locale = cell_locale.clone();
+                view! {
+                    <button
+                        type="button"
+                        class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=move |_| on_del.run(rule_id.clone())
+                    >
+                        {t(btn_locale.as_deref(), "search.action.delete", "Delete")}
+                    </button>
+                }.into_any()
             }
-        }).collect_view()}</tbody>
-    </table></div> }.into_any()
+            _ => ().into_any(),
+        }
+    });
+
+    let rows_for_batch = rows.clone();
+    let batch_delete = {
+        let on_del = delete_query_rule.clone();
+        let rows_map = rows_for_batch.clone();
+        Callback::new(move |_: MouseEvent| {
+            let sel = selection.get();
+            for item in &rows_map {
+                if sel.is_selected(&item.id) {
+                    on_del.run(item.id.clone());
+                }
+            }
+            selection.update(|s| s.clear());
+        })
+    };
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по правилам закрепления..." } else { "Search pinned rules..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-destructive/20 bg-destructive/5 text-sm">
+                    <span class="font-medium text-foreground">
+                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "правил" } else { "rules" })}
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled=move || busy.get()
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                            on:click=move |ev| batch_delete.run(ev)
+                        >
+                            {if is_ru { "Удалить выбранные" } else { "Delete Selected" }}
+                        </button>
+                        <button
+                            type="button"
+                            class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                            on:click=move |_| selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </div>
+            </Show>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|row: &core::SearchQueryRuleRowViewModel| row.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_message
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+    .into_any()
 }
 
 #[component]

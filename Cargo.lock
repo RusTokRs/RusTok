@@ -17811,6 +17811,8 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
  "rustok-outbox",
  "rustok-search",
  "rustok-ui-core",

@@ -1,4 +1,7 @@
 use rustok_ui_core::{UiRouteQueryUpdate, route_query_update_for_text};
+pub use rustok_grid::{
+    ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType,
+};
 pub use rustok_ui_core::{normalize_ui_text as optional_text, parse_ui_csv as parse_csv};
 
 use crate::model::{
@@ -875,6 +878,148 @@ mod tests {
         assert_eq!(pretty_json_string("{\"a\":1}"), "{\n  \"a\": 1\n}");
         assert_eq!(pretty_json_string("not-json"), "not-json");
     }
+
+    #[test]
+    fn search_grid_column_definitions_and_filtering_work() {
+        // 1. Analytics Queries
+        let query_cols = search_analytics_query_grid_columns(Some("en"));
+        assert_eq!(query_cols.len(), 9);
+        let ru_query_cols = search_analytics_query_grid_columns(Some("ru"));
+        assert_eq!(ru_query_cols[0].title, "Запрос");
+
+        let analytics_rows = vec![
+            SearchAnalyticsQueryRowViewModel {
+                query: "winter boots".to_string(),
+                hits: "10".to_string(),
+                zero_result_hits: "0".to_string(),
+                clicks: "5".to_string(),
+                click_through_rate: "50%".to_string(),
+                abandonment_rate: "10%".to_string(),
+                avg_took_ms: "12 ms".to_string(),
+                avg_results: "8.0".to_string(),
+                last_seen_at: "2026-06-01".to_string(),
+            },
+            SearchAnalyticsQueryRowViewModel {
+                query: "summer sneakers".to_string(),
+                hits: "20".to_string(),
+                zero_result_hits: "1".to_string(),
+                clicks: "8".to_string(),
+                click_through_rate: "40%".to_string(),
+                abandonment_rate: "15%".to_string(),
+                avg_took_ms: "15 ms".to_string(),
+                avg_results: "12.0".to_string(),
+                last_seen_at: "2026-06-02".to_string(),
+            },
+        ];
+        let mut filters = ColumnFilters::new();
+        assert_eq!(
+            filter_search_analytics_queries(&analytics_rows, &filters, Some("boots")).len(),
+            1
+        );
+        filters.set("query", FilterValue::Text("sneakers".to_string()));
+        assert_eq!(
+            filter_search_analytics_queries(&analytics_rows, &filters, None).len(),
+            1
+        );
+
+        // 2. Analytics Insights
+        let insight_cols = search_analytics_insight_grid_columns(Some("en"));
+        assert_eq!(insight_cols.len(), 6);
+        let insight_rows = vec![SearchAnalyticsInsightRowViewModel {
+            query: "running shoes".to_string(),
+            hits: "15".to_string(),
+            zero_result_hits: "2".to_string(),
+            clicks: "4".to_string(),
+            click_through_rate: "26%".to_string(),
+            recommendation: "Add synonym".to_string(),
+        }];
+        let mut insight_filters = ColumnFilters::new();
+        insight_filters.set("recommendation", FilterValue::Text("synonym".to_string()));
+        assert_eq!(
+            filter_search_analytics_insights(&insight_rows, &insight_filters, None).len(),
+            1
+        );
+
+        // 3. Lagging Documents
+        let lag_cols = lagging_search_document_grid_columns(Some("en"));
+        assert_eq!(lag_cols.len(), 6);
+        let lag_rows = vec![LaggingSearchDocumentRowViewModel {
+            title: "Leather Jacket".to_string(),
+            document_key: "product:jacket-1".to_string(),
+            source_status_label: "catalog/product (published)".to_string(),
+            locale: "en".to_string(),
+            lag: "120s".to_string(),
+            indexed_at: "2026-06-01T00:00:00Z".to_string(),
+            updated_at: "2026-06-01T00:02:00Z".to_string(),
+        }];
+        assert_eq!(
+            filter_lagging_search_documents(&lag_rows, &ColumnFilters::new(), Some("jacket")).len(),
+            1
+        );
+
+        // 4. Consistency Issues
+        let consistency_cols = search_consistency_issue_grid_columns(Some("en"));
+        assert_eq!(consistency_cols.len(), 6);
+        let consistency_rows = vec![SearchConsistencyIssueRowViewModel {
+            issue_badge_class: "border-rose-200",
+            issue_label: "missing".to_string(),
+            title: "Missing Cap".to_string(),
+            document_key: "product:cap-1".to_string(),
+            source_status_label: "catalog/product (published)".to_string(),
+            locale: "en".to_string(),
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+            indexed_at: "not indexed".to_string(),
+        }];
+        assert_eq!(
+            filter_search_consistency_issues(&consistency_rows, &ColumnFilters::new(), Some("cap"))
+                .len(),
+            1
+        );
+
+        // 5. Synonyms
+        let syn_cols = search_synonym_grid_columns(Some("en"));
+        assert_eq!(syn_cols.len(), 4);
+        let syn_rows = vec![SearchSynonymRowViewModel {
+            id: "syn-1".to_string(),
+            term: "sneaker".to_string(),
+            synonyms_summary: "shoe, trainer".to_string(),
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+        }];
+        assert_eq!(
+            filter_search_synonyms(&syn_rows, &ColumnFilters::new(), Some("trainer")).len(),
+            1
+        );
+
+        // 6. Stop Words
+        let stop_cols = search_stop_word_grid_columns(Some("en"));
+        assert_eq!(stop_cols.len(), 3);
+        let stop_rows = vec![SearchStopWordRowViewModel {
+            id: "stop-1".to_string(),
+            value: "the".to_string(),
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+        }];
+        assert_eq!(
+            filter_search_stop_words(&stop_rows, &ColumnFilters::new(), Some("the")).len(),
+            1
+        );
+
+        // 7. Query Rules
+        let rule_cols = search_query_rule_grid_columns(Some("en"));
+        assert_eq!(rule_cols.len(), 5);
+        let rule_rows = vec![SearchQueryRuleRowViewModel {
+            id: "rule-1".to_string(),
+            query_text: "warm coat".to_string(),
+            query_normalized: "warm coat".to_string(),
+            title: "Winter Coat".to_string(),
+            target_source_path: "p-1 / catalog / product".to_string(),
+            pinned_position: "1".to_string(),
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+        }];
+        assert_eq!(
+            filter_search_query_rules(&rule_rows, &ColumnFilters::new(), Some("coat")).len(),
+            1
+        );
+    }
 }
 
 pub fn entity_source_label(entity_type: &str, source_module: &str) -> String {
@@ -1374,3 +1519,535 @@ pub fn parse_json_array_for_editor(
     }
     Ok(parsed)
 }
+
+// ============================================================================
+// DataGrid Column Definitions and Filtering
+// ============================================================================
+
+pub fn search_analytics_query_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("query", if is_ru { "Запрос" } else { "Query" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+            }),
+        GridColumnDef::new("hits", if is_ru { "Попадания" } else { "Hits" })
+            .width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("zero_result_hits", if is_ru { "Нулевые" } else { "Zero hits" })
+            .width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("abandonment", if is_ru { "Без клика" } else { "Abandonment" })
+            .width(110)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("avg_latency", if is_ru { "Задержка" } else { "Avg latency" })
+            .width(110)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("avg_results", if is_ru { "Ср. результаты" } else { "Avg results" })
+            .width(110)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("last_seen", if is_ru { "Последний раз" } else { "Last seen" })
+            .min_width(140)
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_search_analytics_query_filter(
+    row: &SearchAnalyticsQueryRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("query", FilterValue::Text(q)) => {
+                if !row.query.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_analytics_queries(
+    rows: &[SearchAnalyticsQueryRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchAnalyticsQueryRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty() && !row.query.to_ascii_lowercase().contains(&term) {
+                    return false;
+                }
+            }
+            matches_search_analytics_query_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn search_analytics_insight_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("query", if is_ru { "Запрос" } else { "Query" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+            }),
+        GridColumnDef::new("hits", if is_ru { "Попадания" } else { "Hits" })
+            .width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("zero_result_hits", if is_ru { "Нулевые" } else { "Zero hits" })
+            .width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
+            .width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new("recommendation", if is_ru { "Рекомендация" } else { "Recommendation" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр рекомендации..." } else { "Filter recommendation..." }.into()),
+            }),
+    ]
+}
+
+pub fn matches_search_analytics_insight_filter(
+    row: &SearchAnalyticsInsightRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("query", FilterValue::Text(q)) => {
+                if !row.query.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("recommendation", FilterValue::Text(q)) => {
+                if !row.recommendation.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_analytics_insights(
+    rows: &[SearchAnalyticsInsightRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchAnalyticsInsightRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.query.to_ascii_lowercase().contains(&term)
+                    && !row.recommendation.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_search_analytics_insight_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn lagging_search_document_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("title", if is_ru { "Заголовок / Ключ" } else { "Title / Key" })
+            .min_width(220)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр документа..." } else { "Filter document..." }.into()),
+            }),
+        GridColumnDef::new("source", if is_ru { "Источник / Статус" } else { "Source / Status" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр источника..." } else { "Filter source..." }.into()),
+            }),
+        GridColumnDef::new("locale", if is_ru { "Локаль" } else { "Locale" })
+            .width(90)
+            .align(ColumnAlign::Center),
+        GridColumnDef::new("lag", if is_ru { "Лаг" } else { "Lag" })
+            .width(100)
+            .align(ColumnAlign::Center),
+        GridColumnDef::new("indexed_at", if is_ru { "Индексировано" } else { "Indexed" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+    ]
+}
+
+pub fn matches_lagging_search_document_filter(
+    row: &LaggingSearchDocumentRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("title", FilterValue::Text(q)) => {
+                let term = q.to_ascii_lowercase();
+                if !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.document_key.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            ("source", FilterValue::Text(q)) => {
+                if !row.source_status_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("locale", FilterValue::Text(q)) => {
+                if !row.locale.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_lagging_search_documents(
+    rows: &[LaggingSearchDocumentRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<LaggingSearchDocumentRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.document_key.to_ascii_lowercase().contains(&term)
+                    && !row.source_status_label.to_ascii_lowercase().contains(&term)
+                    && !row.locale.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_lagging_search_document_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn search_consistency_issue_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("issue", if is_ru { "Проблема" } else { "Issue" })
+            .width(130)
+            .align(ColumnAlign::Center)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр проблемы..." } else { "Filter issue..." }.into()),
+            }),
+        GridColumnDef::new("title", if is_ru { "Заголовок / Ключ" } else { "Title / Key" })
+            .min_width(220)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр документа..." } else { "Filter document..." }.into()),
+            }),
+        GridColumnDef::new("source", if is_ru { "Источник / Статус" } else { "Source / Status" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр источника..." } else { "Filter source..." }.into()),
+            }),
+        GridColumnDef::new("locale", if is_ru { "Локаль" } else { "Locale" })
+            .width(90)
+            .align(ColumnAlign::Center),
+        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("indexed_at", if is_ru { "Индексировано" } else { "Indexed" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+    ]
+}
+
+pub fn matches_search_consistency_issue_filter(
+    row: &SearchConsistencyIssueRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("issue", FilterValue::Text(q)) => {
+                if !row.issue_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("title", FilterValue::Text(q)) => {
+                let term = q.to_ascii_lowercase();
+                if !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.document_key.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            ("source", FilterValue::Text(q)) => {
+                if !row.source_status_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("locale", FilterValue::Text(q)) => {
+                if !row.locale.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_consistency_issues(
+    rows: &[SearchConsistencyIssueRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchConsistencyIssueRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.issue_label.to_ascii_lowercase().contains(&term)
+                    && !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.document_key.to_ascii_lowercase().contains(&term)
+                    && !row.source_status_label.to_ascii_lowercase().contains(&term)
+                    && !row.locale.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_search_consistency_issue_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn search_synonym_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("term", if is_ru { "Термин" } else { "Term" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр термина..." } else { "Filter term..." }.into()),
+            }),
+        GridColumnDef::new("synonyms", if is_ru { "Синонимы" } else { "Synonyms" })
+            .min_width(240)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр синонимов..." } else { "Filter synonyms..." }.into()),
+            }),
+        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(110)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_search_synonym_filter(
+    row: &SearchSynonymRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("term", FilterValue::Text(q)) => {
+                if !row.term.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("synonyms", FilterValue::Text(q)) => {
+                if !row.synonyms_summary.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_synonyms(
+    rows: &[SearchSynonymRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchSynonymRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.term.to_ascii_lowercase().contains(&term)
+                    && !row.synonyms_summary.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_search_synonym_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn search_stop_word_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("value", if is_ru { "Значение" } else { "Value" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр значения..." } else { "Filter value..." }.into()),
+            }),
+        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(110)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_search_stop_word_filter(
+    row: &SearchStopWordRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("value", FilterValue::Text(q)) => {
+                if !row.value.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_stop_words(
+    rows: &[SearchStopWordRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchStopWordRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty() && !row.value.to_ascii_lowercase().contains(&term) {
+                    return false;
+                }
+            }
+            matches_search_stop_word_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn search_query_rule_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("query", if is_ru { "Запрос" } else { "Query" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+            }),
+        GridColumnDef::new("target", if is_ru { "Целевой документ" } else { "Target Document" })
+            .min_width(220)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru { "Фильтр цели..." } else { "Filter target..." }.into()),
+            }),
+        GridColumnDef::new("position", if is_ru { "Позиция" } else { "Position" })
+            .width(100)
+            .align(ColumnAlign::Center),
+        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
+            .min_width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+            .width(110)
+            .not_sortable()
+            .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_search_query_rule_filter(
+    row: &SearchQueryRuleRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("query", FilterValue::Text(q)) => {
+                let term = q.to_ascii_lowercase();
+                if !row.query_text.to_ascii_lowercase().contains(&term)
+                    && !row.query_normalized.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            ("target", FilterValue::Text(q)) => {
+                let term = q.to_ascii_lowercase();
+                if !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.target_source_path.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_search_query_rules(
+    rows: &[SearchQueryRuleRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<SearchQueryRuleRowViewModel> {
+    rows.iter()
+        .filter(|row| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !row.query_text.to_ascii_lowercase().contains(&term)
+                    && !row.query_normalized.to_ascii_lowercase().contains(&term)
+                    && !row.title.to_ascii_lowercase().contains(&term)
+                    && !row.target_source_path.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_search_query_rule_filter(row, filters)
+        })
+        .cloned()
+        .collect()
+}
+
