@@ -79,6 +79,11 @@ forbidText(
   'create-label local reconciliation journal-only commit',
 );
 requireText(
+  labelRecovery,
+  'commit_create_label_provider_result(',
+  'create-label recovery owner persistence boundary',
+);
+requireText(
   localRecovery,
   'commit_create_label_provider_result(',
   'create-label local reconciliation owner persistence boundary',
