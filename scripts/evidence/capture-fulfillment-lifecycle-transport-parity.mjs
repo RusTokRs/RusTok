@@ -5,7 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
+  linkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -422,6 +422,9 @@ function validateContract() {
   ) {
     fail('fulfillment lifecycle parity retained boundary drift');
   }
+  if (contract.publication?.atomic_exclusive_publish !== true) {
+    fail('fulfillment lifecycle parity publication boundary drift');
+  }
 }
 
 function ensureOutputBoundary() {
@@ -544,13 +547,25 @@ function publicErrorCode(body) {
 
 function writeEvidence(packet) {
   mkdirSync(dirname(outputPath), { recursive: true });
-  const temporaryPath = `${outputPath}.tmp-${process.pid}`;
+  const temporaryPath = outputPath + '.tmp-' + process.pid;
+  const contents = JSON.stringify(packet, null, 2) + '\n';
   try {
-    writeFileSync(temporaryPath, `${JSON.stringify(packet, null, 2)}\n`, { flag: 'wx' });
-    renameSync(temporaryPath, outputPath);
-  } catch (error) {
-    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
-    throw error;
+    writeFileSync(temporaryPath, contents, { flag: 'wx' });
+    try {
+      linkSync(temporaryPath, outputPath);
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        throw new Error(
+          'parity evidence already exists; concurrent capture cannot replace the retained packet',
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  } finally {
+    if (existsSync(temporaryPath)) {
+      unlinkSync(temporaryPath);
+    }
   }
 }
 

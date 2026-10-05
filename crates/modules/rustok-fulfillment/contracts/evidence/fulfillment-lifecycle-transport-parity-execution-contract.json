@@ -97,6 +97,9 @@
     "transport_projection_parity_requires_successful_capture": true,
     "restart_deadline_failure_and_remote_adapter_evidence_separate": true
   },
+  "publication": {
+    "atomic_exclusive_publish": true
+  },
   "normalization": {
     "timestamp_canonicalization": "UTC",
     "projection_strings_preserve_whitespace": true,

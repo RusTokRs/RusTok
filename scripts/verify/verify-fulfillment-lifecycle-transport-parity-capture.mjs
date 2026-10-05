@@ -109,6 +109,9 @@ if (
 ) {
   failures.push('execution contract normalization policy mismatch');
 }
+if (contract.publication?.atomic_exclusive_publish !== true) {
+  failures.push('execution contract publication policy mismatch');
+}
 const responseReaderChecks = [
   ['async function readResponseBytes(response, operation)', 'bounded response reader'],
   ['response.body.getReader()', 'streaming response reader'],
@@ -226,12 +229,13 @@ for (const [value, label] of [
   ['new Date(milliseconds).toISOString()', 'UTC timestamp canonicalization'],
   ['function normalizeProjection(value, flavor, field)', 'projection normalization'],
   ['function normalizeItems(items, flavor, field)', 'item normalization'],
-  ['.sort((left, right) => left.id.localeCompare(right.id))', 'stable item ordering'],
+  ['return assertArray(items, field).map', 'order-preserving item mapping'],
   ['function projectionHash(value)', 'projection hashing'],
   ['function sourceHashes()', 'source hashing'],
   ['parity evidence already exists; remove it explicitly before a new capture', 'immutable output'],
   ['writeFileSync(temporaryPath', 'atomic temporary write'],
-  ['renameSync(temporaryPath, outputPath)', 'atomic publish'],
+  ['linkSync(temporaryPath, outputPath)', 'exclusive atomic publish'],
+  ['unlinkSync(temporaryPath)', 'temporary evidence cleanup'],
   ['lookup: fulfillment(tenantId: $tenantId, id: $id)', 'GraphQL lookup'],
   ['list: fulfillments(tenantId: $tenantId, filter: $filter)', 'GraphQL filtered list'],
   ['order(tenantId: $tenantId, id: $id)', 'GraphQL latest by order'],
@@ -264,6 +268,7 @@ for (const value of [
   'metadata: source.metadata',
   'runtime_parity_proven: true',
   "external_adapter_identity_proven: adapterProfile !== 'in_process'",
+  'renameSync(temporaryPath, outputPath)',
 ]) {
   forbidText(runner, value, 'capture runner must not over-retain or overclaim');
 }
