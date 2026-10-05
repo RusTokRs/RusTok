@@ -12,6 +12,7 @@ pub const MANUAL_PAYMENT_PROVIDER_ID: &str = "manual";
 const MAX_WEBHOOK_IDENTITY_LENGTH: usize = 191;
 pub(crate) const MAX_EXTERNAL_REFERENCE_LENGTH: usize = 191;
 pub(crate) const MAX_PROVIDER_OPERATION_PAYLOAD_BYTES: usize = 32 * 1024;
+const MAX_PROVIDER_OPERATION_PAYLOAD_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaymentProviderCapabilities {
@@ -464,6 +465,12 @@ pub(crate) fn validate_provider_operation_payload(
     value: &Value,
     field: &str,
 ) -> PaymentResult<()> {
+    if provider_operation_payload_exceeds_depth(value) {
+        return Err(PaymentError::Validation(format!(
+            "payment provider {field} exceeds maximum JSON depth of {MAX_PROVIDER_OPERATION_PAYLOAD_DEPTH}"
+        )));
+    }
+
     let encoded = serde_json::to_vec(value).map_err(|_| {
         PaymentError::Validation(format!(
             "payment provider {field} could not be encoded"
@@ -475,6 +482,25 @@ pub(crate) fn validate_provider_operation_payload(
         )));
     }
     Ok(())
+}
+
+fn provider_operation_payload_exceeds_depth(value: &Value) -> bool {
+    let mut stack = vec![(value, 1usize)];
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_PROVIDER_OPERATION_PAYLOAD_DEPTH {
+            return true;
+        }
+        match value {
+            Value::Array(values) => {
+                stack.extend(values.iter().map(|child| (child, depth + 1)));
+            }
+            Value::Object(object) => {
+                stack.extend(object.values().map(|child| (child, depth + 1)));
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+    false
 }
 
 fn validate_optional_webhook_hint(value: Option<&str>, label: &str) -> PaymentResult<()> {
@@ -682,6 +708,25 @@ mod boundary_tests {
 
         let mut result = valid_result();
         result.authorized_amount = Decimal::new(101, 0);
+        assert!(matches!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            ),
+            Err(PaymentError::ProviderInvalidResponse { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_deep_provider_result_payloads_before_serialization() {
+        let mut nested = serde_json::json!({});
+        for _ in 0..16 {
+            nested = serde_json::json!({"next": nested});
+        }
+        let mut result = valid_result();
+        result.metadata = nested;
         assert!(matches!(
             PaymentProviderRegistry::validate_operation_result(
                 "gateway",
