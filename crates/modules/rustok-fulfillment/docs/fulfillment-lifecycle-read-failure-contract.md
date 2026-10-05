@@ -51,9 +51,15 @@ Owner `NotFound` remains GraphQL `null` with no error for fulfillment lookup.
 
 ## Admin REST boundary
 
-The same scripted owner port is mounted through public
-`CommerceFulfillmentLifecycleReadRuntime` host composition and exercises
-`GET /admin/fulfillments/{id}`.
+The Commerce boundary harness mounts the scripted owner port through
+`CommerceFulfillmentLifecycleReadRuntime` and exercises
+`GET /admin/fulfillments/{id}`. The GraphQL side composes the production
+Commerce schema directly with that host-selected runtime, while the actual
+server HTTP mount remains a separate transport-parity gate. The owner
+wall-clock timeout itself is proved by a deterministic pending-future unit
+test inside `rustok-fulfillment/src/fulfillment_read.rs`; the Commerce
+harness separately proves propagation of an already-typed `Timeout`
+failure.
 
 The locked REST matrix is:
 
@@ -88,13 +94,17 @@ remains part of the wider unexecuted tenant/context runtime evidence.
 
 ## Execution
 
-Maintainer command:
+Maintainer commands:
 
 ```text
+cargo test -p rustok-fulfillment execute_fulfillment_read_maps_wall_clock_timeout_to_typed_timeout -- --nocapture
 cargo test -p rustok-commerce --test fulfillment_read_port_failure_contract -- --nocapture
 ```
 
-Source verifier:
+The first command proves the owner adapter's actual wall-clock timeout mapping
+against a pending future. The second proves the mounted Commerce boundary's
+typed failure mapping, optional not-found behavior, context propagation, and
+redaction. Both are required for the deadline/failure evidence gate.
 
 ```text
 node scripts/verify/verify-fulfillment-lifecycle-read-failure-contract.mjs
