@@ -106,6 +106,18 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let selected_post_slug = data.selected_post.as_ref().and_then(|p| p.slug.clone());
     let is_post_selected = data.selected_post.is_some();
 
+    let mut categories_map = std::collections::BTreeMap::new();
+    for post in &data.posts.items {
+        if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
+            categories_map.entry(id.clone()).or_insert_with(|| name.clone());
+        }
+    }
+    if let Some(ref sel) = data.selected_post {
+        if let (Some(id), Some(name)) = (&sel.category_id, &sel.category_name) {
+            categories_map.entry(id.clone()).or_insert_with(|| name.clone());
+        }
+    }
+
     let (other_posts, other_total) = if let Some(slug) = selected_post_slug.as_deref() {
         let items: Vec<_> = data
             .posts
@@ -157,7 +169,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 <span class="font-medium text-muted-foreground">
                     {t(locale.as_deref(), "blog.filter.active", "Active filters:")}
                 </span>
-                {active_category.map(|cat| view! {
+                {active_category.as_ref().map(|cat| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                         {format!("Category: {cat}")}
                         <a href="?category=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
@@ -185,19 +197,94 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         ().into_any()
     };
 
+    let category_pills = if !categories_map.is_empty() {
+        let is_all_active = active_category.is_none();
+        view! {
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+                <a
+                    href="?category="
+                    class=if is_all_active {
+                        "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
+                    } else {
+                        "rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    }
+                >
+                    {t(locale.as_deref(), "blog.category.all", "All")}
+                </a>
+                {categories_map
+                    .into_iter()
+                    .map(|(cat_id, cat_name)| {
+                        let is_active = active_category.as_deref() == Some(&cat_id)
+                            || active_category.as_deref() == Some(&cat_name);
+                        let cat_link = format!("?category={}", cat_id);
+                        view! {
+                            <a
+                                href=cat_link
+                                class=if is_active {
+                                    "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
+                                } else {
+                                    "rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                }
+                            >
+                                {cat_name}
+                            </a>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+        }
+        .into_any()
+    } else {
+        ().into_any()
+    };
+
     view! {
-        <div class="space-y-6">
-            <form method="GET" class="relative max-w-md w-full">
-                <input
-                    type="search"
-                    name="q"
-                    value=active_search.unwrap_or_default()
-                    placeholder=t(locale.as_deref(), "blog.search.placeholder", "Search articles and tags...")
-                    class="w-full rounded-full border border-border bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
-                />
-            </form>
+        <div class="space-y-6" id="top">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <form method="GET" class="relative max-w-md w-full">
+                    <input
+                        type="search"
+                        name="q"
+                        value=active_search.unwrap_or_default()
+                        placeholder=t(locale.as_deref(), "blog.search.placeholder", "Search articles and tags...")
+                        class="w-full rounded-full border border-border bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
+                    />
+                </form>
+                <a
+                    href="/blog/feed.xml"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors shadow-sm"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-orange-500">
+                        <path d="M4 11a9 9 0 0 1 9 9"></path>
+                        <path d="M4 4a16 16 0 0 1 16 16"></path>
+                        <circle cx="5" cy="19" r="1"></circle>
+                    </svg>
+                    <span>"RSS"</span>
+                </a>
+            </div>
+            {category_pills}
             {filter_bar}
             <SelectedPostCard post=data.selected_post comments_page />
+            {if is_post_selected {
+                view! {
+                    <a
+                        href="#top"
+                        class="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-200"
+                        aria-label=t(locale.as_deref(), "blog.scrollTop", "Scroll to top")
+                        title=t(locale.as_deref(), "blog.scrollTop", "Scroll to top")
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="19" x2="12" y2="5"></line>
+                            <polyline points="5 12 12 5 19 12"></polyline>
+                        </svg>
+                    </a>
+                }.into_any()
+            } else {
+                ().into_any()
+            }}
+
             {if is_post_selected {
                 if !other_posts.is_empty() {
                     view! {
