@@ -743,11 +743,46 @@ fn escape_attr(value: &str) -> String {
 async fn revoke_handler(
     State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
-    Json(req): Json<RevokeRequest>,
+    request: Request,
 ) -> axum::response::Response {
+    let req = match parse_revoke_request(request, &ctx).await {
+        Ok(request) => request,
+        Err(error) => return oauth_error_response(error),
+    };
+
     match revoke_handler_inner(ctx, tenant_ctx, req).await {
         Ok(status) => status.into_response(),
         Err(error) => oauth_error_response(error),
+    }
+}
+
+async fn parse_revoke_request(
+    request: Request,
+    state: &ServerRuntimeContext,
+) -> Result<RevokeRequest, TokenErrorResponse> {
+    let is_form = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(is_form_encoded_content_type)
+        .unwrap_or(false);
+
+    if is_form {
+        Form::<RevokeRequest>::from_request(request, state)
+            .await
+            .map(|Form(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth revocation request".to_string(),
+            })
+    } else {
+        Json::<RevokeRequest>::from_request(request, state)
+            .await
+            .map(|Json(request)| request)
+            .map_err(|_| TokenErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: "Invalid OAuth revocation request".to_string(),
+            })
     }
 }
 
