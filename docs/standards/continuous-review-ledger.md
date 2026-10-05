@@ -4812,3 +4812,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.132` implementation complete on current `main`; runtime evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment translation write boundary with a fresh pass over journal insert tenant/parent integrity and concurrent change-record semantics separately.
 
+
+### FS-22.06.133 Assessment — translation change-journal parent/tenant integrity
+
+- **Base:** `1a54c776da1b790420facb9b2fd93c9e8a32e8bc`; refreshed `main` before the journal remediation.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/translation_changes.rs`, specifically `record_shipping_option_translation_change_in_tx` and its durable write path.
+- **Invariant map:** translation change evidence must identify the same tenant-owned shipping option whose localized state produced the recorded revision. Because the journal stores both `tenant_id` and `shipping_option_id`, the owner must not trust those paired caller values independently; the database write should derive both from the canonical tenant-owned parent.
+- **Confirmed finding FULFILLMENT-22.06.133-01:** journal INSERT previously wrote caller-supplied `tenant_id` and `shipping_option_id` directly. The helper is crate-private and all current callers validate/lock the parent first, so this was not an externally reachable cross-tenant write through the mounted API, but the durable evidence boundary itself did not enforce parent/tenant coherence.
+- **Production remediation:** journal INSERT now uses backend-aware `INSERT ... SELECT` from `shipping_options`, requiring matching `id` and `tenant_id`; the stored tenant and shipping-option identifiers come from the selected parent row, and exactly one inserted row is required. A zero-row result maps to the existing typed shipping-option-not-found error.
+- **Concurrency check:** the journal's advisory previous-revision comparison remains non-authoritative. Normal mutation callers serialize on the tenant-owned shipping-option parent lock before journal append; the journal sequence remains append-only and uniquely keyed by `(operation_id, shipping_option_id)`.
+- **Verifier remediation:** the existing shipping-translation write-scope verifier now also rejects the old direct journal `VALUES` insert shape and requires the tenant-bound parent `INSERT ... SELECT`.
+- **Documentation:** Fulfillment README and implementation plan now state that durable translation evidence derives its tenant/resource identity from the canonical parent row.
+- **Verification:** repository-content inspection, all-callers enumeration, migration/entity comparison, source-shape review, and post-write reread only. No Cargo/tests/Clippy/rustfmt/verifier/runtime commands were executed; maintainer/CI verification remains required.
+- **Status:** `FS-22.06.133` implementation complete on current `main`; runtime evidence remains unpromoted.
+- **Next primary iteration:** continue the translation journal/concurrency boundary with a fresh pass over operation-id uniqueness, retry semantics, and rollback/reapply evidence separately.
+
