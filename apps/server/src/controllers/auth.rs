@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::error::Result;
+use chrono::Utc;
 use axum::response::Response;
 use axum::{
     Json,
@@ -8,7 +9,6 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
-use chrono::Utc;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
 use sea_orm::{
@@ -19,7 +19,7 @@ use std::net::SocketAddr;
 
 use crate::auth::{
     decode_email_verification_token, encode_email_verification_token,
-    encode_password_reset_token, hash_refresh_token,
+    encode_password_reset_token,
 };
 use crate::common::{RustokSettings, RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
@@ -184,21 +184,16 @@ async fn logout(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
-    let token_hash = hash_refresh_token(&params.refresh_token);
-    let session =
-        sessions::Entity::find_by_token_hash(ctx.runtime_ctx().db(), tenant.id, &token_hash)
-            .await?
-            .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
-
-    if session.revoked_at.is_none() {
-        let mut session_model: sessions::ActiveModel = session.into();
-        session_model.revoked_at = Set(Some(Utc::now().into()));
-        session_model.update(ctx.runtime_ctx().db()).await?;
-    }
+    AuthLifecycleService::logout_by_refresh_token_runtime(
+        ctx.runtime_ctx(),
+        tenant.id,
+        &params.refresh_token,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     Ok(json_response(LogoutResponse { status: "ok" }))
 }
-
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Current user info", body = UserResponse),(status = 401, description = "Unauthorized")))]
 async fn me(
@@ -478,15 +473,14 @@ async fn list_sessions(
     let requested_limit = params.limit;
     let limit = clamp_session_limit(params.limit);
 
-    let rows = sessions::Entity::find()
-        .filter(sessions::Column::TenantId.eq(tenant.id))
-        .filter(sessions::Column::UserId.eq(current.user.id))
-        .filter(sessions::Column::RevokedAt.is_null())
-        .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
-        .order_by_desc(sessions::Column::CreatedAt)
-        .limit(limit)
-        .all(ctx.runtime_ctx().db())
-        .await?;
+    let rows = AuthLifecycleService::list_sessions_runtime(
+        ctx.runtime_ctx(),
+        tenant.id,
+        current.user.id,
+        limit,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     metrics::record_read_path_budget(
         "http",
@@ -511,7 +505,6 @@ async fn list_sessions(
 
     Ok(json_response(SessionsResponse { sessions: data }))
 }
-
 #[utoipa::path(post, path = "/api/auth/sessions/revoke-all", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Sessions revoked", body = GenericStatusResponse)))]
 async fn revoke_all_sessions(
@@ -519,20 +512,17 @@ async fn revoke_all_sessions(
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
 ) -> Result<Response> {
-    let now = Utc::now();
-
-    sessions::Entity::update_many()
-        .col_expr(sessions::Column::RevokedAt, Expr::value(now))
-        .filter(sessions::Column::TenantId.eq(tenant.id))
-        .filter(sessions::Column::UserId.eq(current.user.id))
-        .filter(sessions::Column::RevokedAt.is_null())
-        .filter(sessions::Column::Id.ne(current.session_id))
-        .exec(ctx.runtime_ctx().db())
-        .await?;
+    AuthLifecycleService::revoke_all_other_sessions_runtime(
+        ctx.runtime_ctx(),
+        tenant.id,
+        current.user.id,
+        current.session_id,
+    )
+    .await
+    .map_err(|error: AuthLifecycleError| Error::from(error))?;
 
     Ok(json_response(GenericStatusResponse { status: "ok" }))
 }
-
 #[utoipa::path(post, path = "/api/auth/change-password", tag = "auth", security(("bearer_auth" = [])), request_body = ChangePasswordParams,
     responses((status = 200, description = "Password changed", body = GenericStatusResponse),(status = 401, description = "Invalid credentials")))]
 async fn change_password(

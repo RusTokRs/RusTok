@@ -759,6 +759,38 @@ impl AuthLifecycleService {
         Ok(())
     }
 
+    /// Revoke the session identified by the supplied refresh token.
+    ///
+    /// The lookup and revocation share one transaction so a concurrent refresh
+    /// cannot rotate the token between an initial read and the revoke write.
+    pub async fn logout_by_refresh_token_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        refresh_token: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
+        let token_hash = hash_refresh_token(refresh_token);
+
+        let session = Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
+            .await?
+            .ok_or(AuthLifecycleError::InvalidRefreshToken)?;
+
+        if !session.is_active() {
+            return Err(AuthLifecycleError::InvalidRefreshToken);
+        }
+
+        let now = Utc::now();
+        let mut session_model: sessions::ActiveModel = session.into();
+        session_model.revoked_at = Set(Some(now.into()));
+        session_model
+            .update(&txn)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        txn.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(())
+    }
+
     /// Revoke the current session (logout).
     pub async fn logout_runtime(
         ctx: &ServerRuntimeContext,
@@ -2424,6 +2456,90 @@ mod tests {
             result2.rows_affected, 0,
             "already-revoked session is skipped"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn logout_by_refresh_token_is_tenant_scoped_and_single_transaction() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_a = tenants::ActiveModel::new("Logout Token Tenant A", "logout-token-a")
+            .insert(&db)
+            .await
+            .expect("create tenant A");
+        let tenant_b = tenants::ActiveModel::new("Logout Token Tenant B", "logout-token-b")
+            .insert(&db)
+            .await
+            .expect("create tenant B");
+
+        let user_a = users::ActiveModel::new(tenant_a.id, "logout-token-a@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user A");
+        let user_b = users::ActiveModel::new(tenant_b.id, "logout-token-b@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create user B");
+
+        let refresh_token = "logout-refresh-token";
+        let token_hash = hash_refresh_token(refresh_token);
+        let now = Utc::now();
+
+        let session_a = sessions::ActiveModel::new(
+            tenant_a.id,
+            user_a.id,
+            token_hash.clone(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create tenant A session");
+        let session_b = sessions::ActiveModel::new(
+            tenant_b.id,
+            user_b.id,
+            token_hash,
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("create tenant B session");
+
+        let runtime = ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
+
+        AuthLifecycleService::logout_by_refresh_token_runtime(
+            &runtime,
+            tenant_a.id,
+            refresh_token,
+        )
+        .await
+        .expect("tenant A logout should succeed");
+
+        let session_a = sessions::Entity::find_by_id(session_a.id)
+            .one(&db)
+            .await
+            .expect("read tenant A session")
+            .expect("tenant A session should exist");
+        let session_b = sessions::Entity::find_by_id(session_b.id)
+            .one(&db)
+            .await
+            .expect("read tenant B session")
+            .expect("tenant B session should exist");
+
+        assert!(session_a.revoked_at.is_some());
+        assert!(session_b.revoked_at.is_none());
+
+        assert!(matches!(
+            AuthLifecycleService::logout_by_refresh_token_runtime(
+                &runtime,
+                tenant_a.id,
+                refresh_token,
+            )
+            .await,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
     }
 
     #[tokio::test]
