@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
 };
 use reqwest::Url;
-use rustok_auth::{
+pub use rustok_auth::{
     AuthorizeRequest, BrowserAuthorizeRequest, BrowserSessionResponse, ConsentRequest,
     RevokeRequest, TokenErrorResponse, TokenRequest, TokenResponse,
 };
