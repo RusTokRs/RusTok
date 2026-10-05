@@ -5054,3 +5054,18 @@ _No completed rounds yet. Round 1 is currently in progress._
 - Verification: source inspection and post-write reread only. No Cargo/tests/Clippy/rustfmt/remediation-gate or live provider execution was run because the repository workspace/toolchain is not mounted; no CI/runtime pass is claimed.
 - Status: FS-22.06.150 implementation complete at source level on current main; provider runtime deadline evidence remains pending.
 - Next primary iteration: continue the Fulfillment provider boundary with a fresh audit of operation request/response identity binding across provider registry, journal, and lifecycle metadata, especially whether provider-returned external_reference/tracking facts can be reused across operations or fulfillments.
+
+### FS-22.06.151 Assessment — durable provider-result identity coherence
+
+- Base: 2b6efd612f7f9b77d84e25c88b4ae3b2c2b53cfd; fresh review of provider-result persistence after the deadline/privacy hardening.
+- Primary scope: crates/modules/rustok-fulfillment/src/services/provider_operation.rs, provider-operation recovery, provider SPI validation, and provider journal integration tests.
+- Confirmed finding FULFILLMENTPROVIDER-22.06.151-01: the durable mark_provider_succeeded writer accepted an arbitrary provider_result JSON and provider_reference argument after tenant/operation/status filtering. The provider SPI normally validated provider identity, but the durable writer itself did not guarantee that provider_id and external_reference matched the journaled operation, allowing incoherent evidence to be persisted through a direct owner-writer call.
+- Production remediation: the journal writer now deserializes and validates the result against the current provider operation before persistence, including provider_id equality, external_reference/reference coherence, tracking-number bounds, provider metadata safety, and provider payload shape. The reconciliation writer applies the same validation whenever a provider result is supplied.
+- Canonical identity rule: operation_id plus the journaled fulfillment_id/provider_id remain the authoritative execution identity. The provider result cannot redefine the provider or target operation through JSON content.
+- Concurrency behavior: writer validation occurs before the existing status-qualified update; concurrent terminal transitions still resolve through the affected-row/current-state logic, so identity rejection cannot consume an executing recovery opportunity.
+- Regression coverage: provider_operation_journal_test.rs now verifies wrong provider, wrong external reference, and mismatched provider-result reconciliation are rejected while the operation remains executing, then accepts the matching result.
+- Verifier remediation: verify-ecommerce-provider-spi-evidence.mjs now requires the durable provider-result identity validator and its coherence markers for Fulfillment.
+- Fresh second pass: re-read provider SPI result validation, durable writer, recovery writer, create-label persistence, and the new journal regression. No remaining direct provider-result persistence path in the audited Fulfillment owner bypasses the operation identity checks.
+- Verification: repository source inspection and final reread only. No Cargo/tests/Clippy/rustfmt/remediation-gate/runtime provider execution was run because the repository workspace/toolchain is not mounted; no CI pass is claimed.
+- Status: FS-22.06.151 implementation complete at source level on current main; runtime/provider evidence remains pending.
+- Next primary iteration: continue the Fulfillment provider boundary with a fresh review of webhook contracts versus actual ingress wiring and ensure planned surfaces are explicitly separated from executable provider capabilities.
