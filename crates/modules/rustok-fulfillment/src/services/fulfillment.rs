@@ -69,6 +69,26 @@ impl FulfillmentService {
         tenant_id: Uuid,
         input: CreateShippingOptionInput,
     ) -> FulfillmentResult<ShippingOptionResponse> {
+        let txn = self.db.begin().await?;
+        let response = self
+            .create_shipping_option_in_txn(&txn, tenant_id, input, generate_id())
+            .await?;
+        txn.commit().await?;
+        Ok(response)
+    }
+
+    /// Creates a Shipping Option inside a caller-owned transaction.
+    ///
+    /// The caller supplies the durable operation identity that is written to the
+    /// translation-change journal. This lets admin idempotency receipts and the
+    /// localized-copy change evidence commit atomically with the resource itself.
+    pub(crate) async fn create_shipping_option_in_txn(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        input: CreateShippingOptionInput,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<ShippingOptionResponse> {
         validate_tenant_id(tenant_id)?;
         input
             .validate()
@@ -98,7 +118,6 @@ impl FulfillmentService {
 
         let shipping_option_id = generate_id();
         let now = Utc::now();
-        let txn = self.db.begin().await?;
 
         let option = entities::shipping_option::ActiveModel {
             id: Set(shipping_option_id),
@@ -111,28 +130,26 @@ impl FulfillmentService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
-        insert_translations(&txn, shipping_option_id, &translations).await?;
+        insert_translations(txn, shipping_option_id, &translations).await?;
         let translation_rows =
-            load_shipping_option_translation_rows(&txn, tenant_id, shipping_option_id).await?;
+            load_shipping_option_translation_rows(txn, tenant_id, shipping_option_id).await?;
         let resource_revision =
             shipping_option_translation_resource_revision(&option, &translation_rows);
         record_shipping_option_translation_change_in_tx(
-            &txn,
+            txn,
             tenant_id,
             shipping_option_id,
-            generate_id(),
+            operation_id,
             &resource_revision,
             ShippingOptionTranslationChangeLifecycle::Active,
         )
         .await
         .map_err(translation_change_error_to_fulfillment_error)?;
-        txn.commit().await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
-            .await
+        map_shipping_option(option, translation_rows, None, None)
     }
 
     pub async fn list_shipping_options(
