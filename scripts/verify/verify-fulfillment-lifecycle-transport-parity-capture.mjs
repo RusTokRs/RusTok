@@ -112,6 +112,9 @@ if (
 if (contract.publication?.atomic_exclusive_publish !== true) {
   failures.push('execution contract publication policy mismatch');
 }
+if (contract.capture_consistency?.contract_and_source_hashes_stable !== true) {
+  failures.push('execution contract capture-consistency policy mismatch');
+}
 const responseReaderChecks = [
   ['async function readResponseBytes(response, operation)', 'bounded response reader'],
   ['response.body.getReader()', 'streaming response reader'],
@@ -236,6 +239,12 @@ for (const [value, label] of [
   ['writeFileSync(temporaryPath', 'atomic temporary write'],
   ['linkSync(temporaryPath, outputPath)', 'exclusive atomic publish'],
   ['unlinkSync(temporaryPath)', 'temporary evidence cleanup'],
+  ["const contractText = readFileSync(resolve(repoRoot, contractPath), 'utf8');", 'contract snapshot read'],
+  ['const contractSnapshotSha256 = sha256(contractText);', 'contract snapshot hash'],
+  ['const sourceHashesAtStart = sourceHashes();', 'source snapshot start'],
+  ['fileSha256(contractPath) !== contractSnapshotSha256', 'contract stability check'],
+  ['const sourceHashesAtEnd = sourceHashes();', 'source snapshot end'],
+  ['sameRecord(sourceHashesAtStart, sourceHashesAtEnd)', 'source stability comparison'],
   ['lookup: fulfillment(tenantId: $tenantId, id: $id)', 'GraphQL lookup'],
   ['list: fulfillments(tenantId: $tenantId, filter: $filter)', 'GraphQL filtered list'],
   ['order(tenantId: $tenantId, id: $id)', 'GraphQL latest by order'],
