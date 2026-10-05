@@ -175,6 +175,7 @@ for (const [source, value, label] of [
   [fulfillmentList, '.list_fulfillment_projections(', 'owner fulfillment list'],
   [fulfillmentList, 'ListFulfillmentProjectionsRequest {', 'typed list request'],
   [fulfillmentList, 'Ok((page_result.items, page_result.total))', 'list compatibility result'],
+  [fulfillmentListQuery, 'has_next: page < total.div_ceil(per_page),', 'overflow-safe fulfillment pagination'],
   [fulfillmentLatest, '.find_latest_fulfillment_by_order_projection(', 'owner latest operation'],
   [fulfillmentLatest, 'FindLatestFulfillmentByOrderProjectionRequest { order_id }', 'typed latest request'],
 ]) requireText(source, value, label);
