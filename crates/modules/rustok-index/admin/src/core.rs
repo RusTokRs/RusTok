@@ -423,6 +423,141 @@ pub fn filter_index_schemas(
         .collect()
 }
 
+pub fn index_table_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("name", if is_ru { "Имя таблицы" } else { "Table Name" })
+            .width(280)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр таблиц...".to_string()
+                } else {
+                    "Filter tables...".to_string()
+                }),
+            }),
+        GridColumnDef::new("role", if is_ru { "Назначение таблицы" } else { "Table Role" })
+            .align(ColumnAlign::Left),
+    ]
+}
+
+pub fn matches_index_table_filter(
+    table: &IndexTableRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("name", FilterValue::Text(q)) => {
+                if !table.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("role", FilterValue::Text(q)) => {
+                if !table.role.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_index_tables(
+    tables: &[IndexTableRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<IndexTableRowViewModel> {
+    tables
+        .iter()
+        .filter(|t| {
+            if let Some(s) = search {
+                let term = s.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !t.name.to_ascii_lowercase().contains(&term)
+                    && !t.role.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_index_table_filter(t, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn index_source_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("name", if is_ru { "Имя источника" } else { "Source Name" })
+            .width(260)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(if is_ru {
+                    "Фильтр источника...".to_string()
+                } else {
+                    "Filter source...".to_string()
+                }),
+            }),
+        GridColumnDef::new("entity", if is_ru { "Целевая сущность" } else { "Target Entity" })
+            .width(200)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("mode", if is_ru { "Режим воспроизведения" } else { "Replay Mode" })
+            .align(ColumnAlign::Left),
+    ]
+}
+
+pub fn matches_index_source_filter(
+    source: &IndexSourceRowViewModel,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("name", FilterValue::Text(q)) => {
+                if !source.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("entity", FilterValue::Text(q)) => {
+                if !source.entity.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            ("mode", FilterValue::Text(q)) => {
+                if !source.mode.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_index_sources(
+    sources: &[IndexSourceRowViewModel],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<IndexSourceRowViewModel> {
+    sources
+        .iter()
+        .filter(|s| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !s.name.to_ascii_lowercase().contains(&term)
+                    && !s.entity.to_ascii_lowercase().contains(&term)
+                    && !s.mode.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_index_source_filter(s, filters)
+        })
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -752,5 +887,63 @@ mod tests {
         let res = filter_index_schemas(&list, &filters, None);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].qualified_name, "catalog.product");
+    }
+
+    #[test]
+    fn index_table_grid_and_filtering() {
+        let cols_en = index_table_grid_columns(Some("en"));
+        assert_eq!(cols_en.len(), 2);
+        assert_eq!(cols_en[0].title, "Table Name");
+        assert_eq!(cols_en[1].title, "Table Role");
+
+        let cols_ru = index_table_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Имя таблицы");
+        assert_eq!(cols_ru[1].title, "Назначение таблицы");
+
+        let tables = vec![
+            IndexTableRowViewModel {
+                name: "idx_schemas".to_string(),
+                role: "Schema catalog".to_string(),
+            },
+            IndexTableRowViewModel {
+                name: "idx_events".to_string(),
+                role: "Event stream buffer".to_string(),
+            },
+        ];
+
+        let res = filter_index_tables(&tables, &ColumnFilters::new(), Some("schema"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].name, "idx_schemas");
+    }
+
+    #[test]
+    fn index_source_grid_and_filtering() {
+        let cols_en = index_source_grid_columns(Some("en"));
+        assert_eq!(cols_en.len(), 3);
+        assert_eq!(cols_en[0].title, "Source Name");
+        assert_eq!(cols_en[1].title, "Target Entity");
+        assert_eq!(cols_en[2].title, "Replay Mode");
+
+        let cols_ru = index_source_grid_columns(Some("ru"));
+        assert_eq!(cols_ru[0].title, "Имя источника");
+        assert_eq!(cols_ru[1].title, "Целевая сущность");
+        assert_eq!(cols_ru[2].title, "Режим воспроизведения");
+
+        let sources = vec![
+            IndexSourceRowViewModel {
+                name: "products_replay".to_string(),
+                entity: "product".to_string(),
+                mode: "streaming".to_string(),
+            },
+            IndexSourceRowViewModel {
+                name: "orders_replay".to_string(),
+                entity: "order".to_string(),
+                mode: "snapshot".to_string(),
+            },
+        ];
+
+        let res = filter_index_sources(&sources, &ColumnFilters::new(), Some("snapshot"));
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].name, "orders_replay");
     }
 }

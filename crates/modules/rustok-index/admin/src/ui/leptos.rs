@@ -5,9 +5,11 @@ use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    IndexAdminOverviewViewModel, IndexSchemaRowViewModel, build_index_admin_overview_view_model,
-    filter_index_schemas, format_cancel_action_result, format_index_admin_bootstrap_error,
-    format_replay_action_result, format_retry_action_result, index_schema_grid_columns,
+    IndexAdminOverviewViewModel, IndexSchemaRowViewModel, IndexSourceRowViewModel,
+    IndexTableRowViewModel, build_index_admin_overview_view_model, filter_index_schemas,
+    filter_index_sources, filter_index_tables, format_cancel_action_result,
+    format_index_admin_bootstrap_error, format_replay_action_result, format_retry_action_result,
+    index_schema_grid_columns, index_source_grid_columns, index_table_grid_columns,
 };
 use crate::i18n::t;
 use crate::model::{CancelJobInput, RetryJobInput, TriggerReplayInput};
@@ -566,41 +568,103 @@ where
 }
 
 fn view_storage(locale: Option<&str>, vm: &IndexAdminOverviewViewModel) -> AnyView {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = index_table_grid_columns(locale);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::new());
+    let selection = RwSignal::new(RowSelection::new());
+    let pagination = RwSignal::new(GridPagination::new(1, 20, vm.tables.len() as u64));
+
+    let all_tables = vm.tables.clone();
+    let filtered_tables = Memo::new({
+        let all_tables = all_tables.clone();
+        move |_| {
+            let s_val = search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = filter_index_tables(&all_tables, &filters.get(), search_term);
+            pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_tables = Memo::new(move |_| {
+        let list = filtered_tables.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let cell_renderer = Callback::new(move |(table, col_id): (IndexTableRowViewModel, String)| {
+        match col_id.as_str() {
+            "name" => view! {
+                <span class="font-mono text-xs font-semibold text-card-foreground">
+                    {table.name}
+                </span>
+            }
+            .into_any(),
+            "role" => view! {
+                <span class="text-sm text-muted-foreground">
+                    {table.role}
+                </span>
+            }
+            .into_any(),
+            _ => ().into_any(),
+        }
+    });
+
     view! {
-        <section class="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-            <div class="border-b border-border p-5">
-                <h2 class="text-lg font-semibold text-card-foreground">
-                    {t(locale, "index.tab.storage", "Storage Foundation")}
-                </h2>
+        <section class="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-card-foreground">
+                        {t(locale, "index.tab.storage", "Storage Foundation")}
+                    </h2>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        {if is_ru { "Системные таблицы и структуры данных индексатора" } else { "System tables and partition layout for search indexing" }}
+                    </p>
+                </div>
+                <div class="w-full md:w-64">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск таблиц..." } else { "Search tables..." }}
+                        class="w-full px-3 py-1.5 text-xs rounded-xl border border-border bg-background text-foreground shadow-sm focus:ring-1 focus:ring-primary outline-none"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        <tr>
-                            <th class="px-6 py-3">{t(locale, "index.table.name", "Table Name")}</th>
-                            <th class="px-6 py-3">{t(locale, "index.table.role", "Table Role")}</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
-                        {vm.tables
-                            .iter()
-                            .cloned()
-                            .map(|table| {
-                                view! {
-                                    <tr class="transition-colors hover:bg-muted/20">
-                                        <td class="px-6 py-4 font-mono text-xs font-semibold text-card-foreground">
-                                            {table.name}
-                                        </td>
-                                        <td class="px-6 py-4 text-sm text-muted-foreground">
-                                            {table.role}
-                                        </td>
-                                    </tr>
-                                }
-                            })
-                            .collect_view()}
-                    </tbody>
-                </table>
-            </div>
+
+            <Show when=move || !selection.get().is_empty()>
+                <div class="flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-primary/20 bg-primary/5 text-xs">
+                    <span class="font-medium text-foreground">
+                        {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "таблиц" } else { "tables" })}
+                    </span>
+                    <button
+                        type="button"
+                        class="h-6 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground border border-border bg-background"
+                        on:click=move |_| selection.update(|s| s.clear())
+                    >
+                        {if is_ru { "Снять выбор" } else { "Clear" }}
+                    </button>
+                </div>
+            </Show>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_tables.get())
+                key_fn=|table: &IndexTableRowViewModel| table.name.clone()
+                cell_renderer=cell_renderer
+                empty_message={t(locale, "index.storage.empty", "No storage tables found.").to_string()}
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=Callback::new(move |f| filters.set(f))
+                on_row_click=Callback::new(|_| ())
+            />
         </section>
     }
     .into_any()
@@ -626,6 +690,60 @@ where
     let empty_locale = locale.clone();
     let btn_locale = locale.clone();
     let retry_btn_locale = locale.clone();
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let source_columns = index_source_grid_columns(locale.as_deref());
+    let source_search = RwSignal::new(String::new());
+    let source_filters = RwSignal::new(ColumnFilters::new());
+    let source_selection = RwSignal::new(RowSelection::new());
+    let source_pagination = RwSignal::new(GridPagination::new(1, 20, vm.sources.len() as u64));
+
+    let all_sources = vm.sources.clone();
+    let filtered_sources = Memo::new({
+        let all_sources = all_sources.clone();
+        move |_| {
+            let s_val = source_search.get();
+            let search_term = if s_val.trim().is_empty() {
+                None
+            } else {
+                Some(s_val.as_str())
+            };
+            let list = filter_index_sources(&all_sources, &source_filters.get(), search_term);
+            source_pagination.update(|p| p.total = list.len() as u64);
+            list
+        }
+    });
+
+    let paged_sources = Memo::new(move |_| {
+        let list = filtered_sources.get();
+        let p = source_pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let source_cell_renderer = Callback::new(move |(src, col_id): (IndexSourceRowViewModel, String)| {
+        match col_id.as_str() {
+            "name" => view! {
+                <span class="font-mono text-xs font-semibold text-card-foreground">
+                    {src.name}
+                </span>
+            }
+            .into_any(),
+            "entity" => view! {
+                <span class="text-sm text-card-foreground">
+                    {src.entity}
+                </span>
+            }
+            .into_any(),
+            "mode" => view! {
+                <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground font-mono">
+                    {src.mode}
+                </span>
+            }
+            .into_any(),
+            _ => ().into_any(),
+        }
+    });
+
     view! {
         <div class="space-y-6">
             // Operator Controls: Cancel
@@ -812,58 +930,55 @@ where
                     .collect_view()}
             </section>
 
-            // Registered Replay Sources table
-            <section class="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-                <div class="border-b border-border p-5">
-                    <h2 class="text-lg font-semibold text-card-foreground">
-                        {t(locale.as_deref(), "index.tab.operations", "Registered Replay Sources")}
-                    </h2>
+            // Registered Replay Sources DataGrid
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-card-foreground">
+                            {t(locale.as_deref(), "index.tab.operations", "Registered Replay Sources")}
+                        </h2>
+                        <p class="text-xs text-muted-foreground mt-0.5">
+                            {if is_ru { "Зарегистрированные источники реплея и стриминга" } else { "Registered streaming and snapshot replay pipelines" }}
+                        </p>
+                    </div>
+                    <div class="w-full md:w-64">
+                        <input
+                            type="text"
+                            placeholder={if is_ru { "Поиск источников..." } else { "Search sources..." }}
+                            class="w-full px-3 py-1.5 text-xs rounded-xl border border-border bg-background text-foreground shadow-sm focus:ring-1 focus:ring-primary outline-none"
+                            prop:value=move || source_search.get()
+                            on:input=move |ev| source_search.set(event_target_value(&ev))
+                        />
+                    </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead class="border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            <tr>
-                                <th class="px-6 py-3">{t(locale.as_deref(), "index.source.name", "Source Name")}</th>
-                                <th class="px-6 py-3">{t(locale.as_deref(), "index.source.entity", "Target Entity")}</th>
-                                <th class="px-6 py-3">{t(locale.as_deref(), "index.source.mode", "Replay Mode")}</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-border">
-                            {if vm.sources.is_empty() {
-                                view! {
-                                    <tr>
-                                        <td colspan="3" class="px-6 py-8 text-center text-sm text-muted-foreground">
-                                            {t(empty_locale.as_deref(), "index.source.empty", "No replay sources registered.")}
-                                        </td>
-                                    </tr>
-                                }.into_any()
-                            } else {
-                                vm.sources
-                                    .iter()
-                                    .cloned()
-                                    .map(|src| {
-                                        view! {
-                                            <tr class="transition-colors hover:bg-muted/20">
-                                                <td class="px-6 py-4 font-mono text-xs font-semibold text-card-foreground">
-                                                    {src.name}
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-card-foreground">
-                                                    {src.entity}
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground font-mono">
-                                                        {src.mode}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        }
-                                    })
-                                    .collect_view()
-                                    .into_any()
-                            }}
-                        </tbody>
-                    </table>
-                </div>
+
+                <Show when=move || !source_selection.get().is_empty()>
+                    <div class="flex items-center justify-between gap-3 px-4 py-2 rounded-xl border border-primary/20 bg-primary/5 text-xs">
+                        <span class="font-medium text-foreground">
+                            {move || format!("{} {} {}", source_selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "источников" } else { "sources" })}
+                        </span>
+                        <button
+                            type="button"
+                            class="h-6 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground border border-border bg-background"
+                            on:click=move |_| source_selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </Show>
+
+                <DataGrid
+                    columns=source_columns
+                    data=Signal::derive(move || paged_sources.get())
+                    key_fn=|src: &IndexSourceRowViewModel| src.name.clone()
+                    cell_renderer=source_cell_renderer
+                    empty_message={t(empty_locale.as_deref(), "index.source.empty", "No replay sources registered.").to_string()}
+                    selection=source_selection
+                    pagination=source_pagination
+                    filters=source_filters
+                    on_filter_change=Callback::new(move |f| source_filters.set(f))
+                    on_row_click=Callback::new(|_| ())
+                />
             </section>
         </div>
     }
