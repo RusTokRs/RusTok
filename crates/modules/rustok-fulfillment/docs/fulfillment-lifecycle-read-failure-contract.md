@@ -52,7 +52,8 @@ Owner `NotFound` remains GraphQL `null` with no error for fulfillment lookup.
 ## Admin REST boundary
 
 The Commerce boundary harness mounts the scripted owner port through
-`CommerceFulfillmentLifecycleReadRuntime` and exercises
+`CommerceFulfillmentLifecycleReadRuntime` and exercises both admin lifecycle
+read routes: `GET /admin/fulfillments` and
 `GET /admin/fulfillments/{id}`. The GraphQL side composes the production
 Commerce schema directly with that host-selected runtime, while the actual
 server HTTP mount remains a separate transport-parity gate. The owner
@@ -79,7 +80,7 @@ The harness records every `PortContext` received by the scripted owner port and
 requires:
 
 - a two-second deadline for GraphQL lookup, filtered list,
-  latest-by-order, and admin REST detail;
+  latest-by-order, and both admin REST lifecycle reads (list and detail);
 - exact tenant identity;
 - the stable GraphQL service actor
   `rustok-commerce.graphql-query-fulfillments`;
