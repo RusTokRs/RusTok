@@ -1,5 +1,7 @@
+use super::*;
+
 impl InProcessCheckoutPaymentExecutionPort {
-    async fn enrich_provider_request(
+    pub(super) async fn enrich_provider_request(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -69,7 +71,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(request)
     }
 
-    async fn commit_existing_provider_operation(
+    pub(super) async fn commit_existing_provider_operation(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -100,7 +102,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(())
     }
 
-    async fn mark_journal_committed(
+    pub(super) async fn mark_journal_committed(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
@@ -149,7 +151,7 @@ impl InProcessCheckoutPaymentExecutionPort {
         Ok(())
     }
 
-    async fn mark_local_persistence_failed(
+    pub(super) async fn mark_local_persistence_failed(
         &self,
         context: &PortContext,
         owner_operation: &'static str,
