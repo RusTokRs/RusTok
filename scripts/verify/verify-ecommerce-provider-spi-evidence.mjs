@@ -170,6 +170,7 @@ const verifyProviderSpiEvidence = ({
   liveAdapterContract,
   liveAdapterEvidence,
   providerSource,
+  fulfillmentProviderJournalSource,
   fulfillmentAdminCommandSource,
   fulfillmentAdminCreateCommandSource,
   commerceCheckoutSource,
@@ -582,6 +583,18 @@ const verifyProviderSpiEvidence = ({
     );
   }
 
+  if (module === 'fulfillment') {
+    requireMarkers(
+      fulfillmentProviderJournalSource,
+      [
+        'serde_json::from_value(provider_result.clone())',
+        'typed_result.provider_id != current.provider_id',
+        'validate_provider_metadata_safety(&typed_result.metadata)',
+        'provider_reference does not match provider_result.external_reference',
+      ],
+      (marker) => `fulfillment provider result journal identity guard missing ${marker}`,
+    );
+  }
   for (const marker of [
     'descriptor.provider_id',
     'descriptor.provider_id != registration.descriptor.provider_id',
@@ -624,6 +637,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       liveAdapterContract: readJson(root, liveAdapterContractPath),
       liveAdapterEvidence: readJson(root, liveAdapterEvidencePath),
       providerSource: readText(root, `crates/modules/rustok-${module}/src/providers.rs`),
+      fulfillmentProviderJournalSource: readText(root, 'crates/modules/rustok-fulfillment/src/services/provider_operation.rs'),
       fulfillmentAdminCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_command.rs'),
       fulfillmentAdminCreateCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_create_command.rs'),
       commerceCheckoutSource,
