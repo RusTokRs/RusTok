@@ -484,8 +484,9 @@ Hard limits for every iteration:
 - **Regression audit:** production `/metrics` continues to require the configured observability bearer token; local/non-production fallback behavior remains owned by middleware; scraper output keeps its existing text content type and canonical metric names; no new dynamic label dimension was introduced.
 - **Fresh second pass:** independently scanned the entire controller for raw error formatting, silent error-to-zero conversions, untrusted labels, tenant/user identifiers in metric labels, feature-gating drift, route mismatches, and stale OpenAPI security. Only the existing intentional `NaN`/collection-status fallback patterns remain.
 - **Verification:** repository source inspection, historical FS-22.02.21 comparison, middleware/owner tracing, label-source audit, immediate re-read, fresh second pass, and branch diff review only. Cargo/tests/Clippy/rustfmt/gatekeeper/runtime execution were unavailable because the workspace is not mounted and local DNS cannot reach GitHub; no CI/runtime pass is claimed.
-- **Status:** `FS-22.06.06` implementation complete on the dedicated branch; PR/integration pending.
-- **Next primary iteration:** after merge, refresh `main` and continue with `FS-22.06.07 — apps/server/src/controllers/marketplace_registry.rs`.
+- **Status:** `FS-22.06.06` complete and integrated into `main` via PR #4564, squash merge `44550c9781fa3ac2fc49e9c5422a5f9ca20e4b32`.
+- **Post-merge reconciliation:** refreshed `main` at `44550c9781fa3ac2fc49e9c5422a5f9ca20e4b32`; the metrics implementation PR changed only the metrics controller plus its audit record, and the merged `/metrics` operation now declares the existing bearer security scheme.
+- **Next primary iteration:** `FS-22.06.07 — apps/server/src/controllers/marketplace_registry.rs`.
 - [ ] **FS-22.06.07 — `apps/server/src/controllers/marketplace_registry.rs`** — audit registry mutation authorization, owner/tenant identity, body limits, error redaction, and remote-runner transport.
 
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
