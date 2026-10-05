@@ -150,19 +150,9 @@ impl FulfillmentCreateLabelRecoveryService {
         operation: provider_operation::Model,
     ) -> FulfillmentOrchestrationResult<crate::dto::FulfillmentResponse> {
         let result = validate_result(&operation)?;
-        let fulfillment = self
-            .persist_provider_result(&operation, &result)
-            .await
-            .map_err(|source| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "create_label provider result for operation {} could not be persisted locally: {source}",
-                    operation.id
-                ))
-            });
-
-        let fulfillment = match fulfillment {
+        let fulfillment = match self.persist_provider_result(&operation, &result).await {
             Ok(fulfillment) => fulfillment,
-            Err(error) => {
+            Err(source) => {
                 if operation.status == PROVIDER_OPERATION_SUCCEEDED {
                     if let Err(checkpoint_error) = journal
                         .mark_reconciliation_required(
@@ -185,17 +175,7 @@ impl FulfillmentCreateLabelRecoveryService {
                 return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
                     fulfillment_id: operation.fulfillment_id,
                     operation: "create_label",
-                    source: match error {
-                        FulfillmentOrchestrationError::Validation(message) => {
-                            rustok_fulfillment::error::FulfillmentError::Validation(message)
-                        }
-                        FulfillmentOrchestrationError::Database(source) => {
-                            rustok_fulfillment::error::FulfillmentError::Database(source)
-                        }
-                        other => {
-                            return Err(other);
-                        }
-                    },
+                    source,
                 });
             }
         };
