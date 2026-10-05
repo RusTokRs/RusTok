@@ -27,6 +27,7 @@ pub mod spinner;
 pub mod switch;
 pub mod tabs;
 pub mod textarea;
+pub mod toc;
 
 #[cfg(test)]
 mod tests;
@@ -53,6 +54,7 @@ pub use spinner::Spinner;
 pub use switch::Switch;
 pub use tabs::{Tabs, TabsContent, TabsList, TabsTrigger};
 pub use textarea::Textarea;
+pub use toc::TableOfContents;
 
 // Re-export core types and contracts
 pub use rustok_ui::*;
@@ -88,3 +90,5 @@ pub use tabs::{
     TabsTrigger as ui_tabs_trigger,
 };
 pub use textarea::Textarea as ui_textarea;
+pub use toc::TableOfContents as ui_table_of_contents;
+

@@ -262,3 +262,19 @@ fn test_render_input_ssr() {
     assert!(html_adorned.contains("🔍"));
     assert!(html_adorned.contains("Clear"));
 }
+
+#[test]
+fn test_render_toc_ssr() {
+    let view = view! {
+        <crate::toc::TableOfContents
+            html="<h2>Overview</h2><p>text</p><h3>Details</h3><p>more</p>".to_string()
+            locale="ru".to_string()
+        />
+    };
+    let html = view.to_html();
+    assert!(html.contains("<nav"));
+    assert!(html.contains("Содержание"));
+    assert!(html.contains("Overview"));
+    assert!(html.contains("Details"));
+}
+

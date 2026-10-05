@@ -431,3 +431,42 @@ fn design_tokens_are_non_empty_utility_fragments() {
         assert!(!token.contains("  "));
     }
 }
+
+#[test]
+fn toc_item_and_heading_extraction() {
+    let html = r#"
+        <article>
+            <h2 id="intro">Introduction</h2>
+            <p>Intro text</p>
+            <h3>Nested <strong>Subheading</strong></h3>
+            <h2 id="custom-slug">Summary</h2>
+        </article>
+    "#;
+
+    let headings = extract_headings_from_html(html);
+    assert_eq!(headings.len(), 3);
+    assert_eq!(headings[0].id, "intro");
+    assert_eq!(headings[0].text, "Introduction");
+    assert_eq!(headings[0].level, 2);
+
+    assert_eq!(headings[1].id, "nested-subheading");
+    assert_eq!(headings[1].text, "Nested Subheading");
+    assert_eq!(headings[1].level, 3);
+
+    assert_eq!(headings[2].id, "custom-slug");
+    assert_eq!(headings[2].text, "Summary");
+    assert_eq!(headings[2].level, 2);
+
+    let nav_cls = toc_nav_classes(true, Some("my-custom-toc"));
+    assert!(nav_cls.contains("sticky top-24"));
+    assert!(nav_cls.contains("my-custom-toc"));
+
+    let item_active_cls = toc_item_classes(3, true);
+    assert!(item_active_cls.contains("pl-3"));
+    assert!(item_active_cls.contains("border-primary"));
+
+    let item_inactive_cls = toc_item_classes(2, false);
+    assert!(!item_inactive_cls.contains("pl-3"));
+    assert!(item_inactive_cls.contains("text-muted-foreground"));
+}
+

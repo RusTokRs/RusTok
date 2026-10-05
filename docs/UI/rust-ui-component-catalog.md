@@ -63,7 +63,7 @@ covered. Components not yet given that feature audit remain provisional.
 | Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | functional audit pending |
 | Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | functional audit pending |
 | Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | functional audit pending |
-| TableOfContents | `crates/ui/leptos-ui/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Blog, Forum, and Product Descriptions |
+| TableOfContents | `crates/ui/rustok-ui/leptos/src/toc.rs` (`leptos-ui`), `crates/ui/rustok-ui/dioxus/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Leptos, Dioxus, and Next.js for Blog, Forum, and Product Descriptions |
 
 `crates/ui/rustok-ui/leptos/src/lib.rs` and
 `apps/next-admin/src/shared/ui/shadcn/index.ts` are the component entry points being

@@ -215,3 +215,183 @@ pub fn extract_initials(name: &str) -> String {
         initials
     }
 }
+
+/// Headless item representation for a Table of Contents entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TocItem {
+    /// HTML anchor identifier (without `#`).
+    pub id: String,
+    /// Clean display text of the heading.
+    pub text: String,
+    /// Heading level (e.g. 2 for `<h2>`, 3 for `<h3>`, 4 for `<h4>`).
+    pub level: u8,
+}
+
+impl TocItem {
+    /// Creates a new Table of Contents item.
+    pub fn new(id: impl Into<String>, text: impl Into<String>, level: u8) -> Self {
+        Self {
+            id: id.into(),
+            text: text.into(),
+            level,
+        }
+    }
+}
+
+/// Strips HTML tags from an inner string to yield clean heading text.
+fn strip_html_tags(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        if ch == '<' {
+            in_tag = true;
+        } else if ch == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            out.push(ch);
+        }
+    }
+    out.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .trim()
+        .to_string()
+}
+
+/// Generates a clean URL slug from heading text.
+#[must_use]
+pub fn slugify_heading(text: &str, index: usize) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            for lower in ch.to_lowercase() {
+                slug.push(lower);
+            }
+            last_dash = false;
+        } else if !last_dash && !slug.is_empty() {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+
+    if slug.ends_with('-') {
+        slug.pop();
+    }
+
+    if slug.is_empty() {
+        format!("section-{}", index + 1)
+    } else {
+        slug
+    }
+}
+
+/// Parses an HTML fragment and extracts all `<h2>` and `<h3>` headings.
+///
+/// If a heading already has an `id="..."` attribute, that id is preserved.
+/// Otherwise, a deterministic slug is derived from the heading text.
+#[must_use]
+pub fn extract_headings_from_html(html: &str) -> Vec<TocItem> {
+    let mut items = Vec::new();
+    let lower_html = html.to_lowercase();
+    let mut search_pos = 0;
+
+    while search_pos < html.len() {
+        let next_h2 = lower_html[search_pos..].find("<h2");
+        let next_h3 = lower_html[search_pos..].find("<h3");
+
+        let (tag_offset, level) = match (next_h2, next_h3) {
+            (Some(o2), Some(o3)) => {
+                if o2 <= o3 {
+                    (o2, 2)
+                } else {
+                    (o3, 3)
+                }
+            }
+            (Some(o2), None) => (o2, 2),
+            (None, Some(o3)) => (o3, 3),
+            (None, None) => break,
+        };
+
+        let tag_start = search_pos + tag_offset;
+        let tag_prefix_len = 3;
+        let after_tag_idx = tag_start + tag_prefix_len;
+        if after_tag_idx >= html.len() {
+            break;
+        }
+        let after_char = html.as_bytes()[after_tag_idx];
+        if after_char != b' ' && after_char != b'>' && after_char != b'\t' && after_char != b'\n' && after_char != b'\r' {
+            search_pos = tag_start + tag_prefix_len;
+            continue;
+        }
+
+        let Some(open_tag_end_offset) = html[tag_start..].find('>') else {
+            break;
+        };
+        let open_tag_end = tag_start + open_tag_end_offset;
+        let open_tag = &html[tag_start..open_tag_end];
+
+        let mut id = None;
+        let lower_open_tag = open_tag.to_lowercase();
+        if let Some(id_idx) = lower_open_tag.find("id=") {
+            let after_id = &open_tag[id_idx + 3..].trim_start();
+            if let Some(first_char) = after_id.chars().next() {
+                if first_char == '"' || first_char == '\'' {
+                    let rest = &after_id[first_char.len_utf8()..];
+                    if let Some(close_quote) = rest.find(first_char) {
+                        let parsed_id = rest[..close_quote].trim();
+                        if !parsed_id.is_empty() {
+                            id = Some(parsed_id.to_string());
+                        }
+                    }
+                } else {
+                    let end_token = after_id
+                        .find(|c: char| c.is_whitespace() || c == '>')
+                        .unwrap_or(after_id.len());
+                    let parsed_id = after_id[..end_token].trim();
+                    if !parsed_id.is_empty() {
+                        id = Some(parsed_id.to_string());
+                    }
+                }
+            }
+        }
+
+        let close_tag = if level == 2 { "</h2" } else { "</h3" };
+        let Some(close_tag_offset) = lower_html[open_tag_end..].find(close_tag) else {
+            search_pos = open_tag_end + 1;
+            continue;
+        };
+        let close_tag_start = open_tag_end + close_tag_offset;
+        let inner_html = &html[open_tag_end + 1..close_tag_start];
+        let text = strip_html_tags(inner_html);
+
+        if !text.is_empty() {
+            let item_index = items.len();
+            let effective_id = match id {
+                Some(existing) => existing,
+                None => {
+                    let mut base = slugify_heading(&text, item_index);
+                    if items.iter().any(|it: &TocItem| it.id == base) {
+                        base = format!("{base}-{}", item_index + 1);
+                    }
+                    base
+                }
+            };
+
+            items.push(TocItem {
+                id: effective_id,
+                text,
+                level,
+            });
+        }
+
+        search_pos = close_tag_start + 4;
+    }
+
+    items
+}
+

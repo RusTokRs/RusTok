@@ -611,3 +611,51 @@ pub fn tabs_content_classes(active: bool, custom: Option<&str>) -> String {
 
     merge_classes(&["mt-2", FOCUS_RING_CLASSES, display_cls, custom.unwrap_or("")])
 }
+
+/// Generates a CSS class string for the Table of Contents container navigation.
+#[must_use = "the resolved class list has no effect unless it is applied to an element"]
+pub fn toc_nav_classes(sticky: bool, custom: Option<&str>) -> String {
+    let sticky_cls = if sticky { "sticky top-24" } else { "" };
+    merge_classes(&[
+        sticky_cls,
+        "rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3",
+        custom.unwrap_or(""),
+    ])
+}
+
+/// Returns CSS classes for the Table of Contents header banner.
+#[must_use]
+pub fn toc_header_classes() -> &'static str {
+    "flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border pb-3"
+}
+
+/// Returns CSS classes for the Table of Contents scrollable list container.
+#[must_use]
+pub fn toc_list_classes() -> &'static str {
+    "space-y-1.5 text-sm max-h-[calc(100vh-12rem)] overflow-y-auto pr-1"
+}
+
+/// Generates a CSS class string for a Table of Contents link item.
+#[must_use = "the resolved class list has no effect unless it is applied to an element"]
+pub fn toc_item_classes(level: u8, active: bool) -> String {
+    let padding_cls = if level >= 4 {
+        "pl-6"
+    } else if level == 3 {
+        "pl-3"
+    } else {
+        ""
+    };
+
+    let state_cls = if active {
+        "bg-primary/10 font-semibold text-primary border-l-2 border-primary"
+    } else {
+        "text-muted-foreground hover:bg-muted hover:text-foreground"
+    };
+
+    merge_classes(&[
+        "block py-1 text-xs transition-colors rounded-md px-2",
+        padding_cls,
+        state_cls,
+    ])
+}
+

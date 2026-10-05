@@ -141,3 +141,17 @@ fn test_dioxus_input_instantiation() {
     });
     dom.rebuild_in_place();
 }
+
+#[test]
+fn test_dioxus_toc_instantiation() {
+    let mut dom = VirtualDom::new(|| {
+        rsx! {
+            crate::toc::TableOfContents {
+                html: Some("<h2>First Section</h2><p>Content</p><h3>Subsection</h3>".to_string()),
+                locale: Some("ru".to_string()),
+            }
+        }
+    });
+    dom.rebuild_in_place();
+}
+

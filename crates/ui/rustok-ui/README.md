@@ -8,7 +8,7 @@ Framework-agnostic design system primitives, variants, contracts, and styling re
 
 - Component variants, sizes, and states (`ButtonVariant`, `AlertVariant`, `BadgeVariant`, `CardVariant`, `AvatarSize`, `SkeletonVariant`, `Size`, `SwitchSize`, `Orientation`, `InputType`).
 - Deterministic CSS class generation for Tailwind CSS / shadcn styling.
-- Headless state models and contracts (`SelectOption`, `TabItem`, `DialogState`, `TabsState`, `extract_initials`)
+- Headless state models and contracts (`SelectOption`, `TabItem`, `DialogState`, `TabsState`, `extract_initials`, `TocItem`, `extract_headings_from_html`)
   plus shared progress-percentage normalization.
 - Design system tokens (focus rings, disabled states, elevation, border radiuses, transitions) in `tokens`.
 
