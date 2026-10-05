@@ -6,6 +6,8 @@ use leptos_ui::{
     CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
 };
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
+use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
@@ -389,17 +391,62 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
         "translation.targets.empty",
         "No owner target providers are registered.",
     );
-    let provider_label = t(
-        locale.as_deref(),
-        "translation.targets.provider",
-        "Provider",
-    );
-    let target_label = t(locale.as_deref(), "translation.targets.target", "Target");
-    let capabilities_label = t(
-        locale.as_deref(),
-        "translation.targets.capabilities",
-        "Capabilities",
-    );
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+
+    let columns = core::translation_target_grid_columns(locale.as_deref());
+    let all_targets = StoredValue::new(targets);
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let q = search.get();
+        let f = filters.get();
+        core::filter_translation_targets(
+            &all_targets.get_value(),
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(target, col_id): (TranslationTarget, String)| {
+        match col_id.as_str() {
+            "provider" => view! {
+                <span class="font-medium text-foreground">{target.owner_slug}</span>
+            }.into_any(),
+            "target" => view! {
+                <div>
+                    <div class="font-medium text-foreground">{target.display_name}</div>
+                    <div class="text-xs text-muted-foreground">{target.resource_kind}</div>
+                </div>
+            }.into_any(),
+            "capabilities" => view! {
+                <div class="flex flex-wrap gap-1">
+                    {target.capabilities.into_iter().map(|capability| view! {
+                        <Badge variant=BadgeVariant::Outline>{capability}</Badge>
+                    }).collect_view()}
+                </div>
+            }.into_any(),
+            _ => ().into_any(),
+        }
+    });
 
     view! {
         <Card>
@@ -412,47 +459,328 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                {if targets.is_empty() {
-                    view! {
-                        <p class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                            {empty}
-                        </p>
-                    }.into_any()
-                } else {
-                    view! {
-                        <div class="overflow-x-auto rounded-xl border border-border">
-                            <table class="w-full text-sm">
-                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                    <tr>
-                                        <th class="px-4 py-3">{provider_label}</th>
-                                        <th class="px-4 py-3">{target_label}</th>
-                                        <th class="px-4 py-3">{capabilities_label}</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-border">
-                                    {targets.into_iter().map(|target| view! {
-                                        <tr>
-                                            <td class="px-4 py-3 font-medium text-foreground">{target.owner_slug}</td>
-                                            <td class="px-4 py-3">
-                                                <div class="font-medium text-foreground">{target.display_name}</div>
-                                                <div class="text-xs text-muted-foreground">{target.resource_kind}</div>
-                                            </td>
-                                            <td class="px-4 py-3">
-                                                <div class="flex flex-wrap gap-1">
-                                                    {target.capabilities.into_iter().map(|capability| view! {
-                                                        <Badge variant=BadgeVariant::Outline>{capability}</Badge>
-                                                    }).collect_view()}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }).collect_view()}
-                                </tbody>
-                            </table>
+                <div class="space-y-3">
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <div class="flex-1">
+                            <input
+                                type="text"
+                                placeholder={if is_ru { "Поиск по целям..." } else { "Search targets..." }}
+                                class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                                prop:value=move || search.get()
+                                on:input=move |ev| search.set(event_target_value(&ev))
+                            />
                         </div>
-                    }.into_any()
-                }}
+                    </div>
+
+                    <DataGrid
+                        columns=columns
+                        data=Signal::derive(move || paged_rows.get())
+                        key_fn=|target: &TranslationTarget| format!("{}:{}", target.owner_slug, target.resource_kind)
+                        cell_renderer=cell_renderer
+                        empty_message=empty
+                        selection=selection
+                        pagination=pagination
+                        filters=filters
+                        on_filter_change=on_filters_change
+                        on_row_click=Callback::new(|_| ())
+                    />
+                </div>
             </CardContent>
         </Card>
+    }
+}
+
+#[component]
+fn ReviewerQueueGrid(
+    #[prop(into)] queue: Signal<Vec<ReviewerQueueItem>>,
+    locale: Option<String>,
+    empty_label: String,
+    unassigned_label: String,
+) -> impl IntoView {
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = core::reviewer_queue_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let q = search.get();
+        let f = filters.get();
+        core::filter_reviewer_queue(
+            &queue.get(),
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let unassigned = unassigned_label.clone();
+    let cell_renderer = Callback::new(move |(entry, col_id): (ReviewerQueueItem, String)| {
+        match col_id.as_str() {
+            "item" => view! {
+                <span class="font-mono text-xs text-foreground">{entry.item.id}</span>
+            }.into_any(),
+            "reviewer" => {
+                let assignee = core::format_actor_display(entry.item.assignee.as_ref(), &unassigned);
+                view! {
+                    <span class="text-foreground">{assignee}</span>
+                }.into_any()
+            }
+            "status" => view! {
+                <span class="text-foreground">{entry.item.status}</span>
+            }.into_any(),
+            "submitted_at" => view! {
+                <span class="whitespace-nowrap text-xs text-muted-foreground">{entry.submitted_at}</span>
+            }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по очереди..." } else { "Search queue..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|entry: &ReviewerQueueItem| entry.item.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_label
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+}
+
+#[component]
+fn ReviewerWorkloadGrid(
+    #[prop(into)] workloads: Signal<Vec<ReviewerWorkload>>,
+    locale: Option<String>,
+    empty_label: String,
+    unassigned_label: String,
+) -> impl IntoView {
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = core::reviewer_workload_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let q = search.get();
+        let f = filters.get();
+        core::filter_reviewer_workloads(
+            &workloads.get(),
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let unassigned = unassigned_label.clone();
+    let cell_renderer = Callback::new(move |(workload, col_id): (ReviewerWorkload, String)| {
+        match col_id.as_str() {
+            "reviewer" => {
+                let assignee = core::format_actor_display(workload.assignee.as_ref(), &unassigned);
+                view! {
+                    <span class="text-foreground">{assignee}</span>
+                }.into_any()
+            }
+            "open_items" => view! {
+                <span class="text-foreground">{workload.open_items}</span>
+            }.into_any(),
+            "in_review_items" => view! {
+                <span class="text-foreground">{workload.in_review_items}</span>
+            }.into_any(),
+            "approved_items" => view! {
+                <span class="text-foreground">{workload.approved_items}</span>
+            }.into_any(),
+            "rebase_required_items" => view! {
+                <span class="text-foreground">{workload.rebase_required_items}</span>
+            }.into_any(),
+            "blocked_items" => view! {
+                <span class="text-foreground">{workload.blocked_items}</span>
+            }.into_any(),
+            "source_characters" => view! {
+                <span class="text-foreground">{workload.source_characters}</span>
+            }.into_any(),
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по нагрузке..." } else { "Search workload..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|workload: &ReviewerWorkload| {
+                    format!("{}:{}", workload.job_id, core::format_actor_id(workload.assignee.as_ref()))
+                }
+                cell_renderer=cell_renderer
+                empty_message=empty_label
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
+    }
+}
+
+#[component]
+fn InterchangeArtifactsGrid(
+    #[prop(into)] artifacts: Signal<Vec<InterchangeArtifact>>,
+    locale: Option<String>,
+    empty_label: String,
+) -> impl IntoView {
+    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let columns = core::interchange_artifact_grid_columns(locale.as_deref());
+    let search = RwSignal::new(String::new());
+    let filters = RwSignal::new(ColumnFilters::default());
+    let selection = RwSignal::new(RowSelection::default());
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+
+    let filtered_rows = Memo::new(move |_| {
+        let q = search.get();
+        let f = filters.get();
+        core::filter_interchange_artifacts(
+            &artifacts.get(),
+            &f,
+            if q.trim().is_empty() { None } else { Some(&q) },
+        )
+    });
+
+    Effect::new(move |_| {
+        let total = filtered_rows.get().len() as u64;
+        pagination.update(|p| p.set_total(total));
+    });
+
+    let paged_rows = Memo::new(move |_| {
+        let list = filtered_rows.get();
+        let p = pagination.get();
+        let start = (p.page.saturating_sub(1)) * p.page_size;
+        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+    });
+
+    let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
+        filters.set(new_filters);
+    });
+
+    let cell_renderer = Callback::new(move |(artifact, col_id): (InterchangeArtifact, String)| {
+        match col_id.as_str() {
+            "artifact_id" => view! {
+                <span class="font-mono text-xs text-foreground">{artifact.id}</span>
+            }.into_any(),
+            "direction" => view! {
+                <span class="text-foreground">{artifact.direction}</span>
+            }.into_any(),
+            "status" => view! {
+                <span class="text-foreground">{artifact.status}</span>
+            }.into_any(),
+            "expires_at" => view! {
+                <span class="whitespace-nowrap text-xs text-muted-foreground">{artifact.expires_at}</span>
+            }.into_any(),
+            "accepted_items" => {
+                let accepted = artifact.report.as_ref().map(|report| report.accepted_items).unwrap_or_default();
+                view! {
+                    <span class="text-foreground">{accepted}</span>
+                }.into_any()
+            }
+            "conflict_items" => {
+                let conflicts = artifact.report.as_ref().map(|report| report.conflict_items).unwrap_or_default();
+                view! {
+                    <span class="text-foreground">{conflicts}</span>
+                }.into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+
+    view! {
+        <div class="space-y-3" data-testid="translation-interchange-artifacts">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1">
+                    <input
+                        type="text"
+                        placeholder={if is_ru { "Поиск по артефактам..." } else { "Search artifacts..." }}
+                        class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
+                        prop:value=move || search.get()
+                        on:input=move |ev| search.set(event_target_value(&ev))
+                    />
+                </div>
+            </div>
+
+            <DataGrid
+                columns=columns
+                data=Signal::derive(move || paged_rows.get())
+                key_fn=|artifact: &InterchangeArtifact| artifact.id.clone()
+                cell_renderer=cell_renderer
+                empty_message=empty_label
+                selection=selection
+                pagination=pagination
+                filters=filters
+                on_filter_change=on_filters_change
+                on_row_click=Callback::new(|_| ())
+            />
+        </div>
     }
 }
 
@@ -602,48 +930,10 @@ fn JobsTab(
         "translation.field.includeUnassigned",
         "Include unassigned",
     );
-    let reviewer_label = t(locale.as_deref(), "translation.field.reviewer", "Reviewer");
     let queue_item_label = t(
         locale.as_deref(),
         "translation.field.queueItems",
         "Queue items",
-    );
-    let item_label = t(locale.as_deref(), "translation.field.itemId", "Item ID");
-    let status_label = t(locale.as_deref(), "translation.field.status", "Status");
-    let submitted_at_label = t(
-        locale.as_deref(),
-        "translation.field.submittedAt",
-        "Submitted at",
-    );
-    let open_items_label = t(
-        locale.as_deref(),
-        "translation.field.openItems",
-        "Open items",
-    );
-    let in_review_items_label = t(
-        locale.as_deref(),
-        "translation.field.inReviewItems",
-        "In review",
-    );
-    let approved_items_label = t(
-        locale.as_deref(),
-        "translation.field.approvedItems",
-        "Approved",
-    );
-    let rebase_required_label = t(
-        locale.as_deref(),
-        "translation.field.rebaseRequiredItems",
-        "Rebase required",
-    );
-    let blocked_items_label = t(
-        locale.as_deref(),
-        "translation.field.blockedItems",
-        "Blocked items",
-    );
-    let source_characters_label = t(
-        locale.as_deref(),
-        "translation.field.sourceCharacters",
-        "Source characters",
     );
     let unassigned_label = t(
         locale.as_deref(),
@@ -655,7 +945,6 @@ fn JobsTab(
         "translation.jobs.reviewersEmpty",
         "No reviewer data has been loaded.",
     );
-    let workload_reviewer_label = reviewer_label.clone();
     let queue_unassigned_label = unassigned_label.clone();
     let workload_unassigned_label = unassigned_label.clone();
     let workload_empty_label = reviewer_empty_label.clone();
@@ -729,26 +1018,7 @@ fn JobsTab(
         "translation.field.includeExpired",
         "Include expired",
     );
-    let direction_label = t(
-        locale.as_deref(),
-        "translation.field.interchangeDirection",
-        "Direction",
-    );
-    let expires_at_label = t(
-        locale.as_deref(),
-        "translation.field.expiresAt",
-        "Expires at",
-    );
-    let accepted_items_label = t(
-        locale.as_deref(),
-        "translation.field.acceptedItems",
-        "Accepted items",
-    );
-    let conflict_items_label = t(
-        locale.as_deref(),
-        "translation.field.conflictItems",
-        "Conflict items",
-    );
+
     let create_interchange_artifact_label = t(
         locale.as_deref(),
         "translation.action.createInterchangeExportArtifact",
@@ -1037,7 +1307,10 @@ fn JobsTab(
         }
     };
     let interchange_artifact_id_input_label = interchange_artifact_id_label.clone();
-    let interchange_artifact_status_label = status_label.clone();
+    let queue_locale = locale.clone();
+    let workload_locale = locale.clone();
+    let interchange_locale = locale.clone();
+    let outcome_locale = locale;
 
     view! {
         <div class="grid gap-6 xl:grid-cols-2">
@@ -1129,109 +1402,21 @@ fn JobsTab(
                     <div class="grid gap-5 xl:grid-cols-2">
                         <div class="space-y-2">
                             <h3 class="text-sm font-medium text-foreground">{queue_item_label}</h3>
-                            {move || {
-                                let queue = reviewer_queue.get();
-                                if queue.is_empty() {
-                                    view! {
-                                        <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                                            {reviewer_empty_label.clone()}
-                                        </p>
-                                    }
-                                    .into_any()
-                                } else {
-                                    let unassigned_label = queue_unassigned_label.clone();
-                                    view! {
-                                        <div class="overflow-x-auto rounded-xl border border-border">
-                                            <table class="w-full text-sm">
-                                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                                    <tr>
-                                                        <th class="px-3 py-2">{item_label.clone()}</th>
-                                                        <th class="px-3 py-2">{reviewer_label.clone()}</th>
-                                                        <th class="px-3 py-2">{status_label.clone()}</th>
-                                                        <th class="px-3 py-2">{submitted_at_label.clone()}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody class="divide-y divide-border">
-                                                    {queue.into_iter().map(move |entry| {
-                                                        let assignee = entry.item.assignee.map(|actor| {
-                                                            let kind = match actor.kind {
-                                                                ActorKind::User => "user",
-                                                                ActorKind::Service => "service",
-                                                            };
-                                                            format!("{kind}:{}", actor.id)
-                                                        }).unwrap_or_else(|| unassigned_label.clone());
-                                                        view! {
-                                                            <tr>
-                                                                <td class="px-3 py-2 font-mono text-xs">{entry.item.id}</td>
-                                                                <td class="px-3 py-2">{assignee}</td>
-                                                                <td class="px-3 py-2">{entry.item.status}</td>
-                                                                <td class="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">{entry.submitted_at}</td>
-                                                            </tr>
-                                                        }
-                                                    }).collect_view()}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    }
-                                    .into_any()
-                                }
-                            }}
+                            <ReviewerQueueGrid
+                                queue=reviewer_queue
+                                locale=queue_locale
+                                empty_label=reviewer_empty_label.clone()
+                                unassigned_label=queue_unassigned_label.clone()
+                            />
                         </div>
                         <div class="space-y-2">
                             <h3 class="text-sm font-medium text-foreground">{reviewer_workload_label}</h3>
-                            {move || {
-                                let workloads = reviewer_workloads.get();
-                                if workloads.is_empty() {
-                                    view! {
-                                        <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                                            {workload_empty_label.clone()}
-                                        </p>
-                                    }
-                                    .into_any()
-                                } else {
-                                    let unassigned_label = workload_unassigned_label.clone();
-                                    view! {
-                                        <div class="overflow-x-auto rounded-xl border border-border">
-                                            <table class="w-full text-sm">
-                                                <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                                    <tr>
-                                                        <th class="px-3 py-2">{workload_reviewer_label.clone()}</th>
-                                                        <th class="px-3 py-2">{open_items_label.clone()}</th>
-                                                        <th class="px-3 py-2">{in_review_items_label.clone()}</th>
-                                                        <th class="px-3 py-2">{approved_items_label.clone()}</th>
-                                                        <th class="px-3 py-2">{rebase_required_label.clone()}</th>
-                                                        <th class="px-3 py-2">{blocked_items_label.clone()}</th>
-                                                        <th class="px-3 py-2">{source_characters_label.clone()}</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody class="divide-y divide-border">
-                                                    {workloads.into_iter().map(move |workload| {
-                                                        let assignee = workload.assignee.map(|actor| {
-                                                            let kind = match actor.kind {
-                                                                ActorKind::User => "user",
-                                                                ActorKind::Service => "service",
-                                                            };
-                                                            format!("{kind}:{}", actor.id)
-                                                        }).unwrap_or_else(|| unassigned_label.clone());
-                                                        view! {
-                                                            <tr>
-                                                                <td class="px-3 py-2">{assignee}</td>
-                                                                <td class="px-3 py-2">{workload.open_items}</td>
-                                                                <td class="px-3 py-2">{workload.in_review_items}</td>
-                                                                <td class="px-3 py-2">{workload.approved_items}</td>
-                                                                <td class="px-3 py-2">{workload.rebase_required_items}</td>
-                                                                <td class="px-3 py-2">{workload.blocked_items}</td>
-                                                                <td class="px-3 py-2">{workload.source_characters}</td>
-                                                            </tr>
-                                                        }
-                                                    }).collect_view()}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    }
-                                    .into_any()
-                                }
-                            }}
+                            <ReviewerWorkloadGrid
+                                workloads=reviewer_workloads
+                                locale=workload_locale
+                                empty_label=workload_empty_label.clone()
+                                unassigned_label=workload_unassigned_label.clone()
+                            />
                         </div>
                     </div>
                 </CardContent>
@@ -1297,62 +1482,16 @@ fn JobsTab(
                         <Textarea value=interchange_artifact_document set_value=set_interchange_artifact_document id="interchange_artifact_document" name="interchange_artifact_document" rows=14 />
                         <Button on_click=Box::new(store_interchange_artifact_action)>{store_interchange_artifact_label}</Button>
                     </div>
-                    {move || {
-                        let artifacts = interchange_artifacts.get();
-                        if artifacts.is_empty() {
-                            view! {
-                                <p class="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                                    {interchange_artifacts_empty_label.clone()}
-                                </p>
-                            }
-                            .into_any()
-                        } else {
-                            let artifact_id_label = interchange_artifact_id_label.clone();
-                            let direction_label = direction_label.clone();
-                            let status_label = interchange_artifact_status_label.clone();
-                            let expires_at_label = expires_at_label.clone();
-                            let accepted_items_label = accepted_items_label.clone();
-                            let conflict_items_label = conflict_items_label.clone();
-                            view! {
-                                <div class="overflow-x-auto rounded-xl border border-border">
-                                    <table class="w-full text-sm" data-testid="translation-interchange-artifacts">
-                                        <thead class="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                                            <tr>
-                                                <th class="px-3 py-2">{artifact_id_label}</th>
-                                                <th class="px-3 py-2">{direction_label}</th>
-                                                <th class="px-3 py-2">{status_label}</th>
-                                                <th class="px-3 py-2">{expires_at_label}</th>
-                                                <th class="px-3 py-2">{accepted_items_label}</th>
-                                                <th class="px-3 py-2">{conflict_items_label}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-border">
-                                            {artifacts.into_iter().map(|artifact| {
-                                                let accepted = artifact.report.as_ref().map(|report| report.accepted_items).unwrap_or_default();
-                                                let conflicts = artifact.report.as_ref().map(|report| report.conflict_items).unwrap_or_default();
-                                                view! {
-                                                    <tr>
-                                                        <td class="px-3 py-2 font-mono text-xs">{artifact.id}</td>
-                                                        <td class="px-3 py-2">{artifact.direction}</td>
-                                                        <td class="px-3 py-2">{artifact.status}</td>
-                                                        <td class="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">{artifact.expires_at}</td>
-                                                        <td class="px-3 py-2">{accepted}</td>
-                                                        <td class="px-3 py-2">{conflicts}</td>
-                                                    </tr>
-                                                }
-                                            }).collect_view()}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            }
-                            .into_any()
-                        }
-                    }}
+                    <InterchangeArtifactsGrid
+                        artifacts=interchange_artifacts
+                        locale=interchange_locale
+                        empty_label=interchange_artifacts_empty_label.clone()
+                    />
                 </CardContent>
             </Card>
 
             <div class="xl:col-span-2">
-                <OutcomePanel outcome locale=locale.clone() />
+                <OutcomePanel outcome locale=outcome_locale />
             </div>
         </div>
     }

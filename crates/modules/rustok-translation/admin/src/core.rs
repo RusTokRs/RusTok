@@ -1,12 +1,14 @@
 use std::fmt;
 
+use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
 use rustok_ui_core::{UiRouteQueryIntent, normalize_ui_text, parse_ui_csv};
 use uuid::Uuid;
 
 use crate::model::{
-    Actor, ActorKind, GlossaryBinding, GlossaryConcept, GlossaryScope, InterchangeDocument,
-    MemoryRetentionPolicy, ProposalOrigin, ProposalValueInput, TranslationAdminOperation,
-    TranslationAdminResponse, TranslationAdminTransportContext, TranslationResourceIdentity,
+    Actor, ActorKind, GlossaryBinding, GlossaryConcept, GlossaryScope, InterchangeArtifact,
+    InterchangeDocument, MemoryRetentionPolicy, ProposalOrigin, ProposalValueInput,
+    ReviewerQueueItem, ReviewerWorkload, TranslationAdminOperation, TranslationAdminResponse,
+    TranslationAdminTransportContext, TranslationResourceIdentity, TranslationTarget,
 };
 
 pub const TAB_QUERY_KEY: &str = "tab";
@@ -1841,6 +1843,500 @@ fn parse_nonnegative_u16(field: &'static str, value: &str) -> Result<u16, Comman
         })
 }
 
+pub fn format_actor_id(actor: Option<&Actor>) -> String {
+    match actor {
+        Some(actor) => {
+            let kind = match actor.kind {
+                ActorKind::User => "user",
+                ActorKind::Service => "service",
+            };
+            format!("{kind}:{}", actor.id)
+        }
+        None => String::new(),
+    }
+}
+
+pub fn format_actor_display(actor: Option<&Actor>, unassigned_label: &str) -> String {
+    match actor {
+        Some(actor) => {
+            let kind = match actor.kind {
+                ActorKind::User => "user",
+                ActorKind::Service => "service",
+            };
+            format!("{kind}:{}", actor.id)
+        }
+        None => unassigned_label.to_string(),
+    }
+}
+
+pub fn translation_target_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("provider", if is_ru { "Провайдер" } else { "Provider" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр провайдера..."
+                    } else {
+                        "Filter provider..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("target", if is_ru { "Цель" } else { "Target" })
+            .min_width(220)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр цели..."
+                    } else {
+                        "Filter target..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("capabilities", if is_ru { "Возможности" } else { "Capabilities" })
+            .min_width(240)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр возможностей..."
+                    } else {
+                        "Filter capabilities..."
+                    }
+                    .into(),
+                ),
+            }),
+    ]
+}
+
+pub fn matches_translation_target_filter(
+    target: &TranslationTarget,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("provider", FilterValue::Text(q)) => {
+                if !target
+                    .owner_slug
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("target", FilterValue::Text(q)) => {
+                let q_lower = q.to_ascii_lowercase();
+                if !target.display_name.to_ascii_lowercase().contains(&q_lower)
+                    && !target.resource_kind.to_ascii_lowercase().contains(&q_lower)
+                {
+                    return false;
+                }
+            }
+            ("capabilities", FilterValue::Text(q)) => {
+                let q_lower = q.to_ascii_lowercase();
+                if !target
+                    .capabilities
+                    .iter()
+                    .any(|c| c.to_ascii_lowercase().contains(&q_lower))
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_translation_targets(
+    targets: &[TranslationTarget],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<TranslationTarget> {
+    targets
+        .iter()
+        .filter(|target| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !target.owner_slug.to_ascii_lowercase().contains(&term)
+                    && !target.display_name.to_ascii_lowercase().contains(&term)
+                    && !target.resource_kind.to_ascii_lowercase().contains(&term)
+                    && !target
+                        .capabilities
+                        .iter()
+                        .any(|c| c.to_ascii_lowercase().contains(&term))
+                {
+                    return false;
+                }
+            }
+            matches_translation_target_filter(target, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn reviewer_queue_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("item", if is_ru { "Элемент" } else { "Item" })
+            .min_width(200)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр элемента..."
+                    } else {
+                        "Filter item..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("reviewer", if is_ru { "Ревьюер" } else { "Reviewer" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр ревьюера..."
+                    } else {
+                        "Filter reviewer..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
+            .min_width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр статуса..."
+                    } else {
+                        "Filter status..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new(
+            "submitted_at",
+            if is_ru {
+                "Отправлено"
+            } else {
+                "Submitted at"
+            },
+        )
+        .min_width(180)
+        .align(ColumnAlign::Left),
+    ]
+}
+
+pub fn matches_reviewer_queue_filter(
+    entry: &ReviewerQueueItem,
+    filters: &ColumnFilters,
+) -> bool {
+    let assignee_str = format_actor_id(entry.item.assignee.as_ref());
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("item", FilterValue::Text(q)) => {
+                if !entry
+                    .item
+                    .id
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("reviewer", FilterValue::Text(q)) => {
+                let q_lower = q.to_ascii_lowercase();
+                if !assignee_str.to_ascii_lowercase().contains(&q_lower)
+                    && !(entry.item.assignee.is_none() && "unassigned".contains(&q_lower))
+                {
+                    return false;
+                }
+            }
+            ("status", FilterValue::Text(q)) => {
+                if !entry
+                    .item
+                    .status
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_reviewer_queue(
+    queue: &[ReviewerQueueItem],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<ReviewerQueueItem> {
+    queue
+        .iter()
+        .filter(|entry| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                let assignee_str = format_actor_id(entry.item.assignee.as_ref());
+                if !term.is_empty()
+                    && !entry.item.id.to_ascii_lowercase().contains(&term)
+                    && !assignee_str.to_ascii_lowercase().contains(&term)
+                    && !entry.item.status.to_ascii_lowercase().contains(&term)
+                    && !entry.submitted_at.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_reviewer_queue_filter(entry, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn reviewer_workload_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("reviewer", if is_ru { "Ревьюер" } else { "Reviewer" })
+            .min_width(180)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр ревьюера..."
+                    } else {
+                        "Filter reviewer..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("open_items", if is_ru { "Открыто" } else { "Open" })
+            .min_width(90)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "in_review_items",
+            if is_ru { "На ревью" } else { "In review" },
+        )
+        .min_width(100)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new("approved_items", if is_ru { "Одобрено" } else { "Approved" })
+            .min_width(100)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "rebase_required_items",
+            if is_ru {
+                "Требует ребейз"
+            } else {
+                "Rebase req."
+            },
+        )
+        .min_width(120)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new("blocked_items", if is_ru { "Заблокировано" } else { "Blocked" })
+            .min_width(110)
+            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "source_characters",
+            if is_ru {
+                "Символов источника"
+            } else {
+                "Source chars"
+            },
+        )
+        .min_width(130)
+        .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_reviewer_workload_filter(
+    workload: &ReviewerWorkload,
+    filters: &ColumnFilters,
+) -> bool {
+    let assignee_str = format_actor_id(workload.assignee.as_ref());
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("reviewer", FilterValue::Text(q)) => {
+                let q_lower = q.to_ascii_lowercase();
+                if !assignee_str.to_ascii_lowercase().contains(&q_lower)
+                    && !(workload.assignee.is_none() && "unassigned".contains(&q_lower))
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_reviewer_workloads(
+    workloads: &[ReviewerWorkload],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<ReviewerWorkload> {
+    workloads
+        .iter()
+        .filter(|workload| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                let assignee_str = format_actor_id(workload.assignee.as_ref());
+                if !term.is_empty()
+                    && !assignee_str.to_ascii_lowercase().contains(&term)
+                    && !workload.open_items.to_string().contains(&term)
+                    && !workload.in_review_items.to_string().contains(&term)
+                    && !workload.approved_items.to_string().contains(&term)
+                    && !workload.rebase_required_items.to_string().contains(&term)
+                    && !workload.blocked_items.to_string().contains(&term)
+                    && !workload.source_characters.to_string().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_reviewer_workload_filter(workload, filters)
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn interchange_artifact_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new(
+            "artifact_id",
+            if is_ru {
+                "ID артефакта"
+            } else {
+                "Artifact ID"
+            },
+        )
+        .min_width(180)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр артефакта..."
+                } else {
+                    "Filter artifact..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new("direction", if is_ru { "Направление" } else { "Direction" })
+            .min_width(120)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр направления..."
+                    } else {
+                        "Filter direction..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
+            .min_width(120)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр статуса..."
+                    } else {
+                        "Filter status..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("expires_at", if is_ru { "Истекает" } else { "Expires at" })
+            .min_width(180)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "accepted_items",
+            if is_ru { "Принято" } else { "Accepted" },
+        )
+        .min_width(100)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "conflict_items",
+            if is_ru { "Конфликты" } else { "Conflicts" },
+        )
+        .min_width(100)
+        .align(ColumnAlign::Right),
+    ]
+}
+
+pub fn matches_interchange_artifact_filter(
+    artifact: &InterchangeArtifact,
+    filters: &ColumnFilters,
+) -> bool {
+    for (col_id, filter_val) in filters.iter() {
+        match (col_id.as_str(), filter_val) {
+            ("artifact_id", FilterValue::Text(q)) => {
+                if !artifact
+                    .id
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("direction", FilterValue::Text(q)) => {
+                if !artifact
+                    .direction
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("status", FilterValue::Text(q)) => {
+                if !artifact
+                    .status
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
+pub fn filter_interchange_artifacts(
+    artifacts: &[InterchangeArtifact],
+    filters: &ColumnFilters,
+    search: Option<&str>,
+) -> Vec<InterchangeArtifact> {
+    artifacts
+        .iter()
+        .filter(|artifact| {
+            if let Some(q) = search {
+                let term = q.trim().to_ascii_lowercase();
+                if !term.is_empty()
+                    && !artifact.id.to_ascii_lowercase().contains(&term)
+                    && !artifact.direction.to_ascii_lowercase().contains(&term)
+                    && !artifact.status.to_ascii_lowercase().contains(&term)
+                    && !artifact.expires_at.to_ascii_lowercase().contains(&term)
+                {
+                    return false;
+                }
+            }
+            matches_interchange_artifact_filter(artifact, filters)
+        })
+        .cloned()
+        .collect()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2511,6 +3007,119 @@ mod tests {
             .unwrap_err()
             .field,
             "retain_until"
+        );
+    }
+
+    #[test]
+    fn translation_grid_columns_and_filters_are_correct() {
+        use crate::model::{JobItem, TranslationResourceIdentity};
+
+        let target = TranslationTarget {
+            owner_slug: "catalog".to_string(),
+            resource_kind: "product".to_string(),
+            display_name: "Catalog Products".to_string(),
+            capabilities: vec!["batch_export".to_string(), "exact_lookup".to_string()],
+            read_permission_floor: vec![],
+            apply_permission_floor: vec![],
+        };
+        let cols = translation_target_grid_columns(Some("en"));
+        assert_eq!(cols.len(), 3);
+        let ru_cols = translation_target_grid_columns(Some("ru"));
+        assert_eq!(ru_cols[0].title, "Провайдер");
+
+        let mut filters = ColumnFilters::default();
+        filters.set("provider", FilterValue::Text("cat".to_string()));
+        assert!(matches_translation_target_filter(&target, &filters));
+        filters.set("provider", FilterValue::Text("order".to_string()));
+        assert!(!matches_translation_target_filter(&target, &filters));
+
+        let targets = vec![target.clone()];
+        assert_eq!(
+            filter_translation_targets(&targets, &ColumnFilters::default(), Some("products")).len(),
+            1
+        );
+        assert_eq!(
+            filter_translation_targets(&targets, &ColumnFilters::default(), Some("unknown")).len(),
+            0
+        );
+
+        let queue_item = ReviewerQueueItem {
+            item: JobItem {
+                id: "item-1".to_string(),
+                job_id: "job-1".to_string(),
+                identity: TranslationResourceIdentity {
+                    owner_slug: "catalog".to_string(),
+                    resource_kind: "product".to_string(),
+                    resource_id: "prod-1".to_string(),
+                    subresource_id: None,
+                },
+                status: "in_review".to_string(),
+                assignee: Some(Actor {
+                    kind: ActorKind::User,
+                    id: "reviewer-42".to_string(),
+                }),
+                source_digest: "digest".to_string(),
+                revision: 1,
+            },
+            proposal_id: "prop-1".to_string(),
+            proposal_revision: 1,
+            submitted_at: "2026-10-05T01:00:00Z".to_string(),
+        };
+        let queue_cols = reviewer_queue_grid_columns(Some("en"));
+        assert_eq!(queue_cols.len(), 4);
+        let queue = vec![queue_item.clone()];
+        assert_eq!(
+            filter_reviewer_queue(&queue, &ColumnFilters::default(), Some("reviewer-42")).len(),
+            1
+        );
+        assert_eq!(
+            filter_reviewer_queue(&queue, &ColumnFilters::default(), Some("nobody")).len(),
+            0
+        );
+
+        let workload = ReviewerWorkload {
+            job_id: "job-1".to_string(),
+            assignee: Some(Actor {
+                kind: ActorKind::User,
+                id: "reviewer-42".to_string(),
+            }),
+            open_items: 2,
+            missing_items: 0,
+            draft_items: 1,
+            in_review_items: 5,
+            approved_items: 10,
+            applying_items: 0,
+            rebase_required_items: 0,
+            blocked_items: 0,
+            source_characters: 1500,
+        };
+        let workload_cols = reviewer_workload_grid_columns(Some("en"));
+        assert_eq!(workload_cols.len(), 7);
+        let workloads = vec![workload];
+        assert_eq!(
+            filter_reviewer_workloads(&workloads, &ColumnFilters::default(), Some("reviewer-42")).len(),
+            1
+        );
+
+        let artifact = InterchangeArtifact {
+            id: "art-1".to_string(),
+            job_id: "job-1".to_string(),
+            direction: "export".to_string(),
+            status: "ready".to_string(),
+            content_length: 1024,
+            checksum_sha256: "hash".to_string(),
+            expires_at: "2026-10-06T00:00:00Z".to_string(),
+            processed_at: None,
+            report: None,
+            created_at: "2026-10-05T00:00:00Z".to_string(),
+            updated_at: "2026-10-05T00:00:00Z".to_string(),
+        };
+        let art_cols = interchange_artifact_grid_columns(Some("en"));
+        assert_eq!(art_cols.len(), 6);
+        let artifacts = vec![artifact];
+        assert_eq!(
+            filter_interchange_artifacts(&artifacts, &ColumnFilters::default(), Some("export")).len(),
+            1
         );
     }
 }

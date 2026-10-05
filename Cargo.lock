@@ -18431,6 +18431,8 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
  "rustok-outbox",
  "rustok-storage",
  "rustok-tenant",
