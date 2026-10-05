@@ -85,6 +85,16 @@
       "owner_service_replay_guard_required"
     ]
   },
+  "provider_call_deadline_contract": {
+    "status": "source_locked_runtime_pending",
+    "owner_boundary": "Fulfillment admin provider commands",
+    "runtime_assertions": [
+      "provider future is bounded by PortContext deadline",
+      "deadline expiry quarantines the operation",
+      "journal checkpoint failure fails closed"
+    ],
+    "execution_status": "runtime_execution_pending"
+  },
   "live_execution_plan": {
     "status": "planned_contract_locked",
     "promotion_gate": "requires_concrete_external_adapter_execution",
