@@ -4518,6 +4518,17 @@ _No completed rounds yet. Round 1 is currently in progress._
 
 
 
+
+### FS-22.06.115 Assessment — lifecycle read contract documentation sync
+
+- Base: 5ae84344b91cbd5725af7d68f4dac4752137a19c; post-merge main is 9fb7e6a5bac72204393a678df1b96868fb624f28.
+- Scope: the FulfillmentReadPort contract document only; no runtime behavior changes.
+- Finding FULFILLMENT-22.06.115-01: `docs/fulfillment-lifecycle-read-port.md` lagged behind the already-merged source contract by describing the deadline only as a context requirement and omitting the new multi-row batch materialization invariant.
+- Remediation: documented wall-clock deadline enforcement and typed `fulfillment.deadline_exceeded`, plus batch item materialization/order-preservation semantics for multi-row reads. Explicitly retained the distinction that runtime deadline/failure/performance evidence is still unproven until maintainer-owned execution.
+- Re-audit: documentation now matches the source evidence/plan for deadline and batch behavior; no source files changed in this iteration.
+- Integration: squash-merged as `9fb7e6a5bac72204393a678df1b96868fb624f28` via PR #4508.
+- Status: documentation contract reconciled; no Cargo/test/runtime execution claimed.
+- Next primary iteration: continue Fulfillment owner read-path audit with fresh filtering/index/consistency review, then move to the remaining maintainer-owned runtime evidence gates.
 ### FS-22.06.114 Assessment — FulfillmentService batch projection materialization
 
 - Base: b093d073de50528a576aca07474a595a668bc8c8; fresh main was refreshed before implementation and post-merge main is 5d0f4dc18698a492dc9c13b4bd70484671b7407c.
