@@ -4855,3 +4855,19 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Status:** `FS-22.06.135` complete as a clean source assessment; runtime evidence remains unpromoted.
 - **Next primary iteration:** continue the Fulfillment Translation boundary with a fresh pass over journal lifecycle/event semantics and whether every durable translation change is externally observable exactly once.
 
+
+### FS-22.06.137 Assessment — Shipping Option admin create durable idempotency
+
+- **Base:** `5e6950a3e3ca3d6b24a7845670db789f74426a12`; fresh audit of the queued `SHIPPINGOPTIONADMIN-22.06.32-01` finding from the Fulfillment Admin command boundary.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/shipping_option_admin_command.rs`, the owner shipping-option create service path, shared owner-operation receipts, and mounted Commerce shipping-option command documentation/guardrails.
+- **Confirmed finding SHIPPINGOPTIONADMIN-22.06.32-01:** caller-owned `Idempotency-Key` was required by `PortCallPolicy::write()` and propagated from mounted Commerce, but the Fulfillment create command discarded it and called the non-idempotent service create path. A retried successful create could therefore allocate a second Shipping Option.
+- **Production remediation:** the admin create command now admits the caller key through the shared tenant-scoped `rustok_outbox::idempotency` receipt ledger. Replays return the stored `ShippingOptionResponse`; changed request payloads under the same key conflict through the durable request hash.
+- **Atomicity remediation:** `FulfillmentService::create_shipping_option_in_txn` now performs validation, Shipping Option creation, translation rows, translation revision/journal evidence, and response materialization inside a caller-owned transaction. The admin command completes the owner receipt in that same transaction before commit. A commit failure rolls back both the resource and receipt completion; a pre-commit error is persisted as a failed owner receipt after the transaction is dropped.
+- **Operation identity:** the durable receipt's operation UUID is passed to the translation-change journal, tying the create's resource evidence to the same owner operation without introducing a second idempotency source.
+- **Regression coverage:** added `shipping_option_admin_command_idempotency_test.rs`, covering successful create, same-key replay without duplicate resources, changed-payload key reuse conflict, and the completed durable receipt row.
+- **Verifier remediation:** `verify-fulfillment-shipping-option-admin-command-owner-port.mjs` now requires durable admit/replay/complete wiring and forbids the former direct create call; the capability documentation and Commerce cutover record were updated to describe the real replay contract.
+- **Fresh second pass:** re-read the owner command, transactional service path, shared idempotency implementation/migration, mounted Commerce cutover documentation, verifier, regression test, and Fulfillment plan. No payload-derived or metadata-based compatibility workaround was introduced.
+- **Verification:** source review and post-write repository reread only. Scoped Cargo/test/gatekeeper execution was not possible because the repository is not mounted in the execution environment; GitHub commit/status data was also empty for the current direct-main commit, so no CI pass is claimed.
+- **Status:** `FS-22.06.137` implementation complete on current `main`; the queued FS-22.06.32 production defect is now remediated at source level, while scoped runtime/CI evidence remains required.
+- **Next primary iteration:** continue the Fulfillment Admin command owner with a fresh pass over update/deactivate/reactivate retry semantics and whether their state-setting operations are fully replay-safe under caller-owned idempotency.
+
