@@ -189,9 +189,12 @@ pub async fn bootstrap_app_runtime(
 
     initialize_module_work_runtime(&runtime_ctx, &registry, runtime_extensions.as_ref()).await?;
 
-    let graphql_schema = init_graphql_schema(&runtime_ctx)?;
+    // GraphQL module policies consume shared runtime capabilities during schema construction.
+    // Initialize rate-limit runtimes first so Blog/Search GraphQL policies receive their
+    // configured limiter instead of permanently composing a fail-open None handle.
     let rate_limits =
         init_rate_limit_layers(&runtime_ctx, &settings, &cache_service, Some(auth_config))?;
+    let graphql_schema = init_graphql_schema(&runtime_ctx)?
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,
