@@ -164,17 +164,39 @@ impl FulfillmentCreateLabelRecoveryService {
             Ok(fulfillment) => fulfillment,
             Err(error) => {
                 if operation.status == PROVIDER_OPERATION_SUCCEEDED {
-                    let _ = journal
+                    if let Err(checkpoint_error) = journal
                         .mark_reconciliation_required(
                             operation.tenant_id,
                             operation.id,
-                            format!(
-                                "create_label provider succeeded, but local fulfillment projection failed: {error}"
-                            ),
+                            "create_label provider succeeded, but local fulfillment projection failed",
                         )
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            boundary = "commerce_fulfillment_create_label_recovery",
+                            operation_id_non_nil = !operation.id.is_nil(),
+                            fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                            checkpoint_failed = true,
+                            checkpoint_error = %checkpoint_error,
+                            "create-label recovery reconciliation checkpoint failed after local persistence error"
+                        );
+                    }
                 }
-                return Err(error);
+                return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
+                    fulfillment_id: operation.fulfillment_id,
+                    operation: "create_label",
+                    source: match error {
+                        FulfillmentOrchestrationError::Validation(message) => {
+                            rustok_fulfillment::error::FulfillmentError::Validation(message)
+                        }
+                        FulfillmentOrchestrationError::Database(source) => {
+                            rustok_fulfillment::error::FulfillmentError::Database(source)
+                        }
+                        other => {
+                            return Err(other);
+                        }
+                    },
+                });
             }
         };
 
@@ -183,20 +205,29 @@ impl FulfillmentCreateLabelRecoveryService {
             .await
         {
             if operation.status == PROVIDER_OPERATION_SUCCEEDED {
-                let _ = journal
+                if let Err(checkpoint_error) = journal
                     .mark_reconciliation_required(
                         operation.tenant_id,
                         operation.id,
-                        format!(
-                            "create_label provider result was persisted locally, but journal commit failed: {source}"
-                        ),
+                        "create_label provider result was persisted locally, but journal commit failed",
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        boundary = "commerce_fulfillment_create_label_recovery",
+                        operation_id_non_nil = !operation.id.is_nil(),
+                        fulfillment_id_non_nil = !operation.fulfillment_id.is_nil(),
+                        checkpoint_failed = true,
+                        checkpoint_error = %checkpoint_error,
+                        "create-label recovery reconciliation checkpoint failed after journal commit error"
+                    );
+                }
             }
-            return Err(FulfillmentOrchestrationError::Validation(format!(
-                "create_label operation {} could not be committed after local persistence: {source}",
-                operation.id
-            )));
+            return Err(FulfillmentOrchestrationError::PersistenceAfterProvider {
+                fulfillment_id: operation.fulfillment_id,
+                operation: "create_label",
+                source: rustok_fulfillment::error::FulfillmentError::Database(source),
+            });
         }
 
         Ok(fulfillment)
