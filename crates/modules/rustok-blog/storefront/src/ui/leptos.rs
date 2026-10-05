@@ -126,12 +126,31 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         "Related articles",
     );
 
+    let search_query = use_route_query_value("q");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
+    let active_search = search_query.get();
     let active_tag = tag_query.get();
     let active_category = category_query.get();
 
-    let has_active_filter = active_tag.is_some() || active_category.is_some();
+    let (other_posts, other_total) = if let Some(q) = active_search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let q_lower = q.to_lowercase();
+        let items: Vec<_> = other_posts
+            .into_iter()
+            .filter(|p| {
+                p.title.to_lowercase().contains(&q_lower)
+                    || p.excerpt.as_deref().map(|e| e.to_lowercase().contains(&q_lower)).unwrap_or(false)
+                    || p.tags.iter().any(|t| t.to_lowercase().contains(&q_lower))
+                    || p.category_name.as_deref().map(|c| c.to_lowercase().contains(&q_lower)).unwrap_or(false)
+            })
+            .collect();
+        let total = items.len() as u64;
+        (items, total)
+    } else {
+        (other_posts, other_total)
+    };
+
+    let has_active_filter = active_tag.is_some() || active_category.is_some() || active_search.is_some();
     let filter_bar = if has_active_filter {
         view! {
             <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/40 p-3 text-xs">
@@ -150,7 +169,13 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                         <a href="?tag=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
-                <a href="?category=&tag=" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
+                {active_search.as_ref().map(|q| view! {
+                    <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                        {format!("Search: \"{q}\"")}
+                        <a href="?q=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                    </span>
+                })}
+                <a href="?category=&tag=&q=" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
                     {t(locale.as_deref(), "blog.filter.clear", "Clear all")}
                 </a>
             </div>
@@ -162,6 +187,15 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
 
     view! {
         <div class="space-y-6">
+            <form method="GET" class="relative max-w-md w-full">
+                <input
+                    type="search"
+                    name="q"
+                    value=active_search.unwrap_or_default()
+                    placeholder=t(locale.as_deref(), "blog.search.placeholder", "Search articles and tags...")
+                    class="w-full rounded-full border border-border bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
+                />
+            </form>
             {filter_bar}
             <SelectedPostCard post=data.selected_post comments_page />
             {if is_post_selected {

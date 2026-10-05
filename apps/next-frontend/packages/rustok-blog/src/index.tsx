@@ -18,6 +18,7 @@ export { AuthorMiniBadge, AuthorBioCard } from "./components/author-card";
 export { CommentsPagination } from "./components/comments-pagination";
 export { BlogPagination } from "./components/blog-pagination";
 export { BlogShareButtons } from "./components/blog-share-buttons";
+export { ReadingProgressBar } from "./components/reading-progress-bar";
 export { calculateReadingTime, formatReadingTime } from "./utils/reading-time";
 export { buildArticleJsonLd } from "./utils/seo-json-ld";
 

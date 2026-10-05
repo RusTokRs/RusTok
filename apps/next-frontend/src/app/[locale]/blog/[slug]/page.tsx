@@ -30,6 +30,7 @@ import {
   AuthorBioCard,
   BlogTableOfContents,
   BlogShareButtons,
+  ReadingProgressBar,
   CommentsPagination,
   PostCard,
   calculateReadingTime,
@@ -176,6 +177,8 @@ export default async function BlogPostPage({
 
   return (
     <main className="min-h-screen bg-background">
+      <ReadingProgressBar locale={locale} />
+
       {/* Schema.org JSON-LD structured data for article */}
       <script
         type="application/ld+json"

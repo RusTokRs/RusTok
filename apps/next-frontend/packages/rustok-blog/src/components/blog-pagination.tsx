@@ -19,6 +19,7 @@ export function BlogPagination({
   baseUrl,
   selectedTag,
   selectedCategory,
+  searchQuery,
   locale = 'en',
 }: {
   currentPage: number;
@@ -27,6 +28,7 @@ export function BlogPagination({
   baseUrl: string;
   selectedTag?: string;
   selectedCategory?: string;
+  searchQuery?: string;
   locale?: string;
 }): React.JSX.Element | null {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -45,6 +47,9 @@ export function BlogPagination({
     }
     if (selectedCategory) {
       params.set('category', selectedCategory);
+    }
+    if (searchQuery) {
+      params.set('q', searchQuery);
     }
     if (page > 1) {
       params.set('page', page.toString());
