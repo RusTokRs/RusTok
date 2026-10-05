@@ -553,6 +553,21 @@ const verifyProviderSpiEvidence = ({
     );
   }
 
+  if (module === 'fulfillment') {
+    requireMarkers(
+      providerSource,
+      [
+        'pub(crate) fn validate_provider_metadata_safety(',
+        'validate_provider_metadata_safety(&result.metadata)',
+        '"authorization"',
+        '"accesstoken"',
+        '"rawpayload"',
+        '"responsebody"',
+      ],
+      (marker) => `fulfillment provider SPI lacks durable metadata privacy guard ${marker}`,
+    );
+  }
+
   for (const marker of [
     'descriptor.provider_id',
     'descriptor.provider_id != registration.descriptor.provider_id',
