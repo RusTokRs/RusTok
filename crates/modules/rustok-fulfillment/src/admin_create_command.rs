@@ -46,6 +46,116 @@ pub struct InProcessFulfillmentAdminCreateCommandPort {
 
 
 impl InProcessFulfillmentAdminCreateCommandPort {
+    async fn create_local_fulfillment_and_begin_operation(
+        &self,
+        tenant_id: Uuid,
+        provider_id: &str,
+        idempotency_key: &str,
+        request_payload: Value,
+        input: CreateFulfillmentInput,
+        context: &PortContext,
+        owner_operation: &'static str,
+    ) -> Result<(provider_operation::Model, FulfillmentResponse), PortError> {
+        let fulfillment_id = rustok_core::generate_id();
+        let txn = self.service.database().begin().await.map_err(|error| {
+            map_fulfillment_error(context, owner_operation, FulfillmentError::Database(error))
+        })?;
+
+        if let Err(error) = self
+            .service
+            .create_fulfillment_in_txn(&txn, tenant_id, fulfillment_id, input)
+            .await
+        {
+            drop(txn);
+            return Err(map_fulfillment_error(
+                context,
+                owner_operation,
+                error,
+            ));
+        }
+
+        let operation = match self
+            .operation_journal
+            .begin_in_txn(
+                &txn,
+                BeginProviderOperation {
+                    tenant_id,
+                    fulfillment_id,
+                    operation: "create_label".to_string(),
+                    provider_id: provider_id.to_string(),
+                    idempotency_key: idempotency_key.to_string(),
+                    request_payload: request_payload.clone(),
+                },
+            )
+            .await
+        {
+            Ok(operation) => operation,
+            Err(error) => {
+                drop(txn);
+                if let Some(existing) = self
+                    .operation_journal
+                    .find_by_key(tenant_id, provider_id, idempotency_key)
+                    .await
+                    .map_err(map_fulfillment_error_without_context)?
+                {
+                    ensure_create_label_request_unchanged(&existing, &request_payload)?;
+                    let fulfillment = self
+                        .service
+                        .get_fulfillment(tenant_id, existing.fulfillment_id)
+                        .await
+                        .map_err(|read_error| match read_error {
+                            FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
+                                "fulfillment.reconciliation_required",
+                                "fulfillment provider operation exists but its local fulfillment is missing",
+                            ),
+                            other => map_fulfillment_error(context, owner_operation, other),
+                        })?;
+                    return Ok((existing, fulfillment));
+                }
+                return Err(map_fulfillment_error_without_context(error));
+            }
+        };
+
+        if operation.fulfillment_id != fulfillment_id {
+            drop(txn);
+            ensure_create_label_request_unchanged(&operation, &request_payload)?;
+            let fulfillment = self
+                .service
+                .get_fulfillment(tenant_id, operation.fulfillment_id)
+                .await
+                .map_err(|error| match error {
+                    FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
+                        "fulfillment.reconciliation_required",
+                        "fulfillment provider operation exists but its local fulfillment is missing",
+                    ),
+                    other => map_fulfillment_error(context, owner_operation, other),
+                })?;
+            return Ok((operation, fulfillment));
+        }
+
+        txn.commit().await.map_err(|error| {
+            map_fulfillment_error(
+                context,
+                owner_operation,
+                FulfillmentError::Database(error),
+            )
+        })?;
+
+        let fulfillment = self
+            .service
+            .get_fulfillment(tenant_id, fulfillment_id)
+            .await
+            .map_err(|error| match error {
+                FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "fulfillment operation committed but its local fulfillment is missing",
+                ),
+                other => map_fulfillment_error(context, owner_operation, other),
+            })?;
+
+        Ok((operation, fulfillment))
+    }
+
     pub fn new(db: DatabaseConnection, provider_registry: FulfillmentProviderRegistry) -> Self {
         Self {
             service: FulfillmentService::new(db.clone()),
@@ -178,97 +288,17 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
                 })?;
             (existing, fulfillment)
         } else {
-            let candidate_fulfillment_id = rustok_core::generate_id();
-            let txn = self.service.database().begin().await.map_err(|error| {
-                map_fulfillment_error(
+            self
+                .create_local_fulfillment_and_begin_operation(
+                    tenant_id,
+                    provider_id.as_str(),
+                    idempotency_key,
+                    request_payload.clone(),
+                    request.input.clone(),
                     &context,
                     OPERATION,
-                    FulfillmentError::Database(error),
                 )
-            })?;
-
-            self.service
-                .create_fulfillment_in_txn(
-                    &txn,
-                    tenant_id,
-                    candidate_fulfillment_id,
-                    request.input.clone(),
-                )
-                .await
-                .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-
-            let operation = match self
-                .operation_journal
-                .begin_in_txn(
-                    &txn,
-                    BeginProviderOperation {
-                        tenant_id,
-                        fulfillment_id: candidate_fulfillment_id,
-                        operation: "create_label".to_string(),
-                        provider_id: provider_id.clone(),
-                        idempotency_key: idempotency_key.to_string(),
-                        request_payload: request_payload.clone(),
-                    },
-                )
-                .await
-            {
-                Ok(operation) => operation,
-                Err(error) => {
-                    drop(txn);
-                    if let Some(existing) = self
-                        .operation_journal
-                        .find_by_key(tenant_id, provider_id.as_str(), idempotency_key)
-                        .await
-                        .map_err(map_fulfillment_error_without_context)?
-                    {
-                        ensure_create_label_request_unchanged(&existing, &request_payload)?;
-                        let fulfillment = self
-                            .service
-                            .get_fulfillment(tenant_id, existing.fulfillment_id)
-                            .await
-                            .map_err(|read_error| match read_error {
-                                FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
-                                    "fulfillment.reconciliation_required",
-                                    "fulfillment provider operation exists but its local fulfillment is missing",
-                                ),
-                                other => map_fulfillment_error(&context, OPERATION, other),
-                            })?;
-                        return Ok((existing, fulfillment));
-                    }
-                    return Err(map_fulfillment_error_without_context(error));
-                }
-            };
-
-            if operation.fulfillment_id != candidate_fulfillment_id {
-                drop(txn);
-                ensure_create_label_request_unchanged(&operation, &request_payload)?;
-                let fulfillment = self
-                    .service
-                    .get_fulfillment(tenant_id, operation.fulfillment_id)
-                    .await
-                    .map_err(|error| match error {
-                        FulfillmentError::FulfillmentNotFound(_) => PortError::conflict(
-                            "fulfillment.reconciliation_required",
-                            "fulfillment provider operation exists but its local fulfillment is missing",
-                        ),
-                        other => map_fulfillment_error(&context, OPERATION, other),
-                    })?;
-                (operation, fulfillment)
-            } else {
-                txn.commit().await.map_err(|error| {
-                    map_fulfillment_error(
-                        &context,
-                        OPERATION,
-                        FulfillmentError::Database(error),
-                    )
-                })?;
-                let fulfillment = self
-                    .service
-                    .get_fulfillment(tenant_id, candidate_fulfillment_id)
-                    .await
-                    .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-                (operation, fulfillment)
-            }
+                .await?
         };
 
         if operation.status == PROVIDER_OPERATION_EXECUTING {
