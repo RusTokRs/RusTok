@@ -194,6 +194,18 @@ async fn catalog_module(
     request_body = RegistryPublishRequest,
     responses(
         (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
+        (
             status = 200,
             description = "Dry-run registry publish request accepted and normalized",
             body = RegistryMutationResponse
@@ -372,6 +384,7 @@ async fn publish_status(
     put,
     path = "/v2/catalog/publish/{request_id}/artifact",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
@@ -381,6 +394,18 @@ async fn publish_status(
         description = "Opaque module publish artifact bytes"
     ),
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 202,
             description = "Artifact uploaded and queued for validation",
@@ -464,11 +489,20 @@ async fn upload_publish_artifact(
     post,
     path = "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryExternalPrebuiltStageRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "External prebuilt stage accepted or idempotently replayed",
@@ -572,11 +606,16 @@ async fn stage_external_prebuilt(
     post,
     path = "/v2/catalog/publish/{request_id}/platform-build-stage",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPlatformBuildStageRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
         (
             status = 200,
             description = "Platform build stage accepted or idempotently replayed",
@@ -677,11 +716,16 @@ async fn stage_platform_build(
     post,
     path = "/v2/catalog/publish/{request_id}/author-signature",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryAuthorSignatureEvidenceRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
         (
             status = 200,
             description = "Author signature evidence recorded or idempotently replayed for the current staged artifact",
@@ -804,6 +848,50 @@ fn external_prebuilt_source_evidence(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/catalog/publish/{request_id}/artifact/download",
+    tag = "marketplace",
+    security(
+        ("bearer_auth" = []),
+        ("runner_token" = [])
+    ),
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Registry artifact bytes returned directly",
+            content_type = "application/octet-stream"
+        ),
+        (
+            status = 307,
+            description = "Temporary redirect to a short-lived private artifact download URL",
+            headers(
+                ("location" = String, description = "Short-lived private artifact URL"),
+                ("cache-control" = String, description = "Private, non-cacheable response policy"),
+                ("referrer-policy" = String, description = "Referrer suppression for the private artifact URL")
+            )
+        ),
+        (
+            status = 400,
+            description = "Registry artifact download request failed local validation"
+        ),
+        (
+            status = 401,
+            description = "Bearer authentication or remote runner credential is required"
+        ),
+        (
+            status = 403,
+            description = "Bearer-authenticated registry user is not authorized to download this artifact"
+        ),
+        (
+            status = 404,
+            description = "Registry artifact or enabled remote executor was not found"
+        )
+    )
+)]
 async fn download_publish_artifact(
     State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
@@ -890,11 +978,24 @@ async fn download_publish_artifact(
     post,
     path = "/v2/catalog/publish/{request_id}/validate",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPublishValidationRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Publish request validation already completed or returned the current terminal lifecycle state",
@@ -990,12 +1091,25 @@ async fn validate_publish_request_step(
     post,
     path = "/v2/catalog/publish/{request_id}/stages",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier"),
         ("Idempotency-Key" = String, Header, description = "Required non-nil UUID for live validation-stage reports; not required for dry-run previews")
     ),
     request_body = RegistryValidationStageReportRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Dry-run preview or live validation stage update accepted",
@@ -1111,12 +1225,25 @@ async fn report_validation_stage(
     post,
     path = "/v2/catalog/publish/{request_id}/approve",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier"),
         ("Idempotency-Key" = String, Header, description = "Required non-nil UUID for final approval; not required for dry-run previews")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Validated publish request approved and projected into the published registry release trail",
@@ -1225,11 +1352,24 @@ async fn approve_publish_request(
     post,
     path = "/v2/catalog/publish/{request_id}/reject",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Publish request rejected with surfaced governance reason",
@@ -1351,11 +1491,24 @@ async fn reject_publish_request(
     post,
     path = "/v2/catalog/publish/{request_id}/request-changes",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Publish request moved into changes_requested",
@@ -1478,11 +1631,24 @@ async fn request_changes_publish_request(
     post,
     path = "/v2/catalog/publish/{request_id}/hold",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Publish request moved into on_hold",
@@ -1603,11 +1769,24 @@ async fn hold_publish_request(
     post,
     path = "/v2/catalog/publish/{request_id}/resume",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     params(
         ("request_id" = String, Path, description = "Registry publish request identifier")
     ),
     request_body = RegistryPublishDecisionRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Held publish request resumed back into its previous status",
@@ -1786,6 +1965,14 @@ async fn claim_remote_validation_stage(
     request_body = RegistryRunnerHeartbeatRequest,
     responses(
         (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
+        (
             status = 200,
             description = "Remote validation heartbeat accepted",
             body = RegistryRunnerMutationResponse
@@ -1840,6 +2027,14 @@ async fn heartbeat_remote_validation_stage(
     ),
     request_body = RegistryRunnerCompletionRequest,
     responses(
+        (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
         (
             status = 200,
             description = "Remote validation completion accepted",
@@ -1899,6 +2094,14 @@ async fn complete_remote_validation_stage(
     request_body = RegistryRunnerCompletionRequest,
     responses(
         (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
+        (
             status = 200,
             description = "Remote validation failure accepted",
             body = RegistryRunnerMutationResponse
@@ -1951,8 +2154,21 @@ async fn fail_remote_validation_stage(
     post,
     path = "/v2/catalog/yank",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     request_body = RegistryYankRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Registry yank request accepted and normalized",
@@ -2063,8 +2279,21 @@ async fn yank(
     post,
     path = "/v2/catalog/owner-transfer",
     tag = "marketplace",
+    security(("bearer_auth" = [])),
     request_body = RegistryOwnerTransferRequest,
     responses(
+        (
+            status = 401,
+            description = "Authentication is required for this registry operation"
+        ),
+        (
+            status = 403,
+            description = "Authenticated principal is not authorized for this registry operation"
+        ),
+        (
+            status = 409,
+            description = "Registry operation conflicts with current lifecycle, revision, or idempotency state"
+        ),
         (
             status = 200,
             description = "Registry owner transfer request accepted and normalized",
