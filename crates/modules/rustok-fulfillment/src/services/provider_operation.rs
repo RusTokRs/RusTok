@@ -632,7 +632,16 @@ fn provider_result_invalid(error: FulfillmentError) -> FulfillmentError {
         other => other,
     }
 }
-fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
+pub(crate) fn validate_provider_operation_tenant(tenant_id: Uuid) -> FulfillmentResult<()> {
+    if tenant_id.is_nil() {
+        return Err(FulfillmentError::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
     if tenant_id.is_nil() || operation_id.is_nil() {
         return Err(FulfillmentError::Validation(
             "provider operation requires non-nil tenant_id and operation_id".to_string(),
@@ -782,6 +791,14 @@ mod tests {
         assert!(
             ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED).is_err()
         );
+    }
+
+    #[test]
+    fn provider_operation_identity_rejects_nil_ids() {
+        assert!(validate_provider_operation_tenant(Uuid::nil()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_operation_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
     }
 
     #[test]

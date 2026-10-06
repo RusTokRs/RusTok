@@ -17,6 +17,7 @@ use crate::providers::{
 use super::provider_operation::{
     PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    validate_operation_identity, validate_provider_operation_tenant,
 };
 
 #[derive(Clone)]
@@ -34,6 +35,7 @@ impl FulfillmentProviderOperationRecovery {
         tenant_id: Uuid,
         limit: u64,
     ) -> FulfillmentResult<Vec<provider_operation::Model>> {
+        validate_provider_operation_tenant(tenant_id)?;
         provider_operation::Entity::find()
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(
@@ -56,6 +58,7 @@ impl FulfillmentProviderOperationRecovery {
         stale_before: DateTime<Utc>,
         limit: u64,
     ) -> FulfillmentResult<u64> {
+        validate_provider_operation_tenant(tenant_id)?;
         let stale_before = stale_before.fixed_offset();
         let ids = provider_operation::Entity::find()
             .select_only()
@@ -109,6 +112,7 @@ impl FulfillmentProviderOperationRecovery {
         operation_id: Uuid,
         reason: impl Into<String>,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         let result = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -152,6 +156,7 @@ impl FulfillmentProviderOperationRecovery {
         provider_reference: Option<String>,
         provider_result: Value,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         if !provider_result.is_object() {
             return Err(FulfillmentError::Validation(
                 "provider_result must be a JSON object".to_string(),
@@ -253,6 +258,7 @@ impl FulfillmentProviderOperationRecovery {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> FulfillmentResult<provider_operation::Model> {
+        validate_operation_identity(tenant_id, operation_id)?;
         provider_operation::Entity::find_by_id(operation_id)
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -485,6 +491,14 @@ mod tests {
             normalize_error("   ".to_string()),
             "provider operation failed"
         );
+    }
+
+    #[test]
+    fn recovery_identity_rejects_nil_ids_before_db_access() {
+        assert!(validate_provider_operation_tenant(Uuid::nil()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::nil()).is_err());
+        assert!(validate_operation_identity(Uuid::nil(), Uuid::new_v4()).is_err());
+        assert!(validate_operation_identity(Uuid::new_v4(), Uuid::new_v4()).is_ok());
     }
 
     #[test]
