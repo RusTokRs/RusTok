@@ -171,7 +171,7 @@ fn live_fallback_cas_outage_evidence_remains_wired() {
     }
 
     for required in [
-        "if self.has_unsynchronized_mutation(key).await",
+        "has_unsynchronized_mutation(key).await",
         "cache compare-and-set rejected while local and shared state are unsynchronized",
         ".primary\n            .compare_and_set(key, expected, value.clone(), ttl)",
         "self.mirror_primary_cas(key, value, ttl).await",

@@ -152,19 +152,19 @@ Remaining:
 - [x] Use the shared versioned Rhai input/output envelope for Alloy drafts;
   Alloy owns only its nested data payload and does not retain a raw or
   Alloy-specific versioned runtime binding.
-- Build requests with draft ID, monotonic revision, tenant, actor, phase,
-  trace/correlation, source digest, input, grants, and limits.
-- Preserve entity proxies, parameters, validation helpers, and broker-backed
+- [x] Build requests with draft ID, monotonic revision, tenant, actor, phase,
+  execution/correlation identity, source digest, input, grants, and limits.
+- [x] Preserve entity proxies, parameters, validation helpers, and broker-backed
   services as Alloy-owned request-scoped extensions.
-- Migrate manual, hook, scheduled, validation, and test execution atomically.
-- Delete the parallel production execution path after callers move.
+- [x] Migrate manual, hook, scheduled, validation, and test execution atomically.
+- [x] Delete the parallel production execution path after callers move.
 
 **Done when:** all production Alloy code execution is observable as
 `SandboxSubject::AlloyDraft` and draft/published Rhai parity tests pass.
 
 ### A2 - Revisioned Authoring and Review
 
-- Persist draft workspace, monotonic revision, source digest, parent lineage,
+- [x] Persist draft workspace, monotonic revision, source digest, parent lineage,
   author, review status, and policy revision.
 - [x] Guard single-script persistence with a durable version predicate and
   `RevisionConflict`; every storage mutation advances the version.
@@ -202,7 +202,7 @@ Remaining:
   audit path replaces caller metadata with a fixed redaction marker, and its
   SeaORM integration test proves cross-tenant mutation fails closed. Generic
   stdio and in-process script tools remain absent.
-- Durable review decisions now bind an exact source digest, expected current
+- [x] Durable review decisions bind an exact source digest, expected current
   revision, policy revision, reviewer identity, reason, and request fingerprint.
   The owner storage replays only an identical idempotency key/fingerprint pair
   while the owning draft exists, and rejects invalid per-revision transitions.
@@ -215,7 +215,7 @@ Remaining:
   principal, and manual execution evidence records that actor. The former
   generic in-memory Axum router was deleted instead of retained as a parallel
   unauthenticated surface.
-- Require workspace revision/CAS and idempotency for test, build, and
+- [x] Require workspace revision/CAS and idempotency for test, build, and
   publish. Test commands now durably reserve a revision-pinned source digest,
   declared test path, actor, and request fingerprint before sandbox execution.
   The owner replays terminal evidence only for an identical command while the
@@ -253,9 +253,9 @@ Remaining:
   rows carry source revision/digest plus sandbox policy digest, executor kind,
   and runtime ABI; durable test rows already bind their immutable revision and
   source digest.
-- Define review, changes-requested, approved, rejected, archived, and superseded
+- [x] Define review, changes-requested, approved, rejected, archived, and superseded
   transitions with typed owner errors.
-- Materialize a bounded revisioned workspace from DB/object storage and resolve
+- [x] Materialize a bounded revisioned workspace from DB/object storage and resolve
   Rhai imports without guest filesystem access.
 
 **Done when:** stale revisions cannot execute/publish as current and every
@@ -327,8 +327,8 @@ preserve reproducible lineage.
 ### A4 - AI-Assisted Rust/WASM Evolution
 
 - Generate typed Rust against the approved WIT guest contract.
-- Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
-- Submit source only through the owner build control as a host-prepared,
+- [x] Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
+- [x] Submit source only through the owner build control as a host-prepared,
   non-serializable `PreparedModuleSourceArchive`, created exclusively by the
   shared `ModuleAuthoringSourceArchiveBuilder`; Alloy and its transports must
   never carry a filesystem path in an evolution command or duplicate archive
@@ -336,7 +336,7 @@ preserve reproducible lineage.
   the shared `SourceTreeMaterializer`; Alloy cannot recursively write caller
   paths or retain filesystem metadata. The owner rehashes and strictly scans that
   archive before its source-CAS publish and remote-worker enqueue.
-- Persist every submitted Rust Component candidate as an immutable Alloy
+- [x] Persist every submitted Rust Component candidate as an immutable Alloy
   record before it can reach source preparation. The candidate is bound to its
   tenant, current approved Rhai draft revision and source digest, exact
   published Rhai parent release, canonical Rust source digest, canonical
@@ -349,7 +349,7 @@ preserve reproducible lineage.
   Admission also derives the candidate manifest identity and rejects a slug
   mismatch or a version that is not strictly newer than its Rhai parent before
   either candidate or review state is written.
-- Record candidate review decisions in a separate immutable state machine.
+- [x] Record candidate review decisions in a separate immutable state machine.
   Each decision binds the candidate ID plus its source and scenario digests,
   policy revision, authenticated reviewer, idempotency receipt, and transition
   history. Candidate approval is necessary, but not yet sufficient, to enqueue
