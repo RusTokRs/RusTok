@@ -96,6 +96,7 @@ const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
     "m20260908_000024_add_product_option_translation_change_journal",
     "m20260909_000008_add_collection_translation_change_journal",
     "m20260909_000025_add_product_image_translation_change_journal",
+    "m20260927_000034_normalize_product_translation_locales",
     "m20260913_000026_add_product_attribute_translation_change_journal",
     "m20260913_000027_add_product_attribute_schema_translation_change_journal",
     "m20260913_000028_add_product_category_form_translation_change_journal",
