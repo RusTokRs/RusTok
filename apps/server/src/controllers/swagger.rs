@@ -658,6 +658,24 @@ mod tests {
             );
         }
 
+        assert!(
+            openapi
+                .paths
+                .get_path_operation("/v2/catalog/publish", HttpMethod::Post)
+                .and_then(|operation| operation.security.as_ref())
+                .is_none(),
+            "publish dry-run remains anonymously documented"
+        );
+
+        assert!(
+            openapi
+                .paths
+                .get_path_operation("/v2/catalog/publish/{request_id}", HttpMethod::Get)
+                .and_then(|operation| operation.security.as_ref())
+                .is_none(),
+            "publish status remains anonymously readable"
+        );
+
         let download_security = openapi
             .paths
             .get_path_operation(
