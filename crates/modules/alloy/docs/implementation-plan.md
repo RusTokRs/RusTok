@@ -326,7 +326,7 @@ preserve reproducible lineage.
 
 ### A4 - AI-Assisted Rust/WASM Evolution
 
-- Generate typed Rust against the approved WIT guest contract.
+- [x] Generate typed Rust against the approved WIT guest contract through Alloy's deterministic `generate_rust_component` boundary. The generator validates the exact `rustok:module/module-runtime@1.0.0` owner identity, renders the canonical `rustok-module-template`, and wraps the reviewed implementation body in the SDK-owned typed `Guest`/`export!` surface. It never compiles Rhai ASTs, executes generated source, or receives filesystem paths; isolated owner build remains the compile/admission gate.
 - [x] Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
 - [x] Submit source only through the owner build control as a host-prepared,
   non-serializable `PreparedModuleSourceArchive`, created exclusively by the
