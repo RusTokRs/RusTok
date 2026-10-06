@@ -876,7 +876,18 @@ fn validate_webhook_result(
         result.external_reference.as_deref(),
         191,
     )?;
-    validate_optional_boundary_text("tracking_number", result.tracking_number.as_deref(), 191)?;
+    validate_optional_boundary_text(
+        "tracking_number",
+        result.tracking_number.as_deref(),
+        FULFILLMENT_TRACKING_NUMBER_MAX_LEN,
+    )?;
+    if !result.metadata.is_object() {
+        return Err(FulfillmentError::Validation(format!(
+            "fulfillment provider {provider_id} returned webhook metadata that is not a JSON object"
+        )));
+    }
+    validate_provider_metadata_safety(&result.metadata)?;
+    validate_durable_provider_payload(&result.metadata, "webhook result metadata")?;
     Ok(())
 }
 
@@ -1077,6 +1088,52 @@ mod boundary_tests {
             "nested": {"service_code": "ground"}
         });
         assert!(validate_provider_metadata_safety(&metadata).is_ok());
+    }
+
+    #[test]
+    fn webhook_result_tracking_number_uses_fulfillment_limit() {
+        let valid = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "fulfillment.updated".to_string(),
+            replay_key: "replay-1".to_string(),
+            tracking_number: Some("t".repeat(FULFILLMENT_TRACKING_NUMBER_MAX_LEN)),
+            metadata: serde_json::json!({}),
+        };
+        assert!(validate_webhook_result("carrier", "replay-1", &valid).is_ok());
+
+        let oversized = FulfillmentProviderWebhookResult {
+            tracking_number: Some("t".repeat(FULFILLMENT_TRACKING_NUMBER_MAX_LEN + 1)),
+            ..valid
+        };
+        assert!(validate_webhook_result("carrier", "replay-1", &oversized).is_err());
+    }
+
+    #[test]
+    fn webhook_result_rejects_restricted_or_non_object_metadata() {
+        let restricted = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "fulfillment.updated".to_string(),
+            replay_key: "replay-1".to_string(),
+            tracking_number: None,
+            metadata: serde_json::json!({
+                "provider_event": {
+                    "authorization": "Bearer secret"
+                }
+            }),
+        };
+        assert!(validate_webhook_result("carrier", "replay-1", &restricted).is_err());
+
+        let scalar = FulfillmentProviderWebhookResult {
+            provider_id: "carrier".to_string(),
+            external_reference: None,
+            event_type: "fulfillment.updated".to_string(),
+            replay_key: "replay-1".to_string(),
+            tracking_number: None,
+            metadata: serde_json::json!("provider-debug"),
+        };
+        assert!(validate_webhook_result("carrier", "replay-1", &scalar).is_err());
     }
 
     #[test]
