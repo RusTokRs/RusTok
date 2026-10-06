@@ -285,6 +285,7 @@ disable/reconciliation matrix in
 - [x] Provider lifecycle calls honor the declared `PortContext` deadline; timeout is fail-closed as `reconciliation_required` for unknown external outcomes, with checkpoint failure remaining unavailable/reconciliation-required rather than retryable.
 - [x] Durable provider-result writers revalidate provider ID and external reference against the journaled operation before persistence, with the same metadata/tracking safety checks used by recovery.
 - [x] Create-label lifecycle recovery uses only the canonical `metadata.provider_operation.id` receipt locator; secondary label metadata cannot become an alternate provider-operation identity.
+- [x] Fulfillment provider recovery rejects nil tenant/operation identities before DB lookup or mutation by reusing the provider-operation owner identity validator.
 - [x] Keep provider webhook result validation aligned with canonical fulfillment persistence: normalized metadata is a bounded object without restricted sensitive/raw fields, and tracking numbers use the 100-character fulfillment limit. Tracking-webhook ingress remains planned and unwired.
 
 ## Fulfillment lifecycle read source checklist
