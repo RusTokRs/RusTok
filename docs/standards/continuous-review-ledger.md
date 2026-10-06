@@ -5259,6 +5259,21 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
 
 
+### FS-22.06.157 Assessment — Fulfillment provider webhook result boundary
+
+- **Base:** refreshed `main` at `78cbcc2758ed8d225846ff84ade5245c1fcd5040`; dedicated branch `audit/fulfillment-provider-webhook-boundary` was created from that exact SHA.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/providers.rs` webhook request/result normalization, provider SPI bounds, canonical Fulfillment tracking-number limits, normalized metadata safety, and current tracking-webhook runtime wiring.
+- **Invariant map:** provider-normalized tracking facts must respect the same persistence limits as Fulfillment-owned lifecycle state; normalized provider metadata must not admit sensitive/raw transport material or unbounded JSON before leaving the provider boundary; tracking-webhook ingress remains explicitly planned and unwired unless an actual runtime caller exists.
+- **Confirmed finding FULFILLMENTPROVIDER-22.06.157-01:** `validate_webhook_result` allowed `tracking_number` up to 191 characters while the canonical Fulfillment persistence limit is 100. A provider result could therefore pass the SPI boundary with a tracking number the owner lifecycle cannot persist without later rejection.
+- **Confirmed finding FULFILLMENTPROVIDER-22.06.157-02:** webhook result `metadata` was not required to be a JSON object and bypassed the recursive restricted-key and serialized-size safety guard already required for durable provider-operation results. This created an inconsistent normalization boundary and allowed sensitive/raw provider metadata to leave the SPI unchecked.
+- **Remediation:** webhook result validation now uses `FULFILLMENT_TRACKING_NUMBER_MAX_LEN` (100), requires object-shaped metadata, applies recursive restricted sensitive/raw field rejection, and enforces the existing 32 KiB/depth guard before returning the result from the provider registry.
+- **Regression coverage:** added focused provider tests for the 100-character tracking boundary, oversized rejection, non-object metadata rejection, and nested restricted-field rejection.
+- **Adjacent review:** current repository evidence confirms tracking-webhook ingress is still planned and not runtime-wired; no active HTTP/event consumer of `execute_tracking_webhook` was found in the affected module. Provider operation request/result safety, idempotency, and durable journal invariants remain unchanged.
+- **Fresh second pass:** re-read `providers.rs`, provider SPI tests, Fulfillment README/implementation plan, and host provider-runtime composition after the remediation. No additional repository-owned provider-boundary defect was confirmed in this scope.
+- **Verification:** repository source inspection, targeted provider test construction/review, documentation consistency review, and branch diff review. Local Cargo/tests/Clippy/rustfmt/remediation-gate execution remains unavailable because no usable local checkout/toolchain is mounted; no test/build/runtime pass is claimed.
+- **Implementation status:** complete on the dedicated branch; pending PR/CI integration.
+- **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
+
 ### FS-22.05.28 Assessment — GraphQL rate-limit runtime initialization order
 
 - **Base:** refreshed `main` at `2eb60a5c0108d10c625a71ea6061d748a9c9476e`; dedicated branch `codex/audit-fs-22.05.28-graphql-rate-limit-order` was created from that exact SHA.
