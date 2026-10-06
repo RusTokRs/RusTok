@@ -5286,7 +5286,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Adjacent review:** re-read the provider-operation journal, recovery service, provider-operation entity, reconciliation migrations/triggers, recovery integration tests, and current Fulfillment documentation. Existing tenant filters, rows-affected checks, provider-result safety, stale-execution quarantine, and rollback guards remain unchanged.
 - **Fresh second pass:** independently checked every public recovery method plus the internal `get` path for identity validation placement and confirmed no recovery SQL executes before the new guard. No additional repository-owned in-scope defect was confirmed.
 - **Verification:** repository source inspection, owner helper tracing, targeted regression construction, documentation review, and branch diff review. Local Cargo/tests/Clippy/rustfmt/remediation-gate execution was unavailable because no usable Rust checkout/toolchain is mounted; no test/build/runtime pass is claimed.
-- **Implementation status:** complete on the dedicated branch; pending PR/CI integration.
+- **Implementation status:** complete and integrated into `main` via PR #4579, squash merge `f3206f6f93ca395fded980b97a419fefea9f8ec3`.
+- **Post-merge reconciliation:** refreshed `main` at `f3206f6f93ca395fded980b97a419fefea9f8ec3`; comparison against recorded base `fead30f31244bc0296bb85cfa7f9840612af91c9` is exactly one merged commit with the expected provider-operation identity and recovery changes. The merged tree contains the nil-identity fence before all recovery DB access.
+- **Status:** `FS-22.06.158` complete; maintainer/CI verification remains explicitly required because local Cargo/remediation-gate execution was unavailable.
 - **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
 
 ### FS-22.05.28 Assessment — GraphQL rate-limit runtime initialization order
