@@ -102,6 +102,7 @@ const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
     "m20260913_000029_add_product_attribute_value_translation_target",
     "m20260913_000030_add_product_variant_attribute_value_translation_target",
     "m20260913_000031_add_product_category_seo_translation_target",
+    "m20260927_000034_normalize_product_translation_locales",
 ];
 
 /// Returns whether a named migration is part of the portable SQLite unit-test schema.
