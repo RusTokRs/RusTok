@@ -408,3 +408,59 @@ export async function createForumTopic(options: {
 
   return result.data?.createForumTopicWithQuotes ?? null;
 }
+
+export interface StorefrontForumTopicRouteResolution {
+  requestedLocale: string;
+  requestedShortId: string;
+  requestedSlug: string;
+  disposition: 'CANONICAL' | 'REDIRECT' | 'GONE';
+  canonical: {
+    topicId: string;
+    locale: string;
+    shortId: string;
+    slug: string;
+    path: string;
+  } | null;
+}
+
+const STOREFRONT_FORUM_TOPIC_ROUTE_QUERY = `
+  query StorefrontForumTopicRouteDecision($tenantId: UUID, $locale: String!, $shortId: String!, $slug: String!) {
+    forumStorefrontTopicRouteDecision(tenantId: $tenantId, locale: $locale, shortId: $shortId, slug: $slug) {
+      requestedLocale
+      requestedShortId
+      requestedSlug
+      disposition
+      canonical {
+        topicId
+        locale
+        shortId
+        slug
+        path
+      }
+    }
+  }
+`;
+
+export async function resolveStorefrontTopicRoute(options: {
+  tenantId?: string;
+  tenantSlug?: string;
+  locale: string;
+  shortId: string;
+  slug: string;
+}): Promise<StorefrontForumTopicRouteResolution | null> {
+  const result = await storefrontGraphql<{
+    forumStorefrontTopicRouteDecision: StorefrontForumTopicRouteResolution | null;
+  }>({
+    query: STOREFRONT_FORUM_TOPIC_ROUTE_QUERY,
+    tenant: options.tenantSlug,
+    variables: {
+      tenantId: options.tenantId,
+      locale: options.locale,
+      shortId: options.shortId,
+      slug: options.slug,
+    },
+  });
+
+  return result.data?.forumStorefrontTopicRouteDecision ?? null;
+}
+
