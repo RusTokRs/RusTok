@@ -776,7 +776,10 @@ fn validate_operation_request(
             "fulfillment provider `{provider_id}` {operation} metadata must be a JSON object"
         )));
     }
-    validate_provider_metadata_safety(&request.metadata)?;
+    validate_provider_metadata_safety(&request.metadata).map_err(|error| match error {
+        FulfillmentError::ProviderResultInvalid(message) => FulfillmentError::Validation(message),
+        other => other,
+    })?;
     validate_durable_provider_payload(&request.metadata, "request metadata")?;
     Ok(())
 }
@@ -814,7 +817,7 @@ fn validate_operation_result(
             "fulfillment provider {provider_id} returned {operation} result that could not be serialized: {error}"
         ))
     })?;
-    validate_provider_metadata_safety(&result.metadata)?;
+    validate_provider_metadata_safety(&result.metadata).map_err(provider_result_invalid)?;
     validate_durable_provider_payload(&result_value, "result").map_err(provider_result_invalid)?;
     Ok(())
 }
@@ -886,7 +889,10 @@ fn validate_webhook_result(
             "fulfillment provider {provider_id} returned webhook metadata that is not a JSON object"
         )));
     }
-    validate_provider_metadata_safety(&result.metadata)?;
+    validate_provider_metadata_safety(&result.metadata).map_err(|error| match error {
+        FulfillmentError::ProviderResultInvalid(message) => FulfillmentError::Validation(message),
+        other => other,
+    })?;
     validate_durable_provider_payload(&result.metadata, "webhook result metadata")?;
     Ok(())
 }
@@ -1047,7 +1053,10 @@ mod boundary_tests {
                 "authorization": "Bearer secret"
             }),
         };
-        assert!(validate_operation_request("carrier", "ship", &request).is_err());
+        assert!(matches!(
+            validate_operation_request("carrier", "ship", &request),
+            Err(FulfillmentError::Validation(_))
+        ));
     }
 
     #[test]
