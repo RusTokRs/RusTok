@@ -1,6 +1,7 @@
 mod evolution;
 mod evolution_execution;
 mod executor;
+mod generation;
 mod import;
 mod orchestrator;
 mod release;
@@ -10,6 +11,10 @@ mod test;
 pub use evolution::{AlloyEvolutionBuildError, AlloyEvolutionBuildService};
 pub use evolution_execution::{AlloyEvolutionExecutionError, AlloyEvolutionExecutionService};
 pub use executor::ScriptExecutor;
+pub use generation::{
+    generate_rust_component, RustComponentGeneratedSource, RustComponentGenerationError,
+    RustComponentGenerationRequest, MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES,
+};
 pub use import::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseImporter,
 };
