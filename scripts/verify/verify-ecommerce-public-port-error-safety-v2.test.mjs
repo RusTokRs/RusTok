@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -199,14 +199,15 @@ parse_port_tenant_id(&context, "select_shipping_option");
 
 function canonicalTaxPort() {
   return `
+tracing::error!();
 "tax.currency_code_invalid";
 "tax.negative_policy_rate";
 "tax.validation";
 "tax calculation request is invalid";
 PortError::validation(
-  "tax.validation",
-  "tax calculation request is invalid",
-);
+                "tax.validation",
+                "tax calculation request is invalid",
+            );
 `;
 }
 
@@ -386,6 +387,9 @@ tracing::error!(
   boundary = ORDER_PORT_BOUNDARY,
 );
 tracing::warn!(code = "order.checkout_identity_validation");
+operation = owner_operation;
+let (code, technical_failure) = match &error {
+};
 tracing::error!(code = "order.checkout_identity_storage_unavailable");
 tracing::error!(code = "order.database_unavailable");
 tracing::warn!(code = "order.validation");
@@ -460,9 +464,10 @@ hash_json(context, "encode_checkout_snapshot_hash", snapshot);
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-public-port-errors-'));
+  const repoRoot = path.resolve('.');
   put(root, 'crates/modules/rustok-channel/src/ports.rs', `tracing::error!();\n"channel storage is temporarily unavailable";\n${options.channelAppend ?? ''}`);
   put(root, 'crates/modules/rustok-region/src/ports.rs', `tracing::error!();\n"region storage is temporarily unavailable";\n${options.regionAppend ?? ''}`);
-  put(root, 'crates/modules/rustok-cart/src/checkout_snapshot.rs', `tracing::error!();\n"cart checkout request or projection is invalid";\n"cart checkout snapshot could not be encoded";\n${options.cartAppend ?? ''}`);
+  put(root, 'crates/modules/rustok-cart/src/checkout_snapshot.rs', readFileSync(path.join(repoRoot, 'crates/modules/rustok-cart/src/checkout_snapshot.rs'), 'utf8') + (options.cartAppend ?? ''));
 
   let cartPromotion = `${canonicalCartPromotion()}${options.cartPromotionAppend ?? ''}`;
   put(root, 'crates/modules/rustok-cart/src/promotion_guard.rs', cartPromotion);
@@ -485,7 +490,7 @@ function fixture(options = {}) {
   let taxCalculation = `${canonicalTaxCalculation()}${options.taxCalculationAppend ?? ''}`;
   put(root, 'crates/modules/rustok-tax/src/calculation_context.rs', taxCalculation);
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
-  if (options.removeCustomerCorrelation) customer = customer.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+  if (options.removeCustomerCorrelation) customer = customer.replaceAll('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);
 
   let inventory = `${canonicalInventory()}${options.inventoryAppend ?? ''}`;
@@ -495,7 +500,10 @@ function fixture(options = {}) {
   put(root, 'crates/modules/rustok-inventory/src/ports.rs', inventory);
 
   let order = `${canonicalOrder()}${options.orderAppend ?? ''}`;
-  if (options.removeOrderCorrelation) order = order.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+  if (options.removeOrderCorrelation) {
+    order = order.replaceAll('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+    order = order.replaceAll('correlation_id_length = context_facts.correlation_id_length', 'correlation_id_length = omitted');
+  }
   put(root, 'crates/modules/rustok-order/src/ports.rs', order);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
@@ -507,6 +515,39 @@ function fixture(options = {}) {
   let orderRecovery = `${canonicalOrderRecovery()}${options.orderRecoveryAppend ?? ''}`;
   if (options.removeOrderRecoveryCorrelation) orderRecovery = orderRecovery.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-order/src/checkout_order_recovery.rs', orderRecovery);
+
+  const staticSources = [
+    'crates/modules/rustok-product/src/ports/catalog_read.rs',
+    'crates/modules/rustok-product/src/ports/diagnostics.rs',
+    'crates/modules/rustok-product/src/ports/mod.rs',
+    'crates/modules/rustok-product/src/ports/types.rs',
+    'crates/modules/rustok-product/src/catalog_command_port.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/products.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/carts.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/orders.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
+    'crates/modules/rustok-commerce/src/controllers/store/mod.rs',
+    'crates/modules/rustok-commerce/src/controllers/admin/checkout_operations.rs',
+    'crates/modules/rustok-commerce/src/controllers/admin/payments_owner_reads.rs',
+    'crates/modules/rustok-marketplace-payout/src/service.rs',
+    'crates/modules/rustok-marketplace-payout/src/error.rs',
+    'crates/modules/rustok-marketplace-payout/src/ports.rs',
+    'crates/modules/rustok-marketplace-commission/src/service.rs',
+    'crates/modules/rustok-marketplace-commission/src/error.rs',
+    'crates/modules/rustok-marketplace-commission/src/ports.rs',
+    'crates/modules/rustok-marketplace-ledger/src/service.rs',
+    'crates/modules/rustok-marketplace-ledger/src/error.rs',
+    'crates/modules/rustok-marketplace-ledger/src/ports.rs',
+  ];
+  for (const rel of staticSources) {
+    put(root, rel, readFileSync(path.join(repoRoot, rel), 'utf8'));
+  }
+  let customerReadContext = readFileSync(path.join(repoRoot, 'crates/modules/rustok-customer/src/read_context.rs'), 'utf8');
+  if (options.removeCustomerCorrelation) {
+    customerReadContext = customerReadContext.replaceAll('correlation_id_length = context_facts.correlation_id_length', 'correlation_id_length = omitted');
+  }
+  put(root, 'crates/modules/rustok-customer/src/read_context.rs', customerReadContext);
+
   return root;
 }
 

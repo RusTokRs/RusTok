@@ -7,10 +7,8 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{
-    filter_shipping_options, shipping_option_grid_columns, shipping_option_list_request,
-    shipping_profile_list_request,
-};
+use crate::core::{shipping_option_list_request, shipping_profile_list_request};
+use crate::core::{filter_shipping_options, shipping_option_grid_columns};
 use crate::i18n::t;
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingProfile,

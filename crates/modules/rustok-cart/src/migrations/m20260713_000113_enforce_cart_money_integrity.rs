@@ -61,18 +61,23 @@ impl MigrationTrait for Migration {
                         DECLARE
                             cart_currency VARCHAR(3);
                             cart_tenant UUID;
+                            cart_status VARCHAR(32);
                             line_cart UUID;
                             option_tenant UUID;
                             option_currency VARCHAR(3);
                         BEGIN
-                            SELECT currency_code, tenant_id
-                            INTO cart_currency, cart_tenant
+                            SELECT currency_code, tenant_id, status
+                            INTO cart_currency, cart_tenant, cart_status
                             FROM carts
                             WHERE id = NEW.cart_id;
 
                             IF NOT FOUND THEN
                                 RAISE EXCEPTION 'cart % does not exist', NEW.cart_id
                                     USING ERRCODE = '23503';
+                            END IF;
+                            IF TG_TABLE_NAME IN ('cart_line_items', 'cart_adjustments') AND cart_status <> 'active' THEN
+                                RAISE EXCEPTION 'cart % is not active (status: %)', NEW.cart_id, cart_status
+                                    USING ERRCODE = '23514';
                             END IF;
                             IF NEW.currency_code <> cart_currency THEN
                                 RAISE EXCEPTION 'cart child currency does not match cart currency'

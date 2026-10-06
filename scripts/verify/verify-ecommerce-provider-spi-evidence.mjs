@@ -558,6 +558,7 @@ const verifyProviderSpiEvidence = ({
       readText(root, 'crates/modules/rustok-commerce/src/services/paid_order_create_label.rs'),
       readText(root, 'crates/modules/rustok-commerce/src/services/fulfillment_create_label_recovery.rs'),
       readText(root, 'crates/modules/rustok-commerce/src/services/paid_order_create_label_sweep.rs'),
+      readText(root, 'crates/modules/rustok-commerce/src/services/journaled_create_label_provider.rs'),
     ].join('\n');
     requireMarkers(
       durableFulfillmentSource,
@@ -647,9 +648,18 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       liveAdapterContract: readJson(root, liveAdapterContractPath),
       liveAdapterEvidence: readJson(root, liveAdapterEvidencePath),
       providerSource: readText(root, `crates/modules/rustok-${module}/src/providers.rs`),
-      fulfillmentProviderJournalSource: readText(root, 'crates/modules/rustok-fulfillment/src/services/provider_operation.rs'),
-      fulfillmentAdminCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_command.rs'),
-      fulfillmentAdminCreateCommandSource: readText(root, 'crates/modules/rustok-fulfillment/src/admin_create_command.rs'),
+      fulfillmentProviderJournalSource:
+        module === 'fulfillment'
+          ? readText(root, 'crates/modules/rustok-fulfillment/src/services/provider_operation.rs')
+          : '',
+      fulfillmentAdminCommandSource:
+        module === 'fulfillment'
+          ? readText(root, 'crates/modules/rustok-fulfillment/src/admin_command.rs')
+          : '',
+      fulfillmentAdminCreateCommandSource:
+        module === 'fulfillment'
+          ? readText(root, 'crates/modules/rustok-fulfillment/src/admin_create_command.rs')
+          : '',
       commerceCheckoutSource,
       commercePaymentOrchestrationSource,
       root,

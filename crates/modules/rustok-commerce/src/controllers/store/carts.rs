@@ -118,7 +118,7 @@ pub async fn create_cart(
                     locale_code: Some(context.locale.clone()),
                     selected_shipping_option_id: None,
                     currency_code,
-                    metadata: input.metadata,
+                    metadata: super::sanitize_storefront_metadata(input.metadata),
                 },
                 channel_id: request_context.channel_id,
                 channel_slug: request_context.channel_slug.clone(),

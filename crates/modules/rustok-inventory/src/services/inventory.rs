@@ -17,15 +17,7 @@ use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
-use crate::translation_changes::{
-    StockLocationTranslationChangeLifecycle, record_stock_location_translation_change_in_tx,
-};
-
 use super::policy::inventory_policy_allows_backorder;
-use super::stock_location_translation::{
-    StockLocationTranslationExactLocaleError,
-    resource_revision as stock_location_translation_resource_revision,
-};
 
 pub struct InventoryService {
     db: DatabaseConnection,
@@ -193,22 +185,40 @@ impl InventoryService {
         let state = self
             .ensure_inventory_state(&txn, tenant_id, &variant)
             .await?;
-        let old_quantity = self
-            .available_quantity(&txn, state.inventory_item.id)
-            .await?;
-        let new_quantity = old_quantity + input.adjustment;
 
-        if new_quantity < 0 && !inventory_policy_allows_backorder(&variant.inventory_policy) {
+        let mut level_update = entities::inventory_level::Entity::update_many()
+            .col_expr(
+                entities::inventory_level::Column::StockedQuantity,
+                Expr::col(entities::inventory_level::Column::StockedQuantity).add(input.adjustment),
+            )
+            .col_expr(
+                entities::inventory_level::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .filter(entities::inventory_level::Column::Id.eq(state.level.id));
+
+        if input.adjustment < 0 && !inventory_policy_allows_backorder(&variant.inventory_policy) {
+            level_update = level_update.filter(
+                Expr::col(entities::inventory_level::Column::StockedQuantity)
+                    .sub(Expr::col(entities::inventory_level::Column::ReservedQuantity))
+                    .gte(-input.adjustment),
+            );
+        }
+
+        if level_update.exec(&txn).await?.rows_affected != 1 {
+            let available = self
+                .available_quantity(&txn, state.inventory_item.id)
+                .await?;
             return Err(CommerceError::InsufficientInventory {
                 requested: -input.adjustment,
-                available: old_quantity,
+                available,
             });
         }
 
-        let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
-        level_active.stocked_quantity = Set(state.level.stocked_quantity + input.adjustment);
-        level_active.updated_at = Set(Utc::now().into());
-        level_active.update(&txn).await?;
+        let new_quantity = self
+            .available_quantity(&txn, state.inventory_item.id)
+            .await?;
+        let old_quantity = new_quantity - input.adjustment;
 
         // Create and validate event
         let event = DomainEvent::InventoryUpdated {
@@ -308,9 +318,29 @@ impl InventoryService {
             });
         }
 
+        let all_levels = entities::inventory_level::Entity::find()
+            .filter(entities::inventory_level::Column::InventoryItemId.eq(state.inventory_item.id))
+            .all(&txn)
+            .await?;
+        let other_available: i32 = all_levels
+            .iter()
+            .filter(|l| l.id != state.level.id)
+            .map(|l| l.stocked_quantity - l.reserved_quantity)
+            .sum();
+
+        let target_default_available = quantity - other_available;
+        if target_default_available < 0
+            && !inventory_policy_allows_backorder(&variant.inventory_policy)
+        {
+            return Err(CommerceError::InsufficientInventory {
+                requested: -target_default_available,
+                available: state.level.stocked_quantity - state.level.reserved_quantity,
+            });
+        }
+
         let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
         level_active.stocked_quantity = Set(stocked_quantity_for_available(
-            quantity,
+            target_default_available,
             state.level.reserved_quantity,
         ));
         level_active.updated_at = Set(Utc::now().into());
@@ -623,62 +653,9 @@ impl InventoryService {
         conn: &DatabaseTransaction,
         tenant_id: Uuid,
     ) -> CommerceResult<entities::stock_location::Model> {
-        if let Some(location) = entities::stock_location::Entity::find()
-            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-            .filter(entities::stock_location::Column::DeletedAt.is_null())
-            .one(conn)
-            .await?
-        {
-            return Ok(location);
-        }
-
-        let now = Utc::now();
-        let location = entities::stock_location::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
-            code: Set(Some("default".to_string())),
-            address_line1: Set(None),
-            address_line2: Set(None),
-            city: Set(None),
-            province: Set(None),
-            postal_code: Set(None),
-            country_code: Set(None),
-            phone: Set(None),
-            metadata: Set(json!({ "source": "legacy_inventory_service" })),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            deleted_at: Set(None),
-        }
-        .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
-
-        let translation = entities::stock_location_translation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            stock_location_id: Set(location.id),
-            locale: Set("en".to_string()),
-            name: Set("Default".to_string()),
-        }
-        .insert(conn)
-        .await
-        .map_err(CommerceError::from)?;
-
-        let resource_revision = stock_location_translation_resource_revision(
-            &location,
-            std::slice::from_ref(&translation),
-        );
-        record_stock_location_translation_change_in_tx(
-            conn,
-            tenant_id,
-            location.id,
-            Uuid::new_v4(),
-            &resource_revision,
-            StockLocationTranslationChangeLifecycle::Active,
-        )
-        .await
-        .map_err(translation_change_error_to_commerce_error)?;
-
-        Ok(location)
+        super::bootstrap::BootstrapService::ensure_default_location_in_tx(conn, tenant_id)
+            .await
+            .map_err(CommerceError::from)
     }
 
     async fn ensure_inventory_item<C>(
@@ -759,17 +736,6 @@ impl InventoryService {
             .into_iter()
             .map(|level| level.stocked_quantity - level.reserved_quantity)
             .sum())
-    }
-}
-
-fn translation_change_error_to_commerce_error(
-    error: StockLocationTranslationExactLocaleError,
-) -> CommerceError {
-    match error {
-        StockLocationTranslationExactLocaleError::Database(error) => CommerceError::Database(error),
-        other => CommerceError::Validation(format!(
-            "Inventory translation change journal write failed: {other}"
-        )),
     }
 }
 

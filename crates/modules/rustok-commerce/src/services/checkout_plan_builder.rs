@@ -514,6 +514,18 @@ fn build_marketplace_plan_lines(
                 line.id
             )));
         }
+        if let Some(expected_seller_id) = line
+            .seller_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
+            if expected_seller_id != snapshot.seller_id {
+                return Err(CheckoutError::Validation(format!(
+                    "Cart line {} marketplace snapshot seller {} does not match line seller {}",
+                    line.id, snapshot.seller_id, expected_seller_id
+                )));
+            }
+        }
         result.push(CheckoutMarketplaceLineSnapshot {
             order_line_index,
             snapshot,

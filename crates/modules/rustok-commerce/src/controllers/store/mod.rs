@@ -731,6 +731,24 @@ pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
     })
 }
 
+pub(crate) fn sanitize_storefront_metadata(metadata: Value) -> Value {
+    let mut object = match metadata {
+        Value::Object(map) => map,
+        _ => return Value::Object(serde_json::Map::new()),
+    };
+    object.remove("customer_tax_exempt");
+    object.remove("tax_class");
+    object.remove("tax_rate");
+    object.remove("seller_id");
+    object.remove("seller");
+    object.remove("marketplace");
+    object.remove("channel_tax_provider_ids");
+    object.remove("pricing_adjustment");
+    object.remove("pricing");
+    object.remove("discounts");
+    Value::Object(object)
+}
+
 pub(crate) fn cart_context_metadata(cart: &CartResponse, context: &StoreContextResponse) -> Value {
     json!({
         "cart_context": {

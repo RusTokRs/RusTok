@@ -1,8 +1,9 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, Statement,
 };
 use serde_json::Value;
 use std::{
@@ -390,6 +391,7 @@ pub fn sanitize_line_item_metadata(metadata: Value) -> Value {
     };
 
     metadata.remove("seller_label");
+    metadata.remove("customer_tax_exempt");
 
     if let Some(Value::Object(mut seller)) = metadata.remove("seller") {
         seller.remove("label");
@@ -682,6 +684,34 @@ where
     Ok(cart)
 }
 
+pub async fn load_cart_for_update_in_tx<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    cart_id: Uuid,
+) -> CartResult<entities::cart::Model>
+where
+    C: ConnectionTrait,
+{
+    let query = entities::cart::Entity::find_by_id(cart_id)
+        .filter(entities::cart::Column::TenantId.eq(tenant_id));
+    let cart = match conn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(conn).await?
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE carts SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), cart_id.into()],
+            );
+            conn.execute_raw(statement).await?;
+            query.one(conn).await?
+        }
+        _ => query.one(conn).await?,
+    };
+    cart.ok_or(CartError::CartNotFound(cart_id))
+}
+
 pub async fn build_response<C>(conn: &C, cart: entities::cart::Model) -> CartResult<CartResponse>
 where
     C: ConnectionTrait,
@@ -900,6 +930,7 @@ pub async fn recalculate_tax_lines<C>(
     tax_calculation_port: &dyn TaxCalculationPort,
     cart: &entities::cart::Model,
     line_items: &[entities::cart_line_item::Model],
+    adjustments: &[entities::cart_adjustment::Model],
     shipping_options: &[ShippingOptionResponse],
 ) -> CartResult<(Decimal, bool)>
 where
@@ -929,7 +960,12 @@ where
     let now = Utc::now();
     let mut taxable_amounts = Vec::new();
     for item in line_items {
-        if item.total_price <= Decimal::ZERO {
+        let line_adjustments = adjustments
+            .iter()
+            .filter(|adjustment| adjustment.cart_line_item_id == Some(item.id))
+            .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+        let net_item_price = (item.total_price - line_adjustments).max(Decimal::ZERO);
+        if net_item_price <= Decimal::ZERO {
             continue;
         }
         taxable_amounts.push(TaxableAmount {
@@ -938,7 +974,7 @@ where
             item_tax_class: line_item_tax_class(&item.metadata),
             shipping_tax_class: None,
             description: Some("line_item".to_string()),
-            amount: item.total_price,
+            amount: net_item_price,
         });
     }
 
@@ -946,7 +982,15 @@ where
         if option.currency_code != cart.currency_code {
             continue;
         }
-        if option.amount <= Decimal::ZERO {
+        let shipping_adjustments = adjustments
+            .iter()
+            .filter(|adjustment| {
+                adjustment.cart_line_item_id.is_none()
+                    && adjustment_scope(adjustment) == Some(SHIPPING_PROMOTION_SCOPE)
+            })
+            .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+        let net_shipping_amount = (option.amount - shipping_adjustments).max(Decimal::ZERO);
+        if net_shipping_amount <= Decimal::ZERO {
             continue;
         }
         taxable_amounts.push(TaxableAmount {
@@ -955,7 +999,7 @@ where
             item_tax_class: None,
             shipping_tax_class: shipping_tax_class(&option.metadata),
             description: Some("shipping".to_string()),
-            amount: option.amount,
+            amount: net_shipping_amount,
         });
     }
 
@@ -1064,6 +1108,7 @@ where
         tax_calculation_port,
         &cart,
         &line_items,
+        &adjustments,
         &shipping_options,
     )
     .await?;
@@ -1311,6 +1356,63 @@ where
         .await?;
     }
 
+    Ok(())
+}
+
+pub fn currency_exponent(currency_code: &str) -> i16 {
+    match currency_code.to_ascii_uppercase().as_str() {
+        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF"
+        | "UGX" | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
+        _ => 2,
+    }
+}
+
+pub fn decimal_to_minor_units(amount: Decimal, exponent: i16) -> Option<i64> {
+    let factor = 10_i64.checked_pow(u32::try_from(exponent.max(0)).ok()?)?;
+    let scaled = amount.checked_mul(Decimal::from(factor))?;
+    scaled.round().to_i64()
+}
+
+pub async fn update_line_item_marketplace_snapshot_in_tx<C>(
+    conn: &C,
+    line_item_id: Uuid,
+    quantity: i32,
+    unit_price: Decimal,
+    discount_amount_decimal: Option<Decimal>,
+) -> CartResult<()>
+where
+    C: ConnectionTrait,
+{
+    if let Some(snapshot) =
+        entities::cart_line_item_marketplace_snapshot::Entity::find_by_id(line_item_id)
+            .one(conn)
+            .await?
+    {
+        let exponent = snapshot.currency_exponent;
+        let unit_amount =
+            decimal_to_minor_units(unit_price, exponent).unwrap_or(snapshot.unit_amount);
+        let subtotal_amount = unit_amount
+            .checked_mul(i64::from(quantity))
+            .ok_or_else(|| CartError::Validation("marketplace subtotal overflow".to_string()))?;
+        let discount_amount = discount_amount_decimal
+            .and_then(|d| decimal_to_minor_units(d, exponent))
+            .unwrap_or(0)
+            .min(subtotal_amount);
+        let total_amount = subtotal_amount
+            .checked_sub(discount_amount)
+            .and_then(|val| val.checked_add(snapshot.tax_amount))
+            .ok_or_else(|| CartError::Validation("marketplace total overflow".to_string()))?;
+
+        let mut active: entities::cart_line_item_marketplace_snapshot::ActiveModel =
+            snapshot.into();
+        active.unit_amount = Set(unit_amount);
+        active.subtotal_amount = Set(subtotal_amount);
+        active.discount_amount = Set(discount_amount);
+        active.total_amount = Set(total_amount);
+        active.updated_at = Set(Utc::now().fixed_offset());
+        active.update(conn).await?;
+    }
     Ok(())
 }
 

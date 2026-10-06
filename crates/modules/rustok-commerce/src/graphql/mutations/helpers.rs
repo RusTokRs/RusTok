@@ -518,6 +518,24 @@ pub(crate) fn merge_graphql_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
+pub(crate) fn sanitize_storefront_metadata(metadata: Value) -> Value {
+    let mut object = match metadata {
+        Value::Object(map) => map,
+        _ => return Value::Object(serde_json::Map::new()),
+    };
+    object.remove("customer_tax_exempt");
+    object.remove("tax_class");
+    object.remove("tax_rate");
+    object.remove("seller_id");
+    object.remove("seller");
+    object.remove("marketplace");
+    object.remove("channel_tax_provider_ids");
+    object.remove("pricing_adjustment");
+    object.remove("pricing");
+    object.remove("discounts");
+    Value::Object(object)
+}
+
 pub(crate) fn cart_context_metadata(
     cart: &crate::dto::CartResponse,
     context: &crate::dto::StoreContextResponse,
@@ -711,10 +729,20 @@ pub(crate) async fn resolve_storefront_line_item_input(
             title,
             quantity: input.quantity,
             unit_price: base_unit_price,
-            metadata: merge_graphql_metadata(
-                parse_optional_metadata(input.metadata.as_deref())?,
-                seller_snapshot_metadata(product_model.seller_id.as_deref()),
-            ),
+            metadata: {
+                let mut item_metadata = sanitize_storefront_metadata(
+                    parse_optional_metadata(input.metadata.as_deref())?,
+                );
+                if let Some(tax_class) = product_model.metadata.get("tax_class").and_then(serde_json::Value::as_str) {
+                    if let serde_json::Value::Object(ref mut map) = item_metadata {
+                        map.insert("tax_class".to_string(), serde_json::Value::String(tax_class.to_string()));
+                    }
+                }
+                merge_graphql_metadata(
+                    item_metadata,
+                    seller_snapshot_metadata(product_model.seller_id.as_deref()),
+                )
+            },
         },
         pricing_adjustment,
     })

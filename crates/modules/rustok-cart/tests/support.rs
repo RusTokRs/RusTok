@@ -1,6 +1,6 @@
 use rustok_cart::entities::{
-    cart, cart_adjustment, cart_line_item, cart_line_item_translation, cart_shipping_selection,
-    cart_tax_line,
+    cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
+    cart_line_item_translation, cart_shipping_selection, cart_tax_line,
 };
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_fulfillment::entities::{shipping_option, shipping_option_translation};
@@ -31,6 +31,12 @@ pub async fn ensure_cart_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(cart_line_item_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(cart_line_item_marketplace_snapshot::Entity),
     )
     .await;
     create_entity_table(

@@ -13,7 +13,7 @@ use crate::error::{CartError, CartResult};
 use super::CartService;
 use super::helpers::{
     CART_PROMOTION_SCOPE, LINE_ITEM_PROMOTION_SCOPE, PROMOTION_ADJUSTMENT_SOURCE_TYPE,
-    SHIPPING_PROMOTION_SCOPE, ensure_active, load_cart, load_cart_in_tx,
+    SHIPPING_PROMOTION_SCOPE, ensure_active, load_cart, load_cart_for_update_in_tx,
     normalize_required_adjustment_source_id, promotion_metadata, recalculate_totals,
     reconcile_cart_shipping_state, resolve_promotion_base_amount,
     resolve_shipping_promotion_base_amount, sanitize_adjustment_metadata,
@@ -344,7 +344,7 @@ impl CartService {
         } = input;
         let source_id = normalize_required_adjustment_source_id(source_id)?;
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "apply_promotion_adjustment")?;
 
         let line_items = entities::cart_line_item::Entity::find()

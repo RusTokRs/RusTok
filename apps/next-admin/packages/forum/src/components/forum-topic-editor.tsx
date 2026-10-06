@@ -65,6 +65,7 @@ export function ForumTopicEditor({
   const [isPinned, setIsPinned] = useState(initialData?.isPinned ?? false);
   const [isLocked, setIsLocked] = useState(initialData?.isLocked ?? false);
   const [topicStatus, setTopicStatus] = useState(initialData?.status ?? 'open');
+  const [isDeleted, setIsDeleted] = useState(initialData?.isDeleted ?? false);
   const [moderationBusy, setModerationBusy] = useState(false);
 
   const form = useForm<FormValues>({
@@ -137,13 +138,14 @@ export function ForumTopicEditor({
     if (!initialData) return;
     setModerationBusy(true);
     try {
-      if (topicStatus === 'deleted') {
+      if (isDeleted) {
         await restoreForumTopic(initialData.id, gqlOpts);
+        setIsDeleted(false);
         setTopicStatus('open');
         toast.success('Topic restored');
       } else {
         await deleteForumTopic(initialData.id, gqlOpts);
-        setTopicStatus('deleted');
+        setIsDeleted(true);
         toast.success('Topic deleted');
       }
       router.refresh();
@@ -235,14 +237,16 @@ export function ForumTopicEditor({
               <span
                 className={cn(
                   'rounded-full px-2.5 py-0.5 text-xs font-medium',
-                  topicStatus === 'open'
-                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                    : topicStatus === 'closed'
-                      ? 'bg-muted text-muted-foreground'
-                      : 'bg-destructive/15 text-destructive'
+                  isDeleted
+                    ? 'bg-destructive/15 text-destructive'
+                    : topicStatus === 'open'
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : topicStatus === 'closed'
+                        ? 'bg-muted text-muted-foreground'
+                        : 'bg-destructive/15 text-destructive'
                 )}
               >
-                {topicStatus.toUpperCase()}
+                {isDeleted ? 'DELETED' : topicStatus.toUpperCase()}
               </span>
             </div>
           )}
@@ -283,12 +287,12 @@ export function ForumTopicEditor({
               </Button>
               <Button
                 type='button'
-                variant={topicStatus === 'deleted' ? 'outline' : 'destructive'}
+                variant={isDeleted ? 'outline' : 'destructive'}
                 size='sm'
                 disabled={moderationBusy}
                 onClick={handleToggleDelete}
               >
-                {topicStatus === 'deleted' ? 'Restore topic' : 'Delete topic'}
+                {isDeleted ? 'Restore topic' : 'Delete topic'}
               </Button>
             </div>
           </div>

@@ -50,6 +50,7 @@ export interface ForumTopicDetail {
   body: RichTextView;
   bodyPlainText: string;
   status: string;
+  isDeleted: boolean;
   tags: string[];
   isPinned: boolean;
   isLocked: boolean;
@@ -97,6 +98,7 @@ const FORUM_TOPIC_FIELDS = `
   body { document html }
   bodyPlainText
   status
+  isDeleted
   tags
   isPinned
   isLocked

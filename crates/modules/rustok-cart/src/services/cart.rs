@@ -175,7 +175,7 @@ impl CartService {
         }
 
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "add_line_item")?;
         let now = Utc::now();
         let metadata = sanitize_line_item_metadata(input.metadata);
@@ -224,21 +224,20 @@ impl CartService {
 
         if let (Some(product_id), Some(variant_id)) = (input.product_id, input.variant_id) {
             let seller_id = metadata
-                .get("seller_id")
+                .get("seller")
+                .and_then(|v| v.get("id"))
                 .and_then(|v| v.as_str())
-                .or_else(|| {
-                    metadata
-                        .get("seller")
-                        .and_then(|v| v.get("id"))
-                        .and_then(|v| v.as_str())
-                })
                 .and_then(|s| Uuid::parse_str(s).ok());
             if let Some(seller_id) = seller_id {
-                use rust_decimal::prelude::ToPrimitive;
-                let unit_amount = (input.unit_price * Decimal::from(100))
-                    .to_i64()
-                    .unwrap_or_default();
+                let exponent = currency_exponent(&cart.currency_code);
+                let unit_amount = decimal_to_minor_units(input.unit_price, exponent).unwrap_or_default();
                 let subtotal_amount = unit_amount * i64::from(input.quantity);
+                let discount_amount = pricing_adjustment
+                    .as_ref()
+                    .and_then(|adj| decimal_to_minor_units(adj.amount, exponent))
+                    .unwrap_or(0)
+                    .min(subtotal_amount);
+                let total_amount = subtotal_amount.saturating_sub(discount_amount);
                 entities::cart_line_item_marketplace_snapshot::ActiveModel {
                     cart_line_item_id: Set(line_item_id),
                     seller_id: Set(seller_id),
@@ -247,12 +246,12 @@ impl CartService {
                     master_variant_id: Set(variant_id),
                     listing_terms_version: Set(1),
                     currency_code: Set(cart.currency_code.clone().to_uppercase()),
-                    currency_exponent: Set(2),
+                    currency_exponent: Set(exponent),
                     unit_amount: Set(unit_amount),
                     subtotal_amount: Set(subtotal_amount),
-                    discount_amount: Set(0),
+                    discount_amount: Set(discount_amount),
                     tax_amount: Set(0),
-                    total_amount: Set(subtotal_amount),
+                    total_amount: Set(total_amount),
                     pricing_reference: Set(None),
                     inventory_reference: Set(None),
                     fulfillment_profile_slug: Set(shipping_profile_slug.clone()),
@@ -289,7 +288,7 @@ impl CartService {
             .map_err(|error| CartError::Validation(error.to_string()))?;
 
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         if cart.status != STATUS_ACTIVE && cart.status != STATUS_CHECKING_OUT {
             return Err(CartError::InvalidTransition {
                 from: cart.status,
@@ -341,7 +340,7 @@ impl CartService {
         }
 
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "set_adjustments")?;
 
         let line_items = entities::cart_line_item::Entity::find()
@@ -416,7 +415,7 @@ impl CartService {
         }
 
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "update_line_item_quantity")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
@@ -432,6 +431,7 @@ impl CartService {
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        update_line_item_marketplace_snapshot_in_tx(&txn, line_item_id, quantity, unit_price, None).await?;
 
         recalculate_totals(&txn, self.tax_calculation_port.as_ref(), self.shipping_option_read_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&txn, cart_id).await?;
@@ -455,7 +455,7 @@ impl CartService {
         }
 
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "update_line_item_pricing")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
@@ -471,6 +471,14 @@ impl CartService {
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        update_line_item_marketplace_snapshot_in_tx(
+            &txn,
+            line_item_id,
+            quantity,
+            unit_price,
+            pricing_adjustment.as_ref().map(|a| a.amount),
+        )
+        .await?;
         replace_pricing_adjustments(
             &txn,
             cart.id,
@@ -500,7 +508,7 @@ impl CartService {
             .map(|update| (update.line_item_id, update))
             .collect();
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "reprice_line_items")?;
 
         let line_items = entities::cart_line_item::Entity::find()
@@ -519,6 +527,14 @@ impl CartService {
                 active.total_price = Set(update.unit_price * Decimal::from(quantity));
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
+                update_line_item_marketplace_snapshot_in_tx(
+                    &txn,
+                    line_item_id,
+                    quantity,
+                    update.unit_price,
+                    update.pricing_adjustment.as_ref().map(|a| a.amount),
+                )
+                .await?;
                 pricing_adjustments.push((line_item_id, update.pricing_adjustment.clone()));
             }
         }
@@ -543,7 +559,7 @@ impl CartService {
         line_item_id: Uuid,
     ) -> CartResult<CartResponse> {
         let txn = self.db.begin().await?;
-        let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "remove_line_item")?;
 
         let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)

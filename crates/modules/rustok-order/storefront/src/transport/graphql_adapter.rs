@@ -360,9 +360,20 @@ fn map_gql_order(payload: GqlStorefrontOrderPayload) -> StorefrontOrder {
     }
 }
 
+#[derive(Debug)]
+pub(super) struct OrderQueryTransportError(pub String);
+
+impl std::fmt::Display for OrderQueryTransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for OrderQueryTransportError {}
+
 pub(super) async fn fetch_storefront_order(
     order_id: String,
-) -> Result<Option<StorefrontOrder>, CheckoutCompletionTransportError> {
+) -> Result<Option<StorefrontOrder>, OrderQueryTransportError> {
     let order_id = order_id.trim();
     if order_id.is_empty() {
         return Ok(None);
@@ -382,7 +393,7 @@ pub(super) async fn fetch_storefront_order(
         None,
     )
     .await
-    .map_err(|error| CheckoutCompletionTransportError::Graphql(error.to_string()))?;
+    .map_err(|error| OrderQueryTransportError(error.to_string()))?;
 
     Ok(response.order.map(map_gql_order))
 }
@@ -391,7 +402,7 @@ pub(super) async fn fetch_storefront_orders(
     page: Option<u64>,
     per_page: Option<u64>,
     status: Option<String>,
-) -> Result<StorefrontOrdersResponse, CheckoutCompletionTransportError> {
+) -> Result<StorefrontOrdersResponse, OrderQueryTransportError> {
     let mut vars = serde_json::Map::new();
     if let Some(p) = page {
         vars.insert("page".into(), json!(p));
@@ -414,7 +425,7 @@ pub(super) async fn fetch_storefront_orders(
         None,
     )
     .await
-    .map_err(|error| CheckoutCompletionTransportError::Graphql(error.to_string()))?;
+    .map_err(|error| OrderQueryTransportError(error.to_string()))?;
 
     Ok(StorefrontOrdersResponse {
         items: response.orders.items.into_iter().map(map_gql_order).collect(),

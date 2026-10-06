@@ -8,7 +8,7 @@ use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    action_hint, filter_orders, localized_order_status, order_grid_columns,
+    action_hint, filter_orders, format_order_caption, localized_order_status, order_grid_columns,
     order_list_request, order_status_badge, prepare_cancel_order_command,
     prepare_deliver_order_command, prepare_mark_paid_command, prepare_ship_order_command,
     short_order_id, summarize_order_header, summarize_order_lines, summarize_order_timeline,
@@ -574,9 +574,10 @@ pub fn OrderAdmin() -> impl IntoView {
         match col_id.as_str() {
             "id" => {
                 let id_short = short_order_id(&item.id);
+                let caption = format_order_caption(cell_locale.as_deref(), &item);
                 let is_sel = cell_selected_id.get().as_deref() == Some(&item.id);
                 view! {
-                    <div class="flex items-center gap-1.5">
+                    <div class="flex items-center gap-1.5" title=caption>
                         <span class=if is_sel {
                             "font-mono text-xs font-semibold text-primary underline"
                         } else {

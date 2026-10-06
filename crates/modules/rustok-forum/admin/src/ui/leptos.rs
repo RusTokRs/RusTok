@@ -2204,13 +2204,44 @@ fn TopicsPage(
                                 {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &topic_heading_labels).title}
                             </h2>
                         </div>
-                        {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &topic_badge_labels)
-                            .active_badge
-                            .map(|label| view! {
-                                <span class="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">
-                                    {label}
-                                </span>
-                            })}
+                        <div class="flex flex-wrap items-center gap-2">
+                            {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &topic_badge_labels)
+                                .active_badge
+                                .map(|label| view! {
+                                    <span class="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">
+                                        {label}
+                                    </span>
+                                })}
+                            {move || {
+                                let active_id = editing_id.get()?;
+                                let topics_result = topics.get()?;
+                                let list = topics_result.ok()?;
+                                let topic = list.into_iter().find(|t| t.id == active_id)?;
+                                let is_pinned = topic.is_pinned;
+                                let is_locked = topic.is_locked;
+                                let is_deleted = topic.is_deleted;
+                                let status = topic.status.clone();
+                                Some(view! {
+                                    <span class=if is_pinned { "rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300" } else { "rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground" }>
+                                        {if is_pinned { "Pinned" } else { "Normal" }}
+                                    </span>
+                                    <span class=if is_locked { "rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive" } else { "rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground" }>
+                                        {if is_locked { "Locked" } else { "Unlocked" }}
+                                    </span>
+                                    <span class=if is_deleted {
+                                        "rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive"
+                                    } else if status == "open" {
+                                        "rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
+                                    } else if status == "closed" {
+                                        "rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+                                    } else {
+                                        "rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive"
+                                    }>
+                                        {if is_deleted { "DELETED".to_string() } else { status.to_uppercase() }}
+                                    </span>
+                                })
+                            }}
+                        </div>
                     </div>
 
                     {move || {

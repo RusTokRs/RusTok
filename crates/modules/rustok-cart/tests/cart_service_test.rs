@@ -1558,3 +1558,97 @@ async fn seller_scope_without_seller_id_does_not_split_delivery_groups() {
             .all(|group| group.seller_scope.is_none())
     );
 }
+
+#[tokio::test]
+async fn tax_calculated_on_net_discounted_line_item_price() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        region_id,
+        "usd",
+        Some("region_default"),
+        serde_json::json!({}),
+    )
+    .await;
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                unit_price: Decimal::from_str("100.00").unwrap(),
+                quantity: 1,
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let line_item_id = cart.line_items[0].id;
+    assert_eq!(cart.tax_total, Decimal::from_str("10.00").unwrap());
+
+    let updated = service
+        .set_adjustments(
+            tenant_id,
+            cart.id,
+            vec![SetCartAdjustmentInput {
+                line_item_id: Some(line_item_id),
+                source_type: "promotion".to_string(),
+                source_id: Some("promo-20".to_string()),
+                amount: Decimal::from_str("20.00").unwrap(),
+                metadata: serde_json::json!({}),
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.tax_total, Decimal::from_str("8.00").unwrap());
+    assert_eq!(updated.total_amount, Decimal::from_str("88.00").unwrap());
+}
+
+#[tokio::test]
+async fn sanitization_strips_customer_tax_exempt_from_line_item_metadata() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+
+    let updated = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                metadata: serde_json::json!({
+                    "customer_tax_exempt": true,
+                    "custom_note": "gift"
+                }),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(updated.line_items[0].metadata.get("customer_tax_exempt").is_none());
+    assert_eq!(
+        updated.line_items[0].metadata.get("custom_note"),
+        Some(&serde_json::json!("gift"))
+    );
+}
