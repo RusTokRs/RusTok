@@ -606,7 +606,7 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
     db: &DatabaseConnection,
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
-    let tenants = tenants::Entity::find_active(db).await.map_err(|error| {
+    let tenants = tenants::find_active(db).await.map_err(|error| {
         tracing::error!(
             error = %error,
             "Failed to load active tenants during manifest OAuth sync"
@@ -990,7 +990,6 @@ fn role_permissions(role: UserRole) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::_entities::tenants::Model as TenantModel;
     use crate::models::oauth_apps;
     use crate::models::oauth_apps::Entity as OAuthAppsEntity;
     use crate::models::oauth_authorization_codes;

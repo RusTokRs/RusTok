@@ -50,7 +50,7 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         .unwrap_or_else(|| "Default".to_string());
 
     let tenant =
-        tenants::Entity::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
+        tenants::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
 
     if let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await? {
         RbacService::replace_user_role_committed(

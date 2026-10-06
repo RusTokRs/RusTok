@@ -16,7 +16,8 @@ use uuid::Uuid;
 
 use super::_entities::oauth_apps::ActiveModel as DatabaseActiveModel;
 pub use super::_entities::oauth_apps::{Column, Entity, Model, Relation};
-use super::_entities::{oauth_app_translations, tenants};
+use super::_entities::oauth_app_translations;
+use super::tenants;
 
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 const MANIFEST_GENERATED_COPY_LOCALE: &str = "en";
@@ -458,7 +459,7 @@ async fn hydrate_tenant_default_or_identifier(
     db: &DatabaseConnection,
     mut model: Model,
 ) -> Result<Model, DbErr> {
-    let tenant = tenants::Entity::find_by_id(db, model.tenant_id).await?;
+    let tenant = tenants::find_by_id(db, model.tenant_id).await?;
     if let Some(locale) = tenant
         .as_ref()
         .and_then(|tenant| normalize_locale_tag(tenant.default_locale.as_str()))

@@ -13,7 +13,6 @@ use rustok_server::{
     common::settings::RustokSettings,
     context::{OptionalChannel, TenantContext, TenantContextExtension},
     middleware::channel as channel_middleware,
-    models::_entities::tenants,
     services::{
         cache_runtime::ensure_cache_service,
         channel_cache_invalidation::{

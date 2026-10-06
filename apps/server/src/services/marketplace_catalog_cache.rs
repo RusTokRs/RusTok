@@ -264,12 +264,39 @@ fn estimate_catalog_module_bytes(module: &CatalogManifestModule) -> usize {
         {
             bytes = bytes.saturating_add(value.len());
         }
+        if let Some(artifact) = &version.artifact {
+            bytes = bytes.saturating_add(estimate_artifact_release_bytes(artifact));
+        }
     }
     bytes.saturating_add(
         serde_json::to_vec(&module.settings_schema)
             .map(|encoded| encoded.len())
             .unwrap_or(0),
     )
+}
+
+fn estimate_artifact_release_bytes(
+    artifact: &rustok_modules::ModuleMarketplaceArtifactRelease,
+) -> usize {
+    let mut bytes = std::mem::size_of::<rustok_modules::ModuleMarketplaceArtifactRelease>();
+    for value in [
+        artifact.registry_id.as_str(),
+        artifact.repository.as_str(),
+        artifact.oci_manifest_digest.as_str(),
+        artifact.payload_digest.as_str(),
+        artifact.descriptor_digest.as_str(),
+        artifact.source_reference.as_str(),
+        artifact.source_digest.as_str(),
+    ] {
+        bytes = bytes.saturating_add(value.len());
+    }
+    for evidence in &artifact.evidence {
+        bytes = bytes
+            .saturating_add(std::mem::size_of::<rustok_modules::ModuleMarketplaceEvidenceReference>())
+            .saturating_add(evidence.reference.len())
+            .saturating_add(evidence.digest.len());
+    }
+    bytes
 }
 
 fn positive_env_u64(name: &str, default: u64) -> u64 {
@@ -283,6 +310,7 @@ fn positive_env_u64(name: &str, default: u64) -> u64 {
 #[cfg(test)]
 mod wrapper_tests {
     use super::*;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn detail_cache(
@@ -371,5 +399,69 @@ mod wrapper_tests {
             cache.run_pending_tasks().await;
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    fn test_catalog_module(slug: &str, source: &str, crate_name: &str) -> CatalogManifestModule {
+        CatalogManifestModule {
+            slug: slug.to_string(),
+            source: source.to_string(),
+            crate_name: crate_name.to_string(),
+            name: None,
+            category: None,
+            tags: Vec::new(),
+            icon_url: None,
+            banner_url: None,
+            screenshots: Vec::new(),
+            version: None,
+            description: None,
+            git: None,
+            rev: None,
+            path: None,
+            required: false,
+            depends_on: Vec::new(),
+            ownership: "first-party".to_string(),
+            trust_level: "trusted".to_string(),
+            rustok_min_version: None,
+            rustok_max_version: None,
+            publisher: None,
+            checksum_sha256: None,
+            signature: None,
+            versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "admin-extension".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+            settings_schema: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn estimate_catalog_module_bytes_includes_artifact_and_evidence() {
+        let mut module = test_catalog_module("test-module", "registry", "test_crate");
+        module.versions = vec![crate::modules::manifest::CatalogModuleVersion {
+            version: "1.0.0".to_string(),
+            ..Default::default()
+        }];
+        let baseline = estimate_catalog_module_bytes(&module);
+
+        module.versions[0].artifact = Some(rustok_modules::ModuleMarketplaceArtifactRelease {
+            registry_id: "official".to_string(),
+            repository: "rustok/test-module".to_string(),
+            origin: rustok_modules::ModuleMarketplaceArtifactOrigin::PlatformBuilt,
+            runtime_kind: rustok_modules::ModuleMarketplaceRuntimeKind::WasmComponent,
+            oci_manifest_digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+            payload_digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+            descriptor_digest: "sha256:3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+            source_reference: "git:v1.0.0".to_string(),
+            source_digest: "sha256:4444444444444444444444444444444444444444444444444444444444444444".to_string(),
+            evidence: vec![rustok_modules::ModuleMarketplaceEvidenceReference {
+                kind: rustok_modules::ModuleMarketplaceEvidenceKind::AuthorSignature,
+                reference: "sig-ref".to_string(),
+                digest: "sha256:5555555555555555555555555555555555555555555555555555555555555555".to_string(),
+            }],
+        });
+        let with_artifact = estimate_catalog_module_bytes(&module);
+        assert!(with_artifact > baseline);
     }
 }

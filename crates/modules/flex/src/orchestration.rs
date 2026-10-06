@@ -18,6 +18,23 @@ pub trait FieldDefinitionCachePort: Send + Sync {
     async fn get(&self, tenant_id: Uuid, entity_type: &str) -> Option<Vec<FieldDefinitionView>>;
     async fn set(&self, tenant_id: Uuid, entity_type: &str, rows: Vec<FieldDefinitionView>);
     async fn invalidate(&self, tenant_id: Uuid, entity_type: &str);
+
+    /// Optional generation token to protect against late fills after concurrent invalidation.
+    async fn generation(&self, _tenant_id: Uuid, _entity_type: &str) -> Option<u64> {
+        None
+    }
+
+    /// Set cached rows only if the cache generation still matches the recorded generation token.
+    async fn set_if_generation(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        rows: Vec<FieldDefinitionView>,
+        generation: u64,
+    ) {
+        let _ = generation;
+        self.set(tenant_id, entity_type, rows).await;
+    }
 }
 
 pub async fn list_field_definitions(
@@ -41,8 +58,15 @@ pub async fn list_field_definitions_with_cache(
         return Ok(rows);
     }
 
+    let generation = cache.generation(tenant_id, entity_type).await;
     let rows = list_field_definitions(registry, db, tenant_id, entity_type).await?;
-    cache.set(tenant_id, entity_type, rows.clone()).await;
+    if let Some(token) = generation {
+        cache
+            .set_if_generation(tenant_id, entity_type, rows.clone(), token)
+            .await;
+    } else {
+        cache.set(tenant_id, entity_type, rows.clone()).await;
+    }
 
     Ok(rows)
 }

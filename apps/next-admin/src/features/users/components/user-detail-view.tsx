@@ -34,12 +34,6 @@ mutation UpdateUser($id: UUID!, $input: UpdateUserInput!) {
   }
 }`;
 
-const DISABLE_USER_MUTATION = `
-mutation DisableUser($id: UUID!) {
-  disableUser(id: $id) {
-    id email name role status createdAt tenantName
-  }
-}`;
 
 export default function UserDetailView({ userId }: { userId: string }) {
   const { data: session } = useSession();
@@ -101,10 +95,15 @@ export default function UserDetailView({ userId }: { userId: string }) {
     if (!token || !user) return;
     try {
       const data = await graphqlRequest<
-        { id: string },
-        { disableUser: UserDetail }
-      >(DISABLE_USER_MUTATION, { id: userId }, token, tenantSlug);
-      setUser(data.disableUser);
+        { id: string; input: { status: string } },
+        { updateUser: UserDetail }
+      >(
+        UPDATE_USER_MUTATION,
+        { id: userId, input: { status: 'INACTIVE' } },
+        token,
+        tenantSlug
+      );
+      setUser(data.updateUser);
       toast.success('User deactivated');
     } catch (err) {
       toast.error(

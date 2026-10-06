@@ -30,6 +30,34 @@ const INDEX_TARGET_SCOPE_KIND: &str = "kind";
 const INDEX_SCOPE_KEY_ALL: &str = "*";
 const INDEX_CURSOR_REPLAY_MODE_NOT_STARTED: &str = "not_started";
 
+static REDIRECT_CACHE_GLOBAL_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static REDIRECT_CACHE_GENERATIONS: Lazy<std::sync::RwLock<HashMap<Uuid, u64>>> =
+    Lazy::new(|| std::sync::RwLock::new(HashMap::new()));
+
+pub(crate) fn current_redirect_cache_generation(tenant_id: Uuid) -> u64 {
+    let global = REDIRECT_CACHE_GLOBAL_GENERATION.load(std::sync::atomic::Ordering::Acquire);
+    let gens = REDIRECT_CACHE_GENERATIONS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let tenant_gen = gens.get(&tenant_id).copied().unwrap_or(0);
+    global.wrapping_add(tenant_gen)
+}
+
+pub(crate) fn bump_redirect_cache_generation(tenant_id: Uuid) -> u64 {
+    let global = REDIRECT_CACHE_GLOBAL_GENERATION.load(std::sync::atomic::Ordering::Acquire);
+    let mut gens = REDIRECT_CACHE_GENERATIONS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let generation = gens.entry(tenant_id).or_insert(0);
+    *generation = generation.wrapping_add(1);
+    global.wrapping_add(*generation)
+}
+
+pub(crate) fn bump_all_redirect_cache_generations() {
+    REDIRECT_CACHE_GLOBAL_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+}
+
 static REDIRECT_LOOKUP_CACHE: Lazy<Cache<Uuid, Arc<RedirectLookup>>> = Lazy::new(|| {
     Cache::builder()
         // The underlying redirect-model cache owns tenant-specific expiry. The lookup cache is
@@ -46,6 +74,7 @@ struct RedirectLookup {
     wildcard_literals: HashMap<String, usize>,
     wildcard_prefix_lengths: Vec<usize>,
     wildcards: HashMap<String, RedirectWildcardBucket>,
+    generation: u64,
 }
 
 #[derive(Debug, Default)]
@@ -55,7 +84,12 @@ struct RedirectWildcardBucket {
 }
 
 impl RedirectLookup {
+    #[cfg(test)]
     fn from_source(source: Arc<Vec<seo_redirect::Model>>) -> Self {
+        Self::from_source_with_generation(source, 0)
+    }
+
+    fn from_source_with_generation(source: Arc<Vec<seo_redirect::Model>>, generation: u64) -> Self {
         let mut exact = HashMap::new();
         let mut wildcard_literals = HashMap::new();
         let mut wildcard_prefix_lengths = Vec::new();
@@ -105,6 +139,7 @@ impl RedirectLookup {
             wildcard_literals,
             wildcard_prefix_lengths,
             wildcards,
+            generation,
         }
     }
 
@@ -169,7 +204,16 @@ fn redirect_lookup_cache_entry_weight(_tenant_id: &Uuid, lookup: &Arc<RedirectLo
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(std::mem::size_of::<Arc<RedirectLookup>>())
         .saturating_add(std::mem::size_of::<RedirectLookup>())
-        .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>());
+        .saturating_add(std::mem::size_of::<Arc<Vec<seo_redirect::Model>>>())
+        .saturating_add(std::mem::size_of::<Vec<seo_redirect::Model>>());
+
+    for redirect in lookup.source.iter() {
+        weight = weight
+            .saturating_add(std::mem::size_of::<seo_redirect::Model>())
+            .saturating_add(redirect.match_type.len())
+            .saturating_add(redirect.source_pattern.len())
+            .saturating_add(redirect.target_url.len());
+    }
 
     for route in lookup.exact.keys() {
         weight = weight
@@ -428,9 +472,11 @@ impl SeoService {
     ) -> SeoResult<Arc<Vec<seo_redirect::Model>>> {
         let settings = self.load_settings(tenant_id).await?;
         let ttl_seconds = settings.redirect_cache_ttl_seconds.max(0) as u64;
+        let expected_generation = current_redirect_cache_generation(tenant_id);
         if ttl_seconds > 0
             && let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await
             && entry.loaded_at.elapsed().as_secs() < ttl_seconds
+            && entry.generation == expected_generation
         {
             return Ok(Arc::clone(&entry.redirects));
         }
@@ -449,13 +495,14 @@ impl SeoService {
                 )))
             })?;
         let redirects = Arc::new(items);
-        if ttl_seconds > 0 {
+        if ttl_seconds > 0 && current_redirect_cache_generation(tenant_id) == expected_generation {
             REDIRECT_CACHE
                 .insert(
                     tenant_id,
                     Arc::new(RedirectCacheEntry {
                         redirects: Arc::clone(&redirects),
                         loaded_at: std::time::Instant::now(),
+                        generation: expected_generation,
                     }),
                 )
                 .await;
@@ -464,17 +511,24 @@ impl SeoService {
     }
 
     async fn load_redirect_lookup(&self, tenant_id: Uuid) -> SeoResult<Arc<RedirectLookup>> {
+        let expected_generation = current_redirect_cache_generation(tenant_id);
         let source = self.load_redirect_models(tenant_id).await?;
         if let Some(lookup) = REDIRECT_LOOKUP_CACHE.get(&tenant_id).await
             && Arc::ptr_eq(&lookup.source, &source)
+            && lookup.generation == expected_generation
         {
             return Ok(lookup);
         }
 
-        let lookup = Arc::new(RedirectLookup::from_source(source));
-        REDIRECT_LOOKUP_CACHE
-            .insert(tenant_id, Arc::clone(&lookup))
-            .await;
+        let lookup = Arc::new(RedirectLookup::from_source_with_generation(
+            source,
+            expected_generation,
+        ));
+        if current_redirect_cache_generation(tenant_id) == expected_generation {
+            REDIRECT_LOOKUP_CACHE
+                .insert(tenant_id, Arc::clone(&lookup))
+                .await;
+        }
         Ok(lookup)
     }
 
@@ -715,8 +769,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        RedirectLookup, build_seo_event_key, normalize_hosts, normalize_source_pattern,
-        normalize_target_url,
+        RedirectLookup, build_seo_event_key, bump_all_redirect_cache_generations,
+        bump_redirect_cache_generation, current_redirect_cache_generation, normalize_hosts,
+        normalize_source_pattern, normalize_target_url, redirect_lookup_cache_entry_weight,
     };
     use crate::dto::SeoRedirectMatchType;
     use crate::entities::seo_redirect;
@@ -893,5 +948,46 @@ mod tests {
             .expect("unicode wildcard redirect should match");
 
         assert_eq!(matched.target_url, "/target");
+    }
+
+    #[test]
+    fn redirect_lookup_cache_entry_weight_accounts_for_underlying_models() {
+        let tenant_id = Uuid::new_v4();
+        let short_lookup = Arc::new(RedirectLookup::from_source(Arc::new(vec![redirect(
+            "exact",
+            "/short",
+            "/t",
+            true,
+            None,
+        )])));
+        let long_lookup = Arc::new(RedirectLookup::from_source(Arc::new(vec![redirect(
+            "exact",
+            &format!("/{}", "a".repeat(2_048)),
+            &format!("/{}", "b".repeat(2_048)),
+            true,
+            None,
+        )])));
+
+        let short_weight = redirect_lookup_cache_entry_weight(&tenant_id, &short_lookup);
+        let long_weight = redirect_lookup_cache_entry_weight(&tenant_id, &long_lookup);
+        assert!(long_weight > short_weight);
+    }
+
+    #[test]
+    fn redirect_generation_bump_increments_and_isolates_tenants() {
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+
+        let initial_a = current_redirect_cache_generation(tenant_a);
+        let initial_b = current_redirect_cache_generation(tenant_b);
+
+        let bumped_a = bump_redirect_cache_generation(tenant_a);
+        assert_eq!(bumped_a, initial_a.wrapping_add(1));
+        assert_eq!(current_redirect_cache_generation(tenant_a), initial_a.wrapping_add(1));
+        assert_eq!(current_redirect_cache_generation(tenant_b), initial_b);
+
+        bump_all_redirect_cache_generations();
+        assert_eq!(current_redirect_cache_generation(tenant_a), initial_a.wrapping_add(2));
+        assert_eq!(current_redirect_cache_generation(tenant_b), initial_b.wrapping_add(1));
     }
 }

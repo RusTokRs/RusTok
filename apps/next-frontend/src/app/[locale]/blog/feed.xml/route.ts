@@ -35,8 +35,15 @@ export async function GET(
         25
       );
       posts = res.items;
-    } catch {
-      posts = [];
+    } catch (err) {
+      console.error("Failed to fetch blog posts for RSS feed:", err);
+      return new NextResponse("Service Unavailable", {
+        status: 503,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
     }
   }
 
@@ -89,7 +96,7 @@ ${itemsXml}
     status: 200,
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "s-maxage=3600, stale-while-revalidate",
+      "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400",
     },
   });
 }

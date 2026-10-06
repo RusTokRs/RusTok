@@ -764,8 +764,7 @@ mod tests {
     use super::{
         ModuleLifecycleService, UpdateModuleSettingsError, map_lifecycle_settings_receipt_error,
     };
-    use crate::models::_entities::tenant_modules;
-    use crate::models::tenants;
+    use crate::models::tenants::{self, TenantActiveModelExt};
     use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
@@ -773,6 +772,7 @@ mod tests {
     use rustok_modules::{ModuleCommandContext, ModuleOperationStatus};
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;
+    use rustok_tenant::entities::tenant_module;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
     use serial_test::serial;
@@ -1146,9 +1146,9 @@ mod tests {
         assert!(updated.enabled);
         assert_eq!(updated.module_slug, "tenant");
 
-        let stored = tenant_modules::Entity::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant.id))
-            .filter(tenant_modules::Column::ModuleSlug.eq("tenant"))
+        let stored = tenant_module::Entity::find()
+            .filter(tenant_module::Column::TenantId.eq(tenant.id))
+            .filter(tenant_module::Column::ModuleSlug.eq("tenant"))
             .one(&db)
             .await
             .expect("load stored core settings")

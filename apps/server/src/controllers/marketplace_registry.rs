@@ -2643,7 +2643,7 @@ fn registry_cache_control() -> HeaderValue {
 }
 
 fn registry_cache_vary() -> HeaderValue {
-    HeaderValue::from_static("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
+    HeaderValue::from_static("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID, X-Tenant-Slug")
 }
 
 fn registry_total_count_header_name() -> HeaderName {

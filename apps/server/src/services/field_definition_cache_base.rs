@@ -1,5 +1,6 @@
 //! Cache for Flex field definitions schema/list queries.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,7 @@ const FIELD_DEFINITION_INVALIDATION_CHANNEL: &str = "field_definition_cache_inva
 #[derive(Clone)]
 pub struct FieldDefinitionCache {
     inner: Cache<(Uuid, String), Vec<FieldDefinitionView>>,
+    generations: Arc<std::sync::RwLock<HashMap<(Uuid, String), u64>>>,
 }
 
 #[derive(Clone)]
@@ -90,7 +92,10 @@ impl FieldDefinitionCache {
             .max_capacity(max_weight_bytes)
             .build();
 
-        Self { inner }
+        Self {
+            inner,
+            generations: Arc::new(std::sync::RwLock::new(HashMap::new())),
+        }
     }
 
     pub async fn get(
@@ -108,6 +113,14 @@ impl FieldDefinitionCache {
     }
 
     pub async fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
+        {
+            let mut gens = self
+                .generations
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = gens.entry((tenant_id, entity_type.to_string())).or_insert(0);
+            *entry = entry.wrapping_add(1);
+        }
         self.inner
             .invalidate(&(tenant_id, entity_type.to_string()))
             .await;
@@ -120,7 +133,39 @@ impl FieldDefinitionCache {
     /// obsolete schema until TTL expiry, so the only safe recovery is a bounded
     /// full-cache invalidation.
     pub fn invalidate_all(&self) {
+        {
+            let mut gens = self
+                .generations
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for generation in gens.values_mut() {
+                *generation = generation.wrapping_add(1);
+            }
+        }
         self.inner.invalidate_all();
+    }
+
+    pub fn generation(&self, tenant_id: Uuid, entity_type: &str) -> u64 {
+        let gens = self
+            .generations
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        gens.get(&(tenant_id, entity_type.to_string()))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub async fn set_if_generation(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        rows: Vec<FieldDefinitionView>,
+        generation: u64,
+    ) {
+        let current = self.generation(tenant_id, entity_type);
+        if current == generation {
+            self.set(tenant_id, entity_type, rows).await;
+        }
     }
 }
 
@@ -282,6 +327,20 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 
     async fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
         FieldDefinitionCache::invalidate(self, tenant_id, entity_type).await;
+    }
+
+    async fn generation(&self, tenant_id: Uuid, entity_type: &str) -> Option<u64> {
+        Some(FieldDefinitionCache::generation(self, tenant_id, entity_type))
+    }
+
+    async fn set_if_generation(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        rows: Vec<FieldDefinitionView>,
+        generation: u64,
+    ) {
+        FieldDefinitionCache::set_if_generation(self, tenant_id, entity_type, rows, generation).await;
     }
 }
 
@@ -504,5 +563,30 @@ mod tests {
         .await
         .expect("field definition invalidation supervisor should restart worker");
         supervisor.abort();
+    }
+
+    #[tokio::test]
+    async fn set_if_generation_rejects_stale_write_after_invalidation() {
+        let cache = FieldDefinitionCache::new();
+        let tenant_id = Uuid::new_v4();
+        let initial_gen = cache.generation(tenant_id, "user");
+
+        // Concurrent invalidation happens while a DB query was in-flight
+        cache.invalidate(tenant_id, "user").await;
+
+        // In-flight DB query finishes with old data and tries to write with initial_gen
+        cache
+            .set_if_generation(tenant_id, "user", Vec::new(), initial_gen)
+            .await;
+
+        // Cache must still be empty because the stale fill was rejected
+        assert!(cache.get(tenant_id, "user").await.is_none());
+
+        // A fill with the current generation succeeds
+        let current_gen = cache.generation(tenant_id, "user");
+        cache
+            .set_if_generation(tenant_id, "user", Vec::new(), current_gen)
+            .await;
+        assert!(cache.get(tenant_id, "user").await.is_some());
     }
 }

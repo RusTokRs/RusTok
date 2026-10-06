@@ -95,6 +95,7 @@ const SEO_SETTINGS_KEYS: &[&str] = &[
 pub(super) struct RedirectCacheEntry {
     pub(super) redirects: Arc<Vec<seo_redirect::Model>>,
     pub(super) loaded_at: Instant,
+    pub(super) generation: u64,
 }
 
 static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<RedirectCacheEntry>>> = Lazy::new(|| {
@@ -755,10 +756,12 @@ mod cache_weight_tests {
         let short = Arc::new(RedirectCacheEntry {
             redirects: Arc::new(vec![redirect("/a".to_string())]),
             loaded_at: Instant::now(),
+            generation: 0,
         });
         let long = Arc::new(RedirectCacheEntry {
             redirects: Arc::new(vec![redirect(format!("/{}", "x".repeat(2_048)))]),
             loaded_at: Instant::now(),
+            generation: 0,
         });
 
         assert!(

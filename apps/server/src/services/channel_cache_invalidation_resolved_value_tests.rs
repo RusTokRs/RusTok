@@ -23,7 +23,6 @@ use super::server_runtime_context::ServerRuntimeContext;
 use crate::common::settings::RustokSettings;
 use crate::context::{OptionalChannel, TenantContext, TenantContextExtension};
 use crate::middleware::channel as channel_middleware;
-use crate::models::_entities::tenants;
 
 const CHANNEL_RESOLUTION_INVALIDATION_KEY: &str = "*";
 

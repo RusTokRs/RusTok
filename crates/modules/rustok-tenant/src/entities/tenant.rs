@@ -47,3 +47,21 @@ impl Related<super::tenant_module::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl ActiveModel {
+    pub fn new(name: &str, slug: &str) -> Self {
+        let now = chrono::Utc::now().fixed_offset();
+
+        Self {
+            id: sea_orm::ActiveValue::Set(rustok_core::generate_id()),
+            name: sea_orm::ActiveValue::Set(name.to_string()),
+            slug: sea_orm::ActiveValue::Set(slug.to_string()),
+            domain: sea_orm::ActiveValue::NotSet,
+            settings: sea_orm::ActiveValue::Set(serde_json::json!({})),
+            default_locale: sea_orm::ActiveValue::Set("en".to_string()),
+            is_active: sea_orm::ActiveValue::Set(true),
+            created_at: sea_orm::ActiveValue::Set(now),
+            updated_at: sea_orm::ActiveValue::Set(now),
+        }
+    }
+}

@@ -745,7 +745,7 @@ mod tests {
         assert_eq!(unknown.client_message(), "Tenant not found");
 
         let now = chrono::Utc::now();
-        crate::models::_entities::tenants::ActiveModel {
+        rustok_tenant::entities::tenant::ActiveModel {
             id: Set(uuid::Uuid::new_v4()),
             name: Set("Disabled WS tenant".to_string()),
             slug: Set("disabled-ws-tenant".to_string()),

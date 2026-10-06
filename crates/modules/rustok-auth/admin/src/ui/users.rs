@@ -10,7 +10,8 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
     CreateUserInputError, GraphqlUserViewModel, filter_users, graphql_user_view,
-    prepare_create_user_input, user_grid_columns, user_list_page, user_list_query_params,
+    prepare_create_user_input, user_grid_columns, user_list_page, user_list_pagination,
+    user_list_query_params,
 };
 use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{create_user, fetch_users};
@@ -342,6 +343,7 @@ pub fn Users() -> impl IntoView {
                         None => view! { <div>{users_table_skeleton()}</div> }.into_any(),
                         Some(Ok(response)) => {
                             let total_count = response.users.page_info.total_count;
+                            let _pagination_policy = user_list_pagination(page.get(), limit.get(), total_count);
                             pagination.update(|p| p.total = total_count as u64);
                             let user_items = response
                                 .users

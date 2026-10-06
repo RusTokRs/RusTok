@@ -14,7 +14,6 @@ use crate::auth::{
     AuthConfig, encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
     verify_password,
 };
-use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use std::sync::{
@@ -992,34 +991,9 @@ impl AuthLifecycleService {
     where
         C: ConnectionTrait,
     {
-        let user_role_links = crate::models::_entities::user_roles::Entity::find()
-            .filter(crate::models::_entities::user_roles::Column::UserId.eq(user_id))
-            .all(db)
+        RbacService::get_user_role_authoritative(db, &tenant_id, &user_id)
             .await
-            .map_err(Error::from)?;
-
-        let role_ids: Vec<uuid::Uuid> = user_role_links.into_iter().map(|ur| ur.role_id).collect();
-        if !role_ids.is_empty() {
-            let assigned_roles = crate::models::_entities::roles::Entity::find()
-                .filter(crate::models::_entities::roles::Column::Id.is_in(role_ids))
-                .filter(crate::models::_entities::roles::Column::TenantId.eq(tenant_id))
-                .all(db)
-                .await
-                .map_err(Error::from)?;
-
-            if let Some(highest_role) = assigned_roles
-                .into_iter()
-                .filter_map(|r| <rustok_core::UserRole as std::str::FromStr>::from_str(&r.slug).ok())
-                .max_by_key(|r| r.privilege_rank())
-            {
-                return Ok(highest_role);
-            }
-        }
-
-        let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-        Ok(infer_user_role_from_permissions(&permissions))
+            .map_err(AuthLifecycleError::from)
     }
 
     fn clamp_session_list_limit(limit: u64) -> u64 {
@@ -1079,6 +1053,7 @@ mod tests {
         AuthConfig, decode_access_token, hash_password, hash_refresh_token, verify_password,
     };
     use crate::models::_entities::user_roles;
+    use crate::models::tenants::TenantActiveModelExt;
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
     use crate::services::server_runtime_context::ServerRuntimeContext;

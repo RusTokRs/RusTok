@@ -5,7 +5,7 @@ use async_graphql::dataloader::Loader;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::models::_entities::tenants;
+use rustok_tenant::entities::tenant as tenants;
 
 /// Loader for Tenant names.
 #[derive(Clone)]

@@ -5,7 +5,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{
         HeaderMap, Response, StatusCode,
-        header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+        header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY},
     },
 };
 use rustok_api::{
@@ -24,6 +24,7 @@ use crate::{
 
 const MULTIPART_OVERHEAD_BYTES: u64 = 1024 * 1024;
 const PUBLIC_IMAGE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
+const PUBLIC_IMAGE_VARY: &str = "X-Tenant-ID, X-Tenant-Slug";
 
 #[derive(Clone)]
 pub struct MediaHttpRuntime {
@@ -317,6 +318,7 @@ pub async fn public_image(
             .status(StatusCode::NOT_MODIFIED)
             .header(ETAG, etag)
             .header(CACHE_CONTROL, PUBLIC_IMAGE_CACHE_CONTROL)
+            .header(VARY, PUBLIC_IMAGE_VARY)
             .body(Body::empty())
             .map_err(|_| HttpError::internal("Failed to build media image response".to_string()));
     }
@@ -328,6 +330,7 @@ pub async fn public_image(
         .header(CONTENT_LENGTH, content_length)
         .header(ETAG, etag)
         .header(CACHE_CONTROL, PUBLIC_IMAGE_CACHE_CONTROL)
+        .header(VARY, PUBLIC_IMAGE_VARY)
         .header("x-content-type-options", "nosniff")
         .body(Body::from(image.bytes))
         .map_err(|_| HttpError::internal("Failed to build media image response".to_string()))
@@ -386,7 +389,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 
 #[cfg(test)]
 mod tests {
-    use super::require_media_permission;
+    use super::{PUBLIC_IMAGE_VARY, require_media_permission};
     use rustok_api::{Action, AuthContext, Permission, Resource, TenantContext};
     use uuid::Uuid;
 
@@ -442,5 +445,11 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn public_image_vary_contains_tenant_id_and_slug() {
+        assert!(PUBLIC_IMAGE_VARY.contains("X-Tenant-ID"));
+        assert!(PUBLIC_IMAGE_VARY.contains("X-Tenant-Slug"));
     }
 }

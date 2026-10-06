@@ -1,6 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Json, Object, Result};
 use axum::http::StatusCode;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::DatabaseConnection;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
@@ -16,8 +16,6 @@ use crate::graphql::types::{
     CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput,
     User,
 };
-use crate::models::_entities::users::Column as UsersColumn;
-use crate::models::users;
 use crate::modules::ManifestError;
 use crate::services::artifact_purge_recovery_host::{
     ArtifactSettingsRecoveryRuntime, ServerArtifactDataPurgeAuthorizer,
@@ -855,39 +853,24 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?;
-
-        let can_manage_users = RbacService::has_permission(
-            db,
-            &tenant.id,
-            &auth.user_id,
-            &rustok_api::Permission::USERS_MANAGE,
-        )
-        .await
-        .map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
-
-        if !can_manage_users {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: users:manage required",
-            ));
-        }
-
-        let user = users::Entity::find_by_id(id)
-            .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(db)
+        let locale = effective_request_locale(ctx, tenant);
+        user_mutation_runtime(ctx)?
+            .port()
+            .update_user(
+                &user_mutation_context(auth, tenant, locale),
+                UpdateUserCommand {
+                    id,
+                    email: None,
+                    password: None,
+                    name: None,
+                    role: None,
+                    status: Some(rustok_core::UserStatus::Inactive.to_string()),
+                    custom_fields: None,
+                },
+            )
             .await
-            .map_err(|err| graphql_mutation_internal_error("Unable to load user", err))?
-            .ok_or_else(|| FieldError::new("User not found"))?;
-
-        let mut model: users::ActiveModel = user.into();
-        model.status = Set(rustok_core::UserStatus::Inactive);
-
-        let user = model
-            .update(db)
-            .await
-.map_err(|err| graphql_mutation_internal_error("GraphQL mutation failed", err))?;
-
-        Ok(User::from(&user))
+            .map(user_from_mutation_record)
+            .map_err(map_user_mutation_error)
     }
 
     async fn delete_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<DeleteUserPayload> {

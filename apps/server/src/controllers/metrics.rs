@@ -29,7 +29,7 @@ use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
 use crate::middleware::tenant::{TenantCacheStats, tenant_cache_stats};
-use crate::models::_entities::tenants::{Column as TenantsColumn, Entity as TenantsEntity};
+use rustok_tenant::entities::tenant::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::email::{EmailDeliveryMetricsSnapshot, email_delivery_metrics_snapshot};
 use crate::services::rbac_consistency::load_rbac_consistency_stats;

@@ -26,7 +26,7 @@ use crate::{
     PublishedLandingArtifact, SavePageDocumentInput, page_cache_key,
 };
 
-const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
+const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Tenant-Slug, X-Channel-Slug, X-Channel-ID";
 const ARTIFACT_CACHE_CONTROL: &str = "public, max-age=60, stale-while-revalidate=300";
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
@@ -572,6 +572,7 @@ mod tests {
     #[test]
     fn artifact_cache_varies_by_tenant_and_channel_context() {
         assert!(ARTIFACT_VARY.contains("X-Tenant-ID"));
+        assert!(ARTIFACT_VARY.contains("X-Tenant-Slug"));
         assert!(ARTIFACT_VARY.contains("X-Channel-Slug"));
         assert!(ARTIFACT_VARY.contains("X-Channel-ID"));
         let base = artifact_cache_variant("en", "en", Some("web"));

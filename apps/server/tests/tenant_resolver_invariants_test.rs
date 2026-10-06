@@ -116,10 +116,10 @@ async fn insert_tenant(
     slug: &str,
     domain: Option<&str>,
     is_active: bool,
-) -> rustok_server::models::_entities::tenants::Model {
+) -> rustok_tenant::entities::tenant::Model {
     let now = chrono::Utc::now();
 
-    rustok_server::models::_entities::tenants::ActiveModel {
+    rustok_tenant::entities::tenant::ActiveModel {
         id: Set(Uuid::new_v4()),
         name: Set(format!("{slug} tenant")),
         slug: Set(slug.to_string()),
@@ -351,7 +351,7 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(slug.as_deref(), Some("resolver-deactivate-cache"));
 
-    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    let mut active: rustok_tenant::entities::tenant::ActiveModel = tenant_model.into();
     active.is_active = Set(false);
     active.updated_at = Set(chrono::Utc::now().into());
     active
@@ -421,7 +421,7 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     assert_eq!(old_status, StatusCode::OK);
     assert_eq!(old_slug.as_deref(), Some("resolver-domain-change"));
 
-    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    let mut active: rustok_tenant::entities::tenant::ActiveModel = tenant_model.into();
     active.domain = Set(Some("new-domain.example.test".to_string()));
     active.updated_at = Set(chrono::Utc::now().into());
     active
@@ -466,7 +466,7 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(slug.as_deref(), Some("resolver-uuid-cache"));
 
-    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    let mut active: rustok_tenant::entities::tenant::ActiveModel = tenant_model.into();
     active.is_active = Set(false);
     active.updated_at = Set(chrono::Utc::now().into());
     active

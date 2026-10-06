@@ -4,76 +4,127 @@ use sea_orm::prelude::*;
 
 use rustok_core::generate_id;
 
-pub use super::_entities::tenants::ActiveModel;
-pub use super::_entities::tenants::Entity;
-pub use super::_entities::tenants::Model;
-use super::_entities::tenants::{self};
+pub use rustok_tenant::entities::tenant::{self, ActiveModel, Column, Entity, Model, Relation};
 
-impl Model {
-    pub fn is_enabled(&self) -> bool {
-        self.is_active
+pub fn new_tenant_active_model(name: &str, slug: &str) -> ActiveModel {
+    ActiveModel::new(name, slug)
+}
+
+pub trait TenantActiveModelExt {
+    fn new(name: &str, slug: &str) -> Self;
+}
+
+impl TenantActiveModelExt for ActiveModel {
+    fn new(name: &str, slug: &str) -> Self {
+        ActiveModel::new(name, slug)
     }
 }
 
-impl ActiveModel {
-    pub fn new(name: &str, slug: &str) -> Self {
-        let now = Utc::now().fixed_offset();
-
-        Self {
-            id: sea_orm::ActiveValue::Set(generate_id()),
-            name: sea_orm::ActiveValue::Set(name.to_string()),
-            slug: sea_orm::ActiveValue::Set(slug.to_string()),
-            domain: sea_orm::ActiveValue::NotSet,
-            settings: sea_orm::ActiveValue::Set(serde_json::json!({})),
-            default_locale: sea_orm::ActiveValue::Set("en".to_string()),
-            is_active: sea_orm::ActiveValue::Set(true),
-            created_at: sea_orm::ActiveValue::Set(now),
-            updated_at: sea_orm::ActiveValue::Set(now),
-        }
-    }
+pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<Model>, DbErr> {
+    <Entity as EntityTrait>::find_by_id(id).one(db).await
 }
 
-impl Entity {
-    pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<Model>, DbErr> {
-        <Self as EntityTrait>::find_by_id(id).one(db).await
+pub async fn find_by_slug(db: &DatabaseConnection, slug: &str) -> Result<Option<Model>, DbErr> {
+    Entity::find()
+        .filter(Column::Slug.eq(slug))
+        .one(db)
+        .await
+}
+
+pub async fn find_by_domain(
+    db: &DatabaseConnection,
+    domain: &str,
+) -> Result<Option<Model>, DbErr> {
+    Entity::find()
+        .filter(Column::Domain.eq(domain))
+        .one(db)
+        .await
+}
+
+pub async fn find_active(db: &DatabaseConnection) -> Result<Vec<Model>, DbErr> {
+    Entity::find()
+        .filter(Column::IsActive.eq(true))
+        .all(db)
+        .await
+}
+
+pub async fn find_or_create(
+    db: &DatabaseConnection,
+    name: &str,
+    slug: &str,
+    domain: Option<&str>,
+) -> Result<Model, DbErr> {
+    if let Some(existing) = find_by_slug(db, slug).await? {
+        return Ok(existing);
     }
 
-    pub async fn find_by_slug(db: &DatabaseConnection, slug: &str) -> Result<Option<Model>, DbErr> {
-        Self::find()
-            .filter(tenants::Column::Slug.eq(slug))
-            .one(db)
-            .await
-    }
+    let mut tenant = new_tenant_active_model(name, slug);
+    tenant.domain = sea_orm::ActiveValue::Set(domain.map(|value| value.to_string()));
+    tenant.insert(db).await
+}
 
-    pub async fn find_by_domain(
+pub trait TenantEntityExt {
+    fn find_by_id(
         db: &DatabaseConnection,
-        domain: &str,
-    ) -> Result<Option<Model>, DbErr> {
-        Self::find()
-            .filter(tenants::Column::Domain.eq(domain))
-            .one(db)
-            .await
-    }
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send;
 
-    pub async fn find_active(db: &DatabaseConnection) -> Result<Vec<Model>, DbErr> {
-        Self::find()
-            .filter(tenants::Column::IsActive.eq(true))
-            .all(db)
-            .await
-    }
+    fn find_by_slug<'a>(
+        db: &'a DatabaseConnection,
+        slug: &'a str,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send + 'a;
 
-    pub async fn find_or_create(
+    fn find_by_domain<'a>(
+        db: &'a DatabaseConnection,
+        domain: &'a str,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send + 'a;
+
+    fn find_active(
         db: &DatabaseConnection,
-        name: &str,
-        slug: &str,
-        domain: Option<&str>,
-    ) -> Result<Model, DbErr> {
-        if let Some(existing) = Self::find_by_slug(db, slug).await? {
-            return Ok(existing);
-        }
+    ) -> impl std::future::Future<Output = Result<Vec<Model>, DbErr>> + Send;
 
-        let mut tenant = ActiveModel::new(name, slug);
-        tenant.domain = sea_orm::ActiveValue::Set(domain.map(|value| value.to_string()));
-        tenant.insert(db).await
+    fn find_or_create<'a>(
+        db: &'a DatabaseConnection,
+        name: &'a str,
+        slug: &'a str,
+        domain: Option<&'a str>,
+    ) -> impl std::future::Future<Output = Result<Model, DbErr>> + Send + 'a;
+}
+
+impl TenantEntityExt for Entity {
+    fn find_by_id(
+        db: &DatabaseConnection,
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send {
+        find_by_id(db, id)
+    }
+
+    fn find_by_slug<'a>(
+        db: &'a DatabaseConnection,
+        slug: &'a str,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send + 'a {
+        find_by_slug(db, slug)
+    }
+
+    fn find_by_domain<'a>(
+        db: &'a DatabaseConnection,
+        domain: &'a str,
+    ) -> impl std::future::Future<Output = Result<Option<Model>, DbErr>> + Send + 'a {
+        find_by_domain(db, domain)
+    }
+
+    fn find_active(
+        db: &DatabaseConnection,
+    ) -> impl std::future::Future<Output = Result<Vec<Model>, DbErr>> + Send {
+        find_active(db)
+    }
+
+    fn find_or_create<'a>(
+        db: &'a DatabaseConnection,
+        name: &'a str,
+        slug: &'a str,
+        domain: Option<&'a str>,
+    ) -> impl std::future::Future<Output = Result<Model, DbErr>> + Send + 'a {
+        find_or_create(db, name, slug, domain)
     }
 }
