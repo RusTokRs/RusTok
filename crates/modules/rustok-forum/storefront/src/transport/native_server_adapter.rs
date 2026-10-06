@@ -711,6 +711,8 @@ fn map_topic_list_item(value: rustok_forum::TopicListItem) -> ForumTopicListItem
         unread_count: None,
         has_unread_topic_revision: None,
         is_unread: None,
+        solution_reply_id: value.solution_reply_id.map(|id| id.to_string()),
+        vote_score: Some(value.vote_score),
     }
 }
 
@@ -734,6 +736,8 @@ fn map_unread_topic(value: rustok_forum::ForumStorefrontUnreadTopic) -> ForumTop
         unread_count: Some(value.unread_count),
         has_unread_topic_revision: Some(value.has_unread_topic_revision),
         is_unread: Some(value.is_unread),
+        solution_reply_id: value.topic.solution_reply_id.map(|id| id.to_string()),
+        vote_score: Some(value.topic.vote_score),
     }
 }
 

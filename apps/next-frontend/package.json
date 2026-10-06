@@ -21,6 +21,7 @@
     "@rustok/blog-frontend": "file:./packages/rustok-blog",
     "@rustok/cart-frontend": "file:./packages/rustok-cart",
     "@rustok/comments-frontend": "file:./packages/rustok-comments",
+    "@rustok/forum-frontend": "file:./packages/rustok-forum",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
     "@rustok/notifications-frontend": "file:./packages/rustok-notifications",
     "@rustok/order-frontend": "file:./packages/rustok-order",

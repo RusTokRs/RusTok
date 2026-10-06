@@ -1,0 +1,14 @@
+{
+  "name": "@rustok/forum-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "dependencies": {
+    "@rustok/richtext": "file:../../../../packages/richtext",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
+    "react": "^19.2.7",
+    "lucide-react": "^1.48.0"
+  },
+  "license": "BUSL-1.1"
+}

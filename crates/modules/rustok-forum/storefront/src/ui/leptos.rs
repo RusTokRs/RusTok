@@ -5,16 +5,24 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
 
+use super::category_overview::CategoryOverview;
+use super::composer::{ComposerQuote, ComposerSignal, ComposerState, ForumComposer};
 use super::member_card::{ForumAuthorBadge, member_card_context};
+use super::timeline::TimelineScroller;
+use super::topic_feed::ForumTopicFeed;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumViewMode {
+    Topics,
+    Categories,
+}
 use crate::core::{
     ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
-    forum_storefront_count_label, forum_storefront_status_badge_class,
-    forum_storefront_topic_card_view_model, topic_status_class,
+    forum_storefront_count_label, forum_storefront_status_badge_class, topic_status_class,
 };
 use crate::i18n::t;
 use crate::model::{
-    ForumCategoryListItem, ForumReplyDetail, ForumTopicDetail, ForumTopicListItem,
-    StorefrontForumData,
+    ForumCategoryListItem, ForumReplyDetail, ForumTopicDetail, StorefrontForumData,
 };
 use crate::transport;
 
@@ -154,29 +162,95 @@ fn ForumShowcase(
         read_state_available,
     } = data;
     provide_context(member_card_context(member_cards));
+    let composer_signal: ComposerSignal = RwSignal::new(ComposerState::default());
+    provide_context(composer_signal);
+
+    let composer_categories = categories.items.clone();
+    let overview_categories = categories.items.clone();
+    let overview_total = categories.total;
+    let (view_mode, set_view_mode) = signal(ForumViewMode::Topics);
 
     view! {
-        <div class="grid gap-6 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
-            <ForumCategoryRail
-                items=categories.items
-                total=categories.total
-                selected_category_id=selected_category_id.clone()
-            />
-            <ForumTopicFeed
-                items=topics.items
-                total=topics.total
-                selected_category_id=selected_category_id.clone()
-                selected_topic_id=selected_topic_id
-            />
-            <ForumThreadPanel
-                topic=selected_topic
-                replies=replies.items
-                replies_total=replies.total
-                read_state_available
-                on_mark_topic_read
-                mutation_busy
-            />
+        <div class="space-y-6">
+            // View Mode Switcher
+            <div class="flex items-center justify-end">
+                <div class="flex items-center rounded-2xl border border-border bg-background p-1 shadow-xs">
+                    <button
+                        type="button"
+                        class=move || format!(
+                            "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition {}",
+                            if view_mode.get() == ForumViewMode::Topics {
+                                "bg-primary text-primary-foreground shadow-xs"
+                            } else {
+                                "text-muted-foreground hover:text-foreground"
+                            }
+                        )
+                        on:click=move |_| set_view_mode.set(ForumViewMode::Topics)
+                    >
+                        <span>"💬"</span>
+                        <span>"Discussions"</span>
+                    </button>
+                    <button
+                        type="button"
+                        class=move || format!(
+                            "flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition {}",
+                            if view_mode.get() == ForumViewMode::Categories {
+                                "bg-primary text-primary-foreground shadow-xs"
+                            } else {
+                                "text-muted-foreground hover:text-foreground"
+                            }
+                        )
+                        on:click=move |_| set_view_mode.set(ForumViewMode::Categories)
+                    >
+                        <span>"📁"</span>
+                        <span>"Categories"</span>
+                    </button>
+                </div>
+            </div>
+
+            {move || match view_mode.get() {
+                ForumViewMode::Categories => {
+                    let overview_categories = overview_categories.clone();
+                    view! {
+                        <CategoryOverview
+                            items=overview_categories
+                            total=overview_total
+                            on_select_category=Callback::new(move |_category_id: String| {
+                                set_view_mode.set(ForumViewMode::Topics);
+                            })
+                        />
+                    }.into_any()
+                }
+                ForumViewMode::Topics => {
+                    view! {
+                        <div class="grid gap-6 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
+                            <ForumCategoryRail
+                                items=categories.items.clone()
+                                total=categories.total
+                                selected_category_id=selected_category_id.clone()
+                                on_switch_to_overview=Callback::new(move |_| set_view_mode.set(ForumViewMode::Categories))
+                            />
+                            <ForumTopicFeed
+                                items=topics.items.clone()
+                                total=topics.total
+                                selected_category_id=selected_category_id.clone()
+                                selected_topic_id=selected_topic_id.clone()
+                            />
+                            <ForumThreadPanel
+                                topic=selected_topic.clone()
+                                replies=replies.items.clone()
+                                replies_total=replies.total
+                                read_state_available
+                                on_mark_topic_read
+                                mutation_busy
+                            />
+                        </div>
+                    }.into_any()
+                }
+            }}
         </div>
+
+        <ForumComposer categories=composer_categories />
     }
 }
 
@@ -185,6 +259,7 @@ fn ForumCategoryRail(
     items: Vec<ForumCategoryListItem>,
     total: u64,
     selected_category_id: Option<String>,
+    on_switch_to_overview: Callback<()>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
@@ -210,18 +285,30 @@ fn ForumCategoryRail(
 
     view! {
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm xl:sticky xl:top-6 xl:self-start">
-            <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                    {categories_label}
-                </p>
-                <h3 class="mt-2 text-xl font-semibold text-card-foreground">{categories_title}</h3>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {forum_storefront_count_label(categories_total_template.as_str(), total)}
-                </p>
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                        {categories_label}
+                    </p>
+                    <h3 class="mt-2 text-xl font-semibold text-card-foreground">{categories_title}</h3>
+                    <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                        {forum_storefront_count_label(categories_total_template.as_str(), total)}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    title="Open category matrix with subcategories"
+                    class="shrink-0 rounded-full border border-border bg-background p-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-foreground"
+                    on:click=move |_| on_switch_to_overview.run(())
+                >
+                    "Grid ⊞"
+                </button>
             </div>
 
             <div class="space-y-2">
                 {items.into_iter().map(|item| {
+                    let is_subcategory = item.parent_id.is_some();
+                    let subcategory_indent = if is_subcategory { "ml-3 w-[calc(100%-0.75rem)] border-dashed" } else { "" };
                     let labels = ForumStorefrontCategoryRailLabels {
                         no_description: no_description_label.clone(),
                         total_template: categories_total_template.clone(),
@@ -246,8 +333,9 @@ fn ForumCategoryRail(
                     view! {
                         <a
                             class=format!(
-                                "relative block overflow-hidden rounded-[1.35rem] border p-4 transition {}",
-                                card.container_class
+                                "relative block overflow-hidden rounded-[1.35rem] border p-4 transition {} {}",
+                                card.container_class,
+                                subcategory_indent
                             )
                             href=card.href
                         >
@@ -259,8 +347,11 @@ fn ForumCategoryRail(
                                             data-forum-target-localized=""
                                             lang=content_lang
                                             dir="auto"
-                                            class="text-sm font-semibold text-foreground"
-                                        >{card.name}</h4>
+                                            class="flex items-center gap-1.5 text-sm font-semibold text-foreground"
+                                        >
+                                            {is_subcategory.then(|| view! { <span class="text-xs text-muted-foreground">"↳"</span> })}
+                                            <span>{card.name}</span>
+                                        </h4>
                                         <p
                                             data-forum-route-identifier=""
                                             dir="ltr"
@@ -286,143 +377,6 @@ fn ForumCategoryRail(
             </div>
         </aside>
     }
-}
-
-#[component]
-fn ForumTopicFeed(
-    items: Vec<ForumTopicListItem>,
-    total: u64,
-    selected_category_id: Option<String>,
-    selected_topic_id: Option<String>,
-) -> impl IntoView {
-    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale = route_context.locale.clone();
-    let route_segment = route_context
-        .route_segment
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| "forum".to_string());
-    let module_route_base = route_context.module_route_base(route_segment.as_str());
-    let empty_title = t(locale.as_deref(), "forum.feed.emptyTitle", "No topics yet");
-    let empty_body = t(
-        locale.as_deref(),
-        "forum.feed.emptyBody",
-        "Publish a topic from the forum admin package to light up this storefront feed.",
-    );
-    let feed_label = t(locale.as_deref(), "forum.feed.label", "Topic feed");
-    let feed_title = t(locale.as_deref(), "forum.feed.title", "Latest discussions");
-    let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
-    let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
-    let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
-    let unread_template = t(
-        locale.as_deref(),
-        "forum.topic.unreadCount",
-        "{count} unread",
-    );
-    let updated_unread_label = t(locale.as_deref(), "forum.topic.updatedUnread", "Updated");
-    let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
-    let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
-
-    if items.is_empty() {
-        return view! {
-            <section class="rounded-[1.75rem] border border-dashed border-border p-8 text-center">
-                <h3 class="text-lg font-semibold text-card-foreground">{empty_title}</h3>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {empty_body}
-                </p>
-            </section>
-        }
-        .into_any();
-    }
-
-    view! {
-        <section class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                        {feed_label}
-                    </p>
-                    <h3 class="mt-2 text-2xl font-semibold text-card-foreground">{feed_title}</h3>
-                </div>
-                <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                    {forum_storefront_count_label(threads_template.as_str(), total)}
-                </span>
-            </div>
-
-            <div class="space-y-3">
-                {items.into_iter().map(|item| {
-                    let author_id = item.author_id.clone();
-                    let card = forum_storefront_topic_card_view_model(
-                        module_route_base.as_str(),
-                        &item,
-                        selected_category_id.as_deref(),
-                        selected_topic_id.as_deref(),
-                        slug_template.as_str(),
-                    );
-                    let content_lang = forum_storefront_content_lang(card.effective_locale.as_str());
-                    let unread_label = if card.unread_count > 0 {
-                        forum_storefront_count_label(unread_template.as_str(), card.unread_count)
-                    } else {
-                        updated_unread_label.clone()
-                    };
-                    view! {
-                        <a
-                            class=format!(
-                                "block rounded-[1.5rem] border p-5 transition {}",
-                                card.container_class
-                            )
-                            href=card.href
-                        >
-                            <div class="flex flex-wrap items-start justify-between gap-4">
-                                <div class="space-y-3">
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class=card.status_badge_class>{card.status.clone()}</span>
-                                        <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                            {card.effective_locale.clone()}
-                                        </span>
-                                        {card.is_unread.then(|| view! {
-                                            <span class=card.unread_badge_class>{unread_label}</span>
-                                        })}
-                                        {card.is_pinned.then(|| view! {
-                                            <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                                                {pinned_label.clone()}
-                                            </span>
-                                        })}
-                                        {card.is_locked.then(|| view! {
-                                            <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
-                                                {locked_label.clone()}
-                                            </span>
-                                        })}
-                                    </div>
-                                    <div>
-                                        <h4
-                                            data-forum-target-localized=""
-                                            lang=content_lang
-                                            dir="auto"
-                                            class="text-lg font-semibold text-foreground"
-                                        >{card.title}</h4>
-                                        <p
-                                            data-forum-route-identifier=""
-                                            dir="ltr"
-                                            class="mt-1 text-sm text-muted-foreground"
-                                        >{card.slug_label}</p>
-                                    </div>
-                                    <ForumAuthorBadge author_id />
-                                </div>
-                                <div class="text-right">
-                                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                                        {replies_label.clone()}
-                                    </p>
-                                    <p class="mt-1 text-2xl font-semibold text-foreground">{card.reply_count}</p>
-                                </div>
-                            </div>
-                        </a>
-                    }
-                    .into_any()
-                }).collect_view()}
-            </div>
-        </section>
-    }.into_any()
 }
 
 #[component]
@@ -453,6 +407,7 @@ fn ForumThreadPanel(
     };
 
     let topic_id = topic.id.clone();
+    let topic_title = topic.title.clone();
     let author_id = topic.author_id.clone();
     let status_class = topic_status_class(topic.status.as_str());
     let body = topic.body.clone();
@@ -484,8 +439,9 @@ fn ForumThreadPanel(
     );
 
     view! {
-        <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm xl:sticky xl:top-6 xl:self-start">
-            <div class="space-y-3">
+        <div class="relative flex gap-3 xl:sticky xl:top-6 xl:self-start">
+            <aside class="flex-1 space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm overflow-hidden">
+                <div class="space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class=forum_storefront_status_badge_class(status_class)>{topic.status.clone()}</span>
                     <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
@@ -521,23 +477,42 @@ fn ForumThreadPanel(
                     content_locale=body_locale
                     class="richtext text-sm leading-7 text-muted-foreground"
                 />
-                {read_state_available.then(|| {
-                    let topic_id = topic_id.clone();
-                    view! {
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled=move || mutation_busy.get()
-                            on:click=move |_| on_mark_topic_read.run(topic_id.clone())
-                        >
-                            {move || if mutation_busy.get() {
-                                marking_read_label.clone()
-                            } else {
-                                mark_read_label.clone()
-                            }}
-                        </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    {read_state_available.then(|| {
+                        let topic_id = topic_id.clone();
+                        view! {
+                            <button
+                                type="button"
+                                class="inline-flex items-center justify-center rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled=move || mutation_busy.get()
+                                on:click=move |_| on_mark_topic_read.run(topic_id.clone())
+                            >
+                                {move || if mutation_busy.get() {
+                                    marking_read_label.clone()
+                                } else {
+                                    mark_read_label.clone()
+                                }}
+                            </button>
+                        }
+                    })}
+                    {
+                        let topic_id = topic_id.clone();
+                        let topic_title = topic_title.clone();
+                        view! {
+                            <button
+                                type="button"
+                                class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+                                on:click=move |_| {
+                                    if let Some(composer) = use_context::<ComposerSignal>() {
+                                        composer.update(|c| c.open_reply(topic_id.clone(), topic_title.clone(), None));
+                                    }
+                                }
+                            >
+                                "Reply"
+                            </button>
+                        }
                     }
-                })}
+                </div>
             </div>
 
             {if topic.tags.is_empty() {
@@ -579,6 +554,9 @@ fn ForumThreadPanel(
                 }}
             </div>
         </aside>
+
+        <TimelineScroller current_post=1 total_posts=replies_total + 1 />
+    </div>
     }.into_any()
 }
 
@@ -588,14 +566,43 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     let status_class = topic_status_class(reply.status.as_str());
     let content = reply.content.clone();
     let content_locale = reply.effective_locale.clone();
+    let reply_id = reply.id.clone();
 
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
             <div class="flex items-center justify-between gap-3">
                 <span class=forum_storefront_status_badge_class(status_class)>{reply.status}</span>
-                <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                    {reply.effective_locale}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                        {reply.effective_locale}
+                    </span>
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        title="Quote / Reply"
+                        on:click={
+                            let reply_id = reply_id.clone();
+                            move |_| {
+                                if let Some(composer) = use_context::<ComposerSignal>() {
+                                    composer.update(|c| {
+                                        c.append_quote(
+                                            ComposerQuote {
+                                                target_kind: "REPLY".to_string(),
+                                                target_id: reply_id.clone(),
+                                                revision_id: 1,
+                                                author_handle: None,
+                                                snippet: None,
+                                            },
+                                            None,
+                                        );
+                                    });
+                                }
+                            }
+                        }
+                    >
+                        "Quote"
+                    </button>
+                </div>
             </div>
             <div class="mt-3">
                 <ForumAuthorBadge author_id />

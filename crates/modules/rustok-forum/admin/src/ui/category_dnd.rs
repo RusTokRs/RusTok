@@ -217,6 +217,12 @@ pub(super) fn CategoryDndGrid(
                                             {item.is_archived.then(|| view! {
                                                 <span class="rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">{archived_label.clone()}</span>
                                             })}
+                                            {(!item.allows_topics).then(|| view! {
+                                                <span class="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">"Container only"</span>
+                                            })}
+                                            {item.moderated.then(|| view! {
+                                                <span class="rounded-full bg-purple-500/10 px-2 py-0.5 text-purple-700 dark:text-purple-300">"Moderated"</span>
+                                            })}
                                         </div>
                                         <h3
                                             data-forum-target-localized=""
@@ -270,6 +276,35 @@ pub(super) fn CategoryDndGrid(
                                     >
                                         {delete_label.clone()}
                                     </button>
+                                    {
+                                        let archive_id = item.id.clone();
+                                        let is_item_archived = item.is_archived;
+                                        let archive_button_label = if is_item_archived { "Restore subtree" } else { "Archive subtree" };
+                                        view! {
+                                            <button
+                                                type="button"
+                                                class="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-destructive/50 hover:text-destructive"
+                                                disabled=move || item_is_busy || move_busy.get()
+                                                on:click=move |_| {
+                                                    let archive_id = archive_id.clone();
+                                                    let token_value = token.get_untracked();
+                                                    let tenant_value = tenant.get_untracked();
+                                                    spawn_local(async move {
+                                                        let res = if is_item_archived {
+                                                            transport::restore_category_subtree(token_value, tenant_value, archive_id).await
+                                                        } else {
+                                                            transport::archive_category_subtree(token_value, tenant_value, archive_id).await
+                                                        };
+                                                        if res.is_ok() {
+                                                            set_refresh_nonce.update(|v| *v += 1);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {archive_button_label}
+                                            </button>
+                                        }
+                                    }
                                 </div>
                                 <div
                                     class="mt-4 rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-center text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:bg-primary/10 hover:text-foreground"

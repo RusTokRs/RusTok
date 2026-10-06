@@ -661,3 +661,310 @@ export async function forkForumTopicReplyBranch(
 
   return data.forkForumTopicReplyBranch;
 }
+
+export interface AdminCategoryTreeNode {
+  id: string;
+  parentId: string | null;
+  depth: number;
+  position: number;
+  requestedLocale: string;
+  effectiveLocale: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  moderated: boolean;
+  allowsTopics: boolean;
+  archivedAt: string | null;
+  isArchived: boolean;
+  topicCount: number;
+  replyCount: number;
+  children: AdminCategoryTreeNode[];
+}
+
+export interface CreateAdminCategoryInput {
+  locale: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  parentId?: string | null;
+  position?: number | null;
+  moderated: boolean;
+  allowsTopics?: boolean;
+}
+
+export interface UpdateAdminCategoryInput {
+  locale: string;
+  name?: string | null;
+  slug?: string | null;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  position?: number | null;
+  moderated?: boolean | null;
+  allowsTopics?: boolean | null;
+}
+
+function buildCategoryTreeFields(remainingDepth: number): string {
+  const fields =
+    'id parentId depth position requestedLocale effectiveLocale name slug description icon color moderated allowsTopics archivedAt isArchived topicCount replyCount';
+  if (remainingDepth <= 0) return fields;
+  return `${fields} children { ${buildCategoryTreeFields(remainingDepth - 1)} }`;
+}
+
+export async function fetchAdminCategoryTree(
+  opts: GqlOpts = {},
+  locale?: string
+): Promise<AdminCategoryTreeNode[]> {
+  const query = `
+    query ForumCategoryTree($locale: String) {
+      forumCategoryTree(locale: $locale) {
+        totalNodes
+        maxDepth
+        roots {
+          ${buildCategoryTreeFields(6)}
+        }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { locale?: string },
+    { forumCategoryTree: { roots: AdminCategoryTreeNode[] } }
+  >(query, { locale }, opts.token, opts.tenantSlug);
+
+  return data.forumCategoryTree?.roots ?? [];
+}
+
+export function flattenCategoryTree(
+  nodes: AdminCategoryTreeNode[]
+): AdminCategoryTreeNode[] {
+  const result: AdminCategoryTreeNode[] = [];
+  function traverse(list: AdminCategoryTreeNode[]) {
+    for (const item of list) {
+      result.push(item);
+      if (item.children && item.children.length > 0) {
+        traverse(item.children);
+      }
+    }
+  }
+  traverse(nodes);
+  return result;
+}
+
+export async function createAdminCategory(
+  input: CreateAdminCategoryInput,
+  opts: GqlOpts = {}
+): Promise<ForumCategoryOption> {
+  const mutation = `
+    mutation CreateForumCategory($input: CreateForumCategoryInput!) {
+      createForumCategory(input: $input) {
+        id
+        name
+        effectiveLocale
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { input: Omit<CreateAdminCategoryInput, 'allowsTopics'> },
+    { createForumCategory: ForumCategoryOption }
+  >(
+    mutation,
+    {
+      input: {
+        locale: input.locale,
+        name: input.name,
+        slug: input.slug,
+        description: input.description,
+        icon: input.icon,
+        color: input.color,
+        parentId: input.parentId,
+        position: input.position,
+        moderated: input.moderated
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  const created = data.createForumCategory;
+  if (input.allowsTopics !== undefined) {
+    try {
+      await setAdminCategoryTopicPolicy(created.id, input.allowsTopics, opts);
+    } catch {
+      // Best effort for topic policy initial flag
+    }
+  }
+
+  return created;
+}
+
+export async function updateAdminCategory(
+  id: string,
+  input: UpdateAdminCategoryInput,
+  opts: GqlOpts = {}
+): Promise<ForumCategoryOption> {
+  const mutation = `
+    mutation UpdateForumCategory($id: UUID!, $input: UpdateForumCategoryInput!) {
+      updateForumCategory(id: $id, input: $input) {
+        id
+        name
+        effectiveLocale
+      }
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { id: string; input: Omit<UpdateAdminCategoryInput, 'allowsTopics'> },
+    { updateForumCategory: ForumCategoryOption }
+  >(
+    mutation,
+    {
+      id,
+      input: {
+        locale: input.locale,
+        name: input.name,
+        slug: input.slug,
+        description: input.description,
+        icon: input.icon,
+        color: input.color,
+        position: input.position,
+        moderated: input.moderated
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  if (input.allowsTopics !== undefined && input.allowsTopics !== null) {
+    try {
+      await setAdminCategoryTopicPolicy(id, input.allowsTopics, opts);
+    } catch {
+      // Best effort
+    }
+  }
+
+  return data.updateForumCategory;
+}
+
+export async function moveAdminCategory(
+  categoryId: string,
+  input: { parentId?: string | null; position: number },
+  opts: GqlOpts = {}
+): Promise<void> {
+  const mutation = `
+    mutation MoveForumCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) {
+      moveForumCategory(categoryId: $categoryId, input: $input) {
+        moved { id }
+      }
+    }
+  `;
+
+  await graphqlRequest<
+    { categoryId: string; input: { parent_id: string | null; position: number } },
+    { moveForumCategory: { moved: { id: string } } }
+  >(
+    mutation,
+    {
+      categoryId,
+      input: {
+        parent_id: input.parentId ?? null,
+        position: input.position
+      }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+}
+
+export async function setAdminCategoryTopicPolicy(
+  categoryId: string,
+  allowsTopics: boolean,
+  opts: GqlOpts = {}
+): Promise<void> {
+  const mutation = `
+    mutation SetForumCategoryTopicPolicy($categoryId: UUID!, $input: UpdateForumCategoryTopicPolicyInput!) {
+      setForumCategoryTopicPolicy(categoryId: $categoryId, input: $input) {
+        category_id
+        allows_topics
+      }
+    }
+  `;
+
+  await graphqlRequest<
+    { categoryId: string; input: { allows_topics: boolean } },
+    { setForumCategoryTopicPolicy: { category_id: string; allows_topics: boolean } }
+  >(
+    mutation,
+    {
+      categoryId,
+      input: { allows_topics: allowsTopics }
+    },
+    opts.token,
+    opts.tenantSlug
+  );
+}
+
+export async function archiveAdminCategorySubtree(
+  categoryId: string,
+  opts: GqlOpts = {}
+): Promise<void> {
+  const mutation = `
+    mutation ArchiveForumCategorySubtree($categoryId: UUID!) {
+      archiveForumCategorySubtree(categoryId: $categoryId) {
+        root_id
+        archived
+      }
+    }
+  `;
+
+  await graphqlRequest<{ categoryId: string }, unknown>(
+    mutation,
+    { categoryId },
+    opts.token,
+    opts.tenantSlug
+  );
+}
+
+export async function restoreAdminCategorySubtree(
+  categoryId: string,
+  opts: GqlOpts = {}
+): Promise<void> {
+  const mutation = `
+    mutation RestoreForumCategorySubtree($categoryId: UUID!) {
+      restoreForumCategorySubtree(categoryId: $categoryId) {
+        root_id
+        archived
+      }
+    }
+  `;
+
+  await graphqlRequest<{ categoryId: string }, unknown>(
+    mutation,
+    { categoryId },
+    opts.token,
+    opts.tenantSlug
+  );
+}
+
+export async function deleteAdminCategory(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<void> {
+  const mutation = `
+    mutation DeleteForumCategory($id: UUID!) {
+      deleteForumCategory(id: $id)
+    }
+  `;
+
+  await graphqlRequest<{ id: string }, { deleteForumCategory: boolean }>(
+    mutation,
+    { id },
+    opts.token,
+    opts.tenantSlug
+  );
+}

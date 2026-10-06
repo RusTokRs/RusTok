@@ -9,6 +9,14 @@ export const forumNav: NavItem = {
   moduleSlug: 'forum',
   items: [
     {
+      title: 'Categories',
+      url: '/dashboard/forum/categories',
+      i18nKey: 'categories',
+      icon: 'forum',
+      moduleSlug: 'forum',
+      access: { permission: 'forum_categories:manage' }
+    },
+    {
       title: 'Topic Composer',
       url: '/dashboard/forum/topic',
       i18nKey: 'topicComposer',

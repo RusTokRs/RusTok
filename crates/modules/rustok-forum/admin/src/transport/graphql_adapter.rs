@@ -17,6 +17,13 @@ const CATEGORY_QUERY: &str = "query ForumAdminCategory($id: UUID!, $locale: Stri
 const CREATE_CATEGORY_MUTATION: &str = "mutation ForumAdminCreateCategory($input: CreateForumCategoryInput!) { createForumCategory(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: UUID!, $input: UpdateForumCategoryInput!) { updateForumCategory(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
+#[allow(dead_code)]
+const SET_CATEGORY_TOPIC_POLICY_MUTATION: &str =
+    "mutation ForumAdminSetCategoryTopicPolicy($categoryId: UUID!, $input: UpdateForumCategoryTopicPolicyInput!) { setForumCategoryTopicPolicy(categoryId: $categoryId, input: $input) { category_id allows_topics } }";
+const ARCHIVE_CATEGORY_SUBTREE_MUTATION: &str =
+    "mutation ForumAdminArchiveCategorySubtree($categoryId: UUID!) { archiveForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
+const RESTORE_CATEGORY_SUBTREE_MUTATION: &str =
+    "mutation ForumAdminRestoreCategorySubtree($categoryId: UUID!) { restoreForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
 const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_deleted: isDeleted is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
@@ -228,6 +235,27 @@ struct MoveCategoryInput {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
+struct CategoryTopicPolicyVariables {
+    #[serde(rename = "categoryId")]
+    category_id: String,
+    input: UpdateCategoryTopicPolicyInput,
+}
+
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+struct UpdateCategoryTopicPolicyInput {
+    #[serde(rename = "allows_topics")]
+    allows_topics: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct CategorySubtreeVariables {
+    #[serde(rename = "categoryId")]
+    category_id: String,
+}
+
+#[derive(Debug, Serialize)]
 struct CreateTopicInput {
     locale: String,
     #[serde(rename = "categoryId")]
@@ -382,6 +410,56 @@ pub async fn delete_category(
     } else {
         Err("Forum category delete returned false".to_string())
     }
+}
+
+#[allow(dead_code)]
+pub async fn set_category_topic_policy(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    category_id: String,
+    allows_topics: bool,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request(
+        SET_CATEGORY_TOPIC_POLICY_MUTATION,
+        CategoryTopicPolicyVariables {
+            category_id,
+            input: UpdateCategoryTopicPolicyInput { allows_topics },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn archive_category_subtree(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    category_id: String,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request(
+        ARCHIVE_CATEGORY_SUBTREE_MUTATION,
+        CategorySubtreeVariables { category_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn restore_category_subtree(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    category_id: String,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request(
+        RESTORE_CATEGORY_SUBTREE_MUTATION,
+        CategorySubtreeVariables { category_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn fetch_topics(

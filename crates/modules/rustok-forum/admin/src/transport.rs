@@ -132,6 +132,32 @@ pub async fn delete_category(
     graphql_adapter::delete_category(token, tenant_slug, id).await
 }
 
+#[allow(dead_code)]
+pub async fn set_category_topic_policy(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    allows_topics: bool,
+) -> Result<(), ApiError> {
+    graphql_adapter::set_category_topic_policy(token, tenant_slug, id, allows_topics).await
+}
+
+pub async fn archive_category_subtree(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::archive_category_subtree(token, tenant_slug, id).await
+}
+
+pub async fn restore_category_subtree(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::restore_category_subtree(token, tenant_slug, id).await
+}
+
 pub async fn fetch_topics(
     token: Option<String>,
     tenant_slug: Option<String>,

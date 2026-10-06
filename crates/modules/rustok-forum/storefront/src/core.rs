@@ -41,6 +41,8 @@ pub struct ForumStorefrontTopicCardViewModel {
     pub title: String,
     pub slug_label: String,
     pub reply_count: i32,
+    pub is_solved: bool,
+    pub vote_score: i32,
 }
 
 pub fn forum_storefront_count_label(template: &str, count: impl ToString) -> String {
@@ -149,6 +151,8 @@ pub fn forum_storefront_topic_card_view_model(
         title: item.title.clone(),
         slug_label: forum_storefront_slug_label(slug_template, item.slug.as_str()),
         reply_count: item.reply_count,
+        is_solved: item.solution_reply_id.is_some(),
+        vote_score: item.vote_score.unwrap_or(0),
     }
 }
 

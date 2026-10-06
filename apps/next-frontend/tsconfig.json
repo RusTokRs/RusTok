@@ -60,6 +60,9 @@
       "@rustok/blog-frontend": [
         "./packages/rustok-blog/src/index.tsx"
       ],
+      "@rustok/forum-frontend": [
+        "./packages/rustok-forum/src/index.tsx"
+      ],
       "@rustok/cart-frontend": [
         "./packages/rustok-cart/src/index.tsx"
       ],

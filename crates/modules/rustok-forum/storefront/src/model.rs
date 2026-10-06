@@ -75,7 +75,7 @@ pub struct ForumMemberStats {
     pub solution_count: i32,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ForumCategoryListItem {
     pub id: String,
     #[serde(rename = "effectiveLocale")]
@@ -86,6 +86,8 @@ pub struct ForumCategoryListItem {
     pub icon: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_css_hex_color")]
     pub color: Option<String>,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
     #[serde(rename = "topicCount")]
     pub topic_count: i32,
     #[serde(rename = "replyCount")]
@@ -124,6 +126,10 @@ pub struct ForumTopicListItem {
     pub has_unread_topic_revision: Option<bool>,
     #[serde(default, rename = "isUnread")]
     pub is_unread: Option<bool>,
+    #[serde(default, rename = "solutionReplyId")]
+    pub solution_reply_id: Option<String>,
+    #[serde(default, rename = "voteScore")]
+    pub vote_score: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -291,6 +297,8 @@ mod tests {
         assert_eq!(topic.author_id, None);
         assert_eq!(topic.is_unread, None);
         assert_eq!(topic.unread_count, None);
+        assert_eq!(topic.solution_reply_id, None);
+        assert_eq!(topic.vote_score, None);
     }
 
     #[test]

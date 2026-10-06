@@ -14,6 +14,8 @@ export { ForumTopicMerge } from './components/forum-topic-merge';
 export { ForumTopicReplyRange } from './components/forum-topic-reply-range';
 export { ForumTopicSlugRename } from './components/forum-topic-slug-rename';
 export { ForumTopicSplit } from './components/forum-topic-split';
+export { CategoryTreeAdmin } from './components/category-tree-admin';
+export { CategoryEditorDialog } from './components/category-editor-dialog';
 export * from './api/forum';
 export * from './api/topic-reply-range';
 export * from './core/topic-fork';
