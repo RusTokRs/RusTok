@@ -656,6 +656,19 @@ mod tests {
                 serde_json::json!([{ "bearer_auth": [] }]),
                 "unexpected security contract for {path}"
             );
+
+            for status in ["401", "403", "409"] {
+                assert!(
+                    openapi
+                        .paths
+                        .get_path_operation(path, method)
+                        .expect("marketplace operation must exist")
+                        .responses
+                        .responses
+                        .contains_key(status),
+                    "{path} must document HTTP {status}"
+                );
+            }
         }
 
         assert!(
@@ -692,6 +705,20 @@ mod tests {
                 { "runner_token": [] }
             ])
         );
+
+        let download = openapi
+            .paths
+            .get_path_operation(
+                "/v2/catalog/publish/{request_id}/artifact/download",
+                HttpMethod::Get,
+            )
+            .expect("artifact download operation must exist");
+        for status in ["200", "307", "400", "401", "403", "404"] {
+            assert!(
+                download.responses.responses.contains_key(status),
+                "artifact download must document HTTP {status}"
+            );
+        }
     }
 
     #[test]
