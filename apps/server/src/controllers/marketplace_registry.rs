@@ -1965,6 +1965,14 @@ async fn claim_remote_validation_stage(
     request_body = RegistryRunnerHeartbeatRequest,
     responses(
         (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
+        (
             status = 200,
             description = "Remote validation heartbeat accepted",
             body = RegistryRunnerMutationResponse
@@ -2019,6 +2027,14 @@ async fn heartbeat_remote_validation_stage(
     ),
     request_body = RegistryRunnerCompletionRequest,
     responses(
+        (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
         (
             status = 200,
             description = "Remote validation completion accepted",
@@ -2077,6 +2093,14 @@ async fn complete_remote_validation_stage(
     ),
     request_body = RegistryRunnerCompletionRequest,
     responses(
+        (
+            status = 403,
+            description = "Runner is not authorized to mutate this remote validation claim"
+        ),
+        (
+            status = 409,
+            description = "Remote validation claim conflicts with its current lease, state, or request revision"
+        ),
         (
             status = 200,
             description = "Remote validation failure accepted",
