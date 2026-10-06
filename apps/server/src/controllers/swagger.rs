@@ -680,6 +680,17 @@ mod tests {
             "publish dry-run remains anonymously documented"
         );
 
+        let publish = openapi
+            .paths
+            .get_path_operation("/v2/catalog/publish", HttpMethod::Post)
+            .expect("publish operation must exist");
+        for status in ["401", "403", "409"] {
+            assert!(
+                publish.responses.responses.contains_key(status),
+                "live publish must document HTTP {status}"
+            );
+        }
+
         assert!(
             openapi
                 .paths
