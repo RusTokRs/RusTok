@@ -489,6 +489,16 @@ Hard limits for every iteration:
 - **Next primary iteration:** `FS-22.06.07 — apps/server/src/controllers/marketplace_registry.rs`.
 - [ ] **FS-22.06.07 — `apps/server/src/controllers/marketplace_registry.rs`** — audit registry mutation authorization, owner/tenant identity, body limits, error redaction, and remote-runner transport.
 
+### FS-22.06.07 Pre-Implementation Audit Findings — `apps/server/src/controllers/marketplace_registry.rs`
+
+- **Base:** refreshed `main` at `38cea9fb78ed8527be4bd9f152c66d18040d9d86`; dedicated branch `audit/fs-22-06-07-marketplace-registry` was created from that exact SHA.
+- **Discovery:** re-read the complete marketplace registry controller, authentication/principal middleware, registry owner governance/publishing/remote-runner boundaries, and the server OpenAPI aggregator.
+- **Invariant map:** user registry mutations must derive identity from trusted bearer authentication; remote runner operations must use the dedicated runner credential; the public publish-status read must remain anonymously readable; owner permission/conflict failures must map to stable HTTP 403/409 contracts; every mounted registry route must be represented accurately in OpenAPI.
+- **Confirmed finding MARKETREGISTRY-22.06.07-01:** protected registry user mutations omit reachable HTTP 401/403 responses from OpenAPI, and several mutation operations also omit reachable HTTP 409 conflicts. Runtime evidence shows missing authentication reaches 401, unsupported/service or insufficient owner authority reaches 403, and owner revision/idempotency/state conflict categories reach 409.
+- **Confirmed finding MARKETREGISTRY-22.06.07-02:** `GET /v2/catalog/publish/{request_id}/artifact/download` is mounted by the marketplace registry router but has no `utoipa::path` operation and is absent from `ApiDoc.paths`; generated clients therefore cannot discover the artifact-download operation or its bearer/runner authentication contract.
+- **Implementation scope:** update only the marketplace registry HTTP/OpenAPI boundary and the directly required OpenAPI aggregation entry. Add explicit bearer security plus reachable 401/403/409 responses to protected user operations, document the artifact-download bearer-or-runner security and 200/307/error responses, and add regression checks for route/security coverage. Do not alter owner business logic or the separate owner-transfer target-liveness finding.
+
+
 ### FS-22.06.03 Assessment — `apps/server/src/controllers/oauth.rs`
 
 - **Base:** refreshed `main` at `864ffd02a0caba91aada24e3078644e61b525cf0`; dedicated branch `codex/audit-fs-22.06.03-oauth-controller` was created from that exact SHA.
