@@ -65,6 +65,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
         crate::controllers::marketplace_registry::publish,
         crate::controllers::marketplace_registry::publish_status,
         crate::controllers::marketplace_registry::upload_publish_artifact,
+        crate::controllers::marketplace_registry::download_publish_artifact,
         crate::controllers::marketplace_registry::stage_external_prebuilt,
         crate::controllers::marketplace_registry::stage_platform_build,
         crate::controllers::marketplace_registry::record_author_signature_evidence,
@@ -537,6 +538,7 @@ mod tests {
             "/v2/catalog/publish",
             "/v2/catalog/publish/{request_id}",
             "/v2/catalog/publish/{request_id}/artifact",
+            "/v2/catalog/publish/{request_id}/artifact/download",
             "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
             "/v2/catalog/publish/{request_id}/platform-build-stage",
             "/v2/catalog/publish/{request_id}/author-signature",
@@ -606,6 +608,71 @@ mod tests {
                 "name": "x-rustok-runner-token",
                 "description": "Shared token required for remote registry validation runner operations."
             })
+        );
+    }
+
+    #[test]
+    fn openapi_marks_marketplace_registry_auth_boundaries() {
+        let openapi = ApiDoc::openapi();
+
+        use utoipa::openapi::HttpMethod;
+
+        for (path, method) in [
+            ("/v2/catalog/publish/{request_id}", HttpMethod::Get),
+            ("/v2/catalog/publish/{request_id}/artifact", HttpMethod::Put),
+            (
+                "/v2/catalog/publish/{request_id}/external-prebuilt-stage",
+                HttpMethod::Post,
+            ),
+            (
+                "/v2/catalog/publish/{request_id}/platform-build-stage",
+                HttpMethod::Post,
+            ),
+            (
+                "/v2/catalog/publish/{request_id}/author-signature",
+                HttpMethod::Post,
+            ),
+            ("/v2/catalog/publish/{request_id}/validate", HttpMethod::Post),
+            ("/v2/catalog/publish/{request_id}/stages", HttpMethod::Post),
+            ("/v2/catalog/publish/{request_id}/approve", HttpMethod::Post),
+            ("/v2/catalog/publish/{request_id}/reject", HttpMethod::Post),
+            (
+                "/v2/catalog/publish/{request_id}/request-changes",
+                HttpMethod::Post,
+            ),
+            ("/v2/catalog/publish/{request_id}/hold", HttpMethod::Post),
+            ("/v2/catalog/publish/{request_id}/resume", HttpMethod::Post),
+            ("/v2/catalog/yank", HttpMethod::Post),
+            ("/v2/catalog/owner-transfer", HttpMethod::Post),
+        ] {
+            let security = openapi
+                .paths
+                .get_path_operation(path, method)
+                .and_then(|operation| operation.security.as_ref())
+                .unwrap_or_else(|| panic!("marketplace operation must require bearer auth: {path}"));
+
+            assert_eq!(
+                serde_json::to_value(security).expect("security serializes"),
+                serde_json::json!([{ "bearer_auth": [] }]),
+                "unexpected security contract for {path}"
+            );
+        }
+
+        let download_security = openapi
+            .paths
+            .get_path_operation(
+                "/v2/catalog/publish/{request_id}/artifact/download",
+                HttpMethod::Get,
+            )
+            .and_then(|operation| operation.security.as_ref())
+            .expect("artifact download must expose bearer-or-runner authentication");
+
+        assert_eq!(
+            serde_json::to_value(download_security).expect("security serializes"),
+            serde_json::json!([
+                { "bearer_auth": [] },
+                { "runner_token": [] }
+            ])
         );
     }
 
