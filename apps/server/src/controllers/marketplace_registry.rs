@@ -884,7 +884,7 @@ fn external_prebuilt_source_evidence(
         ),
         (
             status = 403,
-            description = "Authenticated owner or runner is not authorized for this artifact"
+            description = "Bearer-authenticated registry user is not authorized to download this artifact"
         ),
         (
             status = 404,
