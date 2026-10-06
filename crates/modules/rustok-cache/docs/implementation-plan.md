@@ -15,7 +15,7 @@ Completed execution history does not belong here.
 - Domain-specific cache identity and recovery stay in the owner module plan. This plan coordinates
   the reusable capability and host adoption only.
 
-Last reconciled with `main`: 2026-07-29.
+Last reconciled with `main`: 2026-10-06 (base SHA `76e50a7ad43111b0f9547719c94da8d4c5494674`).
 
 ## FFA/FBA status
 
