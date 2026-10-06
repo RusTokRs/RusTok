@@ -5271,8 +5271,9 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Adjacent review:** current repository evidence confirms tracking-webhook ingress is still planned and not runtime-wired; no active HTTP/event consumer of `execute_tracking_webhook` was found in the affected module. Provider operation request/result safety, idempotency, and durable journal invariants remain unchanged.
 - **Fresh second pass:** re-read `providers.rs`, provider SPI tests, Fulfillment README/implementation plan, and host provider-runtime composition after the remediation. No additional repository-owned provider-boundary defect was confirmed in this scope.
 - **Verification:** repository source inspection, targeted provider test construction/review, documentation consistency review, and branch diff review. Local Cargo/tests/Clippy/rustfmt/remediation-gate execution remains unavailable because no usable local checkout/toolchain is mounted; no test/build/runtime pass is claimed.
-- **Implementation status:** complete on the dedicated branch; pending PR/CI integration.
-- **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
+- **Implementation status:** complete and integrated into `main` via PR #4578, squash merge `8d7a278638c0960dc80ce523df3e2c3c9e77177d`.
+- **Post-merge reconciliation:** refreshed `main` at `8d7a278638c0960dc80ce523df3e2c3c9e77177d`; comparison against recorded base `78cbcc2758ed8d225846ff84ade5245c1fcd5040` is exactly one merged commit with the expected provider code, Fulfillment docs, and ledger change set. The webhook result boundary fixes are present on `main`.
+- **Status:** `FS-22.06.157` complete; maintainer/CI verification remains explicitly required because local Cargo/remediation-gate execution was unavailable.
 
 ### FS-22.05.28 Assessment — GraphQL rate-limit runtime initialization order
 
