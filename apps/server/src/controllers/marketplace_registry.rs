@@ -191,7 +191,6 @@ async fn catalog_module(
     post,
     path = "/v2/catalog/publish",
     tag = "marketplace",
-    security(("bearer_auth" = [])),
     request_body = RegistryPublishRequest,
     responses(
         (
