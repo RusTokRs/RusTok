@@ -645,10 +645,13 @@ mod tests {
             ("/v2/catalog/yank", HttpMethod::Post),
             ("/v2/catalog/owner-transfer", HttpMethod::Post),
         ] {
-            let security = openapi
+            let operation = openapi
                 .paths
                 .get_path_operation(path, method)
-                .and_then(|operation| operation.security.as_ref())
+                .unwrap_or_else(|| panic!("marketplace operation must exist: {path}"));
+            let security = operation
+                .security
+                .as_ref()
                 .unwrap_or_else(|| panic!("marketplace operation must require bearer auth: {path}"));
 
             assert_eq!(
@@ -659,13 +662,7 @@ mod tests {
 
             for status in ["401", "403", "409"] {
                 assert!(
-                    openapi
-                        .paths
-                        .get_path_operation(path, method)
-                        .expect("marketplace operation must exist")
-                        .responses
-                        .responses
-                        .contains_key(status),
+                    operation.responses.responses.contains_key(status),
                     "{path} must document HTTP {status}"
                 );
             }
