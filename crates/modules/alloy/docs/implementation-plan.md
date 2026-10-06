@@ -164,7 +164,7 @@ Remaining:
 
 ### A2 - Revisioned Authoring and Review
 
-- Persist draft workspace, monotonic revision, source digest, parent lineage,
+- [x] Persist draft workspace, monotonic revision, source digest, parent lineage,
   author, review status, and policy revision.
 - [x] Guard single-script persistence with a durable version predicate and
   `RevisionConflict`; every storage mutation advances the version.
@@ -202,7 +202,7 @@ Remaining:
   audit path replaces caller metadata with a fixed redaction marker, and its
   SeaORM integration test proves cross-tenant mutation fails closed. Generic
   stdio and in-process script tools remain absent.
-- Durable review decisions now bind an exact source digest, expected current
+- [x] Durable review decisions bind an exact source digest, expected current
   revision, policy revision, reviewer identity, reason, and request fingerprint.
   The owner storage replays only an identical idempotency key/fingerprint pair
   while the owning draft exists, and rejects invalid per-revision transitions.
@@ -215,7 +215,7 @@ Remaining:
   principal, and manual execution evidence records that actor. The former
   generic in-memory Axum router was deleted instead of retained as a parallel
   unauthenticated surface.
-- Require workspace revision/CAS and idempotency for test, build, and
+- [x] Require workspace revision/CAS and idempotency for test, build, and
   publish. Test commands now durably reserve a revision-pinned source digest,
   declared test path, actor, and request fingerprint before sandbox execution.
   The owner replays terminal evidence only for an identical command while the
@@ -253,9 +253,9 @@ Remaining:
   rows carry source revision/digest plus sandbox policy digest, executor kind,
   and runtime ABI; durable test rows already bind their immutable revision and
   source digest.
-- Define review, changes-requested, approved, rejected, archived, and superseded
+- [x] Define review, changes-requested, approved, rejected, archived, and superseded
   transitions with typed owner errors.
-- Materialize a bounded revisioned workspace from DB/object storage and resolve
+- [x] Materialize a bounded revisioned workspace from DB/object storage and resolve
   Rhai imports without guest filesystem access.
 
 **Done when:** stale revisions cannot execute/publish as current and every
