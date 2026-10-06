@@ -69,13 +69,13 @@ pub use model::{
     deleted_evidence_retention, register_entity_proxy, validate_candidate_parent_release,
 };
 pub use runner::{
-    generate_rust_component, AlloyEvolutionBuildError, AlloyEvolutionBuildService,
-    AlloyEvolutionExecutionError, AlloyEvolutionExecutionService,
-    AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,
-    AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, AlloyReleaseImporter, ExecutionOutcome,
-    ExecutionResult, HookOutcome, RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor,
-    ScriptOrchestrator, RustComponentGeneratedSource, RustComponentGenerationError,
-    RustComponentGenerationRequest, MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES,
+    AlloyEvolutionBuildError, AlloyEvolutionBuildService, AlloyEvolutionExecutionError,
+    AlloyEvolutionExecutionService, AlloyPublishedRhaiSourceProvider,
+    AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
+    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
+    RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator, RustComponentGeneratedSource,
+    RustComponentGenerationError, RustComponentGenerationRequest,
+    MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES, generate_rust_component,
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{
@@ -322,10 +322,7 @@ mod tests {
 
         let result = engine.execute("timeout", "loop { }", &context);
 
-        assert!(matches!(
-            result,
-            Err(ScriptError::Timeout { limit_ms: 0 })
-        ));
+        assert!(matches!(result, Err(ScriptError::Timeout { limit_ms: 0 })));
     }
 
     #[test]
@@ -378,34 +375,6 @@ mod tests {
         engine.invalidate("cache_test");
         let result3 = engine.execute("cache_test", "let x = 3; x", &ctx).unwrap();
         assert_eq!(result3.as_int().unwrap(), 3);
-
-        engine.invalidate("cache_test");
-        let result4 = engine.execute("cache_test", "let x = 4; x", &ctx).unwrap();
-        assert_eq!(result4.as_int().unwrap(), 4);
-
-        engine.invalidate("cache_test");
-        let result5 = engine.execute("cache_test", "let x = 5; x", &ctx).unwrap();
-        assert_eq!(result5.as_int().unwrap(), 5);
-
-        engine.invalidate("cache_test");
-        let result6 = engine.execute("cache_test", "let x = 6; x", &ctx).unwrap();
-        assert_eq!(result6.as_int().unwrap(), 6);
-
-        engine.invalidate("cache_test");
-        let result7 = engine.execute("cache_test", "let x = 7; x", &ctx).unwrap();
-        assert_eq!(result7.as_int().unwrap(), 7);
-
-        engine.invalidate("cache_test");
-        let result8 = engine.execute("cache_test", "let x = 8; x", &ctx).unwrap();
-        assert_eq!(result8.as_int().unwrap(), 8);
-
-        engine.invalidate("cache_test");
-        let result9 = engine.execute("cache_test", "let x = 9; x", &ctx).unwrap();
-        assert_eq!(result9.as_int().unwrap(), 9);
-
-        engine.invalidate("cache_test");
-        let result10 = engine.execute("cache_test", "let x = 10; x", &ctx).unwrap();
-        assert_eq!(result10.as_int().unwrap(), 10);
     }
 
     #[test]
@@ -504,5 +473,215 @@ mod tests {
         assert!(entity.is_changed("discount"));
         assert!(!entity.is_changed("amount"));
         assert!(entity.has_changes());
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_integration() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let orchestrator =
+            create_orchestrator_with_sandbox(create_test_alloy_draft_runtime(), storage.clone());
+
+        let mut script = Script::new(
+            "test_validation",
+            RhaiWorkspace::single_source(
+                r#"
+                if entity["value"] < 0 {
+                    abort("Value must be positive");
+                }
+                entity["processed"] = true;
+            "#,
+            ),
+            ScriptTrigger::Event {
+                entity_type: "test".into(),
+                event: EventType::BeforeCreate,
+            },
+        );
+        script.activate();
+        storage.save(script).await.unwrap();
+
+        let data: std::collections::HashMap<String, Dynamic> =
+            std::collections::HashMap::from([("value".to_string(), Dynamic::from(100_i64))]);
+        let entity = EntityProxy::new("test-1", "test", data);
+
+        let outcome = orchestrator
+            .run_before("test", EventType::BeforeCreate, entity, None)
+            .await;
+
+        match outcome {
+            HookOutcome::Continue { changes } => {
+                assert!(changes.contains_key("processed"));
+            }
+            _ => panic!("Expected Continue outcome"),
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_execution_persists_execution_log_with_user_and_tenant() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            create_test_alloy_draft_runtime(),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        let mut script = Script::new(
+            "manual_audit_smoke",
+            RhaiWorkspace::single_source(r#"params["value"] + 1"#),
+            ScriptTrigger::Manual,
+        );
+        script.tenant_id = uuid::Uuid::new_v4();
+        script.activate();
+        let tenant_id = script.tenant_id;
+        storage.save(script).await.unwrap();
+
+        let result = orchestrator
+            .run_manual(
+                "manual_audit_smoke",
+                std::collections::HashMap::from([("value".to_string(), Dynamic::from(41_i64))]),
+                Some("operator-1".to_string()),
+            )
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 1);
+        let (logged_result, logged_ctx) = &entries[0];
+        assert_eq!(logged_result.script_id, result.script_id);
+        assert_eq!(logged_result.phase, ExecutionPhase::Manual);
+        assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-1"));
+        let tenant_id_str = tenant_id.to_string();
+        assert_eq!(
+            logged_ctx.tenant_id.as_deref(),
+            Some(tenant_id_str.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn before_hook_persists_execution_log_with_entity_changes() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            create_test_alloy_draft_runtime(),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        let mut script = Script::new(
+            "before_audit_smoke",
+            RhaiWorkspace::single_source(r#"entity["status"] = "approved";"#),
+            ScriptTrigger::Event {
+                entity_type: "order".into(),
+                event: EventType::BeforeUpdate,
+            },
+        );
+        script.tenant_id = uuid::Uuid::new_v4();
+        script.activate();
+        let tenant_id = script.tenant_id;
+        storage.save(script).await.unwrap();
+
+        let entity = EntityProxy::new(
+            "order-1",
+            "order",
+            std::collections::HashMap::from([("status".to_string(), Dynamic::from("pending"))]),
+        );
+        let outcome = orchestrator
+            .run_before(
+                "order",
+                EventType::BeforeUpdate,
+                entity,
+                Some("operator-2".to_string()),
+            )
+            .await;
+
+        match outcome {
+            HookOutcome::Continue { changes } => {
+                assert_eq!(
+                    changes
+                        .get("status")
+                        .and_then(|v| v.clone().try_cast::<String>()),
+                    Some("approved".to_string())
+                );
+            }
+            other => panic!("expected hook continue, got {other:?}"),
+        }
+
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 1);
+        let (logged_result, logged_ctx) = &entries[0];
+        assert_eq!(logged_result.phase, ExecutionPhase::Before);
+        assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-2"));
+        let tenant_id_str2 = tenant_id.to_string();
+        assert_eq!(
+            logged_ctx.tenant_id.as_deref(),
+            Some(tenant_id_str2.as_str())
+        );
+        assert!(matches!(
+            &logged_result.outcome,
+            ExecutionOutcome::Success { entity_changes, .. } if entity_changes.contains_key("status")
+        ));
+    }
+
+    #[tokio::test]
+    async fn on_commit_persists_one_execution_log_per_script() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            create_test_alloy_draft_runtime(),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        for script_name in ["on_commit_audit_one", "on_commit_audit_two"] {
+            let mut script = Script::new(
+                script_name,
+                RhaiWorkspace::single_source("1"),
+                ScriptTrigger::Event {
+                    entity_type: "invoice".into(),
+                    event: EventType::OnCommit,
+                },
+            );
+            script.activate();
+            storage.save(script).await.unwrap();
+        }
+
+        let results = orchestrator
+            .run_on_commit(
+                "invoice",
+                EntityProxy::new(
+                    "invoice:commit",
+                    "invoice",
+                    std::collections::HashMap::new(),
+                ),
+                Some("operator-3".to_string()),
+            )
+            .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(
+            results.iter().all(ExecutionResult::is_success),
+            "on-commit execution results: {results:#?}"
+        );
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|(result, ctx)| {
+            result.phase == ExecutionPhase::OnCommit
+                && ctx.phase == ExecutionPhase::OnCommit
+                && ctx.user_id.as_deref() == Some("operator-3")
+        }));
+    }
+
+    #[test]
+    fn module_metadata() {
+        let module = AlloyModule;
+        assert_eq!(module.slug(), "alloy");
+        assert_eq!(module.name(), "Alloy");
+        assert_eq!(
+            module.description(),
+            "Alloy runtime and scripting capability"
+        );
+        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert!(module.permissions().contains(&Permission::SCRIPTS_MANAGE));
     }
 }
