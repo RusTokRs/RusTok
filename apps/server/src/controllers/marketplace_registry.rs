@@ -1921,14 +1921,6 @@ async fn resume_publish_request(
             description = "Missing or invalid runner token"
         ),
         (
-            status = 403,
-            description = "Runner is not authorized to mutate this remote validation claim"
-        ),
-        (
-            status = 409,
-            description = "Remote validation claim conflicts with its current lease, state, or request revision"
-        ),
-        (
             status = 400,
             description = "Runner claim failed validation"
         )
