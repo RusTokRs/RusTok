@@ -12,8 +12,8 @@ pub use evolution::{AlloyEvolutionBuildError, AlloyEvolutionBuildService};
 pub use evolution_execution::{AlloyEvolutionExecutionError, AlloyEvolutionExecutionService};
 pub use executor::ScriptExecutor;
 pub use generation::{
-    RustComponentGenerationError, RustComponentGenerationRequest, RustComponentGenerationResult,
-    MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES, generate_rust_component,
+    generate_rust_component, RustComponentGeneratedSource, RustComponentGenerationError,
+    RustComponentGenerationRequest, MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES,
 };
 pub use import::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseImporter,
