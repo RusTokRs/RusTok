@@ -327,8 +327,8 @@ preserve reproducible lineage.
 ### A4 - AI-Assisted Rust/WASM Evolution
 
 - Generate typed Rust against the approved WIT guest contract.
-- Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
-- Submit source only through the owner build control as a host-prepared,
+- [x] Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
+- [x] Submit source only through the owner build control as a host-prepared,
   non-serializable `PreparedModuleSourceArchive`, created exclusively by the
   shared `ModuleAuthoringSourceArchiveBuilder`; Alloy and its transports must
   never carry a filesystem path in an evolution command or duplicate archive
@@ -336,7 +336,7 @@ preserve reproducible lineage.
   the shared `SourceTreeMaterializer`; Alloy cannot recursively write caller
   paths or retain filesystem metadata. The owner rehashes and strictly scans that
   archive before its source-CAS publish and remote-worker enqueue.
-- Persist every submitted Rust Component candidate as an immutable Alloy
+- [x] Persist every submitted Rust Component candidate as an immutable Alloy
   record before it can reach source preparation. The candidate is bound to its
   tenant, current approved Rhai draft revision and source digest, exact
   published Rhai parent release, canonical Rust source digest, canonical
@@ -349,7 +349,7 @@ preserve reproducible lineage.
   Admission also derives the candidate manifest identity and rejects a slug
   mismatch or a version that is not strictly newer than its Rhai parent before
   either candidate or review state is written.
-- Record candidate review decisions in a separate immutable state machine.
+- [x] Record candidate review decisions in a separate immutable state machine.
   Each decision binds the candidate ID plus its source and scenario digests,
   policy revision, authenticated reviewer, idempotency receipt, and transition
   history. Candidate approval is necessary, but not yet sufficient, to enqueue
