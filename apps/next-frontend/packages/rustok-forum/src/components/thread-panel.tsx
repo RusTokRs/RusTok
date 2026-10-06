@@ -114,6 +114,7 @@ export function ThreadPanel({
             data-forum-post
             data-target-kind="TOPIC"
             data-target-id={topic.id}
+            data-author-handle={topic.authorId ?? undefined}
             data-revision-id="1"
             className="rounded-2xl border border-border/80 bg-background/60 p-4"
           >
@@ -161,6 +162,7 @@ export function ThreadPanel({
                   data-forum-post
                   data-target-kind="REPLY"
                   data-target-id={reply.id}
+                  data-author-handle={reply.authorId ?? undefined}
                   data-revision-id="1"
                   className="rounded-[1.25rem] border border-border bg-card p-4 transition hover:border-border/80"
                 >
@@ -169,7 +171,7 @@ export function ThreadPanel({
 
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted-foreground">
-                        #{index + 1}
+                        #{index + 2}
                       </span>
                       <button
                         type="button"

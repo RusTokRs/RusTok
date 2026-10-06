@@ -968,3 +968,237 @@ export async function deleteAdminCategory(
     opts.tenantSlug
   );
 }
+
+export async function pinForumTopic(
+  id: string,
+  pinned: boolean,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation PinForumTopic($tenantId: UUID, $id: UUID!, $pinned: Boolean!) {
+      pinForumTopic(tenantId: $tenantId, id: $id, pinned: $pinned)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string; pinned: boolean },
+    { pinForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id, pinned },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.pinForumTopic;
+}
+
+export async function lockForumTopic(
+  id: string,
+  locked: boolean,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation LockForumTopic($tenantId: UUID, $id: UUID!, $locked: Boolean!) {
+      lockForumTopic(tenantId: $tenantId, id: $id, locked: $locked)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string; locked: boolean },
+    { lockForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id, locked },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.lockForumTopic;
+}
+
+export async function closeForumTopic(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation CloseForumTopic($tenantId: UUID, $id: UUID!) {
+      closeForumTopic(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { closeForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.closeForumTopic;
+}
+
+export async function reopenForumTopic(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation ReopenForumTopic($tenantId: UUID, $id: UUID!) {
+      reopenForumTopic(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { reopenForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.reopenForumTopic;
+}
+
+export async function deleteForumTopic(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation DeleteForumTopic($tenantId: UUID, $id: UUID!) {
+      deleteForumTopic(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { deleteForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.deleteForumTopic;
+}
+
+export async function restoreForumTopic(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation RestoreForumTopic($tenantId: UUID, $id: UUID!) {
+      restoreForumTopic(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { restoreForumTopic: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.restoreForumTopic;
+}
+
+export async function deleteForumReply(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation DeleteForumReply($tenantId: UUID, $id: UUID!) {
+      deleteForumReply(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { deleteForumReply: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.deleteForumReply;
+}
+
+export async function restoreForumReply(
+  id: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation RestoreForumReply($tenantId: UUID, $id: UUID!) {
+      restoreForumReply(tenantId: $tenantId, id: $id)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; id: string },
+    { restoreForumReply: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, id },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.restoreForumReply;
+}
+
+export async function approveForumReply(
+  replyId: string,
+  topicId: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation ApproveForumReply($tenantId: UUID, $replyId: UUID!, $topicId: UUID!) {
+      approveForumReply(tenantId: $tenantId, replyId: $replyId, topicId: $topicId)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; replyId: string; topicId: string },
+    { approveForumReply: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, replyId, topicId },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.approveForumReply;
+}
+
+export async function rejectForumReply(
+  replyId: string,
+  topicId: string,
+  opts: GqlOpts = {}
+): Promise<boolean> {
+  const mutation = `
+    mutation RejectForumReply($tenantId: UUID, $replyId: UUID!, $topicId: UUID!) {
+      rejectForumReply(tenantId: $tenantId, replyId: $replyId, topicId: $topicId)
+    }
+  `;
+
+  const data = await graphqlRequest<
+    { tenantId?: string | null; replyId: string; topicId: string },
+    { rejectForumReply: boolean }
+  >(
+    mutation,
+    { tenantId: opts.tenantId, replyId, topicId },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.rejectForumReply;
+}

@@ -45,6 +45,23 @@ async function resolveTopicId(
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(singlePart)) {
       return { topicId: singlePart };
     }
+
+    // Attempt shortId / slug resolution for canonical redirect
+    const decision = await resolveStorefrontTopicRoute({
+      tenantId: tenantId ?? undefined,
+      tenantSlug: tenantSlug ?? undefined,
+      locale,
+      shortId: singlePart,
+      slug: '',
+    });
+
+    if (decision?.disposition === 'REDIRECT' && decision.canonical?.path) {
+      return { topicId: decision.canonical.topicId, shouldRedirectTo: decision.canonical.path };
+    }
+
+    if (decision?.canonical?.topicId) {
+      return { topicId: decision.canonical.topicId };
+    }
   }
 
   return { topicId: null };

@@ -280,6 +280,7 @@ export function ForumSection({
                 selectedTopicId={selectedTopicId}
                 onSelectTopic={(tId) => setSelectedTopicId(tId)}
                 selectedCategoryId={selectedCategoryId}
+                locale={locale}
               />
 
               <ThreadPanel

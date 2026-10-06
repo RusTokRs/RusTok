@@ -19,8 +19,15 @@ import { useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
+import { cn } from '@/shared/lib/utils';
 import {
+  closeForumTopic,
   createForumTopic,
+  deleteForumTopic,
+  lockForumTopic,
+  pinForumTopic,
+  reopenForumTopic,
+  restoreForumTopic,
   updateForumTopic,
   type ForumCategoryOption,
   type ForumTopicDetail,
@@ -55,6 +62,11 @@ export function ForumTopicEditor({
     [initialData]
   );
   const [body, setBody] = useState<RichTextDocument>(initialDocument);
+  const [isPinned, setIsPinned] = useState(initialData?.isPinned ?? false);
+  const [isLocked, setIsLocked] = useState(initialData?.isLocked ?? false);
+  const [topicStatus, setTopicStatus] = useState(initialData?.status ?? 'open');
+  const [moderationBusy, setModerationBusy] = useState(false);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues: {
@@ -67,6 +79,80 @@ export function ForumTopicEditor({
   });
   const contentLocale = form.watch('locale');
   const isEditing = initialData !== null;
+
+  async function handleTogglePin() {
+    if (!initialData) return;
+    setModerationBusy(true);
+    try {
+      const nextPinned = !isPinned;
+      await pinForumTopic(initialData.id, nextPinned, gqlOpts);
+      setIsPinned(nextPinned);
+      toast.success(nextPinned ? 'Topic pinned' : 'Topic unpinned');
+      router.refresh();
+    } catch {
+      toast.error('Failed to update pin status');
+    } finally {
+      setModerationBusy(false);
+    }
+  }
+
+  async function handleToggleLock() {
+    if (!initialData) return;
+    setModerationBusy(true);
+    try {
+      const nextLocked = !isLocked;
+      await lockForumTopic(initialData.id, nextLocked, gqlOpts);
+      setIsLocked(nextLocked);
+      toast.success(nextLocked ? 'Topic locked' : 'Topic unlocked');
+      router.refresh();
+    } catch {
+      toast.error('Failed to update lock status');
+    } finally {
+      setModerationBusy(false);
+    }
+  }
+
+  async function handleToggleClose() {
+    if (!initialData) return;
+    setModerationBusy(true);
+    try {
+      if (topicStatus === 'closed') {
+        await reopenForumTopic(initialData.id, gqlOpts);
+        setTopicStatus('open');
+        toast.success('Topic reopened');
+      } else {
+        await closeForumTopic(initialData.id, gqlOpts);
+        setTopicStatus('closed');
+        toast.success('Topic closed');
+      }
+      router.refresh();
+    } catch {
+      toast.error('Failed to update topic status');
+    } finally {
+      setModerationBusy(false);
+    }
+  }
+
+  async function handleToggleDelete() {
+    if (!initialData) return;
+    setModerationBusy(true);
+    try {
+      if (topicStatus === 'deleted') {
+        await restoreForumTopic(initialData.id, gqlOpts);
+        setTopicStatus('open');
+        toast.success('Topic restored');
+      } else {
+        await deleteForumTopic(initialData.id, gqlOpts);
+        setTopicStatus('deleted');
+        toast.success('Topic deleted');
+      }
+      router.refresh();
+    } catch {
+      toast.error('Failed to update topic lifecycle');
+    } finally {
+      setModerationBusy(false);
+    }
+  }
 
   async function submit(values: FormValues) {
     const validation = validateRichTextDocument(
@@ -119,10 +205,94 @@ export function ForumTopicEditor({
 
   return (
     <Card className='mx-auto w-full'>
-      <CardHeader>
-        <CardTitle>
-          {isEditing ? 'Edit forum topic' : 'Create forum topic'}
-        </CardTitle>
+      <CardHeader className='space-y-4'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <CardTitle>
+            {isEditing ? 'Edit forum topic' : 'Create forum topic'}
+          </CardTitle>
+          {isEditing && (
+            <div className='flex flex-wrap items-center gap-2'>
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  isPinned
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                    : 'border text-muted-foreground'
+                )}
+              >
+                {isPinned ? 'Pinned' : 'Normal'}
+              </span>
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  isLocked
+                    ? 'bg-destructive/15 text-destructive'
+                    : 'border text-muted-foreground'
+                )}
+              >
+                {isLocked ? 'Locked' : 'Unlocked'}
+              </span>
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  topicStatus === 'open'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                    : topicStatus === 'closed'
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-destructive/15 text-destructive'
+                )}
+              >
+                {topicStatus.toUpperCase()}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {isEditing && (
+          <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3'>
+            <span className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+              Moderator Actions
+            </span>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={moderationBusy}
+                onClick={handleTogglePin}
+              >
+                {isPinned ? 'Unpin topic' : 'Pin topic'}
+              </Button>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={moderationBusy}
+                onClick={handleToggleLock}
+              >
+                {isLocked ? 'Unlock topic' : 'Lock topic'}
+              </Button>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={moderationBusy}
+                onClick={handleToggleClose}
+              >
+                {topicStatus === 'closed' ? 'Reopen topic' : 'Close topic'}
+              </Button>
+              <Button
+                type='button'
+                variant={topicStatus === 'deleted' ? 'outline' : 'destructive'}
+                size='sm'
+                disabled={moderationBusy}
+                onClick={handleToggleDelete}
+              >
+                {topicStatus === 'deleted' ? 'Restore topic' : 'Delete topic'}
+              </Button>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <Form

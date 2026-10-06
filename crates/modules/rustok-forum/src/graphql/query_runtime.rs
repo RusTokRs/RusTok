@@ -751,7 +751,7 @@ fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
         description: category.description,
         icon: category.icon,
         color: category.color,
-        parent_id: None,
+        parent_id: category.parent_id,
         position: 0,
         topic_count: category.topic_count,
         reply_count: category.reply_count,

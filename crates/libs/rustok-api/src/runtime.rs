@@ -66,7 +66,7 @@ pub async fn is_tenant_module_enabled(
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
         query,
-        vec![tenant_id.into(), module_slug.into()],
+        vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
     ))
     .await
     .map(|row| row.is_some())
@@ -104,7 +104,7 @@ pub async fn tenant_module_settings_in_tx(
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
-            vec![tenant_id.into(), module_slug.into()],
+            vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
         ))
         .await?
     else {
@@ -149,7 +149,7 @@ pub async fn tenant_module_settings(
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
-            vec![tenant_id.into(), module_slug.into()],
+            vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
         ))
         .await?
     else {
@@ -161,6 +161,14 @@ pub async fn tenant_module_settings(
             "tenant module `{module_slug}` settings are not valid JSON: {error}"
         ))
     })
+}
+
+fn tenant_id_query_value(backend: sea_orm::DbBackend, tenant_id: Uuid) -> sea_orm::Value {
+    if backend == sea_orm::DbBackend::Sqlite {
+        tenant_id.to_string().into()
+    } else {
+        tenant_id.into()
+    }
 }
 
 /// Immutable host configuration snapshot provided to internal server-function

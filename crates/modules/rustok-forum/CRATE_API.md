@@ -83,7 +83,7 @@
 ### CategoryResponse
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem
-- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+- Added: `parent_id: Option<Uuid>`, `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### Category tree
 - Added: `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse`.
 - The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
@@ -227,6 +227,10 @@
 - `close_topic`, `archive_topic` now accept `tenant_id: Uuid`
 - Added `mark_solution(tenant_id, topic_id, reply_id, security)` and `clear_solution(tenant_id, topic_id, security)`
 - `FORUM-20AY` adds `with_audience_facts` plus context-aware variants for every topic/reply moderation command and moderator solution fallback.
+### Moderation GraphQL mutations
+- Added: `pinForumTopic(id: UUID!, pinned: Boolean!)`, `lockForumTopic(id: UUID!, locked: Boolean!)`, `closeForumTopic(id: UUID!)`, `reopenForumTopic(id: UUID!)` with `Permission::FORUM_TOPICS_MANAGE`.
+- Added: `deleteForumReply(id: UUID!)`, `restoreForumReply(id: UUID!)` with `Permission::FORUM_REPLIES_DELETE`.
+- Added: `approveForumReply(replyId: UUID!, topicId: UUID!)`, `rejectForumReply(replyId: UUID!, topicId: UUID!)` with `Permission::FORUM_REPLIES_MODERATE`.
 ### VoteService
 - Added `set_topic_vote(tenant_id, topic_id, security, value)` and `clear_topic_vote(tenant_id, topic_id, security)`
 - Added `set_reply_vote(tenant_id, reply_id, security, value)` and `clear_reply_vote(tenant_id, reply_id, security)`

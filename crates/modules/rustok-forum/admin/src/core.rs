@@ -687,7 +687,7 @@ fn render_count_label(template: &str, value: i32) -> String {
     template.replace("{count}", value.to_string().as_str())
 }
 
-fn item_busy(busy_key: Option<&str>, item_id: &str) -> bool {
+pub fn item_busy(busy_key: Option<&str>, item_id: &str) -> bool {
     ui_busy_key_last_segment_matches(busy_key, item_id)
 }
 

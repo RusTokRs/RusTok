@@ -203,6 +203,187 @@ impl ForumContentMutation {
         Ok(true)
     }
 
+    async fn pin_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+        pinned: bool,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        let service = super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
+        if pinned {
+            service.pin_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+        } else {
+            service.unpin_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+        }
+
+        Ok(true)
+    }
+
+    async fn lock_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+        locked: bool,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        let service = super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
+        if locked {
+            service.lock_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+        } else {
+            service.unlock_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+        }
+
+        Ok(true)
+    }
+
+    async fn close_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        super::forum_graphql_runtime(ctx)
+            .moderation_service(db.clone(), event_bus.clone())
+            .close_topic_with_audience_context(tenant_id, id, security, audience_context)
+            .await?;
+
+        Ok(true)
+    }
+
+    async fn reopen_forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        super::forum_graphql_runtime(ctx)
+            .moderation_service(db.clone(), event_bus.clone())
+            .reopen_topic_with_audience_context(tenant_id, id, security, audience_context)
+            .await?;
+
+        Ok(true)
+    }
+
+    async fn delete_forum_reply(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_DELETE],
+            "Permission denied: forum_replies:delete required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
+            .delete(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
+            .await?;
+
+        Ok(true)
+    }
+
     async fn restore_forum_reply(
         &self,
         ctx: &Context<'_>,
@@ -212,7 +393,11 @@ impl ForumContentMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_MANAGE],
+            "Permission denied: forum_replies:manage required",
+        )?;
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
@@ -225,6 +410,80 @@ impl ForumContentMutation {
                     &auth.permissions,
                 ),
             )
+            .await?;
+
+        Ok(true)
+    }
+
+    async fn approve_forum_reply(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        reply_id: Uuid,
+        topic_id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_MODERATE],
+            "Permission denied: forum_replies:moderate required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        super::forum_graphql_runtime(ctx)
+            .moderation_service(db.clone(), event_bus.clone())
+            .approve_reply_with_audience_context(tenant_id, reply_id, topic_id, security, audience_context)
+            .await?;
+
+        Ok(true)
+    }
+
+    async fn reject_forum_reply(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        reply_id: Uuid,
+        topic_id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_MODERATE],
+            "Permission denied: forum_replies:moderate required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let audience_context = moderation_audience_port_context(
+            ForumModerationTransport::Graphql,
+            tenant_id,
+            auth,
+            ctx.data_opt::<rustok_api::RequestContext>(),
+            tenant.default_locale.as_str(),
+        )?;
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
+        super::forum_graphql_runtime(ctx)
+            .moderation_service(db.clone(), event_bus.clone())
+            .reject_reply_with_audience_context(tenant_id, reply_id, topic_id, security, audience_context)
             .await?;
 
         Ok(true)

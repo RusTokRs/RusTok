@@ -43,7 +43,7 @@ impl RustComponentGenerationRequest {
             || self.display_name.trim().is_empty()
             || self.implementation_body.trim().is_empty()
             || self.implementation_body.len() > MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES
-            || self.implementation_body.contains('\\0')
+            || self.implementation_body.contains('\0')
         {
             return Err(RustComponentGenerationError::InvalidInput);
         }
@@ -120,16 +120,19 @@ pub fn generate_rust_component(
     let files = rendered
         .files()
         .iter()
-        .map(|file| RustComponentSourceFile {
-            path: file.path.to_string(),
-            contents: if file.path == "src/lib.rs" {
+        .map(|file| {
+            let contents = if file.path == "src/lib.rs" {
                 generated_lib.clone()
             } else {
                 String::from_utf8(file.contents.clone())
-                    .map_err(|_| RustComponentGenerationError::TemplateUtf8)?,
-            },
+                    .map_err(|_| RustComponentGenerationError::TemplateUtf8)?
+            };
+            Ok(RustComponentSourceFile {
+                path: file.path.to_string(),
+                contents,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, RustComponentGenerationError>>()?;
 
     let generated_source_digest = source_digest(&files)?;
 

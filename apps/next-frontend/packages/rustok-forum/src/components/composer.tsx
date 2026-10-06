@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   richTextDocumentHasText,
   type RichTextDocument,
@@ -56,6 +56,14 @@ export function Composer({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     state.categoryId ?? categories[0]?.id ?? ''
   );
+
+  useEffect(() => {
+    if (state.categoryId) {
+      setSelectedCategoryId(state.categoryId);
+    } else if (!selectedCategoryId && categories.length > 0) {
+      setSelectedCategoryId(categories[0].id);
+    }
+  }, [state.categoryId, categories, selectedCategoryId]);
 
   const richText = useTranslations('richText');
 

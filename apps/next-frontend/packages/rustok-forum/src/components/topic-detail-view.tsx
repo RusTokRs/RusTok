@@ -52,6 +52,7 @@ function TopicDetailContent({
 }: TopicDetailViewProps) {
   const { openReply } = useComposer();
 
+  const [currentPost, setCurrentPost] = useState(1);
   const [topic, setTopic] = useState<ForumTopicDetail | null>(initialTopic ?? null);
   const [replies, setReplies] = useState<ForumReplyDetail[]>(initialReplies);
   const [repliesTotal, setRepliesTotal] = useState(initialRepliesTotal);
@@ -117,7 +118,7 @@ function TopicDetailContent({
     loadData();
   }, [loadData]);
 
-  const handleMarkRead = async () => {
+  const handleMarkRead = useCallback(async () => {
     if (!topic || isMarkingRead) return;
     setIsMarkingRead(true);
     try {
@@ -132,6 +133,54 @@ function TopicDetailContent({
     } finally {
       setIsMarkingRead(false);
     }
+  }, [topic, isMarkingRead, tenantId, tenantSlug, locale]);
+
+  useEffect(() => {
+    if (topic?.id) {
+      handleMarkRead();
+    }
+  }, [topic?.id, handleMarkRead]);
+
+  // Track active post position as user scrolls
+  useEffect(() => {
+    if (!topic) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const el = entry.target as HTMLElement;
+            if (el.getAttribute('data-target-kind') === 'TOPIC') {
+              setCurrentPost(1);
+            } else {
+              const id = el.id;
+              const match = id.match(/reply-(\d+)/);
+              if (match) {
+                const replyIndex = parseInt(match[1], 10);
+                setCurrentPost(replyIndex + 2);
+              }
+            }
+          }
+        }
+      },
+      { rootMargin: '-10% 0px -70% 0px' }
+    );
+
+    const opEl = document.querySelector('[data-forum-post][data-target-kind="TOPIC"]');
+    if (opEl) observer.observe(opEl);
+
+    replies.forEach((_, idx) => {
+      const el = document.getElementById(`reply-${idx}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [topic, replies]);
+
+  const getAuthorHandle = (authorId: string | null | undefined): string | undefined => {
+    if (!authorId) return undefined;
+    const card = memberCards.find((c) => c.userId === authorId);
+    return card?.profile.handle || card?.profile.displayName || undefined;
   };
 
   const handleShare = async () => {
@@ -275,6 +324,7 @@ function TopicDetailContent({
               data-forum-post
               data-target-kind="TOPIC"
               data-target-id={topic.id}
+              data-author-handle={getAuthorHandle(topic.authorId)}
               data-revision-id="1"
               className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
             >
@@ -315,6 +365,7 @@ function TopicDetailContent({
                     data-forum-post
                     data-target-kind="REPLY"
                     data-target-id={reply.id}
+                    data-author-handle={getAuthorHandle(reply.authorId)}
                     data-revision-id="1"
                     className="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm"
                   >
@@ -371,7 +422,7 @@ function TopicDetailContent({
             <div className="hidden xl:block">
               <div className="sticky top-20">
                 <TimelineScroller
-                  currentPost={1}
+                  currentPost={currentPost}
                   totalPosts={repliesTotal + 1}
                   onJumpToPost={handleJumpToPost}
                 />

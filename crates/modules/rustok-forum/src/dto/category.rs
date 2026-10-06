@@ -61,7 +61,9 @@ pub struct CategoryListItem {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub color: Option<String>,
+    pub parent_id: Option<Uuid>,
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,
 }
+

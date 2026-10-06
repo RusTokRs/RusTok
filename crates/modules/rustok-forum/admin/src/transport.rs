@@ -209,12 +209,72 @@ pub async fn restore_topic(
     graphql_adapter::restore_topic(token, tenant_slug, id).await
 }
 
+pub async fn pin_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    pinned: bool,
+) -> Result<(), ApiError> {
+    graphql_adapter::pin_topic(token, tenant_slug, id, pinned).await
+}
+
+pub async fn lock_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locked: bool,
+) -> Result<(), ApiError> {
+    graphql_adapter::lock_topic(token, tenant_slug, id, locked).await
+}
+
+pub async fn close_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::close_topic(token, tenant_slug, id).await
+}
+
+pub async fn reopen_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::reopen_topic(token, tenant_slug, id).await
+}
+
+pub async fn delete_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::delete_reply(token, tenant_slug, id).await
+}
+
 pub async fn restore_reply(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
     graphql_adapter::restore_reply(token, tenant_slug, id).await
+}
+
+pub async fn approve_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    reply_id: String,
+    topic_id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::approve_reply(token, tenant_slug, reply_id, topic_id).await
+}
+
+pub async fn reject_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    reply_id: String,
+    topic_id: String,
+) -> Result<(), ApiError> {
+    graphql_adapter::reject_reply(token, tenant_slug, reply_id, topic_id).await
 }
 
 pub async fn fetch_replies(

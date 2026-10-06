@@ -27,7 +27,7 @@ use crate::core::{
     forum_admin_topic_form_labels, forum_admin_topic_stream_labels,
     forum_admin_topic_tag_count_label, forum_admin_transport_error_message, reply_card_view_model,
     reply_count_label, result_item_count, selected_category_filter_label, selected_query_id,
-    topic_card_view_model, topic_category_filter,
+    topic_card_view_model, topic_category_filter, item_busy,
 };
 use crate::i18n::t;
 use crate::locale_switch::{
@@ -211,6 +211,36 @@ pub fn ForumAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "forum.error.restoreReply",
         "Failed to restore reply",
+    );
+    let pin_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.pinTopic",
+        "Failed to update topic pinned status",
+    );
+    let lock_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.lockTopic",
+        "Failed to update topic locked status",
+    );
+    let close_topic_error = t(
+        ui_locale.as_deref(),
+        "forum.error.closeTopic",
+        "Failed to update topic closed status",
+    );
+    let delete_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.deleteReply",
+        "Failed to delete reply",
+    );
+    let approve_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.approveReply",
+        "Failed to approve reply",
+    );
+    let reject_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.rejectReply",
+        "Failed to reject reply",
     );
     let locale_switch_load_error = t(
         ui_locale.as_deref(),
@@ -1050,6 +1080,143 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     });
 
+    let pin_topic = Callback::new(move |(topic_id, pinned): (String, bool)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let pin_topic_error = pin_topic_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Topic,
+            ForumAdminBusyAction::Moderate,
+            Some(topic_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::pin_topic(token_value, tenant_value, topic_id, pinned).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    pin_topic_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let lock_topic = Callback::new(move |(topic_id, locked): (String, bool)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let lock_topic_error = lock_topic_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Topic,
+            ForumAdminBusyAction::Moderate,
+            Some(topic_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::lock_topic(token_value, tenant_value, topic_id, locked).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    lock_topic_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let toggle_close_topic = Callback::new(move |(topic_id, should_close): (String, bool)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let close_topic_error = close_topic_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Topic,
+            ForumAdminBusyAction::Moderate,
+            Some(topic_id.as_str()),
+        )));
+        spawn_local(async move {
+            let res = if should_close {
+                transport::close_topic(token_value, tenant_value, topic_id).await
+            } else {
+                transport::reopen_topic(token_value, tenant_value, topic_id).await
+            };
+            match res {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    close_topic_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let delete_reply = Callback::new(move |reply_id: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let delete_reply_error = delete_reply_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Reply,
+            ForumAdminBusyAction::Delete,
+            Some(reply_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::delete_reply(token_value, tenant_value, reply_id).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    delete_reply_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let approve_reply = Callback::new(move |(reply_id, topic_id): (String, String)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let approve_reply_error = approve_reply_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Reply,
+            ForumAdminBusyAction::Moderate,
+            Some(reply_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::approve_reply(token_value, tenant_value, reply_id, topic_id).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    approve_reply_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let reject_reply = Callback::new(move |(reply_id, topic_id): (String, String)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let reject_reply_error = reject_reply_error.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Reply,
+            ForumAdminBusyAction::Moderate,
+            Some(reply_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::reject_reply(token_value, tenant_value, reply_id, topic_id).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    reject_reply_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
     let topic_count = move || result_item_count(topics.get());
     let category_count = move || result_item_count(categories.get());
     let reply_preview_count = move || result_item_count(replies.get());
@@ -1202,7 +1369,13 @@ pub fn ForumAdmin() -> impl IntoView {
                         on_edit=open_topic
                         on_delete=delete_topic
                         on_restore=restore_topic
+                        on_pin=pin_topic
+                        on_lock=lock_topic
+                        on_close_reopen=toggle_close_topic
+                        on_delete_reply=delete_reply
                         on_restore_reply=restore_reply
+                        on_approve_reply=approve_reply
+                        on_reject_reply=reject_reply
                         on_submit=submit_topic
                         on_submit_reply=submit_reply
                         on_reset=reset_topic
@@ -1717,7 +1890,13 @@ fn TopicsPage(
     on_edit: Callback<String>,
     on_delete: Callback<String>,
     on_restore: Callback<String>,
+    on_pin: Callback<(String, bool)>,
+    on_lock: Callback<(String, bool)>,
+    on_close_reopen: Callback<(String, bool)>,
+    on_delete_reply: Callback<String>,
     on_restore_reply: Callback<String>,
+    on_approve_reply: Callback<(String, String)>,
+    on_reject_reply: Callback<(String, String)>,
     on_submit: impl Fn(SubmitEvent) + 'static,
     on_submit_reply: Callback<SubmitEvent>,
     on_reset: Callback<()>,
@@ -1998,7 +2177,18 @@ fn TopicsPage(
                         </button>
                     </div>
                     <Suspense fallback=move || view! { <div class="mt-6 h-72 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || topics.get().map(|result| render_topic_feed(result, editing_id.get(), busy_key.get(), on_edit, on_delete, on_restore, topic_feed_locale.clone()))}
+                        {move || topics.get().map(|result| render_topic_feed(
+                            result,
+                            editing_id.get(),
+                            busy_key.get(),
+                            on_edit,
+                            on_delete,
+                            on_restore,
+                            on_pin,
+                            on_lock,
+                            on_close_reopen,
+                            topic_feed_locale.clone(),
+                        ))}
                     </Suspense>
                 </section>
             </div>
@@ -2022,6 +2212,78 @@ fn TopicsPage(
                                 </span>
                             })}
                     </div>
+
+                    {move || {
+                        let active_id = editing_id.get()?;
+                        let topics_result = topics.get()?;
+                        let list = topics_result.ok()?;
+                        let topic = list.into_iter().find(|t| t.id == active_id)?;
+                        let is_busy = busy_key.get().is_some();
+                        let item_id = topic.id.clone();
+                        let is_pinned = topic.is_pinned;
+                        let is_locked = topic.is_locked;
+                        let is_closed = topic.status == "closed";
+                        let is_deleted = topic.is_deleted;
+                        Some(view! {
+                            <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/40 p-3">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    "Moderator Actions"
+                                </span>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                        disabled=is_busy
+                                        on:click={
+                                            let id = item_id.clone();
+                                            move |_| on_pin.run((id.clone(), !is_pinned))
+                                        }
+                                    >
+                                        {if is_pinned { "Unpin topic" } else { "Pin topic" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                        disabled=is_busy
+                                        on:click={
+                                            let id = item_id.clone();
+                                            move |_| on_lock.run((id.clone(), !is_locked))
+                                        }
+                                    >
+                                        {if is_locked { "Unlock topic" } else { "Lock topic" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                        disabled=is_busy
+                                        on:click={
+                                            let id = item_id.clone();
+                                            move |_| on_close_reopen.run((id.clone(), !is_closed))
+                                        }
+                                    >
+                                        {if is_closed { "Reopen topic" } else { "Close topic" }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class=forum_admin_action_button_class(if is_deleted { ForumAdminActionButtonKind::Action } else { ForumAdminActionButtonKind::Delete })
+                                        disabled=is_busy
+                                        on:click={
+                                            let id = item_id.clone();
+                                            move |_| {
+                                                if is_deleted {
+                                                    on_restore.run(id.clone());
+                                                } else {
+                                                    on_delete.run(id.clone());
+                                                }
+                                            }
+                                        }
+                                    >
+                                        {if is_deleted { "Restore topic" } else { "Delete topic" }}
+                                    </button>
+                                </div>
+                            </div>
+                        })
+                    }}
 
                     <form class="mt-6 space-y-4" lang=move || locale.get() on:submit=on_submit>
                         <FieldShell label=topic_form_labels.locale_label.clone() hint=topic_form_labels.locale_hint.clone()>
@@ -2197,7 +2459,15 @@ fn TopicsPage(
                         </form>
                     })}
                     <Suspense fallback=move || view! { <div class="mt-6 h-40 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || replies.get().map(|result| render_reply_stack(result, busy_key.get(), on_restore_reply, replies_locale.clone()))}
+                        {move || replies.get().map(|result| render_reply_stack(
+                            result,
+                            busy_key.get(),
+                            on_delete_reply,
+                            on_restore_reply,
+                            on_approve_reply,
+                            on_reject_reply,
+                            replies_locale.clone(),
+                        ))}
                     </Suspense>
                 </section>
 
@@ -2390,11 +2660,20 @@ fn render_topic_feed(
     on_edit: Callback<String>,
     on_delete: Callback<String>,
     on_restore: Callback<String>,
+    on_pin: Callback<(String, bool)>,
+    on_lock: Callback<(String, bool)>,
+    on_close_reopen: Callback<(String, bool)>,
     locale: Option<String>,
 ) -> AnyView {
     let no_topics_label = t(locale.as_deref(), "forum.render.noTopics", "No topics yet.");
     let pinned_label = t(locale.as_deref(), "forum.render.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.render.locked", "Locked");
+    let pin_label = t(locale.as_deref(), "forum.render.pin", "Pin");
+    let unpin_label = t(locale.as_deref(), "forum.render.unpin", "Unpin");
+    let lock_label = t(locale.as_deref(), "forum.render.lock", "Lock");
+    let unlock_label = t(locale.as_deref(), "forum.render.unlock", "Unlock");
+    let close_label = t(locale.as_deref(), "forum.render.close", "Close");
+    let reopen_label = t(locale.as_deref(), "forum.render.reopen", "Reopen");
     let topic_labels = ForumAdminTopicRenderLabels {
         thread_path_template: t(
             locale.as_deref(),
@@ -2473,6 +2752,30 @@ fn render_topic_feed(
                                         </button>
                                         <button
                                             type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); let pinned = item.is_pinned; move |_| on_pin.run((item_id.clone(), !pinned)) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {if item.is_pinned { unpin_label.clone() } else { pin_label.clone() }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); let locked = item.is_locked; move |_| on_lock.run((item_id.clone(), !locked)) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {if item.is_locked { unlock_label.clone() } else { lock_label.clone() }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); let is_closed = item.status == "closed"; move |_| on_close_reopen.run((item_id.clone(), !is_closed)) }
+                                            disabled=vm.is_busy
+                                        >
+                                            {if item.status == "closed" { reopen_label.clone() } else { close_label.clone() }}
+                                        </button>
+                                        <button
+                                            type="button"
                                             class=forum_admin_action_button_class(ForumAdminActionButtonKind::Delete)
                                             on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) }
                                             disabled=vm.is_busy
@@ -2494,7 +2797,10 @@ fn render_topic_feed(
 fn render_reply_stack(
     result: Result<Vec<ReplyListItem>, String>,
     busy_key: Option<String>,
+    on_delete: Callback<String>,
     on_restore: Callback<String>,
+    on_approve: Callback<(String, String)>,
+    on_reject: Callback<(String, String)>,
     locale: Option<String>,
 ) -> AnyView {
     let empty_label = t(
@@ -2502,6 +2808,10 @@ fn render_reply_stack(
         "forum.render.openTopicForReplies",
         "Open a topic card to preview replies.",
     );
+    let approve_label = t(locale.as_deref(), "forum.render.approve", "Approve");
+    let reject_label = t(locale.as_deref(), "forum.render.reject", "Reject");
+    let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
+    let restore_label = t(locale.as_deref(), "forum.render.restore", "Restore");
     match forum_admin_collection_state(result) {
         ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">{empty_label}</div> }.into_any(),
         ForumAdminCollectionState::Ready(items) => view! {
@@ -2510,8 +2820,10 @@ fn render_reply_stack(
                     let vm = reply_card_view_model(&item);
                     let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
                     let item_id = item.id.clone();
-                    let restore_busy_key = forum_admin_busy_key(ForumAdminBusySurface::Reply, ForumAdminBusyAction::Moderate, Some(item.id.as_str()));
-                    let is_busy = busy_key.as_deref() == Some(restore_busy_key.as_str());
+                    let topic_id = item.topic_id.clone();
+                    let is_busy = item_busy(busy_key.as_deref(), item.id.as_str());
+                    let is_pending = item.status == "pending";
+                    let is_approved = item.status == "approved";
                     view! {
                         <article class="rounded-[1.35rem] border border-border bg-background p-4">
                             <div class="flex items-center justify-between gap-3">
@@ -2524,18 +2836,89 @@ fn render_reply_stack(
                                 dir="auto"
                                 class="mt-3 text-sm leading-6 text-muted-foreground"
                             >{vm.content_preview.clone()}</p>
-                            {item.is_deleted.then(|| view! {
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
-                                        on:click={ let item_id = item_id.clone(); move |_| on_restore.run(item_id.clone()) }
-                                        disabled=is_busy
-                                    >
-                                        {t(locale.as_deref(), "forum.render.restore", "Restore")}
-                                    </button>
-                                </div>
-                            })}
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                {if item.is_deleted {
+                                    view! {
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                            on:click={ let item_id = item_id.clone(); move |_| on_restore.run(item_id.clone()) }
+                                            disabled=is_busy
+                                        >
+                                            {restore_label.clone()}
+                                        </button>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        {if is_pending {
+                                            view! {
+                                                <button
+                                                    type="button"
+                                                    class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                                    on:click={
+                                                        let item_id = item_id.clone();
+                                                        let topic_id = topic_id.clone();
+                                                        move |_| on_approve.run((item_id.clone(), topic_id.clone()))
+                                                    }
+                                                    disabled=is_busy
+                                                >
+                                                    {approve_label.clone()}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                                    on:click={
+                                                        let item_id = item_id.clone();
+                                                        let topic_id = topic_id.clone();
+                                                        move |_| on_reject.run((item_id.clone(), topic_id.clone()))
+                                                    }
+                                                    disabled=is_busy
+                                                >
+                                                    {reject_label.clone()}
+                                                </button>
+                                            }.into_any()
+                                        } else if !is_approved {
+                                            view! {
+                                                <button
+                                                    type="button"
+                                                    class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                                    on:click={
+                                                        let item_id = item_id.clone();
+                                                        let topic_id = topic_id.clone();
+                                                        move |_| on_approve.run((item_id.clone(), topic_id.clone()))
+                                                    }
+                                                    disabled=is_busy
+                                                >
+                                                    {approve_label.clone()}
+                                                </button>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <button
+                                                    type="button"
+                                                    class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
+                                                    on:click={
+                                                        let item_id = item_id.clone();
+                                                        let topic_id = topic_id.clone();
+                                                        move |_| on_reject.run((item_id.clone(), topic_id.clone()))
+                                                    }
+                                                    disabled=is_busy
+                                                >
+                                                    {reject_label.clone()}
+                                                </button>
+                                            }.into_any()
+                                        }}
+                                        <button
+                                            type="button"
+                                            class=forum_admin_action_button_class(ForumAdminActionButtonKind::Delete)
+                                            on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) }
+                                            disabled=is_busy
+                                        >
+                                            {delete_label.clone()}
+                                        </button>
+                                    }.into_any()
+                                }}
+                            </div>
                         </article>
                     }
                 }).collect_view()}

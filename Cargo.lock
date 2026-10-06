@@ -173,6 +173,7 @@ dependencies = [
  "rustok-api",
  "rustok-build-source",
  "rustok-core",
+ "rustok-module-sdk",
  "rustok-module-template",
  "rustok-modules",
  "rustok-sandbox",

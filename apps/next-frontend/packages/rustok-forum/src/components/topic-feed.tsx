@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Pin,
   Lock,
@@ -24,6 +25,7 @@ interface TopicFeedProps {
   selectedTopicId: string | null;
   onSelectTopic?: (topicId: string) => void;
   selectedCategoryId: string | null;
+  locale?: string;
 }
 
 export function TopicFeed({
@@ -32,6 +34,7 @@ export function TopicFeed({
   selectedTopicId,
   onSelectTopic,
   selectedCategoryId,
+  locale,
 }: TopicFeedProps) {
   const { openNewTopic } = useComposer();
   const [activeTab, setActiveTab] = useState<TopicFilterTab>('latest');
@@ -309,9 +312,21 @@ export function TopicFeed({
                       <h4 className="text-lg font-semibold text-foreground">
                         {topic.title}
                       </h4>
-                      <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
-                        t/{topic.slug}
-                      </p>
+                      {locale ? (
+                        <Link
+                          href={`/${locale}/modules/forum/t/${topic.slug}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                          dir="ltr"
+                          title="Open topic in full page"
+                        >
+                          t/{topic.slug} ↗
+                        </Link>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
+                          t/{topic.slug}
+                        </p>
+                      )}
                     </div>
 
                     <AuthorBadge authorId={topic.authorId} />

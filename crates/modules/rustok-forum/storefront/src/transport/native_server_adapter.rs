@@ -686,6 +686,7 @@ fn map_category(value: rustok_forum::CategoryListItem) -> ForumCategoryListItem 
         description: value.description,
         icon: value.icon,
         color: value.color,
+        parent_id: value.parent_id.map(|id| id.to_string()),
         topic_count: value.topic_count,
         reply_count: value.reply_count,
     }

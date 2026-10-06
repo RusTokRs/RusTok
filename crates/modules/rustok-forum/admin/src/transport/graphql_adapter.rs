@@ -36,6 +36,20 @@ const RESTORE_TOPIC_MUTATION: &str =
     "mutation ForumAdminRestoreTopic($id: UUID!) { restoreForumTopic(id: $id) }";
 const RESTORE_REPLY_MUTATION: &str =
     "mutation ForumAdminRestoreReply($id: UUID!) { restoreForumReply(id: $id) }";
+const PIN_TOPIC_MUTATION: &str =
+    "mutation ForumAdminPinTopic($id: UUID!, $pinned: Boolean!) { pinForumTopic(id: $id, pinned: $pinned) }";
+const LOCK_TOPIC_MUTATION: &str =
+    "mutation ForumAdminLockTopic($id: UUID!, $locked: Boolean!) { lockForumTopic(id: $id, locked: $locked) }";
+const CLOSE_TOPIC_MUTATION: &str =
+    "mutation ForumAdminCloseTopic($id: UUID!) { closeForumTopic(id: $id) }";
+const REOPEN_TOPIC_MUTATION: &str =
+    "mutation ForumAdminReopenTopic($id: UUID!) { reopenForumTopic(id: $id) }";
+const DELETE_REPLY_MUTATION: &str =
+    "mutation ForumAdminDeleteReply($id: UUID!) { deleteForumReply(id: $id) }";
+const APPROVE_REPLY_MUTATION: &str =
+    "mutation ForumAdminApproveReply($replyId: UUID!, $topicId: UUID!) { approveForumReply(replyId: $replyId, topicId: $topicId) }";
+const REJECT_REPLY_MUTATION: &str =
+    "mutation ForumAdminRejectReply($replyId: UUID!, $topicId: UUID!) { rejectForumReply(replyId: $replyId, topicId: $topicId) }";
 const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } } }";
 const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } }";
 
@@ -103,6 +117,48 @@ struct RestoreTopicResponse {
 struct RestoreReplyResponse {
     #[serde(rename = "restoreForumReply")]
     restore_forum_reply: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PinTopicResponse {
+    #[serde(rename = "pinForumTopic")]
+    pin_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct LockTopicResponse {
+    #[serde(rename = "lockForumTopic")]
+    lock_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloseTopicResponse {
+    #[serde(rename = "closeForumTopic")]
+    close_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReopenTopicResponse {
+    #[serde(rename = "reopenForumTopic")]
+    reopen_forum_topic: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteReplyResponse {
+    #[serde(rename = "deleteForumReply")]
+    delete_forum_reply: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApproveReplyResponse {
+    #[serde(rename = "approveForumReply")]
+    approve_forum_reply: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RejectReplyResponse {
+    #[serde(rename = "rejectForumReply")]
+    reject_forum_reply: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,6 +256,26 @@ struct TopicUpdateVariables<T> {
 #[derive(Debug, Serialize)]
 struct IdVariables {
     id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PinTopicVariables {
+    id: String,
+    pinned: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct LockTopicVariables {
+    id: String,
+    locked: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ModerateReplyVariables {
+    #[serde(rename = "replyId")]
+    reply_id: String,
+    #[serde(rename = "topicId")]
+    topic_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -605,6 +681,143 @@ pub async fn restore_reply(
         Ok(())
     } else {
         Err("Forum reply restore returned false".to_string())
+    }
+}
+
+pub async fn pin_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    pinned: bool,
+) -> Result<(), ApiError> {
+    let response: PinTopicResponse = request(
+        PIN_TOPIC_MUTATION,
+        PinTopicVariables { id, pinned },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.pin_forum_topic {
+        Ok(())
+    } else {
+        Err("Forum topic pin returned false".to_string())
+    }
+}
+
+pub async fn lock_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locked: bool,
+) -> Result<(), ApiError> {
+    let response: LockTopicResponse = request(
+        LOCK_TOPIC_MUTATION,
+        LockTopicVariables { id, locked },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.lock_forum_topic {
+        Ok(())
+    } else {
+        Err("Forum topic lock returned false".to_string())
+    }
+}
+
+pub async fn close_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    let response: CloseTopicResponse = request(
+        CLOSE_TOPIC_MUTATION,
+        IdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.close_forum_topic {
+        Ok(())
+    } else {
+        Err("Forum topic close returned false".to_string())
+    }
+}
+
+pub async fn reopen_topic(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    let response: ReopenTopicResponse = request(
+        REOPEN_TOPIC_MUTATION,
+        IdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.reopen_forum_topic {
+        Ok(())
+    } else {
+        Err("Forum topic reopen returned false".to_string())
+    }
+}
+
+pub async fn delete_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<(), ApiError> {
+    let response: DeleteReplyResponse = request(
+        DELETE_REPLY_MUTATION,
+        IdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.delete_forum_reply {
+        Ok(())
+    } else {
+        Err("Forum reply delete returned false".to_string())
+    }
+}
+
+pub async fn approve_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    reply_id: String,
+    topic_id: String,
+) -> Result<(), ApiError> {
+    let response: ApproveReplyResponse = request(
+        APPROVE_REPLY_MUTATION,
+        ModerateReplyVariables { reply_id, topic_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.approve_forum_reply {
+        Ok(())
+    } else {
+        Err("Forum reply approve returned false".to_string())
+    }
+}
+
+pub async fn reject_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    reply_id: String,
+    topic_id: String,
+) -> Result<(), ApiError> {
+    let response: RejectReplyResponse = request(
+        REJECT_REPLY_MUTATION,
+        ModerateReplyVariables { reply_id, topic_id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    if response.reject_forum_reply {
+        Ok(())
+    } else {
+        Err("Forum reply reject returned false".to_string())
     }
 }
 

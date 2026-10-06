@@ -164,6 +164,7 @@ impl CategoryTaxonomyReadService {
                 description: projection.description.clone(),
                 icon: projection.icon_key.clone(),
                 color: projection.color.clone(),
+                parent_id: projection.parent_id,
                 topic_count: category.topic_count,
                 reply_count: category.reply_count,
                 is_subscribed: subscription_flags

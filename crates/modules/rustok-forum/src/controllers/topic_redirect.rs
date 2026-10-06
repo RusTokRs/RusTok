@@ -271,10 +271,15 @@ mod tests {
             .uri(uri)
             .body(Body::empty())
             .expect("redirect request");
+        let default_locale = tenant.default_locale.clone();
         request
             .extensions_mut()
             .insert(TenantContextExtension(tenant));
         request.extensions_mut().insert(AuthContextExtension(auth));
+        request.extensions_mut().insert(rustok_api::ResolvedRequestLocale {
+            requested_locale: None,
+            effective_locale: default_locale,
+        });
         request
     }
 
