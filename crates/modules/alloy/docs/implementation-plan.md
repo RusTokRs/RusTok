@@ -152,12 +152,12 @@ Remaining:
 - [x] Use the shared versioned Rhai input/output envelope for Alloy drafts;
   Alloy owns only its nested data payload and does not retain a raw or
   Alloy-specific versioned runtime binding.
-- Build requests with draft ID, monotonic revision, tenant, actor, phase,
-  trace/correlation, source digest, input, grants, and limits.
-- Preserve entity proxies, parameters, validation helpers, and broker-backed
+- [x] Build requests with draft ID, monotonic revision, tenant, actor, phase,
+  execution/correlation identity, source digest, input, grants, and limits.
+- [x] Preserve entity proxies, parameters, validation helpers, and broker-backed
   services as Alloy-owned request-scoped extensions.
-- Migrate manual, hook, scheduled, validation, and test execution atomically.
-- Delete the parallel production execution path after callers move.
+- [x] Migrate manual, hook, scheduled, validation, and test execution atomically.
+- [x] Delete the parallel production execution path after callers move.
 
 **Done when:** all production Alloy code execution is observable as
 `SandboxSubject::AlloyDraft` and draft/published Rhai parity tests pass.
