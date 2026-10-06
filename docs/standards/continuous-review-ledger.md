@@ -5275,6 +5275,20 @@ _No completed rounds yet. Round 1 is currently in progress._
 - **Post-merge reconciliation:** refreshed `main` at `8d7a278638c0960dc80ce523df3e2c3c9e77177d`; comparison against recorded base `78cbcc2758ed8d225846ff84ade5245c1fcd5040` is exactly one merged commit with the expected provider code, Fulfillment docs, and ledger change set. The webhook result boundary fixes are present on `main`.
 - **Status:** `FS-22.06.157` complete; maintainer/CI verification remains explicitly required because local Cargo/remediation-gate execution was unavailable.
 
+### FS-22.06.158 Assessment — Fulfillment provider recovery identity boundary
+
+- **Base:** refreshed `main` at `fead30f31244bc0296bb85cfa7f9840612af91c9`; dedicated branch `audit/fulfillment-provider-recovery-identity` was created from that exact SHA.
+- **Primary scope:** `crates/modules/rustok-fulfillment/src/services/provider_operation_recovery.rs` recovery lookups/mutations, canonical provider-operation identity helpers, tenant-scoped DB predicates, and recovery regression coverage.
+- **Invariant map:** every provider-operation recovery entrypoint must reject nil tenant/operation identities before any tenant-scoped DB lookup or mutation; the owner identity validator remains the single source of this rule; recovery must preserve existing status/tenant/CAS semantics.
+- **Confirmed finding FULFILLMENTRECOVERY-22.06.158-01:** `list_reconciliation_required`, `quarantine_stale_executing`, `resolve_unknown_as_failed`, `resolve_unknown_as_succeeded`, and the internal `get` helper accepted nil UUIDs through to SQL filters. This weakened the owner boundary and allowed malformed identity inputs to be treated as ordinary not-found/no-op queries instead of failing closed before persistence access.
+- **Remediation:** promoted the existing `validate_operation_identity` helper to `pub(crate)`, added the canonical `validate_provider_operation_tenant` helper beside it, and applied them at the start of all recovery entrypoints before DB access. No query predicate, lifecycle transition, tenant scope, or recovery state machine was otherwise changed.
+- **Regression coverage:** added focused unit assertions for nil tenant, nil operation, and valid identity cases, and exercised the same helpers from the recovery module so the cross-module reuse is explicit.
+- **Adjacent review:** re-read the provider-operation journal, recovery service, provider-operation entity, reconciliation migrations/triggers, recovery integration tests, and current Fulfillment documentation. Existing tenant filters, rows-affected checks, provider-result safety, stale-execution quarantine, and rollback guards remain unchanged.
+- **Fresh second pass:** independently checked every public recovery method plus the internal `get` path for identity validation placement and confirmed no recovery SQL executes before the new guard. No additional repository-owned in-scope defect was confirmed.
+- **Verification:** repository source inspection, owner helper tracing, targeted regression construction, documentation review, and branch diff review. Local Cargo/tests/Clippy/rustfmt/remediation-gate execution was unavailable because no usable Rust checkout/toolchain is mounted; no test/build/runtime pass is claimed.
+- **Implementation status:** complete on the dedicated branch; pending PR/CI integration.
+- **Next primary iteration:** refresh `main` after integration and continue the next unchecked Fulfillment/provider boundary from the living ledger.
+
 ### FS-22.05.28 Assessment — GraphQL rate-limit runtime initialization order
 
 - **Base:** refreshed `main` at `2eb60a5c0108d10c625a71ea6061d748a9c9476e`; dedicated branch `codex/audit-fs-22.05.28-graphql-rate-limit-order` was created from that exact SHA.
