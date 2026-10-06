@@ -34,5 +34,3 @@ hex.workspace = true
 parking_lot = "0.12"
 cron = "0.17"
 rhai = { workspace = true, features = ["sync", "metadata"] }
-
-[dev-dependencies]
