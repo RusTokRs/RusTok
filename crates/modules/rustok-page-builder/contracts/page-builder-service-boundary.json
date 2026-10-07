@@ -108,6 +108,7 @@
         "PagesPageBuilderRenderer {",
         "PagesPageBuilderProjectStore {",
         "let handlers = compose_fly_page_builder_handlers(",
+        "PageBuilderCapabilityPermissions::draft_persistence()",
         ".handle(&context, &auth, request)"
       ],
       "capability_dispatch_marker": ".handle(&context, &auth, request)",

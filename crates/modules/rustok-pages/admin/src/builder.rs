@@ -26,6 +26,7 @@ use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 use rustok_page_builder::render::PageBuilderRenderer;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::service::{
+    PageBuilderCapabilityAuthorizer, PageBuilderCapabilityPermissions,
     PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRequestAuth,
     PageBuilderServiceError, PageBuilderServiceResult,
 };
@@ -299,8 +300,14 @@ async fn dispatch_pages_page_builder_capability(
     };
     let expected_capability = request.capability();
     let effective_flags = trusted_rollout.effective_runtime_flags();
+    // The builder `Publish` capability persists the Pages draft (`savePageDocument`), which the
+    // server authorizes with `pages:update`. Requiring `pages:publish` here locked authors out of
+    // saving their own work.
     let handlers = compose_fly_page_builder_handlers(store, renderer, effective_flags)
-        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+        .authorized_by(PageBuilderCapabilityAuthorizer::new(
+            PageBuilderCapabilityPermissions::draft_persistence(),
+        ));
     let response = handlers
         .handle(&context, &auth, request)
         .await
@@ -399,9 +406,12 @@ fn required_snapshot_value(
 
 #[cfg(feature = "ssr")]
 fn page_builder_permissions_for_role(role: &str) -> Vec<Permission> {
-    let capabilities = crate::access::pages_editor_permissions_for_role(Some(role));
+    let lifecycle = crate::access::pages_lifecycle_permissions_for_role(Some(role));
     let mut permissions = vec![Permission::new(Resource::Pages, Action::Read)];
-    if capabilities.publish {
+    if lifecycle.save_draft {
+        permissions.push(Permission::new(Resource::Pages, Action::Update));
+    }
+    if lifecycle.publish {
         permissions.push(Permission::new(Resource::Pages, Action::Publish));
     }
     permissions
@@ -666,4 +676,39 @@ fn default_root_component() -> Value {
         "type": "wrapper",
         "components": []
     })
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod role_permission_tests {
+    use super::*;
+
+    #[test]
+    fn manager_receives_update_so_draft_saves_are_authorized() {
+        let permissions = page_builder_permissions_for_role("manager");
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Read)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Update)));
+        assert!(!permissions.contains(&Permission::new(Resource::Pages, Action::Publish)));
+
+        let authorizer = PageBuilderCapabilityAuthorizer::new(
+            PageBuilderCapabilityPermissions::draft_persistence(),
+        );
+        let required = authorizer
+            .required_permission(rustok_page_builder::dto::BuilderCapabilityKind::Publish);
+        assert!(permissions.contains(&required));
+    }
+
+    #[test]
+    fn admin_receives_update_and_publish() {
+        let permissions = page_builder_permissions_for_role("admin");
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Update)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Publish)));
+    }
+
+    #[test]
+    fn unknown_roles_only_read() {
+        assert_eq!(
+            page_builder_permissions_for_role("customer"),
+            vec![Permission::new(Resource::Pages, Action::Read)]
+        );
+    }
 }

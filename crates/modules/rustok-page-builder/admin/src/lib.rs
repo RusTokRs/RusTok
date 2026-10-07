@@ -62,6 +62,10 @@ pub use draft_session::{
     SsrDraftSessionStore,
 };
 pub use editor::ConsumerPropertiesPanel;
+pub use editor::{
+    PAGE_BUILDER_AUTOSAVE_DEFAULT_DEBOUNCE_MS, PAGE_BUILDER_AUTOSAVE_MIN_DEBOUNCE_MS,
+    PageBuilderAutosavePolicy, PageBuilderEditorStatus, PageBuilderEditorStatusSignal,
+};
 pub use model::{AdminCanvasController, AdminCanvasEffect, AdminCanvasError};
 pub use palette_access::{
     dispatch_browser_intent_with_palette_access, validate_browser_palette_access,

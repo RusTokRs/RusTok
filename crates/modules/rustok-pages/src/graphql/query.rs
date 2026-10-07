@@ -123,12 +123,7 @@ impl PagesQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
 
-        let filter = filter.unwrap_or(ListGqlPagesFilter {
-            locale: None,
-            template: None,
-            page: Some(1),
-            per_page: Some(20),
-        });
+        let filter = filter.unwrap_or_default();
 
         if is_public_request(ctx) {
             return list_public_visible_pages(
@@ -152,11 +147,16 @@ impl PagesQuery {
                 tenant_id,
                 security,
                 crate::ListPagesFilter {
-                    status: None,
+                    status: filter.status.map(Into::into),
                     template: filter.template,
                     locale: Some(locale),
-                    page: filter.page.unwrap_or(1),
-                    per_page: filter.per_page.unwrap_or(20),
+                    search: filter.search,
+                    sort: filter.sort.map(Into::into),
+                    page: filter.page.unwrap_or(1).max(1),
+                    per_page: filter
+                        .per_page
+                        .unwrap_or(20)
+                        .clamp(1, crate::PAGE_LIST_MAX_PER_PAGE),
                 },
             )
             .await
@@ -174,7 +174,10 @@ impl PagesQuery {
             "graphql",
             "pages.pages",
             requested_limit,
-            filter.per_page.unwrap_or(20).min(100),
+            filter
+                .per_page
+                .unwrap_or(20)
+                .clamp(1, crate::PAGE_LIST_MAX_PER_PAGE),
             items.len(),
         );
 
@@ -238,8 +241,13 @@ async fn list_public_visible_pages(
                 status: Some(rustok_content::entities::node::ContentStatus::Published),
                 template: filter.template.clone(),
                 locale: Some(locale),
+                search: filter.search.clone(),
+                sort: filter.sort.map(Into::into),
                 page: filter.page.unwrap_or(1).max(1),
-                per_page: filter.per_page.unwrap_or(20).clamp(1, 100),
+                per_page: filter
+                    .per_page
+                    .unwrap_or(20)
+                    .clamp(1, crate::PAGE_LIST_MAX_PER_PAGE),
             },
             Some(default_locale),
             public_channel_slug,

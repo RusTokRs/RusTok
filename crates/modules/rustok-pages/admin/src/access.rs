@@ -27,18 +27,70 @@ pub fn pages_editor_capability_policy_for_role(role: Option<&str>) -> EditorCapa
     pages_editor_capability_policy(role, &assembly)
 }
 
+/// Fly editor capabilities for a canonical RusTok role.
+///
+/// In Fly, the `publish` capability means "persist the edited document to the host store". For
+/// Pages that is a draft save (`savePageDocument`, `pages:update`), not a page publication, so
+/// every role that may update pages gets it. Making a page public is a separate Pages lifecycle
+/// action gated by [`pages_lifecycle_permissions_for_role`].
 pub fn pages_editor_permissions_for_role(role: Option<&str>) -> CapabilityState {
+    if pages_lifecycle_permissions_for_role(role).save_draft {
+        CapabilityState::full()
+    } else {
+        CapabilityState::read_only()
+    }
+}
+
+/// Page lifecycle actions a role may perform, mirroring the canonical RBAC role tables in
+/// `rustok-core` (`pages:update`, `pages:publish`, `pages:delete`). The server re-checks every
+/// action; this only keeps the UI honest about what will succeed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PagesLifecyclePermissions {
+    pub create: bool,
+    pub save_draft: bool,
+    pub publish: bool,
+    pub unpublish: bool,
+    pub delete: bool,
+}
+
+impl PagesLifecyclePermissions {
+    pub const fn full() -> Self {
+        Self {
+            create: true,
+            save_draft: true,
+            publish: true,
+            unpublish: true,
+            delete: true,
+        }
+    }
+
+    pub const fn none() -> Self {
+        Self {
+            create: false,
+            save_draft: false,
+            publish: false,
+            unpublish: false,
+            delete: false,
+        }
+    }
+}
+
+pub fn pages_lifecycle_permissions_for_role(role: Option<&str>) -> PagesLifecyclePermissions {
     let role = role
         .map(str::trim)
         .filter(|role| !role.is_empty())
         .map(str::to_ascii_lowercase);
     match role.as_deref() {
-        Some("super_admin") | Some("admin") => CapabilityState::full(),
-        Some("manager") => CapabilityState {
+        Some("super_admin") | Some("admin") => PagesLifecyclePermissions::full(),
+        // Managers author and remove drafts but cannot make pages public.
+        Some("manager") => PagesLifecyclePermissions {
+            create: true,
+            save_draft: true,
             publish: false,
-            ..CapabilityState::full()
+            unpublish: false,
+            delete: true,
         },
-        Some("customer") | None | Some(_) => CapabilityState::read_only(),
+        Some("customer") | None | Some(_) => PagesLifecyclePermissions::none(),
     }
 }
 
@@ -76,12 +128,34 @@ mod tests {
     }
 
     #[test]
-    fn manager_can_author_but_cannot_publish() {
+    fn manager_can_author_and_save_drafts_but_cannot_publish_pages() {
         let permissions = pages_editor_permissions_for_role(Some("manager"));
         assert!(permissions.edit);
         assert!(permissions.properties);
         assert!(permissions.assets);
-        assert!(!permissions.publish);
+        // Fly `publish` persists the draft document; managers must be able to save their work.
+        assert!(permissions.publish);
+
+        let lifecycle = pages_lifecycle_permissions_for_role(Some("manager"));
+        assert!(lifecycle.save_draft);
+        assert!(lifecycle.create);
+        assert!(lifecycle.delete);
+        assert!(!lifecycle.publish);
+        assert!(!lifecycle.unpublish);
+    }
+
+    #[test]
+    fn lifecycle_permissions_fail_closed_for_unknown_roles() {
+        for role in [Some("customer"), Some("future_role"), Some(""), None] {
+            assert_eq!(
+                pages_lifecycle_permissions_for_role(role),
+                PagesLifecyclePermissions::none()
+            );
+        }
+        assert_eq!(
+            pages_lifecycle_permissions_for_role(Some(" Admin ")),
+            PagesLifecyclePermissions::full()
+        );
     }
 
     #[test]
@@ -118,6 +192,6 @@ mod tests {
         let evaluation = policy.evaluate_detailed();
         assert_eq!(evaluation.provider_state, EditorProviderState::Healthy);
         assert!(evaluation.effective.edit);
-        assert!(!evaluation.effective.publish);
+        assert!(evaluation.effective.publish);
     }
 }

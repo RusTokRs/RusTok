@@ -1,6 +1,43 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value;
 
+/// Status filter for the admin page list. Serialized as the GraphQL enum value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PageStatusFilter {
+    Draft,
+    Published,
+    Archived,
+}
+
+impl PageStatusFilter {
+    pub const ALL: [Self; 3] = [Self::Draft, Self::Published, Self::Archived];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Published => "published",
+            Self::Archived => "archived",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|status| status.as_str().eq_ignore_ascii_case(value.trim()))
+    }
+}
+
+/// Normalized admin page list request. Build it with [`crate::core::page_list_query`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PageListQuery {
+    /// 1-based page number.
+    pub page: u64,
+    pub per_page: u64,
+    pub search: Option<String>,
+    pub status: Option<PageStatusFilter>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageList {
     pub items: Vec<PageListItem>,

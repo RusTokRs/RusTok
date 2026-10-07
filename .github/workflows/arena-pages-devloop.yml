@@ -1,0 +1,38 @@
+# Temporary feedback loop for the Pages / Page Builder remediation branch. The authoring sandbox has
+# no Rust toolchain, so this job formats, compiles and tests the touched crates and reports the
+# result as a commit comment. Remove before merging.
+name: Arena Pages Dev Loop
+
+on:
+  push:
+    branches: [arena/02af0d5e-rustok]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arena-pages-devloop
+  cancel-in-progress: true
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          shared-key: arena-pages-devloop
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Run dev loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/arena-devloop/run.sh

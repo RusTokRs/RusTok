@@ -174,6 +174,8 @@ async fn public_list_respects_explicit_tenant_fallback_locale() {
                 status: Some(ContentStatus::Published),
                 template: None,
                 locale: Some("FR".to_string()),
+                search: None,
+                sort: None,
                 page: 1,
                 per_page: 20,
             },

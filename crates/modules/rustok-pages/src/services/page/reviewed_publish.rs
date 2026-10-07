@@ -330,6 +330,17 @@ async fn ensure_candidates_allowed_in_tx(
         _ => unreachable!("unsupported SeaORM database backend"),
     };
     let Some(model) = model else {
+        // Without a promoted baseline only static projects may use the implicit static runtime:
+        // a dynamic project published against an empty context would silently drop content.
+        if reviewed.is_static_default()
+            && project_data
+                .iter()
+                .any(rustok_page_builder::project_requires_runtime_baseline)
+        {
+            return Err(PagesError::publish_runtime_review_invalid(
+                "this page reads runtime context; promote a runtime scenario baseline before publishing",
+            ));
+        }
         return Ok(());
     };
     let baseline: RuntimeScenarioReleaseBaseline = serde_json::from_value(model.baseline.clone())

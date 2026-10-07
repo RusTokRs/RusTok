@@ -164,10 +164,70 @@ pub struct ListPagesFilter {
     pub status: Option<ContentStatus>,
     pub template: Option<String>,
     pub locale: Option<String>,
+    /// Case-insensitive substring match against any translation title or slug.
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub sort: Option<PageListSort>,
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_per_page")]
     pub per_page: u64,
+}
+
+/// Upper bound for one page of a page list. Larger requests are clamped.
+pub const PAGE_LIST_MAX_PER_PAGE: u64 = 100;
+/// Upper bound for the search needle, in characters.
+pub const PAGE_LIST_MAX_SEARCH_CHARS: usize = 200;
+
+/// Deterministic page list ordering. Every variant uses the page id as a tie breaker so that
+/// pagination is stable when timestamps collide.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PageListSort {
+    #[default]
+    UpdatedDesc,
+    UpdatedAsc,
+    CreatedDesc,
+    CreatedAsc,
+    PublishedDesc,
+}
+
+impl ListPagesFilter {
+    /// Returns the normalized search needle, or `None` when the filter does not search.
+    pub fn normalized_search(&self) -> Option<String> {
+        normalize_page_list_search(self.search.as_deref())
+    }
+}
+
+/// Trims, lowercases and bounds a free-text page list search needle.
+pub fn normalize_page_list_search(search: Option<&str>) -> Option<String> {
+    let trimmed = search?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(
+        trimmed
+            .chars()
+            .take(PAGE_LIST_MAX_SEARCH_CHARS)
+            .collect::<String>()
+            .to_lowercase(),
+    )
+}
+
+/// Escapes `LIKE` wildcards so that user input is always matched literally. A backslash is the
+/// explicit escape character and must be passed to the `ESCAPE` clause.
+pub fn escape_like_pattern(needle: &str) -> String {
+    let mut escaped = String::with_capacity(needle.len() + 2);
+    escaped.push('%');
+    for character in needle.chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped.push('%');
+    escaped
 }
 
 fn default_page() -> u64 {
@@ -180,7 +240,28 @@ fn default_per_page() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::PageBodyInput;
+    use super::{PageBodyInput, escape_like_pattern, normalize_page_list_search};
+
+    #[test]
+    fn page_list_search_is_trimmed_lowercased_and_bounded() {
+        assert_eq!(normalize_page_list_search(None), None);
+        assert_eq!(normalize_page_list_search(Some("   ")), None);
+        assert_eq!(
+            normalize_page_list_search(Some("  О Компании ")).as_deref(),
+            Some("о компании")
+        );
+        let long = "я".repeat(500);
+        assert_eq!(
+            normalize_page_list_search(Some(&long)).map(|value| value.chars().count()),
+            Some(super::PAGE_LIST_MAX_SEARCH_CHARS)
+        );
+    }
+
+    #[test]
+    fn like_pattern_escapes_wildcards() {
+        assert_eq!(escape_like_pattern("about"), "%about%");
+        assert_eq!(escape_like_pattern("50%_off\\"), "%50\\%\\_off\\\\%");
+    }
 
     #[test]
     fn page_body_input_accepts_only_the_canonical_document_field() {

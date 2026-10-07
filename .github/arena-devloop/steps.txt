@@ -1,0 +1,12 @@
+# One shell command per line. Lines starting with # are ignored.
+cargo check -p rustok-pages --all-targets --message-format=short
+cargo check -p rustok-pages-admin --all-targets --message-format=short
+cargo check -p rustok-page-builder-admin --all-targets --message-format=short
+cargo check -p rustok-pages-storefront --lib --message-format=short
+cargo test -p rustok-pages --lib
+cargo test -p rustok-pages-admin --lib
+cargo test -p rustok-page-builder-admin --lib
+cargo test -p rustok-page-builder --all-targets
+cargo test -p fly --lib
+rustup target add wasm32-unknown-unknown >/dev/null 2>&1; cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features hydrate --message-format=short
+cargo check --target wasm32-unknown-unknown -p rustok-pages-admin --no-default-features --features hydrate --message-format=short

@@ -20,6 +20,7 @@ mod isolated_canvas;
 mod modular_canvas;
 mod page_manager;
 mod palette_layers;
+mod persistence_guard;
 mod properties_assets;
 #[cfg(target_arch = "wasm32")]
 mod properties_section;
@@ -78,6 +79,11 @@ pub(crate) use isolated_canvas::IsolatedAuthoringCanvas;
 pub use modular_canvas::AdminCanvas;
 pub(crate) use page_manager::PageManagerPanel;
 pub(crate) use palette_layers::PaletteLayersPanel;
+pub(crate) use persistence_guard::EditorPersistenceGuard;
+pub use persistence_guard::{
+    PAGE_BUILDER_AUTOSAVE_DEFAULT_DEBOUNCE_MS, PAGE_BUILDER_AUTOSAVE_MIN_DEBOUNCE_MS,
+    PageBuilderAutosavePolicy, PageBuilderEditorStatus, PageBuilderEditorStatusSignal,
+};
 pub(crate) use properties_assets::PropertiesAssetsPanel;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use properties_section::PropertiesSection;

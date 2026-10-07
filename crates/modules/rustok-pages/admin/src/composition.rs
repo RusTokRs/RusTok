@@ -1,4 +1,6 @@
-use crate::access::pages_editor_capability_policy;
+use crate::access::{
+    PagesLifecyclePermissions, pages_editor_capability_policy, pages_lifecycle_permissions_for_role,
+};
 use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::contributions::{
@@ -6,7 +8,9 @@ use crate::contributions::{
 };
 use crate::core;
 use crate::i18n::t;
-use crate::model::{PageBuilderScenarioReleaseStatus, PageDetail, PageList};
+use crate::model::{
+    PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageListQuery, PageStatusFilter,
+};
 use crate::transport;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
@@ -22,7 +26,7 @@ use rustok_page_builder::runtime_scenario_release::{
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
-    PageBuilderAdminProviderStatus, SsrDraftSessionStore,
+    PageBuilderAdminProviderStatus, PageBuilderEditorStatusSignal, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{Value, json};
@@ -39,6 +43,18 @@ pub fn PagesAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let refresh_generation = RwSignal::new(0_u64);
+    let current_user = use_current_user();
+    let lifecycle = Memo::new(move |_| {
+        pages_lifecycle_permissions_for_role(
+            current_user.get().as_ref().map(|user| user.role.as_str()),
+        )
+    });
+    // Applied list filters. The search box writes `search_input` on every keystroke and applies
+    // it on submit, so typing does not issue one request per character.
+    let search_input = RwSignal::new(String::new());
+    let list_search = RwSignal::new(String::new());
+    let list_status = RwSignal::new(None::<PageStatusFilter>);
+    let list_page = RwSignal::new(1_u64);
     let default_locale = route_context
         .locale
         .clone()
@@ -50,7 +66,13 @@ pub fn PagesAdmin() -> impl IntoView {
         let token = list_token.get();
         let tenant = list_tenant.get();
         let _generation = refresh_generation.get();
-        async move { transport::fetch_pages(token, tenant).await }
+        let query = core::page_list_query(list_page.get(), &list_search.get(), list_status.get());
+        async move {
+            let applied = query.clone();
+            transport::fetch_pages(token, tenant, query)
+                .await
+                .map(|pages| (applied, pages))
+        }
     });
 
     let workspace_token = token;
@@ -96,6 +118,7 @@ pub fn PagesAdmin() -> impl IntoView {
         }
     });
 
+    let create_default_locale = default_locale.clone();
     let select_writer = query_writer.clone();
     let clear_writer = query_writer.clone();
     let locale = route_context.locale.clone();
@@ -124,24 +147,31 @@ pub fn PagesAdmin() -> impl IntoView {
                         <h1 class="text-2xl font-semibold text-card-foreground">{title}</h1>
                         <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>
                     </div>
-                    <button
-                        type="button"
-                        class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-                        on:click=move |_| clear_writer.clear_key(AdminQueryKey::PageId.as_str())
-                    >
-                        "New page"
-                    </button>
+                    <Show when=move || lifecycle.get().create>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+                            on:click={
+                                let clear_writer = clear_writer.clone();
+                                move |_| clear_writer.clear_key(AdminQueryKey::PageId.as_str())
+                            }
+                        >
+                            "New page"
+                        </button>
+                    </Show>
                 </div>
             </header>
 
             <div class="grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
                 <aside class="space-y-4">
-                    <CreatePageCard refresh_generation default_locale=default_locale.clone() />
+                    <Show when=move || lifecycle.get().create>
+                        <CreatePageCard refresh_generation default_locale=create_default_locale.clone() />
+                    </Show>
                     <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
                         <div class="mb-3 flex items-center justify-between gap-3">
                             <h2 class="font-semibold text-card-foreground">"Documents"</h2>
-                            <span class="text-xs text-muted-foreground">"current contract"</span>
                         </div>
+                        <PageListFilters search_input list_search list_status list_page />
                         <Suspense fallback=|| view! {
                             <div class="space-y-2" aria-label="Loading pages">
                                 <div class="h-16 animate-pulse rounded-xl bg-muted"></div>
@@ -151,12 +181,20 @@ pub fn PagesAdmin() -> impl IntoView {
                             {move || {
                                 let writer = select_writer.clone();
                                 pages_resource.get().map(|result| match result {
-                                    Ok(pages) => view! {
+                                    Ok((query, pages)) => view! {
                                         <PagesNavigator
                                             pages
+                                            query
                                             selected_page_id=selected_page_query.get()
                                             on_select=Callback::new(move |page_id| {
                                                 writer.replace_value(AdminQueryKey::PageId.as_str(), page_id)
+                                            })
+                                            on_page=Callback::new(move |page: u64| list_page.set(page.max(1)))
+                                            on_reset=Callback::new(move |()| {
+                                                search_input.set(String::new());
+                                                list_search.set(String::new());
+                                                list_status.set(None);
+                                                list_page.set(1);
                                             })
                                         />
                                     }.into_any(),
@@ -341,15 +379,119 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
 }
 
 #[component]
+fn PageListFilters(
+    search_input: RwSignal<String>,
+    list_search: RwSignal<String>,
+    list_status: RwSignal<Option<PageStatusFilter>>,
+    list_page: RwSignal<u64>,
+) -> impl IntoView {
+    let apply_search = move || {
+        let next = search_input.get_untracked();
+        if next.trim() != list_search.get_untracked().trim() {
+            list_page.set(1);
+            list_search.set(next);
+        }
+    };
+    view! {
+        <form
+            class="mb-3 space-y-2"
+            role="search"
+            on:submit=move |event: SubmitEvent| {
+                event.prevent_default();
+                apply_search();
+            }
+        >
+            <div class="flex gap-2">
+                <input
+                    type="search"
+                    class="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Search title or slug"
+                    aria-label="Search pages by title or slug"
+                    maxlength={core::PAGE_LIST_MAX_SEARCH_CHARS.to_string()}
+                    prop:value=move || search_input.get()
+                    on:input=move |event| {
+                        let value = event_target_value(&event);
+                        let cleared = value.trim().is_empty();
+                        search_input.set(value);
+                        // Clearing the box (including the native clear button) resets at once.
+                        if cleared {
+                            apply_search();
+                        }
+                    }
+                />
+                <button
+                    type="submit"
+                    class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+                >
+                    "Search"
+                </button>
+            </div>
+            <select
+                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                aria-label="Filter pages by status"
+                on:change=move |event| {
+                    list_page.set(1);
+                    list_status.set(PageStatusFilter::parse(&event_target_value(&event)));
+                }
+            >
+                <option value="" selected=move || list_status.get().is_none()>"All statuses"</option>
+                {PageStatusFilter::ALL
+                    .into_iter()
+                    .map(|status| view! {
+                        <option
+                            value=status.as_str()
+                            selected=move || list_status.get() == Some(status)
+                        >
+                            {page_status_label(status)}
+                        </option>
+                    })
+                    .collect_view()}
+            </select>
+        </form>
+    }
+}
+
+fn page_status_label(status: PageStatusFilter) -> &'static str {
+    match status {
+        PageStatusFilter::Draft => "Drafts",
+        PageStatusFilter::Published => "Published",
+        PageStatusFilter::Archived => "Archived",
+    }
+}
+
+#[component]
 fn PagesNavigator(
     pages: PageList,
+    query: PageListQuery,
     selected_page_id: Option<String>,
     on_select: Callback<String>,
+    on_page: Callback<u64>,
+    on_reset: Callback<()>,
 ) -> impl IntoView {
+    let total = pages.total;
+    let page_count = core::page_list_page_count(total, query.per_page);
+    let current_page = query.page;
+
     if pages.items.is_empty() {
+        let (message, action) = if current_page > 1 && total > 0 {
+            ("This list page is empty.", Some(("Go to first page", false)))
+        } else if core::page_list_is_filtered(&query) {
+            ("No pages match the current search or filter.", Some(("Clear filters", true)))
+        } else {
+            ("No pages yet. Create the first page above.", None)
+        };
         return view! {
             <div class="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                "No pages yet. Create the first current Fly document above."
+                <p>{message}</p>
+                {action.map(|(label, reset)| view! {
+                    <button
+                        type="button"
+                        class="mt-3 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                        on:click=move |_| if reset { on_reset.run(()) } else { on_page.run(1) }
+                    >
+                        {label}
+                    </button>
+                })}
             </div>
         }
         .into_any();
@@ -357,12 +499,16 @@ fn PagesNavigator(
 
     view! {
         <div class="space-y-2">
+            <p class="text-xs text-muted-foreground" aria-live="polite">
+                {format!("{total} page(s)")}
+            </p>
             {pages.items.into_iter().map(|page| {
                 let page_id = page.id.clone();
                 let selected = selected_page_id.as_deref() == Some(page.id.as_str());
                 let title = page.title.clone().filter(|value| !value.trim().is_empty())
                     .unwrap_or_else(|| "Untitled page".to_string());
                 let slug = page.slug.clone().filter(|value| !value.trim().is_empty())
+                    .map(|slug| format!("/{slug}"))
                     .unwrap_or_else(|| page.id.clone());
                 let status = page.status.clone();
                 let select = on_select;
@@ -374,6 +520,7 @@ fn PagesNavigator(
                         } else {
                             "w-full rounded-xl border border-border bg-background px-3 py-3 text-left hover:bg-muted/50"
                         }
+                        aria-current={if selected { Some("page") } else { None }}
                         on:click=move |_| select.run(page_id.clone())
                     >
                         <div class="flex items-start justify-between gap-3">
@@ -389,6 +536,27 @@ fn PagesNavigator(
                     </button>
                 }
             }).collect_view()}
+            {(page_count > 1).then(|| view! {
+                <nav class="flex items-center justify-between gap-2 pt-2 text-xs" aria-label="Page list pagination">
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-muted disabled:opacity-50"
+                        disabled={current_page <= 1}
+                        on:click=move |_| on_page.run(current_page.saturating_sub(1))
+                    >
+                        "Previous"
+                    </button>
+                    <span class="text-muted-foreground">{format!("{current_page} / {page_count}")}</span>
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-muted disabled:opacity-50"
+                        disabled={current_page >= page_count}
+                        on:click=move |_| on_page.run(current_page + 1)
+                    >
+                        "Next"
+                    </button>
+                </nav>
+            })}
         </div>
     }
     .into_any()
@@ -406,6 +574,13 @@ fn WorkspaceEmptyState() -> impl IntoView {
     }
 }
 
+/// Header action awaiting an explicit second click.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingConfirmation {
+    Unpublish,
+    Delete,
+}
+
 #[component]
 fn PageWorkspace(
     page: PageDetail,
@@ -419,8 +594,19 @@ fn PageWorkspace(
     refresh_generation: RwSignal<u64>,
 ) -> impl IntoView {
     let query_writer = use_route_query_writer();
+    let current_user = use_current_user();
+    let lifecycle = Memo::new(move |_| {
+        pages_lifecycle_permissions_for_role(
+            current_user.get().as_ref().map(|user| user.role.as_str()),
+        )
+    });
     let action_busy = RwSignal::new(None::<String>);
     let action_error = RwSignal::new(None::<String>);
+    let pending_confirmation = RwSignal::new(None::<PendingConfirmation>);
+    // Mirrors the mounted editor so the header never publishes a server revision that is older
+    // than what the author sees on the canvas.
+    let editor_status = PageBuilderEditorStatusSignal::new();
+    let last_saved_at = RwSignal::new(None::<String>);
     let title = page
         .translation
         .as_ref()
@@ -457,6 +643,7 @@ fn PageWorkspace(
         let page_id = publish_page_id.clone();
         let token = token.get_untracked();
         let tenant = tenant.get_untracked();
+        pending_confirmation.set(None);
         action_busy.set(Some(
             if publish { "publish" } else { "unpublish" }.to_string(),
         ));
@@ -479,11 +666,12 @@ fn PageWorkspace(
 
     let delete_page_id = page.id.clone();
     let delete_writer = query_writer.clone();
-    let delete_action = move |_| {
+    let delete_action = Callback::new(move |()| {
         let page_id = delete_page_id.clone();
         let token = token.get_untracked();
         let tenant = tenant.get_untracked();
         let writer = delete_writer.clone();
+        pending_confirmation.set(None);
         action_busy.set(Some("delete".to_string()));
         action_error.set(None);
         spawn_local(async move {
@@ -498,6 +686,31 @@ fn PageWorkspace(
             }
             action_busy.set(None);
         });
+    });
+
+    let unsaved = move || editor_status.0.get().has_unsaved_changes();
+    let publish_blocked_reason = move || -> Option<&'static str> {
+        let permissions: PagesLifecyclePermissions = lifecycle.get();
+        if is_published {
+            (!permissions.unpublish).then_some("Your role cannot unpublish pages")
+        } else if !permissions.publish {
+            Some("Your role cannot publish pages; ask an administrator to publish this draft")
+        } else if unsaved() {
+            Some("Save changes before publishing")
+        } else if editor_status.0.get().save_failed {
+            Some("The last save failed; save again before publishing")
+        } else {
+            None
+        }
+    };
+    let delete_blocked_reason = move || -> Option<&'static str> {
+        if is_published {
+            Some("Unpublish the page before deleting it")
+        } else if !lifecycle.get().delete {
+            Some("Your role cannot delete pages")
+        } else {
+            None
+        }
     };
 
     let page_for_builder = page.clone();
@@ -512,6 +725,7 @@ fn PageWorkspace(
                                 "rounded-full px-2 py-1 text-[10px] font-semibold uppercase {}",
                                 core::status_badge_class(&page.status)
                             )>{page.status.clone()}</span>
+                            <EditorSaveBadge status=editor_status last_saved_at />
                         </div>
                         <p class="mt-1 text-sm text-muted-foreground">{format!("/{slug}")}</p>
                     </div>
@@ -519,26 +733,79 @@ fn PageWorkspace(
                         <button
                             type="button"
                             class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
-                            disabled=move || action_busy.get().is_some()
-                            on:click=move |_| publish_action.run(!is_published)
+                            disabled=move || action_busy.get().is_some() || publish_blocked_reason().is_some()
+                            title=move || publish_blocked_reason().unwrap_or(if is_published {
+                                "Take the page offline"
+                            } else {
+                                "Publish the last saved revision"
+                            })
+                            on:click=move |_| {
+                                if is_published {
+                                    pending_confirmation.set(Some(PendingConfirmation::Unpublish));
+                                } else {
+                                    publish_action.run(true);
+                                }
+                            }
                         >
-                            {if is_published { "Unpublish" } else { "Publish" }}
+                            {move || match (action_busy.get().as_deref(), is_published) {
+                                (Some("publish"), _) => "Publishing...",
+                                (Some("unpublish"), _) => "Unpublishing...",
+                                (_, true) => "Unpublish",
+                                (_, false) => "Publish",
+                            }}
                         </button>
                         <button
                             type="button"
                             class="rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                            disabled=move || action_busy.get().is_some() || is_published
-                            title=if is_published {
-                                "Unpublish the page before deleting it"
-                            } else {
-                                "Delete page"
-                            }
-                            on:click=delete_action
+                            disabled=move || action_busy.get().is_some() || delete_blocked_reason().is_some()
+                            title=move || delete_blocked_reason().unwrap_or("Delete page")
+                            on:click=move |_| pending_confirmation.set(Some(PendingConfirmation::Delete))
                         >
-                            "Delete"
+                            {move || if action_busy.get().as_deref() == Some("delete") { "Deleting..." } else { "Delete" }}
                         </button>
                     </div>
                 </div>
+                {move || pending_confirmation.get().map(|pending| {
+                    let (message, confirm_label) = match pending {
+                        PendingConfirmation::Unpublish => (
+                            "The page goes offline immediately and its public URL stops resolving until it is published again.",
+                            "Unpublish now",
+                        ),
+                        PendingConfirmation::Delete => (
+                            "The page, its translations and its draft documents are deleted permanently. This cannot be undone.",
+                            "Delete permanently",
+                        ),
+                    };
+                    view! {
+                        <div
+                            class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm"
+                            role="alertdialog"
+                            aria-live="assertive"
+                        >
+                            <p class="max-w-2xl text-foreground">{message}</p>
+                            <div class="flex gap-2">
+                                <button
+                                    type="button"
+                                    class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+                                    on:click=move |_| pending_confirmation.set(None)
+                                >
+                                    "Cancel"
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground disabled:opacity-50"
+                                    disabled=move || action_busy.get().is_some()
+                                    on:click=move |_| match pending {
+                                        PendingConfirmation::Unpublish => publish_action.run(false),
+                                        PendingConfirmation::Delete => delete_action.run(()),
+                                    }
+                                >
+                                    {confirm_label}
+                                </button>
+                            </div>
+                        </div>
+                    }
+                })}
                 <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
                     <MetadataItem label="Locale" value=locale />
                     <MetadataItem label="Template" value=page.template.clone() />
@@ -568,12 +835,43 @@ fn PageWorkspace(
                             tenant
                             default_locale
                             draft_token
-                            refresh_generation
+                            editor_status
+                            last_saved_at
                         />
                     </section>
                 }.into_any()
             }}
         </div>
+    }
+}
+
+#[component]
+fn EditorSaveBadge(
+    status: PageBuilderEditorStatusSignal,
+    last_saved_at: RwSignal<Option<String>>,
+) -> impl IntoView {
+    view! {
+        <span
+            class="text-xs text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            title=move || last_saved_at.get().map(|saved_at| format!("Last saved at {saved_at}"))
+        >
+            {move || {
+                let status = status.0.get();
+                if status.save_in_progress {
+                    "Saving...".to_string()
+                } else if status.save_failed {
+                    "Save failed".to_string()
+                } else if status.dirty {
+                    "Unsaved changes".to_string()
+                } else if last_saved_at.get().is_some() {
+                    "All changes saved".to_string()
+                } else {
+                    String::new()
+                }
+            }}
+        </span>
     }
 }
 
@@ -619,7 +917,8 @@ fn PagesFlyBuilder(
     tenant: Signal<Option<String>>,
     default_locale: String,
     draft_token: Option<String>,
-    refresh_generation: RwSignal<u64>,
+    editor_status: PageBuilderEditorStatusSignal,
+    last_saved_at: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let current_user = use_current_user();
     let seed = core::edit_form_seed_from_page(&page, &default_locale);
@@ -680,10 +979,11 @@ fn PagesFlyBuilder(
                         page_id: page_id.clone(),
                         default_locale: snapshot_default_locale.clone(),
                     },
-                    move |_page, _project_data| {
-                        refresh_generation.update(|generation| {
-                            *generation = generation.wrapping_add(1)
-                        })
+                    // The editor acknowledges the saved revision itself. Re-fetching the
+                    // workspace here would remount the editor (losing selection and undo
+                    // history) after every save and autosave.
+                    move |page, _project_data| {
+                        let _ = last_saved_at.try_set(Some(page.updated_at));
                     },
                 )
                 .with_provider_status(provider_status),
@@ -753,11 +1053,13 @@ fn PagesFlyBuilder(
                 .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
+                .with_document_title(seed.title.clone())
                 .on_runtime_scenario_baseline(on_baseline);
             if let Some(baseline) = baseline {
                 host = host.with_runtime_scenario_baseline(baseline);
             }
             provide_context(host);
+            provide_context(editor_status);
             view! {
                 <div class="space-y-2">
                     <ServerReleaseStatus status=server_status />

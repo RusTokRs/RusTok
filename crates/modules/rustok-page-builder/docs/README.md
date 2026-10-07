@@ -142,6 +142,13 @@ source. A future Dioxus renderer can use the same source without copying browser
 
 `pages:manage` is the effective override.
 
+The table is the default authorizer (`PageBuilderCapabilityAuthorizer::default()`). A consumer
+whose `publish` capability only persists an editable draft may narrow it explicitly:
+`rustok-pages` composes its handlers with
+`.authorized_by(PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions::draft_persistence()))`,
+so `publish` requires `pages:update` there (the server `savePageDocument` contract), while making a
+page public remains the separate Pages `publishPage` mutation guarded by `pages:publish`.
+
 ## Fallback matrix
 
 | Profile | Preview | Tree/properties | Publish | Admin path | Read/storefront paths |

@@ -9,6 +9,7 @@ pub mod landing;
 #[cfg(feature = "server")]
 pub mod landing_service;
 pub mod locale;
+pub mod page_authoring;
 #[cfg(feature = "server")]
 pub mod preview_port;
 pub mod publish_runtime;
@@ -35,9 +36,14 @@ pub use fly::{
     PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,
     StaticLandingBuildIdentity, StaticLandingPage,
 };
+pub use page_authoring::{
+    PAGE_SLUG_MAX_CHARS, PageSlugError, normalize_page_slug, normalize_page_slug_strict,
+    starter_page_document,
+};
 pub use publish_runtime::{
-    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT, PageBuilderPublishRuntimeReviewError,
-    PageBuilderReviewedPublishRuntime,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT, PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID,
+    PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
+    project_requires_runtime_baseline,
 };
 pub use publish_sanitization::{
     PAGE_BUILDER_STATIC_SANITIZATION_FORMAT, PageBuilderSanitizedStaticLandingProject,

@@ -4,7 +4,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveValue::Set,
     Condition, QueryFilter, Select,
-    sea_query::{Expr, ExprTrait, Query, SelectStatement},
+    sea_query::{Expr, ExprTrait, Func, LikeExpr, Query, SelectStatement},
 };
 use uuid::Uuid;
 
@@ -72,29 +72,16 @@ pub(super) fn normalize_locale(locale: &str) -> PagesResult<String> {
 }
 
 pub(super) fn normalize_slug(value: &str) -> PagesResult<String> {
-    let mut normalized = String::with_capacity(value.len());
-    let mut previous_dash = false;
-    for ch in value.trim().chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash && !normalized.is_empty() {
-            normalized.push('-');
-            previous_dash = true;
+    // One normalization contract for the server and every editor host.
+    rustok_page_builder::normalize_page_slug_strict(value).map_err(|error| match error {
+        rustok_page_builder::PageSlugError::Empty => {
+            PagesError::validation("Localized page slug cannot be empty after normalization")
         }
-    }
-    let normalized = normalized.trim_matches('-').to_string();
-    if normalized.is_empty() {
-        return Err(PagesError::validation(
-            "Localized page slug cannot be empty after normalization",
-        ));
-    }
-    if normalized.chars().count() > 255 {
-        return Err(PagesError::validation(
-            "Localized page slug cannot exceed 255 characters",
-        ));
-    }
-    Ok(normalized)
+        rustok_page_builder::PageSlugError::TooLong => PagesError::validation(format!(
+            "Localized page slug cannot exceed {} characters",
+            rustok_page_builder::PAGE_SLUG_MAX_CHARS
+        )),
+    })
 }
 
 pub(super) fn is_builder_publish_enabled(settings: &serde_json::Value) -> bool {
@@ -338,6 +325,40 @@ pub(super) fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
     normalized.sort();
     normalized.dedup();
     normalized
+}
+
+/// Restricts a page select to pages that have at least one translation whose lowercased title or
+/// slug contains `needle`. `needle` must already be normalized by `normalize_page_list_search`.
+/// Wildcards in the needle are escaped so user input is always matched literally.
+pub(super) fn apply_page_search_filter(
+    select: Select<page::Entity>,
+    tenant_id: Uuid,
+    needle: &str,
+) -> Select<page::Entity> {
+    let pattern = crate::dto::escape_like_pattern(needle);
+    let title_matches = Func::lower(Expr::col((
+        page_translation::Entity,
+        page_translation::Column::Title,
+    )))
+    .like(LikeExpr::new(pattern.clone()).escape('\\'));
+    let slug_matches = Func::lower(Expr::col((
+        page_translation::Entity,
+        page_translation::Column::Slug,
+    )))
+    .like(LikeExpr::new(pattern).escape('\\'));
+    let matching_translations = Query::select()
+        .column(page_translation::Column::PageId)
+        .from(page_translation::Entity)
+        .cond_where(
+            Condition::all()
+                .add(
+                    Expr::col((page_translation::Entity, page_translation::Column::TenantId))
+                        .eq(tenant_id),
+                )
+                .add(Condition::any().add(title_matches).add(slug_matches)),
+        )
+        .to_owned();
+    select.filter(Expr::col((page::Entity, page::Column::Id)).in_subquery(matching_translations))
 }
 
 pub(super) fn apply_public_page_channel_filter(

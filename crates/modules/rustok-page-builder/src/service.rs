@@ -130,6 +130,16 @@ impl Default for PageBuilderCapabilityPermissions {
 }
 
 impl PageBuilderCapabilityPermissions {
+    /// Permissions for hosts whose `Publish` capability persists an editable draft rather than
+    /// making content public (Pages: `savePageDocument` requires `pages:update`). Making a page
+    /// public stays a separate host action that requires `pages:publish`.
+    pub fn draft_persistence() -> Self {
+        Self {
+            publish: Permission::new(Resource::Pages, Action::Update),
+            ..Self::default()
+        }
+    }
+
     pub fn required_for(self, capability: BuilderCapabilityKind) -> Permission {
         match capability {
             BuilderCapabilityKind::Preview => self.preview,
@@ -401,6 +411,18 @@ impl<S> AuthorizedPageBuilderHandlers<S> {
     pub fn with_authorizer(service: S, authorizer: PageBuilderCapabilityAuthorizer) -> Self {
         Self {
             service,
+            authorizer,
+        }
+    }
+
+    /// Replaces the authorizer of already composed handlers.
+    ///
+    /// Hosts whose `Publish` capability only persists an editable draft (Pages) call this with
+    /// `PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions::draft_persistence())`
+    /// so authors holding `pages:update` can save without `pages:publish`.
+    pub fn authorized_by(self, authorizer: PageBuilderCapabilityAuthorizer) -> Self {
+        Self {
+            service: self.service,
             authorizer,
         }
     }
@@ -782,6 +804,24 @@ mod tests {
         assert_eq!(
             authorizer.required_permission(BuilderCapabilityKind::Publish),
             Permission::new(Resource::Pages, Action::Publish)
+        );
+    }
+
+    #[test]
+    fn draft_persistence_authorizer_requires_update_for_saving() {
+        let authorizer =
+            PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions::draft_persistence());
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Publish),
+            Permission::new(Resource::Pages, Action::Update)
+        );
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Preview),
+            Permission::new(Resource::Pages, Action::Read)
+        );
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Properties),
+            Permission::new(Resource::Pages, Action::Update)
         );
     }
 

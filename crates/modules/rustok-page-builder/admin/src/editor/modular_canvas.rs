@@ -2,7 +2,7 @@ use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ConsumerPropertiesPanel, ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel,
     ContributionPreviewPanel, ContributionPropertiesPanel, DynamicRuntimePanel,
-    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
+    EditorPersistenceGuard, IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
     RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
     ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
@@ -168,6 +168,7 @@ pub fn AdminCanvas(
     let ssr_assets_runtime = runtime.clone();
     let ssr_inspector_runtime = runtime.clone();
     let announcement_runtime = runtime.clone();
+    let persistence_runtime = runtime.clone();
     let error_runtime = runtime;
 
     view! {
@@ -185,6 +186,7 @@ pub fn AdminCanvas(
                 intent_endpoint=browser_intent_endpoint
                 csrf_token=browser_csrf_token
             />
+            <EditorPersistenceGuard runtime=persistence_runtime />
             <AuthoringToolbar runtime=toolbar_runtime />
             <ServerPreviewPanel
                 runtime=server_preview_runtime

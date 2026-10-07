@@ -8,6 +8,21 @@ use sha2::{Digest, Sha256};
 pub const PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT: &str =
     "page_builder_publish_runtime_review_v1";
 
+/// Scenario id used when a static page (no runtime context consumers) is published without a
+/// promoted runtime scenario baseline. Matches the materializer's implicit default scenario.
+pub const PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID: &str = "page_builder_static_default";
+
+/// True when the editor project reads runtime context (bindings, conditions, repeaters or
+/// computed values) and therefore must be published against a promoted scenario baseline.
+///
+/// Undecodable projects are treated as requiring a baseline so the static fast path fails closed.
+pub fn project_requires_runtime_baseline(project_data: &Value) -> bool {
+    match fly::GrapesJsCodec::decode_value(project_data.clone()) {
+        Ok(document) => fly::analyze_runtime_context_dependencies(&document).consumer_count > 0,
+        Err(_) => true,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderReviewedPublishRuntime {
     pub format: String,
@@ -31,6 +46,21 @@ impl PageBuilderReviewedPublishRuntime {
         };
         review.validate()?;
         Ok(review)
+    }
+
+    /// Reviewed runtime for publishing a static page that has no promoted scenario baseline.
+    /// Only valid for projects where [`project_requires_runtime_baseline`] is false.
+    pub fn static_default() -> Self {
+        Self::new(
+            PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID,
+            Value::Object(serde_json::Map::new()),
+        )
+        .expect("the static default publish runtime is a valid review")
+    }
+
+    pub fn is_static_default(&self) -> bool {
+        self.scenario_id == PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID
+            && self.context.as_object().is_some_and(serde_json::Map::is_empty)
     }
 
     pub fn validate(&self) -> Result<(), PageBuilderPublishRuntimeReviewError> {
@@ -133,6 +163,28 @@ fn is_sha256(value: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn static_default_runtime_is_valid_and_recognized() {
+        let reviewed = PageBuilderReviewedPublishRuntime::static_default();
+        assert!(reviewed.validate().is_ok());
+        assert!(reviewed.is_static_default());
+        assert!(
+            !PageBuilderReviewedPublishRuntime::new(
+                PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID,
+                json!({ "customer": { "tier": "gold" } }),
+            )
+            .unwrap()
+            .is_static_default()
+        );
+    }
+
+    #[test]
+    fn starter_page_does_not_require_a_runtime_baseline() {
+        let starter = crate::page_authoring::starter_page_document("About us");
+        assert!(!project_requires_runtime_baseline(&starter));
+        assert!(project_requires_runtime_baseline(&json!("not a project")));
+    }
 
     #[test]
     fn reviewed_runtime_roundtrip_is_stable() {

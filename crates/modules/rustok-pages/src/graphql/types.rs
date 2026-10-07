@@ -1,4 +1,4 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{Enum, InputObject, SimpleObject};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -148,12 +148,57 @@ pub struct GqlPageBodyInput {
     pub document: Value,
 }
 
-#[derive(InputObject)]
+#[derive(InputObject, Default)]
 pub struct ListGqlPagesFilter {
     pub locale: Option<String>,
     pub template: Option<String>,
+    /// `draft`, `published` or `archived`. Ignored for anonymous requests, which only ever see
+    /// published pages.
+    pub status: Option<GqlPageStatusFilter>,
+    /// Case-insensitive substring match against any translation title or slug.
+    pub search: Option<String>,
+    pub sort: Option<GqlPageListSort>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
+}
+
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+pub enum GqlPageStatusFilter {
+    Draft,
+    Published,
+    Archived,
+}
+
+impl From<GqlPageStatusFilter> for rustok_content::entities::node::ContentStatus {
+    fn from(value: GqlPageStatusFilter) -> Self {
+        match value {
+            GqlPageStatusFilter::Draft => Self::Draft,
+            GqlPageStatusFilter::Published => Self::Published,
+            GqlPageStatusFilter::Archived => Self::Archived,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum GqlPageListSort {
+    #[default]
+    UpdatedDesc,
+    UpdatedAsc,
+    CreatedDesc,
+    CreatedAsc,
+    PublishedDesc,
+}
+
+impl From<GqlPageListSort> for crate::PageListSort {
+    fn from(value: GqlPageListSort) -> Self {
+        match value {
+            GqlPageListSort::UpdatedDesc => Self::UpdatedDesc,
+            GqlPageListSort::UpdatedAsc => Self::UpdatedAsc,
+            GqlPageListSort::CreatedDesc => Self::CreatedDesc,
+            GqlPageListSort::CreatedAsc => Self::CreatedAsc,
+            GqlPageListSort::PublishedDesc => Self::PublishedDesc,
+        }
+    }
 }
 
 impl From<crate::PageResponse> for GqlPage {

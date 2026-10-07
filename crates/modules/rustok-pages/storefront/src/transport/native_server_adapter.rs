@@ -208,6 +208,8 @@ async fn storefront_pages_native(
                     status: Some(ContentStatus::Published),
                     template: None,
                     locale: Some(requested_locale),
+                    search: None,
+                    sort: None,
                     page: 1,
                     per_page: 6,
                 },

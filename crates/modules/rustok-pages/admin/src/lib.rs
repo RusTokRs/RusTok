@@ -30,8 +30,9 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use standalone_metadata::PagesPublishedMetadataSurface;
 
 pub use access::{
-    pages_editor_capability_policy, pages_editor_capability_policy_for_role,
-    pages_editor_permissions_for_role, pages_editor_provider_state,
+    PagesLifecyclePermissions, pages_editor_capability_policy,
+    pages_editor_capability_policy_for_role, pages_editor_permissions_for_role,
+    pages_editor_provider_state, pages_lifecycle_permissions_for_role,
 };
 pub use browser_intent::{
     PagesBrowserIntentError, PagesBrowserIntentResponse, pages_browser_draft_store,

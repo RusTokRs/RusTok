@@ -8,13 +8,13 @@ use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 
-use crate::dto::{ListPagesFilter, PageListItem, PageResponse};
+use crate::dto::{ListPagesFilter, PageListItem, PageListSort, PageResponse};
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{can_read_non_public_pages, enforce_scope};
 
 use super::helpers::{
-    apply_public_page_channel_filter, available_locales, body_for_locale, normalize_locale,
+    apply_page_search_filter, apply_public_page_channel_filter, available_locales, body_for_locale, normalize_locale,
     normalize_slug, page_body_response, page_translation_response, resolve_translation_record,
     status_to_storage, storage_to_status,
 };
@@ -149,14 +149,18 @@ impl PageService {
         if let Some(status) = filter.status {
             select = select.filter(page::Column::Status.eq(status_to_storage(&status)));
         }
-        if let Some(template) = filter.template {
+        if let Some(template) = filter.template.clone() {
             select = select.filter(page::Column::Template.eq(template));
+        }
+        if let Some(search) = filter.normalized_search() {
+            select = apply_page_search_filter(select, tenant_id, &search);
         }
         self.page_list_from_select(
             tenant_id,
             select,
             locale,
             None,
+            filter.sort.unwrap_or_default(),
             filter.page,
             filter.per_page,
         )
@@ -190,8 +194,11 @@ impl PageService {
         let mut select = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)));
-        if let Some(template) = filter.template {
+        if let Some(template) = filter.template.clone() {
             select = select.filter(page::Column::Template.eq(template));
+        }
+        if let Some(search) = filter.normalized_search() {
+            select = apply_page_search_filter(select, tenant_id, &search);
         }
         select = apply_public_page_channel_filter(select, tenant_id, channel_slug);
         self.page_list_from_select(
@@ -199,6 +206,7 @@ impl PageService {
             select,
             locale,
             fallback_locale,
+            filter.sort.unwrap_or_default(),
             filter.page,
             filter.per_page,
         )
@@ -211,12 +219,26 @@ impl PageService {
         select: sea_orm::Select<page::Entity>,
         locale: String,
         fallback_locale: Option<String>,
+        sort: PageListSort,
         page_number: u64,
         per_page: u64,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
+        let select = match sort {
+            PageListSort::UpdatedDesc => select.order_by_desc(page::Column::UpdatedAt),
+            PageListSort::UpdatedAsc => select.order_by_asc(page::Column::UpdatedAt),
+            PageListSort::CreatedDesc => select.order_by_desc(page::Column::CreatedAt),
+            PageListSort::CreatedAsc => select.order_by_asc(page::Column::CreatedAt),
+            PageListSort::PublishedDesc => select
+                .order_by_desc(page::Column::PublishedAt)
+                .order_by_desc(page::Column::UpdatedAt),
+        };
+        // The id tie breaker keeps pagination deterministic when timestamps collide.
         let paginator = select
-            .order_by_desc(page::Column::UpdatedAt)
-            .paginate(&self.db, per_page.max(1));
+            .order_by_asc(page::Column::Id)
+            .paginate(
+                &self.db,
+                per_page.clamp(1, crate::dto::PAGE_LIST_MAX_PER_PAGE),
+            );
         let total = paginator.num_items().await?;
         let pages = paginator.fetch_page(page_number.saturating_sub(1)).await?;
         let page_ids: Vec<Uuid> = pages.iter().map(|item| item.id).collect();

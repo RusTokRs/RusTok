@@ -1,23 +1,13 @@
-use crate::model::{CreatePageDraft, PageDetail};
+use crate::model::{CreatePageDraft, PageDetail, PageListQuery, PageStatusFilter};
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
-use serde_json::{Value, json};
+use serde_json::Value;
 
+/// Auto-generates a slug from a title using the shared Pages slug contract, so the editor
+/// produces exactly what the server stores (Unicode letters are kept: `О компании` →
+/// `о-компании`).
 pub fn slugify(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
+    rustok_page_builder::normalize_page_slug(value)
 }
 
 pub fn parse_channel_slugs(value: &str) -> Vec<String> {
@@ -76,6 +66,37 @@ pub fn missing_required_page_field(draft: &CreatePageDraft) -> Option<PageRequir
     }
 }
 
+/// Page size used by the admin navigator.
+pub const PAGE_LIST_PAGE_SIZE: u64 = 25;
+/// Mirrors the server search bound so the admin never sends a needle the server would truncate.
+pub const PAGE_LIST_MAX_SEARCH_CHARS: usize = 200;
+
+/// Builds a normalized list request: 1-based page, trimmed bounded search, optional status.
+pub fn page_list_query(
+    page: u64,
+    search: &str,
+    status: Option<PageStatusFilter>,
+) -> PageListQuery {
+    let search = search.trim();
+    PageListQuery {
+        page: page.max(1),
+        per_page: PAGE_LIST_PAGE_SIZE,
+        search: (!search.is_empty())
+            .then(|| search.chars().take(PAGE_LIST_MAX_SEARCH_CHARS).collect()),
+        status,
+    }
+}
+
+/// Number of list pages for `total` items; always at least one so "page 1 of 1" renders.
+pub fn page_list_page_count(total: u64, per_page: u64) -> u64 {
+    total.div_ceil(per_page.max(1)).max(1)
+}
+
+/// True when the list is empty because of the active filters rather than an empty tenant.
+pub fn page_list_is_filtered(query: &PageListQuery) -> bool {
+    query.search.is_some() || query.status.is_some()
+}
+
 pub fn status_badge_class(status: &str) -> &'static str {
     rustok_ui_core::badges::status_badge_class(status)
 }
@@ -117,36 +138,11 @@ fn body_to_project_data(body: &crate::model::PageBody) -> Option<Value> {
     }
 }
 
+/// Starter document for a new page. It is shared with the server crate and verified there against
+/// the static publish policy, so a freshly created page is publishable without manual repair.
 pub fn default_project_data(title: &str) -> Value {
     let normalized_title = normalize_ui_text(title);
-    let title = normalized_title.as_deref().unwrap_or("New page");
-
-    json!({
-        "assets": [],
-        "styles": [],
-        "pages": [
-            {
-                "id": "main",
-                "name": title,
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [
-                        {
-                            "id": "heading",
-                            "type": "text",
-                            "content": format!("<h1>{}</h1>", escape_html(title))
-                        },
-                        {
-                            "id": "intro",
-                            "type": "text",
-                            "content": "<p>Build this page with Fly.</p>"
-                        }
-                    ]
-                }
-            }
-        ]
-    })
+    rustok_page_builder::starter_page_document(normalized_title.as_deref().unwrap_or_default())
 }
 
 pub fn default_project_data_text(title: &str) -> String {
@@ -181,15 +177,6 @@ fn project_to_pretty_json(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
 }
 
-fn escape_html(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +185,7 @@ mod tests {
     fn starter_project_uses_only_the_current_component_contract() {
         let project = default_project_data("Landing");
         assert_eq!(project["pages"][0]["component"]["id"], "root");
+        assert_eq!(project["pages"][0]["name"], "Landing");
         assert!(project["pages"][0].get("frames").is_none());
     }
 
@@ -212,6 +200,69 @@ mod tests {
     #[test]
     fn slugify_produces_current_route_slugs() {
         assert_eq!(slugify("Hello, Current Pages!"), "hello-current-pages");
+    }
+
+    #[test]
+    fn slugify_keeps_cyrillic_titles() {
+        assert_eq!(slugify("О компании"), "о-компании");
+        let draft = build_create_page_draft(
+            PageDraftFormInput {
+                locale: "ru",
+                title: "О компании",
+                slug: &slugify("О компании"),
+                channel_slugs: "",
+            },
+            default_project_data("О компании"),
+        );
+        assert_eq!(missing_required_page_field(&draft), None);
+    }
+
+    #[test]
+    fn starter_project_has_no_markup_in_text_content() {
+        let project = default_project_data("<Landing>");
+        let serialized = project.to_string();
+        assert!(!serialized.contains("<h1>"));
+        assert!(!serialized.contains("<p>"));
+    }
+
+    #[test]
+    fn page_list_query_is_normalized() {
+        let query = page_list_query(0, "  о компании  ", Some(PageStatusFilter::Draft));
+        assert_eq!(query.page, 1);
+        assert_eq!(query.per_page, PAGE_LIST_PAGE_SIZE);
+        assert_eq!(query.search.as_deref(), Some("о компании"));
+        assert!(page_list_is_filtered(&query));
+
+        let unfiltered = page_list_query(3, "   ", None);
+        assert_eq!(unfiltered.page, 3);
+        assert_eq!(unfiltered.search, None);
+        assert!(!page_list_is_filtered(&unfiltered));
+
+        let long = "я".repeat(PAGE_LIST_MAX_SEARCH_CHARS + 50);
+        assert_eq!(
+            page_list_query(1, &long, None)
+                .search
+                .map(|search| search.chars().count()),
+            Some(PAGE_LIST_MAX_SEARCH_CHARS)
+        );
+    }
+
+    #[test]
+    fn page_list_page_count_rounds_up_and_never_returns_zero() {
+        assert_eq!(page_list_page_count(0, 25), 1);
+        assert_eq!(page_list_page_count(25, 25), 1);
+        assert_eq!(page_list_page_count(26, 25), 2);
+        assert_eq!(page_list_page_count(10, 0), 10);
+    }
+
+    #[test]
+    fn page_status_filter_serializes_as_graphql_enum() {
+        assert_eq!(
+            serde_json::to_value(PageStatusFilter::Published).unwrap(),
+            serde_json::json!("PUBLISHED")
+        );
+        assert_eq!(PageStatusFilter::parse(" Draft "), Some(PageStatusFilter::Draft));
+        assert_eq!(PageStatusFilter::parse("deleted"), None);
     }
 
     #[test]

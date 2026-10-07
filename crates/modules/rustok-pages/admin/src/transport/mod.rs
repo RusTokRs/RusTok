@@ -6,7 +6,8 @@ mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
 
 use crate::model::{
-    CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMetadataPatch,
+    CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageListQuery,
+    PageMetadataPatch,
     PageMutationResult, PagePublicationResult,
 };
 use rustok_page_builder::health::ProviderHealthSnapshot;
@@ -19,8 +20,9 @@ pub type TransportError = graphql_adapter::ApiError;
 pub async fn fetch_pages(
     token: Option<String>,
     tenant_slug: Option<String>,
+    query: PageListQuery,
 ) -> Result<PageList, TransportError> {
-    graphql_adapter::fetch_pages(token, tenant_slug).await
+    graphql_adapter::fetch_pages(token, tenant_slug, query).await
 }
 
 pub async fn fetch_page(

@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 
 use fly::ProjectHash;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
-use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_page_builder::{PageBuilderReviewedPublishRuntime, project_requires_runtime_baseline};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use rustok_page_builder_admin::{load_publish_scenario_selection, resolve_publish_scenario};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{
-    CreatePageDraft, PageDetail, PageList, PageMetadataPatch, PageMutationResult,
-    PublishPageReceipt, RollbackPageReceipt,
+    CreatePageDraft, PageBody, PageDetail, PageList, PageListQuery, PageMetadataPatch,
+    PageMutationResult, PageStatusFilter, PublishPageReceipt, RollbackPageReceipt,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -101,6 +101,11 @@ struct ListPagesFilter {
     page: u64,
     #[serde(rename = "perPage")]
     per_page: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<PageStatusFilter>,
+    sort: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -234,13 +239,17 @@ where
 pub async fn fetch_pages(
     token: Option<String>,
     tenant_slug: Option<String>,
+    query: PageListQuery,
 ) -> Result<PageList, ApiError> {
     let response: PagesResponse = request(
         PAGES_QUERY,
         PagesVariables {
             filter: ListPagesFilter {
-                page: 1,
-                per_page: 20,
+                page: query.page,
+                per_page: query.per_page,
+                search: query.search,
+                status: query.status,
+                sort: "UPDATED_DESC",
             },
         },
         token,
@@ -384,27 +393,38 @@ pub async fn publish_page(
     let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
-    let revisions = fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
+    let bodies = fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
+    let revisions = bodies.revisions;
     let baseline =
         fetch_page_builder_scenario_baseline(token.clone(), tenant_slug.clone(), id.clone())
-            .await?
-            .ok_or_else(|| {
-                GraphqlHttpError::Graphql(
-                    "Publish requires a promoted Page Builder runtime scenario baseline"
-                        .to_string(),
-                )
-            })?;
-    let selected_scenario_id = load_publish_scenario_selection(&id, &baseline.baseline_hash)
-        .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
-    let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
-        .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
-    let reviewed =
-        PageBuilderReviewedPublishRuntime::new(scenario.id.clone(), scenario.context.clone())
-            .map_err(|error| {
-                GraphqlHttpError::Graphql(format!(
-                    "Unable to prepare reviewed Page Builder runtime: {error}"
-                ))
-            })?;
+            .await?;
+    let reviewed = match baseline {
+        Some(baseline) => {
+            let selected_scenario_id =
+                load_publish_scenario_selection(&id, &baseline.baseline_hash)
+                    .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
+            let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
+                .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
+            PageBuilderReviewedPublishRuntime::new(scenario.id.clone(), scenario.context.clone())
+                .map_err(|error| {
+                    GraphqlHttpError::Graphql(format!(
+                        "Unable to prepare reviewed Page Builder runtime: {error}"
+                    ))
+                })?
+        }
+        // Static pages publish without a scenario baseline. Pages that read runtime context
+        // still require a promoted baseline; the server enforces the same rule.
+        None if !bodies.requires_runtime_baseline => {
+            PageBuilderReviewedPublishRuntime::static_default()
+        }
+        None => {
+            return Err(GraphqlHttpError::Graphql(
+                "This page reads runtime context: promote a Page Builder runtime scenario \
+                 baseline before publishing"
+                    .to_string(),
+            ));
+        }
+    };
     let expected_body_revisions = revisions
         .iter()
         .map(|(locale, revision)| PageBodyRevisionInput {
@@ -467,14 +487,28 @@ pub async fn rollback_page(
     Ok(response.rollback_page)
 }
 
+struct PublishBodies {
+    revisions: BTreeMap<String, String>,
+    requires_runtime_baseline: bool,
+}
+
 async fn fetch_page_body_revisions(
     token: Option<String>,
     tenant_slug: Option<String>,
     page: &PageDetail,
-) -> Result<BTreeMap<String, String>, ApiError> {
+) -> Result<PublishBodies, ApiError> {
     let mut revisions = BTreeMap::new();
-    if let Some(body) = page.body.as_ref() {
+    let mut requires_runtime_baseline = false;
+    let mut record = |body: &PageBody| {
         revisions.insert(body.locale.clone(), body.updated_at.clone());
+        // A body without a structured project cannot be proven static.
+        requires_runtime_baseline |= body
+            .content_json
+            .as_ref()
+            .is_none_or(project_requires_runtime_baseline);
+    };
+    if let Some(body) = page.body.as_ref() {
+        record(body);
     }
     for locale in &page.available_locales {
         let localized = fetch_page_at_locale(
@@ -485,7 +519,7 @@ async fn fetch_page_body_revisions(
         )
         .await?;
         if let Some(body) = localized.and_then(|page| page.body) {
-            revisions.insert(body.locale, body.updated_at);
+            record(&body);
         }
     }
     if revisions.is_empty() {
@@ -493,7 +527,10 @@ async fn fetch_page_body_revisions(
             "Publish requires at least one localized Page Builder body".to_string(),
         ));
     }
-    Ok(revisions)
+    Ok(PublishBodies {
+        revisions,
+        requires_runtime_baseline,
+    })
 }
 
 fn publish_idempotency_key(

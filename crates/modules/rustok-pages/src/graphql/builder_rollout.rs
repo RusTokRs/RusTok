@@ -197,13 +197,17 @@ impl PageBuilderRolloutQuery {
     }
 }
 
+/// Pages binds the builder `Publish` capability to draft persistence (`savePageDocument`, which
+/// requires `pages:update`); making a page public is the separate `publishPage` mutation that
+/// requires `pages:publish`. This must stay equal to
+/// `PageBuilderCapabilityPermissions::draft_persistence()` used by the Pages SSR dispatch.
 fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission {
     match capability {
         BuilderCapabilityKind::Preview | BuilderCapabilityKind::Tree => {
             Permission::new(Resource::Pages, Action::Read)
         }
         BuilderCapabilityKind::Properties => Permission::new(Resource::Pages, Action::Update),
-        BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Publish),
+        BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Update),
     }
 }
 
@@ -324,8 +328,21 @@ mod tests {
         );
         assert_eq!(
             required_page_builder_permission(BuilderCapabilityKind::Publish),
-            Permission::new(Resource::Pages, Action::Publish)
+            Permission::new(Resource::Pages, Action::Update)
         );
+        let draft_persistence =
+            rustok_page_builder::service::PageBuilderCapabilityPermissions::draft_persistence();
+        for capability in [
+            BuilderCapabilityKind::Preview,
+            BuilderCapabilityKind::Tree,
+            BuilderCapabilityKind::Properties,
+            BuilderCapabilityKind::Publish,
+        ] {
+            assert_eq!(
+                required_page_builder_permission(capability),
+                draft_persistence.required_for(capability)
+            );
+        }
     }
 
     #[test]

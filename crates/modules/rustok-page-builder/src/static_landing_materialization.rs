@@ -11,7 +11,8 @@ use sha2::{Digest, Sha256};
 
 pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str =
     "page_builder_static_runtime_materialization_v1";
-const DEFAULT_STATIC_RUNTIME_SCENARIO_ID: &str = "page_builder_static_default";
+const DEFAULT_STATIC_RUNTIME_SCENARIO_ID: &str =
+    crate::publish_runtime::PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PageBuilderStaticLandingMaterializationIdentity {

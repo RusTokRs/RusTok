@@ -39,6 +39,8 @@ pub struct PageBuilderAdminHostContext {
     pub on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     pub browser_intent_endpoint: Option<String>,
     pub browser_csrf_token: Option<String>,
+    /// Human-readable document title shown in the editor header instead of the raw page id.
+    pub document_title: Option<String>,
 }
 
 impl PageBuilderAdminHostContext {
@@ -57,7 +59,14 @@ impl PageBuilderAdminHostContext {
             on_runtime_scenario_baseline: None,
             browser_intent_endpoint: None,
             browser_csrf_token: None,
+            document_title: None,
         }
+    }
+
+    pub fn with_document_title(mut self, title: impl Into<String>) -> Self {
+        let title = title.into();
+        self.document_title = (!title.trim().is_empty()).then(|| title.trim().to_string());
+        self
     }
 
     pub fn with_facade(mut self, facade: Arc<dyn PageBuilderAdminFacade>) -> Self {
@@ -176,6 +185,7 @@ pub fn PageBuilderAdmin() -> impl IntoView {
                 on_runtime_scenario_baseline=context.on_runtime_scenario_baseline
                 browser_intent_endpoint=context.browser_intent_endpoint
                 browser_csrf_token=context.browser_csrf_token
+                document_title=context.document_title
                 on_request=None
             />
         }
@@ -228,12 +238,19 @@ pub fn PageBuilderAdminWithController(
     on_runtime_scenario_baseline: Option<Callback<PageBuilderScenarioBaselineChange>>,
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
+    #[prop(optional_no_strip)] document_title: Option<String>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
     let title_prefix = t(locale.as_deref(), "page_builder.title", "Page Builder");
-    let title = format!("{title_prefix}: {}", controller.page_id());
+    // Hosts pass the document title; the raw page id is only a fallback.
+    let title = format!(
+        "{title_prefix}: {}",
+        document_title
+            .as_deref()
+            .unwrap_or_else(|| controller.page_id())
+    );
     let subtitle = t(
         locale.as_deref(),
         "page_builder.editorSubtitle",

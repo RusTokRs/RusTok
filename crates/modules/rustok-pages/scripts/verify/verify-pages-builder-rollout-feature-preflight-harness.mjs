@@ -164,7 +164,7 @@ for (const marker of [
   "BuilderCapabilityKind::Preview | BuilderCapabilityKind::Tree",
   "Permission::new(Resource::Pages, Action::Read)",
   "BuilderCapabilityKind::Properties => Permission::new(Resource::Pages, Action::Update)",
-  "BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Publish)",
+  "BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Update)",
 ]) need(owner, marker, "Pages server-owned feature preflight");
 
 const preflightStart = owner.indexOf("async fn page_builder_capability_preflight(");
