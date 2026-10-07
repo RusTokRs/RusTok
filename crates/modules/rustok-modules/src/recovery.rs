@@ -393,7 +393,10 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
         sql,
-        vec![tenant_id.into(), module_slug.into()],
+        vec![
+            crate::operation_store::uuid_query_value(backend, tenant_id),
+            module_slug.into(),
+        ],
     ))
     .await
     .map_err(store_database_error)?
@@ -418,7 +421,10 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
         db.execute_raw(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![tenant_id.into(), module_slug.into()],
+            vec![
+                crate::operation_store::uuid_query_value(backend, tenant_id),
+                module_slug.into(),
+            ],
         ))
         .await
         .map_err(store_database_error)?;

@@ -16,7 +16,7 @@ Leptos admin UI package for the `rustok-blog` module.
 - Owns a separate comment-moderation slice through `admin/src/moderation.rs`; selecting a post loads its non-deleted owner queue and supports approve/spam/trash actions through the selected native or GraphQL transport.
 - Paginates the moderation queue with bounded `page`/`per_page` inputs, resets page state when the selected post changes, and prevents navigation outside the server-reported total.
 - Keeps moderation separate from the post detail query so editors without `blog_posts:manage` retain normal CRUD behavior and reduced GraphQL builds can degrade only the moderation panel.
-- Embeds owner-side post SEO editing through `rustok-seo-admin-support` instead of relying on a central SEO entity editor.
+- Embeds owner-side post SEO editing through `rustok-seo-panel` instead of relying on a central SEO entity editor.
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; native server functions, GraphQL adapters, and moderation GraphQL queries stay under `admin/src/transport/`.
 - Mounts the shared sandboxed `@rustok/richtext` frame through the thin WASM lifecycle bridge only during browser hydration. SSR emits the iframe markup and never executes browser/WASM code.
 
@@ -33,7 +33,7 @@ Leptos admin UI package for the `rustok-blog` module.
 - Treats a missing `posts` GraphQL contract in reduced server builds as an unavailable list surface and renders the normal empty state instead of surfacing a dashboard-level error.
 - Treats a missing `moderationComments`, `moderateComment`, or `BlogCommentModerationStatus` contract as a moderation-only unavailable state.
 - The backend requires `blog_posts:manage`, current-tenant binding, and the Blog field-aware rate-limit policy before trusted owner-side comment reads or status changes.
-- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-admin-support` for explicit post SEO authoring.
+- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel` for explicit post SEO authoring.
 - Native and GraphQL adapters call the same Blog owner services and must keep their DTO, authorization, tenant, locale, and error semantics aligned.
 
 ## Documentation

@@ -154,8 +154,8 @@
     },
     {
       "gate": "rust_renderer_static_review",
-      "scope": "crates/modules/rustok-seo/render/src/lib.rs",
-      "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/modules/rustok-seo/render/src/lib.rs",
+      "scope": "crates/modules/rustok-seo/storefront/src/render.rs",
+      "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/modules/rustok-seo/storefront/src/render.rs",
       "compileFree": true,
       "expected": "shared Rust renderer still owns head serialization for canonical SeoPageContext"
     },
@@ -415,7 +415,7 @@
     },
     {
       "name": "rust_renderer_head_contract",
-      "path": "crates/modules/rustok-seo/render/src/lib.rs",
+      "path": "crates/modules/rustok-seo/storefront/src/render.rs",
       "mustContain": [
         "render_head_html",
         "robots_directives",

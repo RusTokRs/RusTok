@@ -1,7 +1,7 @@
-# rustok-seo-admin-support documentation
+# rustok-seo-panel documentation
 
-This support crate provides reusable owner-side SEO panels and widgets for
-pages, products, blog, and forum. It does not own entity screens, SEO runtime
+This capability crate provides reusable owner-side SEO panels and widgets for
+pages, products, blog, and forum across admin and authoring surfaces. It does not own entity screens, SEO runtime
 storage, a central SEO route, or a package-local locale chain.
 
 Entity metadata operations remain shared GraphQL helpers here. SEO

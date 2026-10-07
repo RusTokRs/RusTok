@@ -592,20 +592,7 @@ fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
 #[cfg(feature = "ssr")]
 fn build_seo_head(context: &ResolvedSeoPageContext, csp_nonce: Option<&CspNonce>) -> String {
     let context = crate::shared::context::seo_page_context::to_seo_page_context(context);
-    nonce_structured_data_scripts(rustok_seo_render::render_head_html(&context), csp_nonce)
-}
-
-#[cfg(feature = "ssr")]
-fn nonce_structured_data_scripts(head: String, csp_nonce: Option<&CspNonce>) -> String {
-    let Some(csp_nonce) = csp_nonce else {
-        return head;
-    };
-    let trusted_opening_tag = r#"<script type="application/ld+json">"#;
-    let nonce_opening_tag = format!(
-        r#"<script nonce="{}" type="application/ld+json">"#,
-        csp_nonce.as_str()
-    );
-    head.replace(trusted_opening_tag, nonce_opening_tag.as_str())
+    rustok_seo_render::render_head_html_with_nonce(&context, csp_nonce.map(|n| n.as_str()))
 }
 
 #[cfg(feature = "ssr")]
@@ -782,9 +769,9 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_composition_headers, nonce_structured_data_scripts, normalize_storefront_locale,
+        apply_composition_headers, build_seo_head, normalize_storefront_locale,
         not_modified_composition_response, pages_route_response_from_decision,
-        resolve_storefront_locale,
+        resolve_storefront_locale, ResolvedSeoPageContext,
     };
     use axum::http::{
         StatusCode,
@@ -939,9 +926,19 @@ mod tests {
     #[test]
     fn nonces_only_trusted_structured_data_scripts() {
         let nonce = CspNonce::generate();
-        let head = r#"<script type="application/ld+json">{"@type":"Product"}</script><script>alert(1)</script>"#.to_string();
+        let mut context = ResolvedSeoPageContext::default();
+        context.document.structured_data_blocks = vec![
+            crate::shared::context::seo_page_context::ResolvedSeoStructuredDataBlock {
+                id: Some("prod".to_string()),
+                schema_kind: "product".to_string(),
+                schema_type: Some("Product".to_string()),
+                kind: Some("Product".to_string()),
+                source: "explicit".to_string(),
+                payload: serde_json::json!({"@type": "Product", "name": "RusToK Item"}),
+            },
+        ];
 
-        let rendered = nonce_structured_data_scripts(head, Some(&nonce));
+        let rendered = build_seo_head(&context, Some(&nonce));
 
         assert!(
             rendered.contains(
@@ -952,6 +949,60 @@ mod tests {
                 .as_str()
             )
         );
-        assert!(rendered.contains("<script>alert(1)</script>"));
+        assert!(rendered.contains(r#"{"@type":"Product","name":"RusToK Item"}"#));
+    }
+
+    #[test]
+    fn build_seo_head_renders_all_meta_tags_and_contracts() {
+        let mut context = ResolvedSeoPageContext::default();
+        context.route.canonical_url = "https://example.com/item".to_string();
+        context.route.alternates = vec![
+            crate::shared::context::seo_page_context::ResolvedSeoAlternateLink {
+                locale: "en-US".to_string(),
+                href: "https://example.com/en/item".to_string(),
+                x_default: false,
+            },
+        ];
+        context.document.description = Some("Great item description".to_string());
+        context.document.robots.index = true;
+        context.document.robots.follow = false;
+        context.document.open_graph = Some(crate::shared::context::seo_page_context::ResolvedSeoOpenGraph {
+            title: Some("OG Title".to_string()),
+            description: Some("OG Description".to_string()),
+            kind: Some("article".to_string()),
+            ..Default::default()
+        });
+        context.document.twitter = Some(crate::shared::context::seo_page_context::ResolvedSeoTwitterCard {
+            card: Some("summary_large_image".to_string()),
+            title: Some("Twitter Title".to_string()),
+            site: Some("@rustok".to_string()),
+            ..Default::default()
+        });
+        context.document.verification = Some(crate::shared::context::seo_page_context::ResolvedSeoVerification {
+            google: vec!["google-token-123".to_string()],
+            ..Default::default()
+        });
+        context.document.meta_tags = vec![
+            crate::shared::context::seo_page_context::ResolvedSeoMetaTag {
+                name: Some("custom-meta".to_string()),
+                property: None,
+                http_equiv: None,
+                content: "custom-value".to_string(),
+            },
+        ];
+
+        let head = build_seo_head(&context, None);
+
+        assert!(head.contains(r#"<meta name="description" content="Great item description" />"#));
+        assert!(head.contains(r#"<link rel="canonical" href="https://example.com/item" />"#));
+        assert!(head.contains(r#"<meta name="robots" content="index, nofollow" />"#));
+        assert!(head.contains(r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en/item" />"#));
+        assert!(head.contains(r#"<meta property="og:title" content="OG Title" />"#));
+        assert!(head.contains(r#"<meta property="og:description" content="OG Description" />"#));
+        assert!(head.contains(r#"<meta name="twitter:card" content="summary_large_image" />"#));
+        assert!(head.contains(r#"<meta name="twitter:title" content="Twitter Title" />"#));
+        assert!(head.contains(r#"<meta name="twitter:site" content="@rustok" />"#));
+        assert!(head.contains(r#"<meta name="google-site-verification" content="google-token-123" />"#));
+        assert!(head.contains(r#"<meta name="custom-meta" content="custom-value" />"#));
     }
 }

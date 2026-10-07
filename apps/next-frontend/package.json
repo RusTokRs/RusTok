@@ -29,6 +29,7 @@
     "@rustok/product-frontend": "file:./packages/rustok-product",
     "@rustok/profiles-frontend": "file:./packages/rustok-profiles",
     "@rustok/search-frontend": "file:./packages/search",
+    "@rustok/seo-frontend": "file:./packages/rustok-seo",
     "@rustok/richtext": "file:../../packages/richtext",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

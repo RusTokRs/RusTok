@@ -1,10 +1,10 @@
-# rustok-seo-admin-support implementation plan
+# rustok-seo-panel implementation plan
 
 ## Current state
 
-`rustok-seo-admin-support` provides reusable owner-side Leptos SEO panels,
+`rustok-seo-panel` provides reusable owner-side Leptos SEO panels,
 form/view-model helpers, remediation widgets, and entity metadata GraphQL
-operations for pages, products, blog, and forum. It consumes the host effective
+operations for pages, products, blog, and forum across admin and authoring surfaces. It consumes the host effective
 locale and does not own a central SEO screen, tenant runtime, storage, or an
 independent locale fallback chain.
 
@@ -35,7 +35,7 @@ independent locale fallback chain.
 
 ## Verification
 
-- `cargo check -p rustok-seo-admin-support --tests --config profile.dev.debug=0`
+- `cargo check -p rustok-seo-panel --tests --config profile.dev.debug=0`
 - Targeted checks for `rustok-pages-admin`, `rustok-product-admin`,
   `rustok-blog-admin`, and `rustok-forum-admin`.
 - Next admin lint/typecheck when a shared contract affects that host.

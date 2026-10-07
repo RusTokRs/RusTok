@@ -41,7 +41,7 @@ uuid = { workspace = true, optional = true }
 rustok-ui-i18n.workspace = true
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 leptos-ui-routing.workspace = true
-rustok-seo-admin-support.workspace = true
+rustok-seo-panel.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 

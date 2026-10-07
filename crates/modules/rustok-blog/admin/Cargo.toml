@@ -40,7 +40,7 @@ rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
-rustok-seo-admin-support.workspace = true
+rustok-seo-panel.workspace = true
 uuid.workspace = true
 
 [package.metadata.cargo-udeps.ignore]

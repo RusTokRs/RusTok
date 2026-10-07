@@ -16,7 +16,7 @@ Leptos admin UI package for the `rustok-forum` module.
 - Selects direct authenticated native server functions for topic merge and reply creation in SSR/hydrate builds and retains GraphQL for CSR/headless builds, without fallback.
 - Presents category, topic, reply authoring, localized route rename, merge, selected-reply split, reply-branch fork and reply-range move workflows as module-owned Forum pages.
 - Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles.
-- Embeds owner-side SEO panels through `rustok-seo-admin-support`.
+- Embeds owner-side SEO panels through `rustok-seo-panel`.
 
 ## Entry points
 

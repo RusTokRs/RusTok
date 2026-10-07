@@ -247,7 +247,7 @@ discrepancies found are filed as parity debt and fixed on a case-by-case basis.
   admin packages (`pages`, `product`, `blog`, `forum`), while `rustok-seo-admin` after cutover remains
   only a cross-cutting SEO infrastructure surface.
 - This cutover has already begun in code: `rustok-pages/admin`, `rustok-product/admin`, and `rustok-blog/admin`
-  embed owner-side SEO panels via `rustok-seo-admin-support`, while `rustok-forum/admin`
+  embed owner-side SEO panels via `rustok-seo-panel`, while `rustok-forum/admin`
   holds a capability slot until forum targets appear in the shared runtime.
 - For module-owned admin pages, selection state lives only in the URL; absence of a valid key leads to an
   empty state, and an invalid/missing entity must not leave stale detail/form state.

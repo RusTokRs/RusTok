@@ -307,7 +307,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-forms` | **Framework-agnostic form state:** submission lifecycle, validation engine, field descriptors, and dirty tracking. Companion adapter: `rustok-forms-leptos`. |
 | `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Project Fluent `.ftl` catalogs), `declare_module_i18n!`, `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
-| `rustok-seo-admin-support` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin packages |
+| `rustok-seo-panel` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin and authoring packages |
 
 ### Shared UI primitives (`crates/ui/rustok-ui/`)
 
@@ -343,7 +343,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Framework-agnostic table/list state | `crates/ui/rustok-ui-core/` | `UiPaginationState`, `UiSortState`, `UiFilterRule`, `UiSelectionState` |
 | Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `declare_module_i18n!`, `UiMessages` static catalog storage, Fluent resolution and locale normalization |
 | Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
-| Domain-specific cross-module UI | `crates/modules/rustok-<capability>-<surface>-support/` | `rustok-seo-admin-support` |
+| Domain-specific cross-module UI | `crates/modules/rustok-<capability>-<surface>-support/` or `crates/modules/<module>/panel/` | `rustok-seo-panel` |
 
 ### Extraction checklist
 

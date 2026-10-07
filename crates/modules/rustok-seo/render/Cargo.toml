@@ -3,9 +3,7 @@ name = "rustok-seo-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Rust-side SEO head renderer and adapter helpers for RusToK hosts"
+description = "Compatibility re-export crate for rustok-seo-storefront head rendering"
 
 [dependencies]
-serde_json.workspace = true
-rustok-core.workspace = true
-rustok-seo = { path = "..", default-features = false }
+rustok-seo-storefront = { path = "../storefront" }

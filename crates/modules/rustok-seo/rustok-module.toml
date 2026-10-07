@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "SEO metadata, routing resolution, redirects, sitemaps, and robots runtime"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]
@@ -39,6 +39,9 @@ leptos_locales_path = "admin/locales"
 subpath = "overview"
 title = "SEO Overview"
 nav_label = "Overview"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-seo-storefront"
 
 [settings]
 # Submodule Feature Enablement (Suite submodules)

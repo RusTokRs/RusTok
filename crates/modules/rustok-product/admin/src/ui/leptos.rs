@@ -5,7 +5,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{RouteQueryWriter, use_route_query_value, use_route_query_writer};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
-use rustok_seo_admin_support::SeoEntityPanel;
+use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 

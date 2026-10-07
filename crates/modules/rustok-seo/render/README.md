@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`rustok-seo-render` is a Rust-host support crate for rendering `rustok-seo` metadata into SSR HTML head tags. It keeps Rust storefront hosts on a shared renderer instead of duplicating tag serialization logic per app.
+`rustok-seo-render` is a compatibility re-export crate for `rustok-seo-storefront`. Canonical head rendering, transport adapters, and SEO storefront logic now reside in `crates/modules/rustok-seo/storefront` (`rustok-seo-storefront`). Existing Rust hosts continue to compile through this crate without breaking changes.
 
 ## Responsibilities
 

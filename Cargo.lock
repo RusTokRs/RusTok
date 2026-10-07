@@ -14862,7 +14862,7 @@ dependencies = [
  "rustok-grid",
  "rustok-grid-leptos",
  "rustok-outbox",
- "rustok-seo-admin-support",
+ "rustok-seo-panel",
  "rustok-seo-targets",
  "rustok-ui-core",
  "rustok-ui-i18n",
@@ -15729,7 +15729,7 @@ dependencies = [
  "rustok-forum",
  "rustok-graphql",
  "rustok-outbox",
- "rustok-seo-admin-support",
+ "rustok-seo-panel",
  "rustok-seo-targets",
  "rustok-ui-core",
  "rustok-ui-i18n",
@@ -17285,7 +17285,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-product",
  "rustok-product-relations-admin",
- "rustok-seo-admin-support",
+ "rustok-seo-panel",
  "rustok-seo-targets",
  "rustok-ui-core",
  "rustok-ui-i18n",
@@ -17934,7 +17934,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-seo-admin-support"
+name = "rustok-seo-panel"
 version = "0.1.0"
 dependencies = [
  "leptos",
@@ -17951,9 +17951,21 @@ dependencies = [
 name = "rustok-seo-render"
 version = "0.1.0"
 dependencies = [
+ "rustok-seo-storefront",
+]
+
+[[package]]
+name = "rustok-seo-storefront"
+version = "0.1.0"
+dependencies = [
  "rustok-core",
+ "rustok-graphql",
  "rustok-seo",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -1,17 +1,17 @@
-# rustok-seo-admin-support
+# rustok-seo-panel
 
 > **For contributors and AI agents — read before modifying this package:**
-> [Architecture](../../../docs/UI/module-package-architecture.md) |
-> [Implementation](../../../docs/UI/module-package-implementation.md) |
-> [Verification](../../../docs/UI/module-package-verification.md)
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
 
 ## Purpose
 
-`rustok-seo-admin-support` provides reusable admin-side SEO widgets and transport helpers for module-owned entity editors.
+`rustok-seo-panel` provides reusable SEO authoring panels, widgets, and transport helpers for entity editors across admin and author-facing surfaces.
 
 ## Responsibilities
 
-- Expose reusable Leptos panels for embedding SEO authoring into owner-module admin routes.
+- Expose reusable Leptos panels (`SeoEntityPanel`) for embedding SEO authoring into owner-module routes and creator surfaces.
 - Keep shared SEO GraphQL transport helpers out of domain-specific admin packages.
 - Provide lightweight scoring and form helpers for explicit SEO metadata editing.
 - Prepare reusable observability/remediation widgets for the SEO Phase D control-plane expansion.

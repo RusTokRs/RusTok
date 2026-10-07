@@ -476,7 +476,7 @@ impl StaticTenantLifecycleStore {
             return Ok(BTreeMap::new());
         }
         let backend = db.get_database_backend();
-        let mut values = vec![tenant_id.into()];
+        let mut values = vec![uuid_query_value(backend, tenant_id)];
         let placeholders = module_slugs
             .iter()
             .enumerate()
@@ -581,7 +581,7 @@ impl StaticTenantLifecycleStore {
                         }
                     },
                     vec![
-                        tenant_id.into(),
+                        uuid_query_value(backend, tenant_id),
                         module_slug.into(),
                         i64::try_from(expected_revision)
                             .map_err(|_| {
@@ -590,7 +590,7 @@ impl StaticTenantLifecycleStore {
                                 )
                             })?
                             .into(),
-                        idempotency_key.into(),
+                        uuid_query_value(backend, idempotency_key),
                     ],
                 ))
                 .await;
@@ -642,8 +642,8 @@ impl StaticTenantLifecycleStore {
                     backend,
                 ),
                 vec![
-                    idempotency_key.into(),
-                    tenant_id.into(),
+                    uuid_query_value(backend, idempotency_key),
+                    uuid_query_value(backend, tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -715,7 +715,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    tenant_id.into(),
+                    uuid_query_value(backend, tenant_id),
                     module_slug.into(),
                     i64::try_from(expected_revision)
                         .map_err(|_| {
@@ -724,7 +724,7 @@ impl StaticTenantLifecycleStore {
                             )
                         })?
                         .into(),
-                    idempotency_key.into(),
+                    uuid_query_value(backend, idempotency_key),
                 ],
             ))
             .await
@@ -756,7 +756,11 @@ impl StaticTenantLifecycleStore {
                        AND active_idempotency_key = {3}",
                     backend,
                 ),
-                vec![tenant_id.into(), module_slug.into(), idempotency_key.into()],
+                vec![
+                    uuid_query_value(backend, tenant_id),
+                    module_slug.into(),
+                    uuid_query_value(backend, idempotency_key),
+                ],
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -885,7 +889,7 @@ impl TenantModuleStateStore {
         db.query_one_raw(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![tenant_id.into(), module_slug.into()],
+            vec![uuid_query_value(backend, tenant_id), module_slug.into()],
         ))
         .await
         .map_err(database_error)?
@@ -1043,7 +1047,7 @@ fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
 }
 
-fn uuid_query_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
+pub(crate) fn uuid_query_value(backend: DbBackend, value: Uuid) -> sea_orm::Value {
     if backend == DbBackend::Sqlite {
         value.to_string().into()
     } else {

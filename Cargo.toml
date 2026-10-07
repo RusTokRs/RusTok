@@ -20,6 +20,8 @@ members = [
     "crates/modules/*",
     "crates/modules/rustok-seo/admin",
     "crates/modules/rustok-seo/render",
+    "crates/modules/rustok-seo/storefront",
+    "crates/modules/rustok-seo/panel",
     "crates/modules/rustok-blog/admin",
     "crates/modules/rustok-ai/admin",
     "crates/modules/rustok-mcp/admin",
@@ -321,7 +323,8 @@ rustok-seo-targets = { path = "crates/modules/rustok-seo-targets" }
 rustok-translation-targets = { path = "crates/modules/rustok-translation-targets" }
 rustok-translation = { path = "crates/modules/rustok-translation" }
 rustok-seo-render = { path = "crates/modules/rustok-seo/render" }
-rustok-seo-admin-support = { path = "crates/modules/rustok-seo-admin-support" }
+rustok-seo-storefront = { path = "crates/modules/rustok-seo/storefront" }
+rustok-seo-panel = { path = "crates/modules/rustok-seo/panel" }
 rustok-auth = { path = "crates/modules/rustok-auth" }
 rustok-api = { path = "crates/libs/rustok-api", default-features = false }
 rustok-runtime = { path = "crates/libs/rustok-runtime" }

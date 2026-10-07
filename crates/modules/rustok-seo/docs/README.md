@@ -2,7 +2,7 @@
 
 `rustok-seo` — optional module of the platform for headless SEO runtime and cross-cutting SEO control-plane. The module owns tenant-scoped SEO metadata, template-generated SEO, bulk remediation, redirects, sitemap/robots generation, diagnostics and storefront-facing `SeoPageContext`.
 
-Entity-specific SEO authoring does not live in `rustok-seo-admin`: pages, products, blog and forum embed SEO panels in their own module-owned admin surfaces via `rustok-seo-admin-support`.
+Entity-specific SEO authoring does not live in `rustok-seo-admin`: pages, products, blog and forum embed SEO panels in their own module-owned admin and authoring surfaces via `rustok-seo-panel`.
 
 ## Purpose
 
@@ -23,7 +23,7 @@ The purpose of the module is to give the platform a unified typed SEO runtime: o
 - REST control-plane parity endpoints for diagnostics/sitemaps/bulk jobs: `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`;
 - REST error envelope on control-plane endpoints is unified with GraphQL codes (`errors[].extensions.code`: `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, `INTERNAL_ERROR`) for deterministic client-side mapping;
 - shared capability registry via `rustok-seo-targets`;
-- support crates `rustok-seo-render` and `rustok-seo-admin-support`;
+- support crates `rustok-seo-render` and `rustok-seo-panel`;
 - execution wave Phase D: typed SEO events/outbox/index seam, REST parity completion, admin/host integration parity, verification matrix and runbooks.
 
 ## Settings boundary
@@ -130,7 +130,7 @@ The current roadmap is captured in `docs/implementation-plan.md`: base batches `
 - `D1` closed: contract freeze, compatibility policy (`v1 additive only`) and rollout flags.
 - `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam — closed.
 - `D4-D5`: GraphQL/REST parity completion and migrations/backfill/replay policy — closed (including index tracking/replay endpoints `/api/seo/index/tracking`, `/api/seo/index/repair-replay`, GraphQL `seoIndexDeliveryStatus` + `runSeoIndexRepairReplay`).
-- `D6` closed: owner-side remediation widgets (`rustok-seo-admin-support`), shared widget state contract and host-locale wiring in `pages/product/blog/forum` + Next admin operator parity.
+- `D6` closed: owner-side remediation widgets (`rustok-seo-panel`), shared widget state contract and host-locale wiring in `pages/product/blog/forum` + Next admin operator parity.
 - `A-C` (D7): closed — runtime data plumbing, Next cutover, route ownership guardrails and cross-host fixture parity.
 - `D-E` (D8/D9): open only on live runtime/CI closeout; compile-free baseline expanded to semantic error parity, live evidence capture template, concrete live artifact templates, incident evidence template and owner closeout criteria.
 
@@ -146,7 +146,7 @@ The current roadmap is captured in `docs/implementation-plan.md`: base batches `
 - `cargo check -p rustok-seo --tests --config profile.dev.debug=0`
 - `cargo test -p rustok-seo --lib sitemaps`
 - `cargo check -p rustok-seo-admin --features ssr --config profile.dev.debug=0`
-- `cargo check -p rustok-seo-admin-support --tests --config profile.dev.debug=0`
+- `cargo check -p rustok-seo-panel --tests --config profile.dev.debug=0`
 - `cargo check -p rustok-outbox --tests --config profile.dev.debug=0`
 - `cargo check -p rustok-index --tests --config profile.dev.debug=0`
 - `cargo check -p rustok-admin --lib --config profile.dev.debug=0`
@@ -162,7 +162,7 @@ The current roadmap is captured in `docs/implementation-plan.md`: base batches `
 - [Runbook replay/repair](./replay-repair-runbook.md)
 - [Operational runbook](./operations-runbook.md)
 - [`rustok-seo-render` documentation](../render/docs/README.md)
-- [`rustok-seo-admin-support` documentation](../../rustok-seo-admin-support/docs/README.md)
+- [`rustok-seo-panel` documentation](../panel/docs/README.md)
 - [Admin package](../admin/README.md)
 - [Storefront contract](../../../../docs/UI/storefront.md)
 - [i18n architecture](../../../../docs/architecture/i18n.md)

@@ -59,10 +59,10 @@ Current Leptos host-level FFA slices are enforced by the fast gate
   shared widgets/contracts, but entity-specific editor UI stays with the owner module. For SEO, this means
   page/product/blog/forum SEO panels live in the corresponding module-owned admin packages, while
   `rustok-seo-admin` remains only the infrastructure/control-plane surface.
-- In practice, this pattern is already implemented via `rustok-seo-admin-support`: `pages`, `product`, `blog`
+- In practice, this pattern is already implemented via `rustok-seo-panel`: `pages`, `product`, `blog`
   and `forum` use a shared SEO panel/tooling layer, and the SEO runtime already holds target kinds
   `forum_category` and `forum_topic` for owner-side forum integration.
-- `rustok-seo-admin-support` does not invent its own locale negotiation chain and does not hold an editable
+- `rustok-seo-panel` does not invent its own locale negotiation chain and does not hold an editable
   locale field inside the panel UI: owner-side SEO widgets must take the host-provided effective locale
   and only canonicalize it under the platform i18n contract.
 - After cutover, `rustok-seo-admin` itself no longer holds a metadata editor and uses only `tab`

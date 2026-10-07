@@ -18,7 +18,7 @@ Leptos admin UI package for the `rustok-product` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses registry-backed shipping-profile selection so catalog operators work with typed product bindings instead of raw slug text.
 - Ships package-owned `admin/locales/en.ftl` and `admin/locales/ru.ftl` bundles declared through `[provides.admin_ui.i18n]`.
-- Embeds owner-side product SEO editing through `rustok-seo-admin-support` so product metadata stays inside the product screen.
+- Embeds owner-side product SEO editing through `rustok-seo-panel` so product metadata stays inside the product screen.
 
 ## Entry Points
 
@@ -36,7 +36,7 @@ Leptos admin UI package for the `rustok-product` module.
 - Links directly into `rustok-pricing/admin` with prefilled product id and
   pricing context so operators can move from catalog editing to pricing control
   without reselecting the product.
-- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-admin-support`
+- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel`
   for explicit product SEO authoring.
 - Accepts product edit deep links through query `id=` so neighboring
   module-owned admin routes can return to the exact catalog item without using

@@ -16,7 +16,7 @@
 - Act as the canonical working admin vertical slice for module-owned page CRUD.
 - Expose contract-safe page-builder capability surfaces (`preview/tree/properties/publish`) on top of the vendor-neutral `grapesjs` backend payload.
 - Keep write-path error handling consistent (`validation/sanitize/runtime`) for page-builder flows.
-- Host the owner-side page SEO panel through `rustok-seo-admin-support` instead of delegating page metadata editing to `rustok-seo-admin`.
+- Host the owner-side page SEO panel through `rustok-seo-panel` instead of delegating page metadata editing to `rustok-seo-admin`.
 
 ## Interactions
 
@@ -24,7 +24,7 @@
 - Uses the pages module GraphQL contract for list/create/edit/update/publish/delete flows.
 - Writes the visual builder payload into the sole `body.document` field; Pages
   selects the Page Builder format server-side.
-- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-admin-support` for explicit page SEO authoring.
+- Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel` for explicit page SEO authoring.
 - Follows the generic host route contract `/modules/:module_slug`.
 
 ## Entry points

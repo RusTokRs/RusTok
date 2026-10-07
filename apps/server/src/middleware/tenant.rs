@@ -49,12 +49,33 @@ enum CachedTenantMiss {
     Disabled,
 }
 
+mod serde_json_string {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let json_str = value.to_string();
+        serializer.serialize_str(&json_str)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let json_str = String::deserialize(deserializer)?;
+        serde_json::from_str(&json_str).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub(crate) struct CachedTenantContext {
     id: uuid::Uuid,
     name: String,
     slug: String,
     domain: Option<String>,
+    #[serde(with = "serde_json_string")]
     settings: serde_json::Value,
     default_locale: String,
     is_active: bool,
@@ -341,7 +362,7 @@ impl TenantCacheKeyBuilder {
         .expect("tenant identifier kind is non-empty")
         .named_identity("generation", generation.to_string())
         .expect("tenant cache generation is a bounded decimal value")
-        .named_identity("value", value)
+        .hashed(value)
         .expect("validated tenant identifier is non-empty")
         .build()
     }

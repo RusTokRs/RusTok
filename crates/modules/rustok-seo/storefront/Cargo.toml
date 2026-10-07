@@ -1,0 +1,24 @@
+[package]
+name = "rustok-seo-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Storefront and client UI support for RusToK SEO module"
+
+[features]
+default = []
+ssr = [
+  "rustok-seo/server",
+]
+
+[dependencies]
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+rustok-graphql.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+rustok-core.workspace = true
+rustok-seo = { path = "..", default-features = false }
+
+[dev-dependencies]
+tokio.workspace = true

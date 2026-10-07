@@ -61,7 +61,7 @@ async fn static_lifecycle_revision(
     db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT revision FROM module_static_tenant_lifecycle WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
-        vec![tenant_id.into(), module_slug.into()],
+        vec![tenant_id.to_string().into(), module_slug.into()],
     ))
     .await
     .expect("read static lifecycle revision")
@@ -373,39 +373,11 @@ async fn setup_db() -> DatabaseConnection {
         .await
         .expect("seed isolated test composition");
 
-    db.execute_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        r#"
-        CREATE TABLE module_policy_revision_cursors (
-            tenant_id TEXT NOT NULL,
-            consumer_key TEXT NOT NULL CHECK (length(trim(consumer_key)) BETWEEN 1 AND 128),
-            current_revision TEXT NULL CHECK (current_revision IS NULL OR length(current_revision) = 71),
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (tenant_id, consumer_key)
-        );
-        "#,
-    ))
-    .await
-    .expect("create module_policy_revision_cursors");
+    let manager = SchemaManager::new(&db);
+    for migration in rustok_modules::migrations::migrations() {
+        migration.up(&manager).await.expect("module migration");
+    }
 
-    db.execute_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        r#"
-        CREATE TABLE tenant_modules (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            module_slug TEXT NOT NULL,
-            enabled BOOLEAN NOT NULL DEFAULT 1,
-            settings TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-            UNIQUE (tenant_id, module_slug)
-        );
-        "#,
-    ))
-    .await
-    .expect("create tenant_modules");
 
     db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,

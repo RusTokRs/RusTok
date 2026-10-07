@@ -95,7 +95,7 @@ Module local documentation lives inside the crates themselves at
 | `flex` | [docs](../../crates/modules/flex/docs/README.md) | [plan](../../crates/modules/flex/docs/implementation-plan.md) |
 | `rustok-commerce-foundation` | [docs](../../crates/modules/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/modules/rustok-commerce-foundation/docs/implementation-plan.md) |
 | `rustok-seo-render` | [docs](../../crates/modules/rustok-seo/render/docs/README.md) | [plan](../../crates/modules/rustok-seo/render/docs/implementation-plan.md) |
-| `rustok-seo-admin-support` | [docs](../../crates/modules/rustok-seo-admin-support/docs/README.md) | [plan](../../crates/modules/rustok-seo-admin-support/docs/implementation-plan.md) |
+| `rustok-seo-panel` | [docs](../../crates/modules/rustok-seo/panel/docs/README.md) | [plan](../../crates/modules/rustok-seo/panel/docs/implementation-plan.md) |
 
 ## Domain Modules
 

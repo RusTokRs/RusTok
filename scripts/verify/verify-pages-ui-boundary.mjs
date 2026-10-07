@@ -112,7 +112,7 @@ for (const dependency of [
 ]) {
   assertContains(adminCargo, dependency, `${files.adminCargo}: missing ${dependency}`);
 }
-for (const obsoleteDependency of ["rustok-seo-admin-support", "rustok-seo-targets"]) {
+for (const obsoleteDependency of ["rustok-seo-admin-support", "rustok-seo-panel", "rustok-seo-targets"]) {
   assertNotContains(adminCargo, obsoleteDependency, `${files.adminCargo}: obsolete admin dependency ${obsoleteDependency}`);
 }
 

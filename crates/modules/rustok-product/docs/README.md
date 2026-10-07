@@ -122,7 +122,7 @@ When resolving virtual-category assignments, Product evaluates the stored rule a
 ## SEO ownership
 
 - `rustok-product/admin` already keeps an owner-side product SEO panel via
-  `rustok-seo-admin-support`, without moving product metadata editing into `rustok-seo-admin`.
+  `rustok-seo-panel`, without moving product metadata editing into `rustok-seo-admin`.
 
 ## Storage ownership and ER summary
 

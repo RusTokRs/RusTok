@@ -83,7 +83,7 @@ Rules:
    inherently plural in platform vocabulary. Prefer `product`, `order`,
    `payment`, `page_builder`; avoid `product_catalog_management`.
 8. Support crates may use an extra qualifier only for a real boundary:
-   `rustok-commerce-foundation`, `rustok-seo-admin-support`,
+   `rustok-commerce-foundation`, `rustok-seo-panel`,
    `rustok-comments-storefront-support`.
 9. A longer name is acceptable when it is the optimal working name: it improves
    call-site clarity, distinguishes peer concepts, supports public API search,

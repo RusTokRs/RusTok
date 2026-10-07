@@ -159,7 +159,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - Entity-specific SEO UI is not centralized in `rustok-seo-admin`: page/product/blog/forum SEO
   panels belong to owner modules, while `rustok-seo-admin` remains a cross-cutting infrastructure UI.
 - Reusable owner-side SEO widgets and transport helpers live in the support crate
-  `rustok-seo-admin-support`, not in host application code.
+  `rustok-seo-panel`, not in host application code.
 
 ### Large Capability/Admin Surfaces
 
