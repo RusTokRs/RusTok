@@ -41,6 +41,7 @@ export async function generateMetadata({
       : "View your orders, track shipments, and lookup order status",
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

@@ -56,17 +56,26 @@ pub async fn is_tenant_module_enabled(
     let backend = db.get_database_backend();
     let query = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT 1 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+            "SELECT 1 FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled = 1 LIMIT 1"
         }
         _ => {
             "SELECT 1 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
         }
     };
 
+    let values = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+        }
+        _ => {
+            vec![tenant_id.into(), module_slug.into()]
+        }
+    };
+
     db.query_one_raw(Statement::from_sql_and_values(
         backend,
         query,
-        vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
+        values,
     ))
     .await
     .map(|row| row.is_some())
@@ -85,7 +94,7 @@ pub async fn tenant_module_settings_in_tx(
     let backend = txn.get_database_backend();
     let query = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled = 1 LIMIT 1"
         }
         sea_orm::DbBackend::Postgres => {
             "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1 FOR SHARE"
@@ -100,11 +109,20 @@ pub async fn tenant_module_settings_in_tx(
         }
     };
 
+    let values = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+        }
+        _ => {
+            vec![tenant_id.into(), module_slug.into()]
+        }
+    };
+
     let Some(row) = txn
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
-            vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
+            values,
         ))
         .await?
     else {
@@ -135,7 +153,7 @@ pub async fn tenant_module_settings(
     let backend = db.get_database_backend();
     let query = match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+            "SELECT CAST(settings AS TEXT) AS settings_json FROM tenant_modules WHERE (tenant_id = ?1 OR tenant_id = ?2) AND module_slug = ?3 AND enabled = 1 LIMIT 1"
         }
         sea_orm::DbBackend::Postgres => {
             "SELECT settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
@@ -145,11 +163,20 @@ pub async fn tenant_module_settings(
         }
     };
 
+    let values = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+        }
+        _ => {
+            vec![tenant_id.into(), module_slug.into()]
+        }
+    };
+
     let Some(row) = db
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             query,
-            vec![tenant_id_query_value(backend, tenant_id), module_slug.into()],
+            values,
         ))
         .await?
     else {
@@ -163,13 +190,6 @@ pub async fn tenant_module_settings(
     })
 }
 
-fn tenant_id_query_value(backend: sea_orm::DbBackend, tenant_id: Uuid) -> sea_orm::Value {
-    if backend == sea_orm::DbBackend::Sqlite {
-        tenant_id.to_string().into()
-    } else {
-        tenant_id.into()
-    }
-}
 
 /// Immutable host configuration snapshot provided to internal server-function
 /// adapters. It keeps adapters independent of a framework-specific app context.

@@ -173,21 +173,23 @@ async fn seo_redirect_cache_reconciliation_recovers_two_replicas_across_cursor_f
 
     let invalidator_a = Arc::new(RecordingInvalidator::default());
     let invalidator_b = Arc::new(RecordingInvalidator::default());
+    let batch_limit = 3;
+    let max_pages_per_poll = 16;
     start_seo_redirect_cache_reconciliation_with_options(
         &ctx_a,
         invalidator_a.clone(),
         Duration::from_millis(20),
         Duration::from_millis(20),
-        3,
-        16,
+        batch_limit,
+        max_pages_per_poll,
     );
     start_seo_redirect_cache_reconciliation_with_options(
         &ctx_b,
         invalidator_b.clone(),
         Duration::from_millis(20),
         Duration::from_millis(20),
-        3,
-        16,
+        batch_limit,
+        max_pages_per_poll,
     );
 
     let handle_a = ctx_a

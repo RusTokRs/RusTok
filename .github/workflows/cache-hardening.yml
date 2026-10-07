@@ -182,7 +182,9 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Compile workspace with redis-cache
-        run: cargo check --workspace --features rustok-core/redis-cache
+        run: |
+          cargo check -p rustok-channel --lib
+          cargo check --workspace --features rustok-core/redis-cache
       - name: Cache unit and architecture tests
         run: |
           cargo test -p rustok-core cache --lib --features redis-cache
@@ -212,7 +214,10 @@ jobs:
           cargo test -p rustok-server permission_cache_weight --lib
           cargo test -p rustok-seo redirect_cache --lib
       - name: Clippy
-        run: cargo clippy --workspace --features rustok-core/redis-cache -- -D warnings
+        run: |
+          cargo clippy -p flex --lib -- -D warnings
+          cargo clippy -p rustok-channel --lib -- -D warnings
+          cargo clippy --workspace --features rustok-core/redis-cache -- -D warnings
       - name: Module contract
         run: |
           cargo xtask module validate cache

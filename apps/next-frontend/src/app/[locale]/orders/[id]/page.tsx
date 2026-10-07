@@ -41,6 +41,7 @@ export async function generateMetadata({
       : `Track order #${displayId} status, items breakdown, and delivery updates`,
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

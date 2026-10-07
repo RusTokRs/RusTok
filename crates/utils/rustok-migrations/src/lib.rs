@@ -102,6 +102,7 @@ const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
     "m20260913_000029_add_product_attribute_value_translation_target",
     "m20260913_000030_add_product_variant_attribute_value_translation_target",
     "m20260913_000031_add_product_category_seo_translation_target",
+    "m20260918_000033_create_variant_axes_and_invariants",
     "m20260927_000034_normalize_product_translation_locales",
 ];
 
@@ -771,6 +772,7 @@ mod tests {
                 "profiles",
                 "social_graph",
                 "translation",
+                "ai",
             ],
             "descriptor aggregation must cover every module crate whose migrations are included in the server migrator"
         );

@@ -73,9 +73,7 @@ async fn bootstrap(
         .collect::<Vec<_>>();
     oauth_apps.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-    Ok(json_response(ChannelBootstrapResponse::<
-        crate::context::ChannelContext,
-    > {
+    Ok(json_response(ChannelBootstrapResponse::<crate::context::ChannelContext> {
         current_channel,
         channels,
         policy_sets,

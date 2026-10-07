@@ -9,7 +9,7 @@
  */
 
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect, permanentRedirect } from "next/navigation";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import { getStorefrontTenantSlug } from "@/shared/api/modules";
 import { buildSeoMetadata } from "@/shared/seo/metadata";
@@ -62,6 +62,19 @@ export async function generateMetadata({
 
 export default async function ProductDetailPage({ params }: ProductPageProps) {
   const { locale, slug } = await params;
+  const path = `/products/${slug}`;
+  const seoResolution = await resolveSeoPageContextForRoute({
+    locale,
+    route: path,
+  });
+  const redirectDecision = seoResolution.context?.route.redirect;
+  if (redirectDecision) {
+    if (redirectDecision.statusCode === 308 || redirectDecision.statusCode === 301) {
+      permanentRedirect(redirectDecision.targetUrl);
+    }
+    redirect(redirectDecision.targetUrl);
+  }
+
   const tenantSlug = getStorefrontTenantSlug();
 
   const product = await fetchStorefrontProduct(

@@ -47,16 +47,20 @@ fn rbac_invalidation_startup_is_serialized_supervised_and_publishable_after_reco
         );
     }
 
-    let early_subscription = rbac
+    let startup_fn = rbac
+        .find("pub async fn start_rbac_cache_invalidation_listener")
+        .expect("start_rbac_cache_invalidation_listener must be defined");
+    let startup_slice = &rbac[startup_fn..];
+    let early_subscription = startup_slice
         .find("let initial_local = cache")
         .expect("RBAC listener must subscribe locally before startup recovery");
-    let recovery = rbac
+    let recovery = startup_slice
         .find("if let Err(error) = listener.recover_generation_and_clear().await")
         .expect("RBAC listener must attempt recovery before becoming publishable");
-    let runtime_commit = rbac
+    let runtime_commit = startup_slice
         .rfind("ctx.shared_insert(runtime);")
         .expect("supervised RBAC runtime must be installed");
-    let publisher_commit = rbac
+    let publisher_commit = startup_slice
         .rfind("*RBAC_INVALIDATION_CACHE_SERVICE")
         .expect("RBAC publisher must be installed after the runtime");
 

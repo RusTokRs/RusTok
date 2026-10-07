@@ -1183,7 +1183,7 @@ mod tests {
     fn graphql_internal_error_redacts_backend_diagnostics() {
         let error = graphql_internal_error(
             "Unable to load current user",
-            "database password=secret table=users query=SELECT * FROM users",
+            "database password=secret table=accounts query=SELECT * FROM accounts",
         );
 
         assert_eq!(error.message, "Unable to load current user");

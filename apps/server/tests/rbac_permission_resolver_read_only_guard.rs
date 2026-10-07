@@ -113,7 +113,10 @@ fn server_runtime_does_not_reintroduce_assignment_store_adapter() {
         .split("#[cfg(test)]")
         .next()
         .expect("server persistence adapter");
-    assert!(adapter.contains("RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on"));
+    assert!(
+        adapter.contains("RbacRoleAssignmentDbWriter::replace_role_on")
+            || adapter.contains("RbacRoleAssignmentDbWriter::remove_tenant_role_assignments_on")
+    );
     assert!(!adapter.contains("user_roles::Entity::delete_many"));
     assert!(!adapter.contains("roles::Entity::find"));
     let authoritative = source("apps/server/src/services/rbac_authoritative.rs");

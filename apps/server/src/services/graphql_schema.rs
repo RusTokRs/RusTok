@@ -29,6 +29,9 @@ struct IndexReplayStopKeepalive {
 }
 
 pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>> {
+    #[cfg(feature = "mod-seo")]
+    start_seo_redirect_cache_reconciliation(ctx);
+
     if let Some(shared) = ctx.shared_get::<SharedGraphqlSchema>() {
         return Ok(shared.0.clone());
     }
@@ -132,9 +135,6 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
     }));
 
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
-
-    #[cfg(feature = "mod-seo")]
-    start_seo_redirect_cache_reconciliation(ctx);
 
     Ok(schema)
 }

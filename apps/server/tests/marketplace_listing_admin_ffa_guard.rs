@@ -191,7 +191,7 @@ fn marketplace_listing_admin_ffa_is_module_owned_and_transport_explicit() {
     assert!(server_manifest.contains("rustok-marketplace-listing/graphql"));
     assert!(api_runtime.contains("pub async fn is_tenant_module_enabled"));
     assert!(transport.contains("pub locale: Option<String>"));
-    assert!(graphql.contains("tenant_slug,\n        locale,"));
+    assert!(graphql.replace("\r\n", "\n").contains("tenant_slug,\n        locale,"));
     assert!(
         owner_graphql
             .contains("require_permissions(ctx, &[Permission::MARKETPLACE_LISTINGS_LIST]).await")

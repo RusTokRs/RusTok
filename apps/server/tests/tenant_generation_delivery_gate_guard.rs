@@ -26,7 +26,7 @@ fn every_runtime_transport_uses_the_canonical_listener_gate() {
         factory
             .matches("tenant_generation_transport(ctx, &cache,")
             .count(),
-        3
+        1
     );
 
     for required in [

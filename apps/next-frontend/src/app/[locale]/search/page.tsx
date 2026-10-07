@@ -45,6 +45,7 @@ export async function generateMetadata({
       : 'Instant catalog search for products, categories, and offers with faceted filtering',
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

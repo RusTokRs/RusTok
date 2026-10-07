@@ -1005,7 +1005,7 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
 
-    async fn test_db_with_tenant() -> (DatabaseConnection, TenantModel) {
+    async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         ensure_oauth_schema(&db).await;
         let tenant =

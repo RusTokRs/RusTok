@@ -1,5 +1,7 @@
 #[cfg(feature = "comment-island")]
 mod comment;
+pub mod comments_list;
+pub mod share;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub mod leptos;
 

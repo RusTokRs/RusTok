@@ -29,7 +29,7 @@ export { BlogPagination } from "./components/blog-pagination";
 export { BlogShareButtons } from "./components/blog-share-buttons";
 export { ReadingProgressBar } from "./components/reading-progress-bar";
 export { calculateReadingTime, formatReadingTime } from "./utils/reading-time";
-export { buildArticleJsonLd } from "./utils/seo-json-ld";
+export { buildArticleJsonLd, serializeJsonLd } from "./utils/seo-json-ld";
 
 registerStorefrontModule({
   id: "blog-latest-posts",

@@ -4,8 +4,8 @@ use rustok_seo::{
     SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJsonFieldPatch, SeoBulkListInput,
     SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSource,
     SeoBulkStringFieldPatch, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
-    SeoModuleSettings, SeoRedirectInput, SeoRedirectMatchType, SeoSitemapStatusRecord,
-    SeoTargetSlug, SeoTemplateRuleSet, seo_builtin_slug,
+    SeoIndexReplayMode, SeoModuleSettings, SeoRedirectInput, SeoRedirectMatchType,
+    SeoSitemapStatusRecord, SeoTargetSlug, SeoTemplateRuleSet, seo_builtin_slug,
 };
 use rustok_ui_core::normalize_ui_text;
 use serde_json::Value;
@@ -164,8 +164,15 @@ pub fn format_index_repair_replay_result(
     replay_historical: bool,
 ) -> String {
     if replay_historical {
+        let status_prefix = match result.replay_mode {
+            SeoIndexReplayMode::ReplayCompleted => "Replay completed",
+            SeoIndexReplayMode::Replaying => "Replay in progress (more events remaining)",
+            SeoIndexReplayMode::ReplayRequested => "Replay requested",
+            SeoIndexReplayMode::NotStarted => "Replay not started",
+            SeoIndexReplayMode::RepairOnly => "Repair only",
+        };
         format!(
-            "Replay completed: repaired={} replayed={} scanned={} run_id={}",
+            "{status_prefix}: repaired={} replayed={} scanned={} run_id={}",
             result.repaired_count,
             result.replayed_count,
             result.historical_events_scanned,
@@ -659,40 +666,50 @@ impl SeoSettingsForm {
             .retain(|item| !item.eq_ignore_ascii_case(directive));
     }
 
-    pub fn build_settings(&self) -> SeoModuleSettings {
-        SeoModuleSettings {
-            default_robots: normalize_robot_directives(self.default_robots.as_slice()),
-            sitemap_enabled: self.sitemap_enabled,
-            allowed_redirect_hosts: normalize_multiline_values(
-                self.allowed_redirect_hosts_text.as_str(),
-                true,
-            ),
-            allowed_canonical_hosts: normalize_multiline_values(
-                self.allowed_canonical_hosts_text.as_str(),
-                true,
-            ),
-            x_default_locale: trim_to_option(self.x_default_locale.as_str()),
-            template_defaults: SeoTemplateRuleSet {
-                title: trim_to_option(self.template_title.as_str()),
-                meta_description: trim_to_option(self.template_meta_description.as_str()),
-                canonical_url: trim_to_option(self.template_canonical_url.as_str()),
-                keywords: trim_to_option(self.template_keywords.as_str()),
-                robots: trim_to_option(self.template_robots.as_str()),
-                open_graph_title: trim_to_option(self.template_open_graph_title.as_str()),
-                open_graph_description: trim_to_option(
-                    self.template_open_graph_description.as_str(),
-                ),
-                twitter_title: trim_to_option(self.template_twitter_title.as_str()),
-                twitter_description: trim_to_option(self.template_twitter_description.as_str()),
-            },
-            template_overrides: parse_template_overrides(self.template_overrides_json.as_str()),
-            ..SeoModuleSettings::default()
+    pub fn parse_template_overrides(&self) -> Result<BTreeMap<String, SeoTemplateRuleSet>, String> {
+        let trimmed = self.template_overrides_json.trim();
+        if trimmed.is_empty() {
+            return Ok(BTreeMap::new());
         }
+        serde_json::from_str(trimmed)
+            .map_err(|err| format!("Invalid template overrides JSON: {err}"))
     }
-}
 
-fn parse_template_overrides(value: &str) -> BTreeMap<String, SeoTemplateRuleSet> {
-    serde_json::from_str::<BTreeMap<String, SeoTemplateRuleSet>>(value.trim()).unwrap_or_default()
+    pub fn apply_to_settings(&self, target: &mut SeoModuleSettings) -> Result<(), String> {
+        let template_overrides = self.parse_template_overrides()?;
+        target.default_robots = normalize_robot_directives(self.default_robots.as_slice());
+        target.sitemap_enabled = self.sitemap_enabled;
+        target.allowed_redirect_hosts = normalize_multiline_values(
+            self.allowed_redirect_hosts_text.as_str(),
+            true,
+        );
+        target.allowed_canonical_hosts = normalize_multiline_values(
+            self.allowed_canonical_hosts_text.as_str(),
+            true,
+        );
+        target.x_default_locale = trim_to_option(self.x_default_locale.as_str());
+        target.template_defaults = SeoTemplateRuleSet {
+            title: trim_to_option(self.template_title.as_str()),
+            meta_description: trim_to_option(self.template_meta_description.as_str()),
+            canonical_url: trim_to_option(self.template_canonical_url.as_str()),
+            keywords: trim_to_option(self.template_keywords.as_str()),
+            robots: trim_to_option(self.template_robots.as_str()),
+            open_graph_title: trim_to_option(self.template_open_graph_title.as_str()),
+            open_graph_description: trim_to_option(
+                self.template_open_graph_description.as_str(),
+            ),
+            twitter_title: trim_to_option(self.template_twitter_title.as_str()),
+            twitter_description: trim_to_option(self.template_twitter_description.as_str()),
+        };
+        target.template_overrides = template_overrides;
+        Ok(())
+    }
+
+    pub fn build_settings(&self) -> SeoModuleSettings {
+        let mut settings = SeoModuleSettings::default();
+        let _ = self.apply_to_settings(&mut settings);
+        settings
+    }
 }
 
 fn normalize_robot_directives(values: &[String]) -> Vec<String> {

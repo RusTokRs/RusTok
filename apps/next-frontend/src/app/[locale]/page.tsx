@@ -61,7 +61,7 @@ export default async function StorefrontHome({
   const seoResolution = await resolveHomeSeoContext(locale);
   const redirectDecision = seoResolution.context?.route.redirect;
   if (redirectDecision) {
-    if (redirectDecision.statusCode === 308) {
+    if (redirectDecision.statusCode === 308 || redirectDecision.statusCode === 301) {
       permanentRedirect(redirectDecision.targetUrl);
     }
     redirect(redirectDecision.targetUrl);

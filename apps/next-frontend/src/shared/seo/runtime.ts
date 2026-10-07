@@ -96,9 +96,41 @@ function normalizeRoutePath(route: string): string {
 }
 
 export function buildDeterministicSeoRoute(input: ResolveSeoRouteInput): string {
-  const baseRoute = input.routeSegment
-    ? `/modules/${input.routeSegment}`
-    : normalizeRoutePath(input.route ?? "/");
+  if (input.routeSegment) {
+    const baseRoute = `/modules/${input.routeSegment}`;
+    const params = new URLSearchParams();
+    Object.entries(input.query ?? {})
+      .filter(([key]) => key !== "lang")
+      .sort(([left], [right]) => left.localeCompare(right))
+      .forEach(([key, value]) => {
+        const normalizedValue = normalizeQueryValue(value);
+        if (normalizedValue) {
+          params.set(key, normalizedValue);
+        }
+      });
+
+    const serialized = params.toString();
+    return serialized ? `${baseRoute}?${serialized}` : baseRoute;
+  }
+
+  const rawRoute = normalizeRoutePath(input.route ?? "/");
+  const productMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/products\/([^/?#]+)/i);
+  if (productMatch) {
+    const slug = productMatch[2];
+    return `/modules/product?handle=${encodeURIComponent(slug)}&slug=${encodeURIComponent(slug)}`;
+  }
+
+  const blogMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/blog\/([^/?#]+)/i);
+  if (blogMatch) {
+    const slug = blogMatch[2];
+    return `/modules/blog?slug=${encodeURIComponent(slug)}`;
+  }
+
+  const pageMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/pages\/([^/?#]+)/i);
+  if (pageMatch) {
+    const slug = pageMatch[2];
+    return `/modules/pages?slug=${encodeURIComponent(slug)}`;
+  }
 
   const params = new URLSearchParams();
   Object.entries(input.query ?? {})
@@ -112,7 +144,7 @@ export function buildDeterministicSeoRoute(input: ResolveSeoRouteInput): string 
     });
 
   const serialized = params.toString();
-  return serialized ? `${baseRoute}?${serialized}` : baseRoute;
+  return serialized ? `${rawRoute}?${serialized}` : rawRoute;
 }
 
 function classifyNotFound(message: string): "module_disabled" | "not_found" {
@@ -224,6 +256,7 @@ type RobotsRuleAccumulator = {
   userAgent: string;
   allow: string[];
   disallow: string[];
+  crawlDelay?: number;
 };
 
 function readRobotsFlag(): boolean {
@@ -236,18 +269,34 @@ function readRobotsFlag(): boolean {
 
 function parseRobotsRules(lines: string[]): RobotsRuleAccumulator[] {
   const rules: RobotsRuleAccumulator[] = [];
-  let current: RobotsRuleAccumulator | null = null;
+  let currentAgents: string[] = [];
+  let currentDirectives: {
+    allow: string[];
+    disallow: string[];
+    crawlDelay?: number;
+  } = {
+    allow: [],
+    disallow: [],
+  };
 
-  const ensureCurrent = () => {
-    if (!current) {
-      current = {
-        userAgent: "*",
-        allow: [],
-        disallow: [],
-      };
-      rules.push(current);
+  const flush = () => {
+    if (
+      currentAgents.length > 0 &&
+      (currentDirectives.allow.length > 0 ||
+        currentDirectives.disallow.length > 0 ||
+        currentDirectives.crawlDelay !== undefined)
+    ) {
+      for (const agent of currentAgents) {
+        rules.push({
+          userAgent: agent,
+          allow: [...currentDirectives.allow],
+          disallow: [...currentDirectives.disallow],
+          crawlDelay: currentDirectives.crawlDelay,
+        });
+      }
     }
-    return current;
+    currentAgents = [];
+    currentDirectives = { allow: [], disallow: [] };
   };
 
   for (const rawLine of lines) {
@@ -269,33 +318,52 @@ function parseRobotsRules(lines: string[]): RobotsRuleAccumulator[] {
     }
 
     if (directive === "user-agent") {
-      current = {
-        userAgent: value,
-        allow: [],
-        disallow: [],
-      };
-      rules.push(current);
+      if (
+        currentDirectives.allow.length > 0 ||
+        currentDirectives.disallow.length > 0 ||
+        currentDirectives.crawlDelay !== undefined
+      ) {
+        flush();
+      }
+      currentAgents.push(value);
       continue;
     }
 
-    const target = ensureCurrent();
+    if (currentAgents.length === 0) {
+      currentAgents.push("*");
+    }
+
     if (directive === "allow") {
-      target.allow.push(value);
+      currentDirectives.allow.push(value);
       continue;
     }
 
     if (directive === "disallow") {
-      target.disallow.push(value);
+      currentDirectives.disallow.push(value);
+      continue;
+    }
+
+    if (directive === "crawl-delay") {
+      const parsedDelay = parseInt(value, 10);
+      if (Number.isFinite(parsedDelay) && parsedDelay >= 0) {
+        currentDirectives.crawlDelay = parsedDelay;
+      }
     }
   }
 
+  flush();
   return rules;
 }
 
 function parseRobotsMetadata(body: string): MetadataRoute.Robots {
   const lines = body.split(/\r?\n/);
   const rules = parseRobotsRules(lines)
-    .filter((rule) => rule.allow.length > 0 || rule.disallow.length > 0)
+    .filter(
+      (rule) =>
+        rule.allow.length > 0 ||
+        rule.disallow.length > 0 ||
+        rule.crawlDelay !== undefined,
+    )
     .map((rule) => ({
       userAgent: rule.userAgent,
       allow: rule.allow.length <= 1 ? rule.allow[0] : rule.allow,
@@ -305,6 +373,7 @@ function parseRobotsMetadata(body: string): MetadataRoute.Robots {
           : rule.disallow.length === 1
             ? rule.disallow[0]
             : rule.disallow,
+      crawlDelay: rule.crawlDelay,
     }));
 
   const sitemapEntries = lines
@@ -403,6 +472,48 @@ async function fetchSeoTextDocument(
   return response.text();
 }
 
+function adaptRuntimeSitemapUrl(rawUrl: string): string {
+  try {
+    const isAbs = rawUrl.startsWith("http://") || rawUrl.startsWith("https://");
+    const parsed = new URL(rawUrl, "https://placeholder.local");
+    const pathname = parsed.pathname;
+
+    const productMatch = pathname.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/modules\/product\/?$/i);
+    if (productMatch) {
+      const locale = productMatch[1];
+      const handle = parsed.searchParams.get("handle") || parsed.searchParams.get("slug");
+      if (handle) {
+        const newPath = locale ? `/${locale}/products/${handle}` : `/products/${handle}`;
+        return isAbs ? new URL(newPath, parsed.origin).toString() : newPath;
+      }
+    }
+
+    const blogMatch = pathname.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/modules\/blog\/?$/i);
+    if (blogMatch) {
+      const locale = blogMatch[1];
+      const slug = parsed.searchParams.get("slug");
+      if (slug) {
+        const newPath = locale ? `/${locale}/blog/${slug}` : `/blog/${slug}`;
+        return isAbs ? new URL(newPath, parsed.origin).toString() : newPath;
+      }
+    }
+
+    const pageMatch = pathname.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/modules\/pages\/?$/i);
+    if (pageMatch) {
+      const locale = pageMatch[1];
+      const slug = parsed.searchParams.get("slug");
+      if (slug) {
+        const newPath = locale ? `/${locale}/pages/${slug}` : `/pages/${slug}`;
+        return isAbs ? new URL(newPath, parsed.origin).toString() : newPath;
+      }
+    }
+
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
 async function loadRuntimeSitemapUrls(): Promise<string[]> {
   const indexXml = await fetchSeoTextDocument("/sitemap.xml");
   const indexLocs = extractXmlLocEntries(indexXml);
@@ -415,7 +526,7 @@ async function loadRuntimeSitemapUrls(): Promise<string[]> {
   const sitemapFiles = indexLocs.filter((item) => item.toLowerCase().endsWith(".xml"));
 
   if (sitemapFiles.length === 0) {
-    indexLocs.forEach((item) => pageUrls.add(item));
+    indexLocs.forEach((item) => pageUrls.add(adaptRuntimeSitemapUrl(item)));
     return [...pageUrls].sort();
   }
 
@@ -425,7 +536,7 @@ async function loadRuntimeSitemapUrls(): Promise<string[]> {
       (item) => !item.toLowerCase().endsWith(".xml"),
     );
     for (const pageUrl of locs) {
-      pageUrls.add(pageUrl);
+      pageUrls.add(adaptRuntimeSitemapUrl(pageUrl));
     }
   }
 

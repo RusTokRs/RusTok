@@ -41,6 +41,7 @@ export async function generateMetadata({
       : "View your order history, delivery tracking, and purchase receipts",
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

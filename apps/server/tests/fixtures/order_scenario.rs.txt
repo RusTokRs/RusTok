@@ -5,7 +5,7 @@
 //! without ad-hoc local lifecycle implementations.
 
 use rust_decimal::Decimal;
-use rustok_commerce::{Order, OrderError};
+use rustok_commerce::state_machine::{Order, OrderError};
 use rustok_events::DomainEvent;
 use uuid::Uuid;
 

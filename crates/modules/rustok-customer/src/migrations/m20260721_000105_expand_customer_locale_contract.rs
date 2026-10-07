@@ -25,8 +25,9 @@ impl MigrationTrait for Migration {
                     .await?;
             }
             // SQLite does not enforce VARCHAR length, so widening the declared
-            // type would be a no-op. Rebuilding the table here is unsafe because
-            // SQLite rewrites dependent trigger references during RENAME TABLE.
+            // type would be a no-op (rebuild_sqlite_customers is omitted). Rebuilding
+            // the table here is unsafe because SQLite rewrites dependent trigger
+            // references during RENAME TABLE.
             DatabaseBackend::Sqlite => {}
             _ => {
                 return Err(DbErr::Migration(

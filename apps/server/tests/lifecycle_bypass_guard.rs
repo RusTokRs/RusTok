@@ -293,7 +293,7 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
         "pub correlation_id: Option<String>",
         "pub requested_by: Option<String>",
         "pub error_message: Option<String>",
-        "status: plan.status.as_str().to_string()",
+        "status: plan.status",
     ] {
         assert!(
             types.contains(field),
@@ -303,7 +303,7 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
 
     for surface in [queries.as_str(), mutations.as_str()] {
         assert!(
-            surface.contains("ModuleOperationRecoveryPlan::from(&plan)"),
+            surface.contains("ModuleOperationRecoveryPlan::from("),
             "GraphQL recovery read/write surface must map service recovery plans through the typed GraphQL plan"
         );
     }

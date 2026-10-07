@@ -359,32 +359,36 @@ fn resolve_product_translation<'a>(
 
 fn parse_product_route(route: &str) -> AnyResult<Option<String>> {
     let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
-    if !matches_module_path(&parsed, "product") {
-        return Ok(None);
-    }
-    Ok(parsed
-        .query_pairs()
-        .find(|(key, _)| key == "handle")
-        .map(|(_, value)| value.to_string())
-        .filter(|value| !value.trim().is_empty()))
-}
-
-fn matches_module_path(parsed: &Url, module: &str) -> bool {
     let mut segments = parsed
         .path_segments()
         .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
         .unwrap_or_default();
-    if segments.len() > 2
+
+    if segments.len() >= 2
         && segments
             .first()
             .and_then(|item| rustok_api::normalize_locale_tag(item))
             .is_some()
-        && segments.get(1) == Some(&"modules")
     {
         segments.remove(0);
     }
 
-    segments.as_slice() == ["modules", module]
+    if segments.as_slice() == ["modules", "product"] {
+        return Ok(parsed
+            .query_pairs()
+            .find(|(key, _)| key == "handle" || key == "slug")
+            .map(|(_, value)| value.to_string())
+            .filter(|value| !value.trim().is_empty()));
+    }
+
+    if segments.len() == 2 && segments[0] == "products" {
+        let handle = segments[1].trim();
+        if !handle.is_empty() {
+            return Ok(Some(handle.to_string()));
+        }
+    }
+
+    Ok(None)
 }
 
 fn summarize_text(value: &str) -> Option<String> {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rustok_core::security::{SsrfProtection, ValidationResult};
 use rustok_core::{DomainEvent, simple_hash};
@@ -7,8 +7,8 @@ use rustok_seo_targets::{
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use url::Url;
 use uuid::Uuid;
@@ -19,6 +19,7 @@ use crate::dto::{
     SeoModuleSettings, SeoRobotsPreviewRecord, SeoSitemapFileRecord, SeoSitemapJobRecord,
     SeoSitemapStatusRecord,
 };
+use crate::entities as seo_meta;
 use crate::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
 use crate::{SeoError, SeoResult};
 
@@ -546,18 +547,10 @@ impl SeoService {
         if !sitemaps_enabled(&settings) || !self.public_sitemap_modules_enabled(tenant_id).await? {
             return Ok(None);
         }
-        let latest_job = seo_sitemap_job::Entity::find()
-            .filter(seo_sitemap_job::Column::TenantId.eq(tenant_id))
-            .order_by_desc(seo_sitemap_job::Column::CreatedAt)
-            .one(&self.db)
-            .await?;
-        let Some(latest_job) = latest_job else {
-            return Ok(None);
-        };
         seo_sitemap_file::Entity::find()
             .filter(seo_sitemap_file::Column::TenantId.eq(tenant_id))
-            .filter(seo_sitemap_file::Column::JobId.eq(latest_job.id))
             .filter(seo_sitemap_file::Column::Path.eq("sitemap.xml"))
+            .order_by_desc(seo_sitemap_file::Column::CreatedAt)
             .one(&self.db)
             .await
             .map_err(Into::into)
@@ -710,7 +703,18 @@ impl SeoService {
                         provider.slug().as_str()
                     ))
                 })?;
+            let candidate_target_ids: Vec<Uuid> = candidates.iter().map(|c| c.target_id).collect();
+            let noindex_ids = load_noindex_target_ids(
+                &self.db,
+                tenant.id,
+                provider.slug().as_str(),
+                candidate_target_ids.as_slice(),
+            )
+            .await?;
             for candidate in candidates {
+                if noindex_ids.contains(&candidate.target_id) {
+                    continue;
+                }
                 let locale = normalize_effective_locale(
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),
@@ -941,11 +945,29 @@ pub(super) fn sitemap_route_excluded(route: &str, patterns: &[String]) -> bool {
     })
 }
 
-fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings) -> String {
-    if let Some(custom) = settings.robots_txt_custom_content.as_deref() {
-        return format!("{}\n", custom.trim_end());
+pub(super) async fn load_noindex_target_ids(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    target_type: &str,
+    target_ids: &[Uuid],
+) -> SeoResult<HashSet<Uuid>> {
+    let mut noindex_ids = HashSet::new();
+    for chunk in target_ids.chunks(500) {
+        let models = seo_meta::Entity::find()
+            .filter(seo_meta::Column::TenantId.eq(tenant_id))
+            .filter(seo_meta::Column::TargetType.eq(target_type))
+            .filter(seo_meta::Column::TargetId.is_in(chunk.iter().copied()))
+            .filter(seo_meta::Column::NoIndex.eq(true))
+            .all(db)
+            .await?;
+        for model in models {
+            noindex_ids.insert(model.target_id);
+        }
     }
+    Ok(noindex_ids)
+}
 
+fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings) -> String {
     let mut lines = vec!["User-agent: *".to_string(), "Allow: /".to_string()];
     lines.extend(
         settings
@@ -958,6 +980,12 @@ fn render_robots_body_with_settings(base_url: &str, settings: &SeoModuleSettings
     }
     if sitemaps_enabled(settings) && !base_url.is_empty() {
         lines.push(format!("Sitemap: {base_url}/sitemap.xml"));
+    }
+    if let Some(custom) = settings.robots_txt_custom_content.as_deref() {
+        let trimmed = custom.trim();
+        if !trimmed.is_empty() {
+            lines.push(trimmed.to_string());
+        }
     }
     format!("{}\n", lines.join("\n"))
 }

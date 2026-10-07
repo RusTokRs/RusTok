@@ -19,8 +19,13 @@ fn runtime_guardrails_surface_cache_and_rbac_worker_failures() {
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
     let base = source("apps/server/src/services/runtime_guardrails_base.rs");
 
+    assert!(
+        guardrails.contains("include!(\"runtime_guardrails_base.rs\")")
+            || guardrails.contains("#[path = \"runtime_guardrails_base.rs\"]"),
+        "runtime guardrails must include or reference runtime_guardrails_base.rs"
+    );
+
     for required in [
-        "include!(\"runtime_guardrails_base.rs\")",
         "pub use base::{",
         "base::collect_runtime_guardrail_snapshot(ctx).await",
         "RbacCacheInvalidationListenerHandle",
@@ -60,10 +65,14 @@ fn runtime_guardrails_surface_cache_and_rbac_worker_failures() {
 #[test]
 fn registry_only_mode_skips_runtime_worker_requirements() {
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
-    let skip = guardrails
+    let fn_start = guardrails
+        .find("pub async fn collect_runtime_guardrail_snapshot")
+        .expect("function must exist");
+    let body = &guardrails[fn_start..];
+    let skip = body
         .find("if !snapshot.runtime_dependencies_enabled")
         .expect("registry-only guard must remain explicit");
-    let first_worker = guardrails
+    let first_worker = body
         .find("RbacCacheInvalidationListenerHandle")
         .expect("worker checks must remain present");
     assert!(skip < first_worker);

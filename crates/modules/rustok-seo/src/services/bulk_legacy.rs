@@ -454,7 +454,22 @@ fn trimmed_string(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
+        .map(|s| {
+            if let Some(stripped) = s.strip_prefix('\'') {
+                if stripped.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+                    return stripped.to_string();
+                }
+            }
+            s.to_string()
+        })
+}
+
+fn sanitize_csv_cell(value: String) -> String {
+    if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{value}")
+    } else {
+        value
+    }
 }
 
 #[allow(dead_code)]
@@ -468,17 +483,19 @@ fn export_csv_row(
         target_kind.as_str().to_string(),
         target_id.to_string(),
         locale.to_string(),
-        record.translation.title.clone().unwrap_or_default(),
-        record.translation.description.clone().unwrap_or_default(),
-        record.translation.keywords.clone().unwrap_or_default(),
-        record.canonical_url.clone().unwrap_or_default(),
-        record.translation.og_title.clone().unwrap_or_default(),
-        record
-            .translation
-            .og_description
-            .clone()
-            .unwrap_or_default(),
-        record.translation.og_image.clone().unwrap_or_default(),
+        sanitize_csv_cell(record.translation.title.clone().unwrap_or_default()),
+        sanitize_csv_cell(record.translation.description.clone().unwrap_or_default()),
+        sanitize_csv_cell(record.translation.keywords.clone().unwrap_or_default()),
+        sanitize_csv_cell(record.canonical_url.clone().unwrap_or_default()),
+        sanitize_csv_cell(record.translation.og_title.clone().unwrap_or_default()),
+        sanitize_csv_cell(
+            record
+                .translation
+                .og_description
+                .clone()
+                .unwrap_or_default(),
+        ),
+        sanitize_csv_cell(record.translation.og_image.clone().unwrap_or_default()),
         record
             .structured_data
             .as_ref()
@@ -498,13 +515,13 @@ fn export_csv_row_values(
         target_kind.as_str().to_string(),
         row.target_id.to_string(),
         locale.to_string(),
-        row.title.clone().unwrap_or_default(),
-        row.description.clone().unwrap_or_default(),
-        row.keywords.clone().unwrap_or_default(),
-        row.canonical_url.clone().unwrap_or_default(),
-        row.og_title.clone().unwrap_or_default(),
-        row.og_description.clone().unwrap_or_default(),
-        row.og_image.clone().unwrap_or_default(),
+        sanitize_csv_cell(row.title.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.description.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.keywords.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.canonical_url.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.og_title.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.og_description.clone().unwrap_or_default()),
+        sanitize_csv_cell(row.og_image.clone().unwrap_or_default()),
         row.structured_data
             .as_ref()
             .map(Value::to_string)
@@ -849,6 +866,53 @@ mod tests {
         assert_eq!(row[10], "{\"@type\":\"Thing\"}");
         assert_eq!(row[11], "false");
         assert_eq!(row[12], "true");
+    }
+
+    #[test]
+    fn export_csv_row_sanitizes_formula_injection() {
+        let row = export_csv_row(
+            page_slug(),
+            Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("uuid"),
+            "en-US",
+            &SeoMetaRecord {
+                target_kind: page_slug(),
+                target_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").expect("uuid"),
+                requested_locale: Some("en-US".to_string()),
+                effective_locale: "en-US".to_string(),
+                available_locales: vec!["en-US".to_string()],
+                noindex: false,
+                nofollow: false,
+                canonical_url: Some("=HYPERLINK(\"http://evil.com\")".to_string()),
+                translation: SeoMetaTranslationRecord {
+                    locale: "en-US".to_string(),
+                    title: Some("=SUM(1,2)".to_string()),
+                    description: Some("+12345".to_string()),
+                    keywords: Some("-keyword".to_string()),
+                    og_title: Some("@special".to_string()),
+                    og_description: Some("\tindented".to_string()),
+                    og_image: Some("https://img.test/x.jpg".to_string()),
+                },
+                source: "explicit".to_string(),
+                open_graph: None,
+                structured_data: None,
+                effective_state: crate::dto::SeoDocumentEffectiveState::default(),
+            },
+        );
+
+        assert_eq!(row[3], "'=SUM(1,2)");
+        assert_eq!(row[4], "'+12345");
+        assert_eq!(row[5], "'-keyword");
+        assert_eq!(row[6], "'=HYPERLINK(\"http://evil.com\")");
+        assert_eq!(row[7], "'@special");
+        assert_eq!(row[8], "'\tindented");
+
+        let csv = format!(
+            "target_kind,target_id,locale,title,description,keywords,canonical_url,og_title,og_description,og_image,structured_data,noindex,nofollow\npage,11111111-1111-1111-1111-111111111111,en-US,\"'=SUM(1,2)\",\"'+12345\",\"'-keyword\",/canon,OG,OG,https://img.test/x.jpg,,false,false\n"
+        );
+        let parsed = parse_bulk_csv(page_slug(), "en-US", csv.as_str()).expect("parse csv");
+        assert_eq!(parsed[0].title.as_deref(), Some("=SUM(1,2)"));
+        assert_eq!(parsed[0].description.as_deref(), Some("+12345"));
+        assert_eq!(parsed[0].keywords.as_deref(), Some("-keyword"));
     }
 }
 

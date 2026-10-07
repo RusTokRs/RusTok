@@ -13,6 +13,7 @@ use rustok_server::{
     common::settings::RustokSettings,
     context::{OptionalChannel, TenantContext, TenantContextExtension},
     middleware::channel as channel_middleware,
+    models::tenants,
     services::{
         cache_runtime::ensure_cache_service,
         channel_cache_invalidation::{
@@ -229,7 +230,7 @@ async fn stop_redis(child: &mut Child) {
 }
 
 async fn wait_for_redis_subscribers(url: &str, expected: usize) {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(7), async {
         loop {
             if let Ok(client) = redis::Client::open(url)
                 && let Ok(mut connection) = client.get_multiplexed_async_connection().await

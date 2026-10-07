@@ -12,7 +12,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect, permanentRedirect } from "next/navigation";
 import { ArrowLeft, Calendar, Clock, MessageSquare, Tag } from "lucide-react";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import {
@@ -37,6 +37,7 @@ import {
   calculateReadingTime,
   formatReadingTime,
   buildArticleJsonLd,
+  serializeJsonLd,
   type BlogPostSummary,
 } from "@rustok/blog-frontend";
 
@@ -90,6 +91,19 @@ export default async function BlogPostPage({
   searchParams,
 }: BlogPostPageProps) {
   const { locale, slug } = await params;
+  const path = `/blog/${slug}`;
+  const seoResolution = await resolveSeoPageContextForRoute({
+    locale,
+    route: path,
+  });
+  const redirectDecision = seoResolution.context?.route.redirect;
+  if (redirectDecision) {
+    if (redirectDecision.statusCode === 308 || redirectDecision.statusCode === 301) {
+      permanentRedirect(redirectDecision.targetUrl);
+    }
+    redirect(redirectDecision.targetUrl);
+  }
+
   const query = (await searchParams) ?? {};
   const isRu = locale === "ru";
   const tenantSlug = getStorefrontTenantSlug();
@@ -183,7 +197,7 @@ export default async function BlogPostPage({
       {/* Schema.org JSON-LD structured data for article */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       <article className="mx-auto max-w-6xl px-4 sm:px-6 py-10 space-y-8">

@@ -234,7 +234,7 @@ fn marketplace_seller_owner_and_ports_preserve_contracts() {
 
     assert!(admin_core.contains("MarketplaceSellerAdminTransportProfile"));
     assert!(admin_core.contains("Graphql"));
-    assert!(admin_transport.contains("transport_unmounted"));
+    assert!(admin_transport.contains("execute_selected_transport"));
     assert!(admin_transport.contains("never falls back"));
     assert!(admin_ui.contains("pub fn MarketplaceSellerAdmin()"));
 }

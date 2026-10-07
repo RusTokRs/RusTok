@@ -45,7 +45,6 @@ async fn persist_seo_settings(
     tenant_id: Uuid,
     input: SeoModuleSettings,
 ) -> Result<SeoModuleSettings, ServerFnError> {
-    let settings = SeoSettingsService::normalize_settings(input);
     let Some(model) = tenant_module::Entity::find()
         .filter(tenant_module::Column::TenantId.eq(tenant_id))
         .filter(tenant_module::Column::ModuleSlug.eq(MODULE_SLUG))
@@ -57,6 +56,18 @@ async fn persist_seo_settings(
             "Module `seo` must be configured for this tenant before saving defaults",
         ));
     };
+
+    let mut current: SeoModuleSettings =
+        serde_json::from_value(model.settings.clone()).unwrap_or_default();
+    current.default_robots = input.default_robots;
+    current.sitemap_enabled = input.sitemap_enabled;
+    current.allowed_redirect_hosts = input.allowed_redirect_hosts;
+    current.allowed_canonical_hosts = input.allowed_canonical_hosts;
+    current.x_default_locale = input.x_default_locale;
+    current.template_defaults = input.template_defaults;
+    current.template_overrides = input.template_overrides;
+
+    let settings = SeoSettingsService::normalize_settings(current);
 
     let mut active: tenant_module::ActiveModel = model.into();
     active.settings =

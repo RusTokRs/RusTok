@@ -53,6 +53,7 @@ export async function generateMetadata({
       : 'Manage your profile, view order history, and configure account settings',
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

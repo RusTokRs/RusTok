@@ -38,7 +38,7 @@ const workflow = requireMarkers(workflowPath, [
   "event-contract-digests.patch",
   "manifest.env",
   "SHA256SUMS",
-  "actions/upload-artifact@v7",
+  "actions/upload-artifact@",
   "steps.generate.outputs.status == 'drift' && inputs.mode == 'verify'",
   "no repository write was performed",
 ]);

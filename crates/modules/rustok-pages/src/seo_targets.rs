@@ -419,14 +419,36 @@ fn page_route_for_slug(locale: &str, slug: Option<&str>) -> String {
 
 fn parse_page_route(route: &str) -> AnyResult<Option<String>> {
     let parsed = Url::parse(format!("https://rustok.local{route}").as_str())?;
-    if !matches_module_path(&parsed, "pages") {
-        return Ok(None);
+    let mut segments = parsed
+        .path_segments()
+        .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    if segments.len() >= 2
+        && segments
+            .first()
+            .and_then(|item| rustok_api::normalize_locale_tag(item))
+            .is_some()
+    {
+        segments.remove(0);
     }
-    Ok(parsed
-        .query_pairs()
-        .find(|(key, _)| key == "slug")
-        .map(|(_, value)| value.to_string())
-        .filter(|value| !value.trim().is_empty()))
+
+    if segments.as_slice() == ["modules", "pages"] {
+        return Ok(parsed
+            .query_pairs()
+            .find(|(key, _)| key == "slug")
+            .map(|(_, value)| value.to_string())
+            .filter(|value| !value.trim().is_empty()));
+    }
+
+    if segments.len() == 2 && segments[0] == "pages" {
+        let slug = segments[1].trim();
+        if !slug.is_empty() {
+            return Ok(Some(slug.to_string()));
+        }
+    }
+
+    Ok(None)
 }
 
 fn channel_visible(channel_slugs: &[String], requested_channel: Option<&str>) -> bool {
@@ -446,24 +468,6 @@ fn normalize_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
         .map(|slug| slug.to_ascii_lowercase())
-}
-
-fn matches_module_path(parsed: &Url, module: &str) -> bool {
-    let mut segments = parsed
-        .path_segments()
-        .map(|items| items.filter(|item| !item.is_empty()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    if segments.len() > 2
-        && segments
-            .first()
-            .and_then(|item| rustok_api::normalize_locale_tag(item))
-            .is_some()
-        && segments.get(1) == Some(&"modules")
-    {
-        segments.remove(0);
-    }
-
-    segments.as_slice() == ["modules", module]
 }
 
 fn summarize_text(value: &str) -> Option<String> {

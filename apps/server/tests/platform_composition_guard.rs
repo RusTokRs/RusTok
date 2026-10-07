@@ -64,9 +64,8 @@ fn graphql_module_composition_mutations_use_atomic_orchestration_service() {
         for required in [
             "expected_revision: i64",
             "idempotency_key: Uuid",
-            "tenant_id: tenant.id",
-            "actor_id: auth.user_id",
-            "idempotency_key,",
+            "module_command_context(auth.user_id",
+            "expected_revision,",
         ] {
             assert!(
                 block.contains(required),

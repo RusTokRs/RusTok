@@ -17,9 +17,9 @@ fn source(relative: &str) -> String {
 #[test]
 fn rbac_integrity_migration_is_registered_once_through_auth_module() {
     let root = repo_root();
-    let registry = source("crates/modules/rustok-auth/src/migrations/mod.rs");
+    let registry = source("crates/modules/rustok-rbac/src/lib.rs");
     let migration = source(
-        "crates/modules/rustok-auth/src/migrations/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs",
+        "crates/modules/rustok-rbac/src/m20260714_900001_enforce_rbac_relation_tenant_integrity.rs",
     );
 
     assert!(registry.contains("mod m20260714_900001_enforce_rbac_relation_tenant_integrity;"));
@@ -51,9 +51,9 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
 #[test]
 fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     let root = repo_root();
-    let registry = source("crates/modules/rustok-auth/src/migrations/mod.rs");
+    let registry = source("crates/modules/rustok-rbac/src/lib.rs");
     let migration = source(
-        "crates/modules/rustok-auth/src/migrations/m20260714_900002_create_rbac_invalidation_state.rs",
+        "crates/modules/rustok-rbac/src/m20260714_900002_create_rbac_invalidation_state.rs",
     );
 
     assert!(registry.contains("mod m20260714_900002_create_rbac_invalidation_state;"));

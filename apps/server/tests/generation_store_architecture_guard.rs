@@ -26,7 +26,7 @@ fn generation_store_is_clone_shared_bounded_identity_safe_and_fail_closed() {
         "struct RegisteredGenerationStore",
         "_identity: Arc<dyn Any + Send + Sync>",
         "fn generation_store_registry()",
-        "return registered.store.clone()",
+        "registered.store.clone()",
         "GenerationStoreRegistryCapacityExceeded",
         "return store.reject_registry_capacity()",
         "generation_store_registry_saturation_fails_closed",

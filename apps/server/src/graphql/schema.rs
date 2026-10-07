@@ -59,6 +59,8 @@ use rustok_commerce::graphql_runtime::CommerceShippingOptionReadScope;
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_mcp::graphql::{McpMutation, McpQuery};
 use rustok_rbac::graphql::{RbacGraphqlRoleWriterHandle, RbacMutation, RbacQuery};
+#[cfg(feature = "mod-ai")]
+use rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription};
 #[cfg(feature = "mod-forum")]
 use rustok_search::graphql::{
     ForumSearchProjectionReconciliationQuery, ForumStorefrontSearchQuery,
@@ -86,6 +88,8 @@ pub struct Query(
     OAuthQuery,
     McpQuery,
     RbacQuery,
+    #[cfg(feature = "mod-ai")]
+    AiQuery,
     SettingsQuery,
     SystemQuery,
     schema_codegen::OptionalModuleQuery,
@@ -112,6 +116,8 @@ pub struct Mutation(
     OAuthMutation,
     McpMutation,
     RbacMutation,
+    #[cfg(feature = "mod-ai")]
+    AiMutation,
     SettingsMutation,
     StarterMutation,
     schema_codegen::OptionalModuleMutation,
@@ -120,6 +126,8 @@ pub struct Mutation(
 #[derive(MergedSubscription, Default)]
 pub struct Subscription(
     BuildSubscription,
+    #[cfg(feature = "mod-ai")]
+    AiSubscription,
     schema_codegen::OptionalModuleSubscription,
 );
 

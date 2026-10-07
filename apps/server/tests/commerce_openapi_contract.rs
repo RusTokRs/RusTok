@@ -1,12 +1,11 @@
 #![cfg(feature = "mod-commerce")]
 
-use rustok_server::controllers::swagger::{ApiDoc, SecurityAddon};
+use rustok_server::common::settings::RustokSettings;
+use rustok_server::controllers::swagger::build_openapi_document;
 use serde_json::Value;
-use utoipa::{Modify, OpenApi};
 
 fn openapi_json() -> Value {
-    let mut spec = ApiDoc::openapi();
-    SecurityAddon.modify(&mut spec);
+    let spec = build_openapi_document(&RustokSettings::default());
     let spec = spec.to_json().expect("OpenAPI spec must serialize to JSON");
     serde_json::from_str(&spec).expect("OpenAPI JSON must parse")
 }
@@ -206,7 +205,7 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     );
     assert_eq!(
         request_schema_ref(&spec, "/admin/order-changes/{id}/apply", "post"),
-        Some("#/components/schemas/ApplyOrderChangeInput".to_string())
+        Some("#/components/schemas/AdminApplyOrderChangeInput".to_string())
     );
     assert_eq!(
         request_schema_ref(&spec, "/admin/order-changes/{id}/cancel", "post"),
@@ -222,7 +221,7 @@ fn openapi_preserves_store_cart_request_and_response_shapes() {
     );
     assert_eq!(
         request_schema_ref(&spec, "/admin/returns/{id}/complete", "post"),
-        Some("#/components/schemas/CompleteOrderReturnInput".to_string())
+        Some("#/components/schemas/AdminCompleteOrderReturnInput".to_string())
     );
     assert_eq!(
         request_schema_ref(&spec, "/admin/returns/{id}/cancel", "post"),

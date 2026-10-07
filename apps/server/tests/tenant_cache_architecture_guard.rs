@@ -77,9 +77,9 @@ fn tenant_loader_and_direct_redis_metrics_are_bounded() {
 }
 
 #[test]
-fn tenant_invalidation_payload_parser_rejects_extra_parts() {
-    let tenant = source("apps/server/src/middleware/tenant.rs");
-    assert!(tenant.contains("parts.next().is_some()"));
+fn tenant_invalidation_payload_uses_versioned_cache_invalidation() {
+    let generation = source("apps/server/src/services/tenant_cache_generation.rs");
+    assert!(generation.contains("VersionedCacheInvalidation::from_message(&message)"));
 }
 
 #[test]
@@ -122,7 +122,10 @@ fn tenant_generation_matches_and_aliases_both_physical_backend_prefixes() {
 fn outbox_keeps_transactional_transport_and_rotates_relay_target() {
     let factory = source("apps/server/src/services/event_transport_factory.rs");
     assert!(factory.contains("transport: outbox_transport"));
-    assert!(factory.contains("TenantCacheGenerationTransport::new(relay_target, cache.clone())"));
+    assert!(
+        factory.contains("TenantCacheGenerationTransport::new(gated, cache.clone())")
+            || factory.contains("tenant_generation_transport(ctx, &cache, relay_target)")
+    );
     assert!(factory.contains("start_tenant_cache_generation_listener(ctx, cache.clone()).await?"));
 }
 

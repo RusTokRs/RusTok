@@ -200,11 +200,10 @@ pub fn field_definition_cache_from_context(
     ctx: &ServerRuntimeContext,
     bus: EventBus,
 ) -> FieldDefinitionCache {
-    let candidate = FieldDefinitionCacheStartLock::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    let _ = ctx.shared_insert_if_absent(FieldDefinitionCacheStartLock::default());
     let start_lock = ctx
         .shared_get::<FieldDefinitionCacheStartLock>()
-        .unwrap_or(candidate);
+        .unwrap_or_default();
     let _start_guard = start_lock
         .0
         .lock()

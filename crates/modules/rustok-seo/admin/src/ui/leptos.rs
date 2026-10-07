@@ -149,7 +149,12 @@ pub fn SeoAdmin() -> impl IntoView {
     let save_settings = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         status_message.set(None);
-        let input = settings_form.get_untracked().build_settings();
+        let form = settings_form.get_untracked();
+        if let Err(err) = form.parse_template_overrides() {
+            status_message.set(Some(err));
+            return;
+        }
+        let input = form.build_settings();
 
         busy_key.set(Some(SeoAdminBusyKey::SaveSettings.to_busy_key()));
         spawn_local(async move {
@@ -181,8 +186,14 @@ pub fn SeoAdmin() -> impl IntoView {
         busy_key.set(Some(SeoAdminBusyKey::GenerateSitemaps.to_busy_key()));
         spawn_local(async move {
             match transport::generate_sitemaps().await {
-                Ok(_) => {
-                    status_message.set(Some("Sitemaps generated".to_string()));
+                Ok(status) => {
+                    let msg = match status.status.as_deref() {
+                        Some("queued") => "Sitemap generation queued in background".to_string(),
+                        Some("running") => "Sitemap generation in progress".to_string(),
+                        Some(other) => format!("Sitemaps generated (status: {other})"),
+                        None => "Sitemaps generated".to_string(),
+                    };
+                    status_message.set(Some(msg));
                     sitemap_nonce.update(|value| *value += 1);
                 }
                 Err(err) => status_message.set(Some(err.to_string())),

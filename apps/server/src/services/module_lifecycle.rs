@@ -764,7 +764,7 @@ mod tests {
     use super::{
         ModuleLifecycleService, UpdateModuleSettingsError, map_lifecycle_settings_receipt_error,
     };
-    use crate::models::tenants::{self, TenantActiveModelExt};
+    use crate::models::tenants;
     use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;

@@ -38,6 +38,7 @@ export async function generateMetadata({
       : "Secure checkout flow with shipping address, delivery options, and payment selection",
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

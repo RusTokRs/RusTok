@@ -30,7 +30,7 @@ fn marketplace_seller_graphql_and_admin_transports_share_owner_ports() {
         "MarketplaceSellerCommandPort::update_seller_member",
         "Permission::MARKETPLACE_SELLERS_MANAGE",
         "with_idempotency_key",
-        "marketplace seller service is temporarily unavailable",
+        "Marketplace seller service is temporarily unavailable",
     ] {
         assert!(
             owner_graphql.contains(marker),

@@ -21,15 +21,8 @@ fn tenant_listener_cleanup_preserves_the_generic_task_slot() {
 
     assert!(runtime.contains("pub fn shared_take<T>(&self) -> Option<T>"));
     assert!(runtime.contains(".remove(&TypeId::of::<T>())?"));
-    assert!(
-        middleware
-            .contains("let previous_task = ctx.shared_take::<tokio::task::JoinHandle<()>>();")
-    );
-    assert!(middleware.contains(
-        "if let Some(legacy_listener) = ctx.shared_take::<tokio::task::JoinHandle<()>>()"
-    ));
-    assert!(middleware.contains("legacy_listener.abort();"));
-    assert!(middleware.contains("ctx.shared_insert(previous_task);"));
+    assert!(middleware.contains("start_tenant_cache_generation_listener("));
+    assert!(middleware.contains("start_tenant_locale_generation_listener("));
     assert!(
         !middleware.contains("shared_map::<tokio::task::JoinHandle<()>, _>(|task| task.abort())")
     );

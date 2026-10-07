@@ -44,6 +44,7 @@ export async function generateMetadata({
       : 'Manage incoming notifications, system alerts, and platform events on RusToK',
     path,
     context: seoResolution.context,
+    noindex: true,
   });
 }
 

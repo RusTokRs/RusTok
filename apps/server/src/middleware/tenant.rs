@@ -55,7 +55,7 @@ pub(crate) struct CachedTenantContext {
     name: String,
     slug: String,
     domain: Option<String>,
-    settings: String,
+    settings: serde_json::Value,
     default_locale: String,
     is_active: bool,
 }
@@ -67,7 +67,7 @@ impl From<TenantContext> for CachedTenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: context.settings.to_string(),
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
         }
@@ -81,7 +81,7 @@ impl From<CachedTenantContext> for TenantContext {
             name: context.name,
             slug: context.slug,
             domain: context.domain,
-            settings: serde_json::from_str(&context.settings).unwrap_or(serde_json::Value::Null),
+            settings: context.settings,
             default_locale: context.default_locale,
             is_active: context.is_active,
         }

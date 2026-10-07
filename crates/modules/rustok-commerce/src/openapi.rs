@@ -59,6 +59,8 @@ mod marketplace_financial;
         crate::controllers::admin::complete_refund,
         crate::controllers::admin::cancel_refund,
         crate::controllers::admin::create_fulfillment,
+        crate::controllers::admin::list_fulfillments,
+        crate::controllers::admin::show_fulfillment,
         crate::controllers::admin::ship_fulfillment,
         crate::controllers::admin::deliver_fulfillment,
         crate::controllers::admin::reopen_fulfillment,

@@ -61,8 +61,12 @@ fn marketplace_registry_list_cache_is_bounded_hashed_and_single_flight() {
 #[test]
 fn marketplace_registry_detail_cache_is_bounded_hashed_and_single_flight() {
     let provider = source("apps/server/src/services/marketplace_catalog_cache.rs");
+    assert!(
+        provider.contains("include!(\"marketplace_catalog_cache_base.rs\")")
+            || provider.contains("#[path = \"marketplace_catalog_cache_base.rs\"]"),
+        "marketplace detail cache must include or reference marketplace_catalog_cache_base.rs"
+    );
     for required in [
-        "include!(\"marketplace_catalog_cache_base.rs\")",
         "DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES",
         "DEFAULT_REGISTRY_DETAIL_NEGATIVE_TTL_SECS",
         "MAX_REGISTRY_DETAIL_CACHE_KEY_BYTES",

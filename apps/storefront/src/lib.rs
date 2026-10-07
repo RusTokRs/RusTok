@@ -574,8 +574,18 @@ async fn render_module_page_response(
 #[cfg(feature = "ssr")]
 fn redirect_response(location: &str, status_code: Option<i32>) -> Response {
     match status_code.unwrap_or(308) {
-        301 | 308 => Redirect::permanent(location).into_response(),
-        _ => Redirect::temporary(location).into_response(),
+        301 => (
+            axum::http::StatusCode::MOVED_PERMANENTLY,
+            [(axum::http::header::LOCATION, location)],
+        )
+            .into_response(),
+        302 => (
+            axum::http::StatusCode::FOUND,
+            [(axum::http::header::LOCATION, location)],
+        )
+            .into_response(),
+        307 => Redirect::temporary(location).into_response(),
+        _ => Redirect::permanent(location).into_response(),
     }
 }
 

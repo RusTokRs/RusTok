@@ -134,6 +134,7 @@ type BuildSeoMetadataOptions = {
   description?: string;
   path?: string;
   context?: SeoPageContext | null;
+  noindex?: boolean;
 };
 
 function isAbsoluteUrl(pathOrUrl: string): boolean {
@@ -294,7 +295,7 @@ function buildVerification(
   };
 }
 
-function serializeStructuredData(payload: unknown): string | null {
+export function serializeStructuredData(payload: unknown): string | null {
   if (payload === null || payload === undefined) {
     return null;
   }
@@ -347,6 +348,7 @@ export function buildSeoMetadata({
   description = "Next.js storefront for RusToK",
   path = "/",
   context,
+  noindex = false,
 }: BuildSeoMetadataOptions = {}): Metadata {
   const effectiveLocale = context?.route.effectiveLocale || locale;
   const canonicalUrl =
@@ -363,7 +365,9 @@ export function buildSeoMetadata({
       canonicalUrl,
       context?.route.alternates,
     ),
-    robots: normalizeRobots(context?.document.robots),
+    robots: noindex
+      ? { index: false, follow: false }
+      : normalizeRobots(context?.document.robots),
     openGraph: buildOpenGraph(
       effectiveLocale,
       canonicalUrl,

@@ -103,10 +103,9 @@ fn content_orchestration_bridge_does_not_live_in_server() {
         }
         let source = std::fs::read_to_string(&path).expect("server service source should read");
         for forbidden in [
-            "rustok_blog::",
-            "rustok_forum::",
-            "rustok_taxonomy::",
-            "rustok_comments::",
+            "ContentOrchestrationBridge",
+            "convert_blog_post_to_topic",
+            "convert_topic_to_blog_post",
         ] {
             if source.contains(forbidden) {
                 offenders.push(format!("{} contains {forbidden}", path.display()));

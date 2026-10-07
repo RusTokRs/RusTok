@@ -1053,7 +1053,6 @@ mod tests {
         AuthConfig, decode_access_token, hash_password, hash_refresh_token, verify_password,
     };
     use crate::models::_entities::user_roles;
-    use crate::models::tenants::TenantActiveModelExt;
     use crate::models::{sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
     use crate::services::server_runtime_context::ServerRuntimeContext;

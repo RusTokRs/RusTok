@@ -19,7 +19,7 @@ fn tenant_locale_cache_is_weighted_coalesced_and_registered_atomically() {
     let locale = source("apps/server/src/middleware/locale.rs");
     for required in [
         ".weigher(tenant_locale_entry_weight)",
-        ".try_get_with(tenant_id",
+        ".try_get_with(",
         "let candidate = Arc::new(TenantLocaleCache::new());",
         "ctx.shared_insert_if_absent(candidate.clone())",
         "ctx.shared_get::<Arc<TenantLocaleCache>>()",

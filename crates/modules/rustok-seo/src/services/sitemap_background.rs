@@ -352,7 +352,18 @@ impl SeoService {
                         provider.slug().as_str()
                     ))
                 })?;
+            let candidate_target_ids: Vec<Uuid> = candidates.iter().map(|c| c.target_id).collect();
+            let noindex_ids = super::sitemaps::load_noindex_target_ids(
+                &self.db,
+                tenant.id,
+                provider.slug().as_str(),
+                candidate_target_ids.as_slice(),
+            )
+            .await?;
             for candidate in candidates {
+                if noindex_ids.contains(&candidate.target_id) {
+                    continue;
+                }
                 let locale = super::normalize_effective_locale(
                     candidate.locale.as_str(),
                     tenant.default_locale.as_str(),

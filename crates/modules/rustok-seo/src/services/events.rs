@@ -968,13 +968,42 @@ impl SeoService {
         let normalized_target_type = normalize_index_target_type(target_type)?;
         let bounded_limit = limit.clamp(1, 500);
 
-        let historical_events = seo_event_delivery::Entity::find()
+        let starting_cursor = if let Some(target) = normalized_target_type.as_deref() {
+            seo_index_cursor::Entity::find()
+                .filter(seo_index_cursor::Column::TenantId.eq(tenant_id))
+                .filter(seo_index_cursor::Column::TargetType.eq(target))
+                .one(&self.db)
+                .await?
+                .and_then(|c| c.last_repair_cursor_at)
+        } else {
+            None
+        };
+
+        let mut query = seo_event_delivery::Entity::find()
             .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
-            .filter(seo_event_delivery::Column::Status.eq(DELIVERY_STATUS_SENT))
+            .filter(seo_event_delivery::Column::Status.eq(DELIVERY_STATUS_SENT));
+        if let Some(cursor_at) = starting_cursor {
+            query = query.filter(seo_event_delivery::Column::CreatedAt.gt(cursor_at));
+        }
+
+        let historical_events = query
             .order_by_asc(seo_event_delivery::Column::CreatedAt)
             .limit(bounded_limit as u64)
             .all(&self.db)
             .await?;
+
+        if historical_events.is_empty() {
+            if let Some(target) = normalized_target_type.as_deref() {
+                let completed_at = Utc::now().fixed_offset();
+                self.mark_index_cursor_replay_completed(tenant_id, target, completed_at)
+                    .await?;
+            }
+            return Ok(SeoHistoricalReplayStats {
+                events_scanned: 0,
+                replayed_count: 0,
+                replay_run_id: None,
+            });
+        }
 
         let mut replay_work = Vec::<(seo_event_delivery::Model, SeoIndexReindexTrigger)>::new();
         for event_delivery in &historical_events {
@@ -990,6 +1019,11 @@ impl SeoService {
         }
 
         if replay_work.is_empty() {
+            if let Some(target) = normalized_target_type.as_deref() {
+                let completed_at = Utc::now().fixed_offset();
+                self.mark_index_cursor_replay_completed(tenant_id, target, completed_at)
+                    .await?;
+            }
             return Ok(SeoHistoricalReplayStats {
                 events_scanned: historical_events.len(),
                 replayed_count: 0,
@@ -1036,6 +1070,14 @@ impl SeoService {
                 delivery.status.as_str(),
                 INDEX_DELIVERY_STATUS_SENT | INDEX_DELIVERY_STATUS_DEAD_LETTER
             ) {
+                let _ = self
+                    .mark_index_cursor_repair_progress(
+                        tenant_id,
+                        trigger.target_type.as_str(),
+                        event_delivery.created_at,
+                        INDEX_CURSOR_REPLAY_MODE_REPLAYING,
+                    )
+                    .await;
                 continue;
             }
 
@@ -1060,10 +1102,13 @@ impl SeoService {
             replayed_count += 1;
         }
 
-        let completed_at = Utc::now().fixed_offset();
-        for target in &touched_target_types {
-            self.mark_index_cursor_replay_completed(tenant_id, target.as_str(), completed_at)
-                .await?;
+        let has_more_events = historical_events.len() == bounded_limit;
+        if !has_more_events {
+            let completed_at = Utc::now().fixed_offset();
+            for target in &touched_target_types {
+                self.mark_index_cursor_replay_completed(tenant_id, target.as_str(), completed_at)
+                    .await?;
+            }
         }
 
         Ok(SeoHistoricalReplayStats {

@@ -550,24 +550,93 @@ fn build_diagnostics_meta_record(
                 |item| item.locale.as_str(),
             );
             let translation = resolved.item.cloned();
-            let title_present = translation
+            let generated = render_generated_record(
+                &state,
+                &settings.template_defaults,
+                settings.template_overrides.get(state.target_kind.as_str()),
+            );
+
+            let explicit_title = translation
                 .as_ref()
-                .and_then(|item| trimmed_option(item.title.clone()))
-                .is_some();
-            let description_present = translation
+                .and_then(|item| trimmed_option(item.title.clone()));
+            let (title, title_source) = if let Some(title) = explicit_title {
+                (Some(title), SeoFieldSource::Explicit)
+            } else if let Some(title) = generated.title.clone() {
+                (Some(title), SeoFieldSource::Generated)
+            } else {
+                (Some(state.title.clone()), SeoFieldSource::Fallback)
+            };
+
+            let explicit_desc = translation
                 .as_ref()
-                .and_then(|item| trimmed_option(item.description.clone()))
-                .is_some();
-            let keywords_present = translation
-                .as_ref()
-                .and_then(|item| trimmed_option(item.keywords.clone()))
-                .is_some();
-            let canonical_present = explicit
+                .and_then(|item| trimmed_option(item.description.clone()));
+            let (description, desc_source) = if let Some(desc) = explicit_desc {
+                (Some(desc), SeoFieldSource::Explicit)
+            } else if let Some(desc) = generated.description.clone() {
+                (Some(desc), SeoFieldSource::Generated)
+            } else {
+                (state.description.clone(), SeoFieldSource::Fallback)
+            };
+
+            let explicit_canonical = explicit
                 .meta
                 .canonical_url
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty());
+                .clone()
+                .filter(|value| !value.trim().is_empty());
+            let (canonical_url, canonical_source) = if let Some(val) = explicit_canonical {
+                (Some(val), SeoFieldSource::Explicit)
+            } else if let Some(val) = generated.canonical_url.clone() {
+                (Some(val), SeoFieldSource::Generated)
+            } else {
+                (None, SeoFieldSource::Fallback)
+            };
+
+            let explicit_keywords = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.keywords.clone()));
+            let (keywords, keywords_source) = if let Some(kw) = explicit_keywords {
+                (Some(kw), SeoFieldSource::Explicit)
+            } else if let Some(kw) = generated.keywords.clone() {
+                (Some(kw), SeoFieldSource::Generated)
+            } else {
+                (None, SeoFieldSource::Fallback)
+            };
+
+            let explicit_og_title = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_title.clone()));
+            let explicit_og_desc = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_description.clone()));
+            let explicit_og_image = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_image.clone()));
+            let (og_title, og_desc, og_source) = if explicit_og_title.is_some()
+                || explicit_og_desc.is_some()
+                || explicit_og_image.is_some()
+            {
+                (explicit_og_title, explicit_og_desc, SeoFieldSource::Explicit)
+            } else if generated.og_title.is_some() || generated.og_description.is_some() {
+                (
+                    generated.og_title.clone(),
+                    generated.og_description.clone(),
+                    SeoFieldSource::Generated,
+                )
+            } else {
+                (
+                    state.open_graph.title.clone(),
+                    state.open_graph.description.clone(),
+                    SeoFieldSource::Fallback,
+                )
+            };
+
             let structured_data_present = explicit.meta.structured_data.is_some();
+            let structured_data_source = if structured_data_present {
+                SeoFieldSource::Explicit
+            } else {
+                SeoFieldSource::Fallback
+            };
+
             Some(SeoMetaRecord {
                 target_kind: state.target_kind,
                 target_id: state.target_id,
@@ -580,32 +649,19 @@ fn build_diagnostics_meta_record(
                     .collect(),
                 noindex: explicit.meta.no_index,
                 nofollow: explicit.meta.no_follow,
-                canonical_url: explicit.meta.canonical_url.clone(),
+                canonical_url: canonical_url.clone(),
                 translation: SeoMetaTranslationRecord {
                     locale: translation
                         .as_ref()
                         .map(|item| item.locale.clone())
                         .unwrap_or(resolved.effective_locale),
-                    title: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.title.clone()))
-                        .or(Some(state.title)),
-                    description: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.description.clone()))
-                        .or(state.description),
-                    keywords: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.keywords.clone())),
-                    og_title: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.og_title.clone())),
-                    og_description: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.og_description.clone())),
-                    og_image: translation
-                        .as_ref()
-                        .and_then(|item| trimmed_option(item.og_image.clone())),
+                    title,
+                    description: description.clone(),
+                    keywords: keywords.clone(),
+                    og_title,
+                    og_description: og_desc,
+                    og_image: explicit_og_image
+                        .or_else(|| first_open_graph_image_url(&state.open_graph)),
                 },
                 source: "explicit".to_string(),
                 open_graph: Some(state.open_graph),
@@ -615,22 +671,29 @@ fn build_diagnostics_meta_record(
                     .clone()
                     .map(async_graphql::Json),
                 effective_state: SeoDocumentEffectiveState {
-                    title: diagnostic_field_state(SeoFieldSource::Explicit, title_present),
-                    description: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        description_present,
-                    ),
+                    title: diagnostic_field_state(title_source, true),
+                    description: diagnostic_field_state(desc_source, description.is_some()),
                     canonical_url: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        canonical_present,
+                        canonical_source,
+                        canonical_url.is_some(),
                     ),
-                    keywords: diagnostic_field_state(SeoFieldSource::Explicit, keywords_present),
+                    keywords: diagnostic_field_state(keywords_source, keywords.is_some()),
                     robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
-                    open_graph: diagnostic_field_state(SeoFieldSource::Explicit, true),
-                    twitter: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    open_graph: diagnostic_field_state(og_source, true),
+                    twitter: diagnostic_field_state(
+                        if generated.twitter_title.is_some()
+                            || generated.twitter_description.is_some()
+                        {
+                            SeoFieldSource::Generated
+                        } else {
+                            SeoFieldSource::Explicit
+                        },
+                        generated.twitter_title.is_some()
+                            || generated.twitter_description.is_some(),
+                    ),
                     structured_data: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        structured_data_present,
+                        structured_data_source,
+                        structured_data_present || !state.structured_data.is_null(),
                     ),
                 },
             })
@@ -742,28 +805,24 @@ fn build_diagnostics_meta_record(
                 &settings.template_defaults,
                 settings.template_overrides.get(state.target_kind.as_str()),
             );
-            let generated_source = generated.title.is_some()
-                || generated.description.is_some()
-                || generated.canonical_url.is_some()
-                || generated.keywords.is_some()
-                || generated.og_title.is_some()
-                || generated.og_description.is_some()
-                || generated.robots.is_some()
-                || generated.twitter_title.is_some()
-                || generated.twitter_description.is_some();
-            let source = if generated_source {
-                SeoFieldSource::Generated
-            } else {
-                SeoFieldSource::Fallback
-            };
             let title = generated
                 .title
                 .clone()
                 .unwrap_or_else(|| state.title.clone());
+            let title_source = if generated.title.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
             let description = generated
                 .description
                 .clone()
                 .or_else(|| state.description.clone());
+            let desc_source = if generated.description.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
             let og_title = generated
                 .og_title
                 .clone()
@@ -772,7 +831,47 @@ fn build_diagnostics_meta_record(
                 .og_description
                 .clone()
                 .or_else(|| state.open_graph.description.clone());
+            let og_source = if generated.og_title.is_some() || generated.og_description.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
             let canonical_url = generated.canonical_url.clone();
+            let canonical_source = if generated.canonical_url.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
+            let keywords_source = if generated.keywords.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
+            let robots_source = if generated.robots.is_some() {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
+            let twitter_source = if generated.twitter_title.is_some()
+                || generated.twitter_description.is_some()
+            {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
+
+            let generated_source = title_source == SeoFieldSource::Generated
+                || desc_source == SeoFieldSource::Generated
+                || canonical_source == SeoFieldSource::Generated
+                || keywords_source == SeoFieldSource::Generated
+                || og_source == SeoFieldSource::Generated
+                || robots_source == SeoFieldSource::Generated
+                || twitter_source == SeoFieldSource::Generated;
+            let source = if generated_source {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
             let mut translation = if source == SeoFieldSource::Generated {
                 generated_translation(&generated, state.effective_locale.clone())
             } else {
@@ -803,17 +902,20 @@ fn build_diagnostics_meta_record(
                 open_graph: Some(state.open_graph),
                 structured_data: Some(async_graphql::Json(state.structured_data)),
                 effective_state: SeoDocumentEffectiveState {
-                    title: diagnostic_field_state(source, true),
-                    description: diagnostic_field_state(source, description.is_some()),
-                    canonical_url: diagnostic_field_state(source, canonical_url.is_some()),
-                    keywords: diagnostic_field_state(source, generated.keywords.is_some()),
-                    robots: diagnostic_field_state(source, generated.robots.is_some()),
+                    title: diagnostic_field_state(title_source, true),
+                    description: diagnostic_field_state(desc_source, description.is_some()),
+                    canonical_url: diagnostic_field_state(
+                        canonical_source,
+                        canonical_url.is_some(),
+                    ),
+                    keywords: diagnostic_field_state(keywords_source, generated.keywords.is_some()),
+                    robots: diagnostic_field_state(robots_source, generated.robots.is_some()),
                     open_graph: diagnostic_field_state(
-                        source,
+                        og_source,
                         og_title.is_some() || og_description.is_some(),
                     ),
                     twitter: diagnostic_field_state(
-                        source,
+                        twitter_source,
                         generated.twitter_title.is_some()
                             || generated.twitter_description.is_some(),
                     ),
@@ -840,38 +942,109 @@ fn build_diagnostics_page_context(
             |item| item.locale.as_str(),
         );
         let effective_translation = translation.item.cloned();
-        let title = effective_translation
+        let generated = render_generated_record(
+            &state,
+            &settings.template_defaults,
+            settings.template_overrides.get(state.target_kind.as_str()),
+        );
+
+        let explicit_title = effective_translation
             .as_ref()
-            .and_then(|item| trimmed_option(item.title.clone()))
-            .unwrap_or_else(|| state.title.clone());
-        let description = effective_translation
+            .and_then(|item| trimmed_option(item.title.clone()));
+        let (title, title_source) = if let Some(title) = explicit_title {
+            (title, SeoFieldSource::Explicit)
+        } else if let Some(title) = generated.title.clone() {
+            (title, SeoFieldSource::Generated)
+        } else {
+            (state.title.clone(), SeoFieldSource::Fallback)
+        };
+
+        let explicit_description = effective_translation
             .as_ref()
-            .and_then(|item| trimmed_option(item.description.clone()))
-            .or(state.description.clone());
+            .and_then(|item| trimmed_option(item.description.clone()));
+        let (description, description_source) = if let Some(description) = explicit_description {
+            (Some(description), SeoFieldSource::Explicit)
+        } else if let Some(description) = generated.description.clone() {
+            (Some(description), SeoFieldSource::Generated)
+        } else {
+            (state.description.clone(), SeoFieldSource::Fallback)
+        };
+
         let effective_locale = translation.effective_locale;
-        let canonical_url = explicit
+
+        let explicit_canonical = explicit
             .meta
             .canonical_url
             .clone()
-            .filter(|value| !value.trim().is_empty())
-            .map(|value| canonical_url_for_locale(effective_locale.as_str(), value.as_str()))
-            .unwrap_or_else(|| {
-                locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str())
-            });
+            .filter(|value| !value.trim().is_empty());
+        let (canonical_url, canonical_source) = if let Some(value) = explicit_canonical {
+            (
+                canonical_url_for_locale(effective_locale.as_str(), value.as_str()),
+                SeoFieldSource::Explicit,
+            )
+        } else if let Some(value) = generated.canonical_url.as_deref() {
+            (
+                canonical_url_for_locale(effective_locale.as_str(), value),
+                SeoFieldSource::Generated,
+            )
+        } else {
+            (
+                locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()),
+                SeoFieldSource::Fallback,
+            )
+        };
+
+        let explicit_og_title = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_title.clone()));
+        let explicit_og_desc = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_description.clone()));
+        let explicit_og_image = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.og_image.clone()));
+        let (og_title, og_desc, og_source) = if explicit_og_title.is_some()
+            || explicit_og_desc.is_some()
+            || explicit_og_image.is_some()
+        {
+            (explicit_og_title, explicit_og_desc, SeoFieldSource::Explicit)
+        } else if generated.og_title.is_some() || generated.og_description.is_some() {
+            (
+                generated.og_title.clone(),
+                generated.og_description.clone(),
+                SeoFieldSource::Generated,
+            )
+        } else {
+            (None, None, SeoFieldSource::Fallback)
+        };
+
         let open_graph = merge_open_graph(
             &state.open_graph,
-            effective_translation
-                .as_ref()
-                .and_then(|item| trimmed_option(item.og_title.clone())),
-            effective_translation
-                .as_ref()
-                .and_then(|item| trimmed_option(item.og_description.clone())),
-            effective_translation
-                .as_ref()
-                .and_then(|item| trimmed_option(item.og_image.clone())),
+            og_title,
+            og_desc,
+            explicit_og_image,
             canonical_url.as_str(),
             effective_locale.as_str(),
         );
+
+        let (keywords, keywords_source) = if let Some(k) = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.keywords.clone()))
+        {
+            (Some(k), SeoFieldSource::Explicit)
+        } else if let Some(k) = generated.keywords.clone() {
+            (Some(k), SeoFieldSource::Generated)
+        } else {
+            (None, SeoFieldSource::Fallback)
+        };
+
+        let (structured_data, structured_data_source) =
+            if let Some(value) = explicit.meta.structured_data.clone() {
+                (value, SeoFieldSource::Explicit)
+            } else {
+                (state.structured_data, SeoFieldSource::Fallback)
+            };
+        let structured_data_present = !structured_data.is_null();
 
         return SeoPageContext {
             route: SeoRouteContext {
@@ -889,57 +1062,44 @@ fn build_diagnostics_page_context(
             },
             document: build_document(
                 title,
-                description,
+                description.clone(),
                 apply_robots(
                     explicit.meta.no_index,
                     explicit.meta.no_follow,
                     settings.default_robots.as_slice(),
                 ),
                 Some(open_graph),
-                explicit
-                    .meta
-                    .structured_data
-                    .clone()
-                    .unwrap_or(state.structured_data),
-                effective_translation
-                    .as_ref()
-                    .and_then(|item| trimmed_option(item.keywords.clone())),
+                structured_data,
+                keywords.clone(),
                 canonical_url.as_str(),
                 effective_locale.as_str(),
                 SeoDocumentEffectiveState {
-                    title: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    title: diagnostic_field_state(title_source, true),
                     description: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        effective_translation
-                            .as_ref()
-                            .and_then(|item| trimmed_option(item.description.clone()))
-                            .is_some(),
+                        description_source,
+                        description.is_some(),
                     ),
-                    canonical_url: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        explicit
-                            .meta
-                            .canonical_url
-                            .as_deref()
-                            .is_some_and(|value| !value.trim().is_empty()),
-                    ),
-                    keywords: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        effective_translation
-                            .as_ref()
-                            .and_then(|item| trimmed_option(item.keywords.clone()))
-                            .is_some(),
-                    ),
+                    canonical_url: diagnostic_field_state(canonical_source, true),
+                    keywords: diagnostic_field_state(keywords_source, keywords.is_some()),
                     robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
-                    open_graph: diagnostic_field_state(SeoFieldSource::Explicit, true),
-                    twitter: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    open_graph: diagnostic_field_state(og_source, true),
+                    twitter: diagnostic_field_state(
+                        if generated.twitter_title.is_some()
+                            || generated.twitter_description.is_some()
+                        {
+                            SeoFieldSource::Generated
+                        } else {
+                            SeoFieldSource::Explicit
+                        },
+                        true,
+                    ),
                     structured_data: diagnostic_field_state(
-                        SeoFieldSource::Explicit,
-                        explicit.meta.structured_data.is_some(),
+                        structured_data_source,
+                        structured_data_present,
                     ),
                 },
-                None,
-                None,
+                generated.twitter_title,
+                generated.twitter_description,
             ),
         };
     }
@@ -949,16 +1109,7 @@ fn build_diagnostics_page_context(
         &settings.template_defaults,
         settings.template_overrides.get(state.target_kind.as_str()),
     );
-    let generated_source = generated.title.is_some()
-        || generated.description.is_some()
-        || generated.canonical_url.is_some()
-        || generated.keywords.is_some()
-        || generated.robots.is_some()
-        || generated.og_title.is_some()
-        || generated.og_description.is_some()
-        || generated.twitter_title.is_some()
-        || generated.twitter_description.is_some();
-    let source = if generated_source {
+    let title_source = if generated.title.is_some() {
         SeoFieldSource::Generated
     } else {
         SeoFieldSource::Fallback
@@ -967,10 +1118,20 @@ fn build_diagnostics_page_context(
         .title
         .clone()
         .unwrap_or_else(|| state.title.clone());
+    let desc_source = if generated.description.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
     let effective_description = generated
         .description
         .clone()
         .or_else(|| state.description.clone());
+    let canonical_source = if generated.canonical_url.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
     let canonical_url = generated
         .canonical_url
         .as_deref()
@@ -981,6 +1142,11 @@ fn build_diagnostics_page_context(
                 state.canonical_path.as_str(),
             )
         });
+    let og_source = if generated.og_title.is_some() || generated.og_description.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
     let open_graph = merge_open_graph(
         &state.open_graph,
         generated.og_title.clone(),
@@ -989,6 +1155,23 @@ fn build_diagnostics_page_context(
         canonical_url.as_str(),
         state.effective_locale.as_str(),
     );
+    let keywords_source = if generated.keywords.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
+    let robots_source = if generated.robots.is_some() {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
+    let twitter_source = if generated.twitter_title.is_some()
+        || generated.twitter_description.is_some()
+    {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
     SeoPageContext {
         route: SeoRouteContext {
             target_kind: Some(state.target_kind),
@@ -1017,21 +1200,14 @@ fn build_diagnostics_page_context(
             canonical_url.as_str(),
             state.effective_locale.as_str(),
             SeoDocumentEffectiveState {
-                title: diagnostic_field_state(source, true),
-                description: diagnostic_field_state(source, effective_description.is_some()),
-                canonical_url: diagnostic_field_state(source, true),
-                keywords: diagnostic_field_state(source, generated.keywords.is_some()),
-                robots: diagnostic_field_state(
-                    if generated.robots.is_some() {
-                        SeoFieldSource::Generated
-                    } else {
-                        SeoFieldSource::Fallback
-                    },
-                    true,
-                ),
-                open_graph: diagnostic_field_state(source, true),
+                title: diagnostic_field_state(title_source, true),
+                description: diagnostic_field_state(desc_source, effective_description.is_some()),
+                canonical_url: diagnostic_field_state(canonical_source, true),
+                keywords: diagnostic_field_state(keywords_source, generated.keywords.is_some()),
+                robots: diagnostic_field_state(robots_source, true),
+                open_graph: diagnostic_field_state(og_source, true),
                 twitter: diagnostic_field_state(
-                    source,
+                    twitter_source,
                     generated.twitter_title.is_some() || generated.twitter_description.is_some(),
                 ),
                 structured_data: diagnostic_field_state(SeoFieldSource::Fallback, true),

@@ -473,41 +473,56 @@ impl SeoService {
         let settings = self.load_settings(tenant_id).await?;
         let ttl_seconds = settings.redirect_cache_ttl_seconds.max(0) as u64;
         let expected_generation = current_redirect_cache_generation(tenant_id);
-        if ttl_seconds > 0
-            && let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await
-            && entry.loaded_at.elapsed().as_secs() < ttl_seconds
-            && entry.generation == expected_generation
-        {
-            return Ok(Arc::clone(&entry.redirects));
-        }
-        REDIRECT_CACHE.invalidate(&tenant_id).await;
 
-        let items = seo_redirect::Entity::find()
-            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
-            .order_by_asc(seo_redirect::Column::MatchType)
-            .order_by_asc(seo_redirect::Column::SourcePattern)
-            .order_by_asc(seo_redirect::Column::Id)
-            .all(&self.db)
+        if ttl_seconds == 0 {
+            let items = seo_redirect::Entity::find()
+                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                .order_by_asc(seo_redirect::Column::MatchType)
+                .order_by_asc(seo_redirect::Column::SourcePattern)
+                .order_by_asc(seo_redirect::Column::Id)
+                .all(&self.db)
+                .await
+                .map_err(|error| {
+                    SeoError::Database(sea_orm::DbErr::Custom(format!(
+                        "SEO redirect cache load failed: {error}"
+                    )))
+                })?;
+            return Ok(Arc::new(items));
+        }
+
+        if let Some(entry) = REDIRECT_CACHE.get(&tenant_id).await {
+            if entry.loaded_at.elapsed().as_secs() < ttl_seconds
+                && entry.generation == expected_generation
+            {
+                return Ok(Arc::clone(&entry.redirects));
+            }
+            REDIRECT_CACHE.invalidate(&tenant_id).await;
+        }
+
+        let db = self.db.clone();
+        let entry = REDIRECT_CACHE
+            .try_get_with(tenant_id, async move {
+                let items = seo_redirect::Entity::find()
+                    .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                    .order_by_asc(seo_redirect::Column::MatchType)
+                    .order_by_asc(seo_redirect::Column::SourcePattern)
+                    .order_by_asc(seo_redirect::Column::Id)
+                    .all(&db)
+                    .await?;
+                Ok::<_, sea_orm::DbErr>(Arc::new(RedirectCacheEntry {
+                    redirects: Arc::new(items),
+                    loaded_at: std::time::Instant::now(),
+                    generation: expected_generation,
+                }))
+            })
             .await
             .map_err(|error| {
                 SeoError::Database(sea_orm::DbErr::Custom(format!(
                     "SEO redirect cache load failed: {error}"
                 )))
             })?;
-        let redirects = Arc::new(items);
-        if ttl_seconds > 0 && current_redirect_cache_generation(tenant_id) == expected_generation {
-            REDIRECT_CACHE
-                .insert(
-                    tenant_id,
-                    Arc::new(RedirectCacheEntry {
-                        redirects: Arc::clone(&redirects),
-                        loaded_at: std::time::Instant::now(),
-                        generation: expected_generation,
-                    }),
-                )
-                .await;
-        }
-        Ok(redirects)
+
+        Ok(Arc::clone(&entry.redirects))
     }
 
     async fn load_redirect_lookup(&self, tenant_id: Uuid) -> SeoResult<Arc<RedirectLookup>> {

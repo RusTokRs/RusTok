@@ -20,7 +20,8 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
         .find("txn.commit().await?")
         .expect("redirect mutation must commit after the event row is written");
     let local_invalidate = redirects
-        .find("REDIRECT_CACHE.invalidate(&tenant.id).await")
+        .find("super::invalidate_redirect_cache(tenant.id).await")
+        .or_else(|| redirects.find("REDIRECT_CACHE.invalidate(&tenant.id).await"))
         .expect("mutating replica must invalidate after commit");
     assert!(event_publish < commit);
     assert!(commit < local_invalidate);
@@ -30,7 +31,7 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     assert!(services.contains("pub struct SeoRedirectCacheCursor"));
     assert!(services.contains("pub async fn redirect_cache_change_count"));
     assert!(services.contains(".count(db)"));
-    assert!(services.contains("Column::CreatedAt.gt(created_at.clone())"));
+    assert!(services.contains("Column::CreatedAt.gt(created_at"));
     assert!(services.contains("Column::CreatedAt.eq(created_at)"));
     assert!(services.contains("Column::Id.gt(cursor.id)"));
     assert!(services.contains(".limit(limit.clamp(1, 1_000))"));

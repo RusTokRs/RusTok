@@ -1,8 +1,5 @@
-use chrono::Utc;
 use sea_orm::EntityTrait;
 use sea_orm::prelude::*;
-
-use rustok_core::generate_id;
 
 pub use rustok_tenant::entities::tenant::{self, ActiveModel, Column, Entity, Model, Relation};
 

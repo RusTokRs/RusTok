@@ -52,8 +52,12 @@ fn marketplace_listing_legacy_provenance_is_truthful_and_irreversible() {
         );
     }
 
+    assert!(
+        storage.contains("actor_id: Set(Some(params.actor_id))")
+            || storage.contains("actor_id: Set(Some(actor_id))"),
+        "listing event storage is missing actor_id attribution"
+    );
     for marker in [
-        "actor_id: Set(Some(actor_id))",
         "locale: Set(Some(locale))",
         "MarketplaceListingEventProvenance::Command",
         "command listing event is missing actor or locale attribution",
