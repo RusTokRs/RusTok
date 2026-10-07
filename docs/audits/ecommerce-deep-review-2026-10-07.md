@@ -1716,23 +1716,31 @@ does not exist in the tree; the diagnostics they pin (`GraphqlReadContext` with 
 `transport/graphql_error_safety.rs`) have no caller anywhere in the workspace. Repairing that contour is
 the same owner decision as ECOM-VERIFY-01, not a review fix.
 
-**Caller-less product-admin transport (found while locating the allowances).** The same family is dead
-wherever a verifier does not pin it. `transport/admin_catalog_native.rs` and
+**Caller-less product-admin transport (found while locating the allowances).** The same family
+is dead wherever a verifier does not pin it. `transport/admin_catalog_native.rs` and
 `transport/admin_catalog_graphql.rs` (233 lines) have no caller in the workspace — the admin product
 list resolves through `transport.rs` → `graphql_adapter::fetch_products`, not through them — yet
 `verify-product-admin-boundary` (green on this tree *and* on `origin/main`) asserts the native file
 exists, and the evidence review
-`crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json:41`
-still claims "The Product Admin list remains native-first through admin_catalog_native". The claim and
-the code disagree. Five fallback wrappers of `transport.rs` (`set_category_schema_mode`,
-`create_product_attribute_schema_group`, `create_category_attribute_group`, `bind_schema_attribute`,
-`bind_category_attribute`), their ten `pub(super)` counterparts in
-`transport/{graphql_adapter,native_server_adapter}.rs`, the five `*_MUTATION` constants and the five
-`product_admin_*_native` server functions they call are equally caller-less; the constants are pinned
-by `verify-product-admin-fallback-mutation-error-safety.mjs` and the server functions by
-`verify-product-admin-boundary` (green), so deleting the cluster is a re-pin as well. Deleting either
-the two modules or the cluster without re-pinning turns a green verifier red — the reason this pass
-left both in place.
+`admin-primary-graphql-read-error-safety-source-review.json:41` (under
+`crates/modules/rustok-product/contracts/evidence/`) still claims "The Product Admin list remains
+native-first through admin_catalog_native". The claim and the code disagree. Five fallback wrappers
+of `transport.rs` (`set_category_schema_mode`, `create_product_attribute_schema_group`,
+`create_category_attribute_group`, `bind_schema_attribute`, `bind_category_attribute`), their ten
+`pub(super)` counterparts in `transport/{graphql_adapter,native_server_adapter}.rs`, the five
+`*_MUTATION` constants and the five `product_admin_*_native` server functions they call are equally
+caller-less; the constants are pinned by
+`verify-product-admin-fallback-mutation-error-safety.mjs` and the server functions by
+`verify-product-admin-boundary` (green), so deleting the cluster is a re-pin as well. Deleting
+either the two modules or the cluster without re-pinning turns a green verifier red — the reason
+this pass left both in place.
+
+The gate tail also says what the missing facade is supposed to be, which is the useful half of the
+owner decision: `catalog_transport.rs` exposes the read operations with `admin_catalog_native::…`
+first, an `Err(_) =>` fallback into `GraphqlReadContext::for_…` before `admin_catalog_graphql::…`, a
+`legacy::fetch_…` call per operation, `.map_err(|error| context.map_error(error))` on exactly six
+read mappers, and the product-list order native → context → GraphQL. The five `for_*` constructors
+are that facade's building blocks, not accidental leftovers.
 
 **Raw SQL without a tenant predicate.** 20 non-migration `Statement::from_string` /
 `from_sql_and_values` sites keep no `tenant_id` inside a 25-line window. All 20 were read individually
@@ -1826,4 +1834,5 @@ What the comparison says about this change set:
 - Must not be borrowed: best-effort compensation that only logs the failure (that is ECOM-COMP-01/02
   here), garbage-collected workflow logs as the audit trail, and the absence of a transactional event
   contract.
+
 
