@@ -29,9 +29,9 @@
 //! keeping a private copy of the platform table.
 //!
 //! Table source: ISO 4217 (the currency list is the platform's, taken from the former
-//! `rustok-cart::services::cart::helpers` table). `MGA` and `MRU` are non-decimal ratios in ISO 4217
-//! (1 ariary = 5 iraimbilanja) but are recorded there with exponent 2, which is what the platform
-//! table does as well.
+//! `rustok-cart::services::cart::helpers` table). `MGA` and `MRU` are non-decimal ratios in
+//! ISO 4217 (1 ariary = 5 iraimbilanja) but are recorded there with exponent 2, which is what the
+//! platform table does as well.
 
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::{Decimal, RoundingStrategy};
@@ -70,7 +70,8 @@ pub const UNDEFINED_MINOR_UNIT_CURRENCIES: &[&str] = &[
 /// Failure modes of a money conversion.
 ///
 /// Every variant is a caller-visible contract violation; none of them is ever swallowed by this
-/// module. `amount` fields carry the `Decimal` rendering so an operator can see the offending value.
+/// module. `amount` fields carry the `Decimal` rendering so an operator can see the offending
+/// value.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MoneyError {
     /// The code is not a three-letter alphabetic ISO 4217 style code.
