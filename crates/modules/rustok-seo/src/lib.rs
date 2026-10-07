@@ -95,6 +95,33 @@ impl RusToKModule for SeoModule {
             Permission::SEO_MANAGE,
         ]
     }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut rustok_core::ModuleEventListenerRegistry,
+        ctx: &rustok_core::ModuleEventListenerContext<'_>,
+    ) {
+        let event_bus = ctx
+            .extensions
+            .get::<rustok_outbox::TransactionalEventBus>()
+            .cloned()
+            .unwrap_or_else(|| {
+                let transport: std::sync::Arc<dyn rustok_core::events::EventTransport> =
+                    std::sync::Arc::new(rustok_outbox::OutboxTransport::new(ctx.db.clone()));
+                rustok_outbox::TransactionalEventBus::new(transport)
+            });
+        let seo_registry = ctx
+            .extensions
+            .get::<rustok_seo_targets::SeoTargetRegistry>()
+            .cloned()
+            .unwrap_or_default();
+
+        registry.register(services::SeoCanonicalUrlRedirectHandler::new(
+            ctx.db.clone(),
+            event_bus,
+            std::sync::Arc::new(seo_registry),
+        ));
+    }
 }
 
 #[cfg(feature = "server")]

@@ -333,6 +333,41 @@ pub fn SeoEntityPanel(
         });
     });
 
+    let ai_target_kind = target_kind.clone();
+    let generate_ai = Callback::new(move |()| {
+        let Some(entity_id) = target_id.get_untracked().filter(|id| !id.trim().is_empty()) else {
+            return;
+        };
+        let ai_target_kind = ai_target_kind.clone();
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let ui_locale = locale.get_untracked();
+        busy_key.set(Some("ai_generate".to_string()));
+        status_message.set(None);
+        spawn_local(async move {
+            match transport::generate_seo_meta(
+                token_value,
+                tenant_value,
+                ai_target_kind,
+                entity_id,
+                Some(ui_locale.clone()),
+            )
+            .await
+            {
+                Ok(generated) => {
+                    form.update(|draft| draft.apply_generated(&generated));
+                    status_message.set(Some(tr(
+                        Some(ui_locale.as_str()),
+                        "✨ AI metadata successfully generated and filled into form draft.",
+                        "✨ Метаданные сгенерированы AI и подставлены в черновик формы.",
+                    )));
+                }
+                Err(err) => status_message.set(Some(err.to_string())),
+            }
+            busy_key.set(None);
+        });
+    });
+
     view! {
         <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div class="space-y-2">
@@ -548,6 +583,15 @@ pub fn SeoEntityPanel(
                                 on:click=move |_| publish_revision.run(())
                             >
                                 {move || tr(Some(locale.get().as_str()), "Publish revision", "Опубликовать ревизию")}
+                            </button>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/20 disabled:opacity-50"
+                                disabled=move || busy_key.get().is_some() || normalized_locale(locale.get()).is_none()
+                                on:click=move |_| generate_ai.run(())
+                            >
+                                "✨ "
+                                {move || tr(Some(locale.get().as_str()), "AI Smart Fill", "AI Автозаполнение")}
                             </button>
                             <Show when=move || busy_key.get().is_some()>
                                 <span class="inline-flex items-center text-xs text-muted-foreground">

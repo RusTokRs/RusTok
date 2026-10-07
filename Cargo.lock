@@ -17977,6 +17977,7 @@ dependencies = [
  "async-trait",
  "rustok-core",
  "rustok-outbox",
+ "schemars 1.2.2",
  "sea-orm",
  "serde",
  "serde_json",
@@ -18305,6 +18306,7 @@ dependencies = [
 name = "rustok-taxonomy"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "rustok-api",
@@ -18312,6 +18314,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-seo-targets",
  "rustok-test-utils",
  "rustok-translation-targets",
  "sea-orm",

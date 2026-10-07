@@ -7,8 +7,32 @@ use crate::model::{SeoMetaMutationInput, SeoMetaView, SeoRevisionView};
 pub type ApiError = GraphqlHttpError;
 
 const SEO_META_QUERY: &str = "query SeoEntityPanelMeta($targetKind: SeoTargetSlug!, $targetId: UUID!, $locale: String) { seoMeta(targetKind: $targetKind, targetId: $targetId, locale: $locale) { targetKind targetId requestedLocale effectiveLocale availableLocales noindex nofollow canonicalUrl source translation { locale title description keywords ogTitle ogDescription ogImage } structuredData } }";
+const GENERATE_SEO_META_QUERY: &str = "query SeoEntityPanelGenerate($targetKind: SeoTargetSlug!, $targetId: UUID!, $locale: String) { generateSeoMetadata(targetKind: $targetKind, targetId: $targetId, locale: $locale) { metaTitle metaDescription metaKeywords ogTitle ogDescription canonicalUrl robots } }";
 const UPSERT_SEO_META_MUTATION: &str = "mutation SeoEntityPanelUpsert($input: SeoMetaInput!) { upsertSeoMeta(input: $input) { targetKind targetId requestedLocale effectiveLocale availableLocales noindex nofollow canonicalUrl source translation { locale title description keywords ogTitle ogDescription ogImage } structuredData } }";
 const PUBLISH_REVISION_MUTATION: &str = "mutation SeoEntityPanelPublish($targetKind: SeoTargetSlug!, $targetId: UUID!, $note: String) { publishSeoRevision(targetKind: $targetKind, targetId: $targetId, note: $note) { revision } }";
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GeneratedSeoMetaView {
+    #[serde(rename = "metaTitle")]
+    pub meta_title: Option<String>,
+    #[serde(rename = "metaDescription")]
+    pub meta_description: Option<String>,
+    #[serde(rename = "metaKeywords")]
+    pub meta_keywords: Option<String>,
+    #[serde(rename = "ogTitle")]
+    pub og_title: Option<String>,
+    #[serde(rename = "ogDescription")]
+    pub og_description: Option<String>,
+    #[serde(rename = "canonicalUrl")]
+    pub canonical_url: Option<String>,
+    pub robots: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GenerateSeoMetaResponse {
+    #[serde(rename = "generateSeoMetadata")]
+    generate_seo_metadata: GeneratedSeoMetaView,
+}
 
 #[derive(Debug, Deserialize)]
 struct SeoMetaResponse {
@@ -163,6 +187,41 @@ pub async fn publish_seo_revision(
     )
     .await?;
     Ok(response.publish_seo_revision)
+}
+
+fn generate_seo_meta_request(
+    target_kind: SeoTargetSlug,
+    target_id: String,
+    locale: Option<String>,
+) -> GraphqlRequest<SeoMetaVariables> {
+    GraphqlRequest::new(
+        GENERATE_SEO_META_QUERY,
+        Some(SeoMetaVariables {
+            target_kind,
+            target_id,
+            locale,
+        }),
+    )
+}
+
+pub async fn generate_seo_meta(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    target_kind: SeoTargetSlug,
+    target_id: String,
+    locale: Option<String>,
+) -> Result<GeneratedSeoMetaView, ApiError> {
+    let graphql_request = generate_seo_meta_request(target_kind, target_id, locale);
+    let response: GenerateSeoMetaResponse = request(
+        graphql_request.query.as_str(),
+        graphql_request
+            .variables
+            .expect("generate seo meta variables"),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.generate_seo_metadata)
 }
 
 #[cfg(test)]

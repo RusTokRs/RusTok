@@ -21,9 +21,12 @@ mod owner_category_sync;
 mod owner_identity;
 mod owner_read;
 mod route_key_registry;
+pub mod seo_targets;
 pub mod services;
 mod translation_evidence;
 pub mod translation_target;
+
+pub use seo_targets::TaxonomyCategorySeoTargetProvider;
 
 pub use category_delete::TaxonomyCategoryDeleteCleanupPort;
 pub use category_hierarchy::{MAX_TAXONOMY_CATEGORY_DEPTH, lock_category_hierarchy_writer_in_tx};
@@ -108,6 +111,22 @@ impl RusToKModule for TaxonomyModule {
             Permission::TAXONOMY_LIST,
             Permission::TAXONOMY_MANAGE,
         ]
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        rustok_seo_targets::register_seo_target_provider(
+            extensions,
+            seo_targets::TaxonomyCategorySeoTargetProvider,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "taxonomy SEO target registration failed: {error}"
+            ))
+        })?;
+        Ok(())
     }
 }
 
