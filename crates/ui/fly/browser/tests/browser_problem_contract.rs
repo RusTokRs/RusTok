@@ -18,7 +18,9 @@ fn public_bundle_reports_typed_accessible_browser_problems() {
     let compact = compact_bundle();
     // Problems are announced through an assertive alert region...
     assert!(
-        compact.contains(r#"ensureStatus(adapter,PROBLEM_STATUS_SELECTOR,"problem","alert","assertive""#),
+        compact.contains(
+            r#"ensureStatus(adapter,PROBLEM_STATUS_SELECTOR,"problem","alert","assertive""#
+        ),
         "problem status must be an assertive alert region"
     );
     // ...and the shared status factory applies the requested role and live-region politeness.
