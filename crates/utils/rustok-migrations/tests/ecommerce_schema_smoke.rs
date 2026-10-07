@@ -81,7 +81,7 @@ async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
 
     assert_eq!(
         pricing
-            .get_price(variant_id, "EUR")
+            .get_price(tenant_id, variant_id, "EUR")
             .await
             .expect("pricing service should read decimal price"),
         Some(decimal("89.99"))

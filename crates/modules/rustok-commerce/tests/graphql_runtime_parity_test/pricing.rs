@@ -1031,7 +1031,7 @@ async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_sco
     );
 
     let persisted = PricingService::new(db.clone(), mock_transactional_event_bus())
-        .get_variant_prices(variant.id)
+        .get_variant_prices(tenant_id, variant.id)
         .await
         .expect("variant prices should load")
         .into_iter()
@@ -1122,7 +1122,7 @@ async fn admin_graphql_update_pricing_variant_price_rejects_price_list_scope_mis
     );
 
     let scoped_override = PricingService::new(db.clone(), mock_transactional_event_bus())
-        .get_variant_prices(variant.id)
+        .get_variant_prices(tenant_id, variant.id)
         .await
         .expect("variant prices should load")
         .into_iter()
@@ -1284,7 +1284,7 @@ async fn admin_graphql_apply_pricing_variant_discount_updates_base_row() {
     );
 
     let updated = PricingService::new(db.clone(), mock_transactional_event_bus())
-        .get_price(variant.id, "EUR")
+        .get_price(tenant_id, variant.id, "EUR")
         .await
         .expect("updated price should load");
     assert_eq!(updated, Some(Decimal::from_str("17.99").unwrap()));
@@ -1806,7 +1806,7 @@ async fn admin_graphql_update_price_list_scope_updates_active_option_and_rows() 
     );
 
     let scoped_row = PricingService::new(db.clone(), mock_transactional_event_bus())
-        .get_variant_prices(variant.id)
+        .get_variant_prices(tenant_id, variant.id)
         .await
         .expect("variant prices should load")
         .into_iter()
@@ -1909,7 +1909,7 @@ async fn admin_graphql_update_price_list_scope_clears_boundary_and_rows() {
     );
 
     let global_row = PricingService::new(db.clone(), mock_transactional_event_bus())
-        .get_variant_prices(variant.id)
+        .get_variant_prices(tenant_id, variant.id)
         .await
         .expect("variant prices should load")
         .into_iter()

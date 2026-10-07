@@ -737,7 +737,7 @@ impl PricingService {
             .await?;
         }
 
-        self.get_variant_prices(variant_id)
+        self.get_variant_prices(tenant_id, variant_id)
             .await?
             .into_iter()
             .find(|price| {
@@ -1099,12 +1099,34 @@ impl PricingService {
         Ok(())
     }
 
+    /// Tenant boundary of the price readers below.
+    ///
+    /// `price` rows carry no tenant column, so the variant row — which does —
+    /// owns the scope (AGENTS.md §7): a read addressed by `variant_id` alone
+    /// would answer for any tenant that names the identifier, and the caller has
+    /// no second check to lean on. `resolve_variant_price` states the same rule
+    /// inline; both now share this loader.
+    async fn ensure_variant_tenant(
+        &self,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<()> {
+        entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .map(|_| ())
+            .ok_or(CommerceError::VariantNotFound(variant_id))
+    }
+
     #[instrument(skip(self))]
     pub async fn get_price(
         &self,
+        tenant_id: Uuid,
         variant_id: Uuid,
         currency_code: &str,
     ) -> CommerceResult<Option<Decimal>> {
+        self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let price = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .filter(entities::price::Column::CurrencyCode.eq(currency_code))
@@ -1121,8 +1143,10 @@ impl PricingService {
     #[instrument(skip(self))]
     pub async fn get_variant_prices(
         &self,
+        tenant_id: Uuid,
         variant_id: Uuid,
     ) -> CommerceResult<Vec<entities::price::Model>> {
+        self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let prices = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .all(&self.db)
@@ -1152,11 +1176,7 @@ impl PricingService {
         let active_price_list_rule =
             resolve_price_list_rule(&self.db, tenant_id, active_price_list_id).await?;
 
-        entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        self.ensure_variant_tenant(tenant_id, variant_id).await?;
 
         // INVARIANT: `price` rows carry no tenant column; the tenant boundary of
         // this query is the `product_variant` row validated tenant-scoped above,
