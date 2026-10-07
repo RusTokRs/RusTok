@@ -18,7 +18,13 @@ pub struct RbacModulePermissionGroup {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RbacRoleInfo {
+    #[serde(default)]
+    pub id: Option<String>,
     pub slug: String,
     pub display_name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_system: bool,
     pub permissions: Vec<String>,
 }

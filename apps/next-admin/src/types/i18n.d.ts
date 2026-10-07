@@ -436,6 +436,132 @@ export type AppMessageKey =
   | 'profile.uiLocaleLabel'
   | 'profile-userLocaleLabel'
   | 'profile.userLocaleLabel'
+  | 'rbac-action-assign'
+  | 'rbac.action.assign'
+  | 'rbac-action-delete'
+  | 'rbac.action.delete'
+  | 'rbac-action-edit'
+  | 'rbac.action.edit'
+  | 'rbac-action-hide-perms'
+  | 'rbac.action.hide.perms'
+  | 'rbac-action-view-perms'
+  | 'rbac.action.view.perms'
+  | 'rbac-badge-custom'
+  | 'rbac.badge.custom'
+  | 'rbac-badge-system'
+  | 'rbac.badge.system'
+  | 'rbac-btn-assign-role'
+  | 'rbac.btn.assign.role'
+  | 'rbac-btn-cancel'
+  | 'rbac.btn.cancel'
+  | 'rbac-btn-create'
+  | 'rbac.btn.create'
+  | 'rbac-btn-create-role'
+  | 'rbac.btn.create.role'
+  | 'rbac-btn-delete'
+  | 'rbac.btn.delete'
+  | 'rbac-btn-deleting'
+  | 'rbac.btn.deleting'
+  | 'rbac-btn-save'
+  | 'rbac.btn.save'
+  | 'rbac-btn-saving'
+  | 'rbac.btn.saving'
+  | 'rbac-create-dialog-desc'
+  | 'rbac.create.dialog.desc'
+  | 'rbac-create-dialog-title'
+  | 'rbac.create.dialog.title'
+  | 'rbac-delete-dialog-desc'
+  | 'rbac.delete.dialog.desc'
+  | 'rbac-delete-dialog-title'
+  | 'rbac.delete.dialog.title'
+  | 'rbac-delete-dialog-warning'
+  | 'rbac.delete.dialog.warning'
+  | 'rbac-edit-dialog-desc'
+  | 'rbac.edit.dialog.desc'
+  | 'rbac-edit-dialog-title'
+  | 'rbac.edit.dialog.title'
+  | 'rbac-field-description'
+  | 'rbac.field.description'
+  | 'rbac-field-description-placeholder'
+  | 'rbac.field.description.placeholder'
+  | 'rbac-field-name'
+  | 'rbac.field.name'
+  | 'rbac-field-name-placeholder'
+  | 'rbac.field.name.placeholder'
+  | 'rbac-field-slug'
+  | 'rbac.field.slug'
+  | 'rbac-field-slug-help'
+  | 'rbac.field.slug.help'
+  | 'rbac-field-slug-placeholder'
+  | 'rbac.field.slug.placeholder'
+  | 'rbac-matrix-clear-all'
+  | 'rbac.matrix.clear.all'
+  | 'rbac-matrix-module-all'
+  | 'rbac.matrix.module.all'
+  | 'rbac-matrix-module-none'
+  | 'rbac.matrix.module.none'
+  | 'rbac-matrix-search-placeholder'
+  | 'rbac.matrix.search.placeholder'
+  | 'rbac-matrix-select-all'
+  | 'rbac.matrix.select.all'
+  | 'rbac-matrix-selected-count'
+  | 'rbac.matrix.selected.count'
+  | 'rbac-matrix-title'
+  | 'rbac.matrix.title'
+  | 'rbac-metrics-admin-roles'
+  | 'rbac.metrics.admin.roles'
+  | 'rbac-metrics-admin-roles-desc'
+  | 'rbac.metrics.admin.roles.desc'
+  | 'rbac-metrics-custom-roles'
+  | 'rbac.metrics.custom.roles'
+  | 'rbac-metrics-custom-roles-desc'
+  | 'rbac.metrics.custom.roles.desc'
+  | 'rbac-metrics-permissions'
+  | 'rbac.metrics.permissions'
+  | 'rbac-metrics-permissions-desc'
+  | 'rbac.metrics.permissions.desc'
+  | 'rbac-metrics-total-roles'
+  | 'rbac.metrics.total.roles'
+  | 'rbac-metrics-total-roles-desc'
+  | 'rbac.metrics.total.roles.desc'
+  | 'rbac-perms-granted-for'
+  | 'rbac.perms.granted.for'
+  | 'rbac-perms-total'
+  | 'rbac.perms.total'
+  | 'rbac-search-placeholder'
+  | 'rbac.search.placeholder'
+  | 'rbac-subtitle'
+  | 'rbac.subtitle'
+  | 'rbac-superadmin-locked-notice'
+  | 'rbac.superadmin.locked.notice'
+  | 'rbac-system-protected-tooltip'
+  | 'rbac.system.protected.tooltip'
+  | 'rbac-tab-permissions'
+  | 'rbac.tab.permissions'
+  | 'rbac-tab-roles'
+  | 'rbac.tab.roles'
+  | 'rbac-table-actions'
+  | 'rbac.table.actions'
+  | 'rbac-table-description'
+  | 'rbac.table.description'
+  | 'rbac-table-permissions'
+  | 'rbac.table.permissions'
+  | 'rbac-table-role'
+  | 'rbac.table.role'
+  | 'rbac-table-slug'
+  | 'rbac.table.slug'
+  | 'rbac-table-type'
+  | 'rbac.table.type'
+  | 'rbac-title'
+  | 'rbac.title'
+  | 'rbac-toast-create-success'
+  | 'rbac.toast.create.success'
+  | 'rbac-toast-delete-success'
+  | 'rbac.toast.delete.success'
+  | 'rbac-toast-error'
+  | 'rbac.toast.error'
+  | 'rbac-toast-update-success'
+  | 'rbac.toast.update.success'
   | 'register-badge'
   | 'register.badge'
   | 'register-emailLabel'
@@ -1764,6 +1890,132 @@ export interface AppMessageArgs {
   'profile-uiLocaleLabel'?: Record<string, never>;
   'profile.userLocaleLabel'?: Record<string, never>;
   'profile-userLocaleLabel'?: Record<string, never>;
+  'rbac.action.assign'?: Record<string, never>;
+  'rbac-action-assign'?: Record<string, never>;
+  'rbac.action.delete'?: Record<string, never>;
+  'rbac-action-delete'?: Record<string, never>;
+  'rbac.action.edit'?: Record<string, never>;
+  'rbac-action-edit'?: Record<string, never>;
+  'rbac.action.hide.perms'?: Record<string, never>;
+  'rbac-action-hide-perms'?: Record<string, never>;
+  'rbac.action.view.perms': { 'count': string | number | Date };
+  'rbac-action-view-perms': { 'count': string | number | Date };
+  'rbac.badge.custom'?: Record<string, never>;
+  'rbac-badge-custom'?: Record<string, never>;
+  'rbac.badge.system'?: Record<string, never>;
+  'rbac-badge-system'?: Record<string, never>;
+  'rbac.btn.assign.role'?: Record<string, never>;
+  'rbac-btn-assign-role'?: Record<string, never>;
+  'rbac.btn.cancel'?: Record<string, never>;
+  'rbac-btn-cancel'?: Record<string, never>;
+  'rbac.btn.create'?: Record<string, never>;
+  'rbac-btn-create'?: Record<string, never>;
+  'rbac.btn.create.role'?: Record<string, never>;
+  'rbac-btn-create-role'?: Record<string, never>;
+  'rbac.btn.delete'?: Record<string, never>;
+  'rbac-btn-delete'?: Record<string, never>;
+  'rbac.btn.deleting'?: Record<string, never>;
+  'rbac-btn-deleting'?: Record<string, never>;
+  'rbac.btn.save'?: Record<string, never>;
+  'rbac-btn-save'?: Record<string, never>;
+  'rbac.btn.saving'?: Record<string, never>;
+  'rbac-btn-saving'?: Record<string, never>;
+  'rbac.create.dialog.desc'?: Record<string, never>;
+  'rbac-create-dialog-desc'?: Record<string, never>;
+  'rbac.create.dialog.title'?: Record<string, never>;
+  'rbac-create-dialog-title'?: Record<string, never>;
+  'rbac.delete.dialog.desc'?: Record<string, never>;
+  'rbac-delete-dialog-desc'?: Record<string, never>;
+  'rbac.delete.dialog.title': { 'name': string | number | Date };
+  'rbac-delete-dialog-title': { 'name': string | number | Date };
+  'rbac.delete.dialog.warning'?: Record<string, never>;
+  'rbac-delete-dialog-warning'?: Record<string, never>;
+  'rbac.edit.dialog.desc'?: Record<string, never>;
+  'rbac-edit-dialog-desc'?: Record<string, never>;
+  'rbac.edit.dialog.title': { 'name': string | number | Date };
+  'rbac-edit-dialog-title': { 'name': string | number | Date };
+  'rbac.field.description'?: Record<string, never>;
+  'rbac-field-description'?: Record<string, never>;
+  'rbac.field.description.placeholder'?: Record<string, never>;
+  'rbac-field-description-placeholder'?: Record<string, never>;
+  'rbac.field.name'?: Record<string, never>;
+  'rbac-field-name'?: Record<string, never>;
+  'rbac.field.name.placeholder'?: Record<string, never>;
+  'rbac-field-name-placeholder'?: Record<string, never>;
+  'rbac.field.slug'?: Record<string, never>;
+  'rbac-field-slug'?: Record<string, never>;
+  'rbac.field.slug.help'?: Record<string, never>;
+  'rbac-field-slug-help'?: Record<string, never>;
+  'rbac.field.slug.placeholder'?: Record<string, never>;
+  'rbac-field-slug-placeholder'?: Record<string, never>;
+  'rbac.matrix.clear.all'?: Record<string, never>;
+  'rbac-matrix-clear-all'?: Record<string, never>;
+  'rbac.matrix.module.all'?: Record<string, never>;
+  'rbac-matrix-module-all'?: Record<string, never>;
+  'rbac.matrix.module.none'?: Record<string, never>;
+  'rbac-matrix-module-none'?: Record<string, never>;
+  'rbac.matrix.search.placeholder'?: Record<string, never>;
+  'rbac-matrix-search-placeholder'?: Record<string, never>;
+  'rbac.matrix.select.all'?: Record<string, never>;
+  'rbac-matrix-select-all'?: Record<string, never>;
+  'rbac.matrix.selected.count': { 'selected': string | number | Date; 'total': string | number | Date };
+  'rbac-matrix-selected-count': { 'selected': string | number | Date; 'total': string | number | Date };
+  'rbac.matrix.title'?: Record<string, never>;
+  'rbac-matrix-title'?: Record<string, never>;
+  'rbac.metrics.admin.roles'?: Record<string, never>;
+  'rbac-metrics-admin-roles'?: Record<string, never>;
+  'rbac.metrics.admin.roles.desc'?: Record<string, never>;
+  'rbac-metrics-admin-roles-desc'?: Record<string, never>;
+  'rbac.metrics.custom.roles'?: Record<string, never>;
+  'rbac-metrics-custom-roles'?: Record<string, never>;
+  'rbac.metrics.custom.roles.desc'?: Record<string, never>;
+  'rbac-metrics-custom-roles-desc'?: Record<string, never>;
+  'rbac.metrics.permissions'?: Record<string, never>;
+  'rbac-metrics-permissions'?: Record<string, never>;
+  'rbac.metrics.permissions.desc'?: Record<string, never>;
+  'rbac-metrics-permissions-desc'?: Record<string, never>;
+  'rbac.metrics.total.roles'?: Record<string, never>;
+  'rbac-metrics-total-roles'?: Record<string, never>;
+  'rbac.metrics.total.roles.desc'?: Record<string, never>;
+  'rbac-metrics-total-roles-desc'?: Record<string, never>;
+  'rbac.perms.granted.for': { 'name': string | number | Date };
+  'rbac-perms-granted-for': { 'name': string | number | Date };
+  'rbac.perms.total': { 'count': string | number | Date };
+  'rbac-perms-total': { 'count': string | number | Date };
+  'rbac.search.placeholder'?: Record<string, never>;
+  'rbac-search-placeholder'?: Record<string, never>;
+  'rbac.subtitle'?: Record<string, never>;
+  'rbac-subtitle'?: Record<string, never>;
+  'rbac.superadmin.locked.notice'?: Record<string, never>;
+  'rbac-superadmin-locked-notice'?: Record<string, never>;
+  'rbac.system.protected.tooltip'?: Record<string, never>;
+  'rbac-system-protected-tooltip'?: Record<string, never>;
+  'rbac.tab.permissions'?: Record<string, never>;
+  'rbac-tab-permissions'?: Record<string, never>;
+  'rbac.tab.roles': { 'count': string | number | Date };
+  'rbac-tab-roles': { 'count': string | number | Date };
+  'rbac.table.actions'?: Record<string, never>;
+  'rbac-table-actions'?: Record<string, never>;
+  'rbac.table.description'?: Record<string, never>;
+  'rbac-table-description'?: Record<string, never>;
+  'rbac.table.permissions'?: Record<string, never>;
+  'rbac-table-permissions'?: Record<string, never>;
+  'rbac.table.role'?: Record<string, never>;
+  'rbac-table-role'?: Record<string, never>;
+  'rbac.table.slug'?: Record<string, never>;
+  'rbac-table-slug'?: Record<string, never>;
+  'rbac.table.type'?: Record<string, never>;
+  'rbac-table-type'?: Record<string, never>;
+  'rbac.title'?: Record<string, never>;
+  'rbac-title'?: Record<string, never>;
+  'rbac.toast.create.success'?: Record<string, never>;
+  'rbac-toast-create-success'?: Record<string, never>;
+  'rbac.toast.delete.success'?: Record<string, never>;
+  'rbac-toast-delete-success'?: Record<string, never>;
+  'rbac.toast.error'?: Record<string, never>;
+  'rbac-toast-error'?: Record<string, never>;
+  'rbac.toast.update.success'?: Record<string, never>;
+  'rbac-toast-update-success'?: Record<string, never>;
   'register.badge'?: Record<string, never>;
   'register-badge'?: Record<string, never>;
   'register.emailLabel'?: Record<string, never>;

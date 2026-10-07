@@ -22,6 +22,8 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-graphql.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 tokio.workspace = true
 
 [features]

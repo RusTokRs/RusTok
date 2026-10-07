@@ -661,3 +661,78 @@ modules-depends_on = Depends on
 modules-toast-enabled = Module enabled successfully
 modules-toast-disabled = Module disabled successfully
 modules-error-load = Failed to load modules
+
+# RBAC Management
+rbac-title = Roles & Permissions
+rbac-subtitle = Manage access control, system roles, custom roles, and fine-grained permissions across all platform modules.
+rbac-tab-roles = Roles ({ $count })
+rbac-tab-permissions = Permissions Catalog
+rbac-btn-create-role = Create Role
+rbac-btn-assign-role = Assign Role to User
+rbac-metrics-total-roles = Platform Roles
+rbac-metrics-total-roles-desc = Active security archetypes
+rbac-metrics-permissions = Unique Permissions
+rbac-metrics-permissions-desc = Catalogued across all modules
+rbac-metrics-admin-roles = Administrative Roles
+rbac-metrics-admin-roles-desc = Super Admin & Admin tiers
+rbac-metrics-custom-roles = Custom Roles
+rbac-metrics-custom-roles-desc = Tenant-defined dynamic roles
+rbac-search-placeholder = Search roles or permissions...
+rbac-table-role = Role
+rbac-table-slug = Slug
+rbac-table-type = Type
+rbac-table-permissions = Permissions
+rbac-table-description = Description & Preview
+rbac-table-actions = Actions
+rbac-badge-system = System
+rbac-badge-custom = Custom
+rbac-action-edit = Edit Role & Permissions
+rbac-action-assign = Assign to User
+rbac-action-delete = Delete Role
+rbac-action-hide-perms = Hide permissions
+rbac-action-view-perms = View { $count } permissions
+rbac-perms-granted-for = Granted Permissions for { $name }:
+rbac-perms-total = { $count } total
+rbac-system-protected-tooltip = System roles cannot be deleted
+rbac-superadmin-locked-notice = Super Administrator possesses full immutable platform authority. All permissions are granted and cannot be restricted.
+
+# Permission Matrix
+rbac-matrix-title = Permission Matrix
+rbac-matrix-search-placeholder = Filter modules or permissions...
+rbac-matrix-select-all = Select All
+rbac-matrix-clear-all = Clear All
+rbac-matrix-selected-count = { $selected } of { $total } permissions selected
+rbac-matrix-module-all = Select All in Module
+rbac-matrix-module-none = Deselect All in Module
+
+# Create Role Dialog
+rbac-create-dialog-title = Create Custom Role
+rbac-create-dialog-desc = Define a new role and grant precise permissions across platform services.
+rbac-field-name = Role Name
+rbac-field-name-placeholder = e.g. Content Editor
+rbac-field-slug = Slug
+rbac-field-slug-placeholder = e.g. content_editor
+rbac-field-slug-help = Unique identifier using lowercase letters, numbers, hyphens or underscores.
+rbac-field-description = Description
+rbac-field-description-placeholder = What responsibilities and authority this role represents...
+rbac-btn-cancel = Cancel
+rbac-btn-create = Create Role
+rbac-btn-saving = Saving...
+
+# Edit Role Dialog
+rbac-edit-dialog-title = Edit Role: { $name }
+rbac-edit-dialog-desc = Modify role details and configure granted permissions in the matrix.
+rbac-btn-save = Save Changes
+
+# Delete Role Dialog
+rbac-delete-dialog-title = Delete Role: { $name }
+rbac-delete-dialog-desc = Are you sure you want to delete this custom role? This action cannot be undone.
+rbac-delete-dialog-warning = Built-in system roles cannot be deleted. Roles assigned to active users must be reassigned first.
+rbac-btn-delete = Delete Role
+rbac-btn-deleting = Deleting...
+
+# Toasts
+rbac-toast-create-success = Role created successfully
+rbac-toast-update-success = Role updated successfully
+rbac-toast-delete-success = Role deleted successfully
+rbac-toast-error = Operation failed
