@@ -947,6 +947,18 @@ pass. Also verified in this pass: no other migration or gate still installs
 name `checkout_operations` (the verifier forbids it), so the payment half of the contract stays
 binding-free.
 
+**Baseline note (2026-10-07, end of the branch).** The comparisons above were run against `a53a4dd`,
+the commit the branch was cut from. That commit is *not* an ancestor of the current `main`, and three
+verifiers (`verify-blog-storefront-boundary`, `verify-ffa-ui-boundary-sweep`,
+`verify-server-ai-optional-dependency`) pass there while failing on `main` itself, which makes
+`a53a4dd` an unsound baseline. Re-run against the real merge target, `origin/main` (`bb9357f`), the
+same 213 verifiers that mention any file this branch touches report **zero regressions and four
+improvements**: `verify-checkout-execution-admission-contract`,
+`verify-checkout-operation-event-contract`, `verify-money-path-query-indexes` and
+`verify-outbox-retention-and-event-metrics` are red on `main` and green here, and every other gate
+has the same verdict on both trees. The one verifier whose pin this branch deliberately invalidates
+(`verify-payment-checkout-compensation-local-context`) is red on `main` as well.
+
 *Also in this pass.* Remediation row 57: a compile error this review had introduced in the
 `rustok-commerce` migration registration (two migrations passed to one `Box::new`) is fixed and guarded
 by a new repository-wide verifier with a negative-fixture self-test, wired into the
