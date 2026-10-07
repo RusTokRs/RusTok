@@ -439,85 +439,6 @@ impl ProductCatalogSchemaService {
         Ok(result)
     }
 
-#[derive(FromQueryResult)]
-struct ProductAttributeValueLocaleRow {
-    attribute_id: Uuid,
-    locale: String,
-}
-
-/// Returns the first declared-locale violation of a required-locale rule, ordered by attribute id.
-///
-/// The check runs only when a rule declares `requiredLocales`, so tenants without the rule keep
-/// the single existing publish-requirement query.
-async fn load_missing_required_locales<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    product_id: Uuid,
-    required_locales_by_attribute: &HashMap<Uuid, Vec<String>>,
-    present_rows: &HashSet<Uuid>,
-) -> CommerceResult<Option<(Uuid, Vec<String>)>>
-where
-    C: ConnectionTrait,
-{
-    let mut attribute_ids = required_locales_by_attribute
-        .keys()
-        .copied()
-        .filter(|attribute_id| present_rows.contains(attribute_id))
-        .collect::<Vec<_>>();
-    if attribute_ids.is_empty() {
-        return Ok(None);
-    }
-    attribute_ids.sort();
-
-    let (placeholders, mut values) = uuid_filter_values(tenant_id, &attribute_ids);
-    let product_placeholder = format!("${}", values.len() + 1);
-    values.push(product_id.into());
-    let filled = ProductAttributeValueLocaleRow::find_by_statement(
-        Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            format!(
-                r#"
-                SELECT pav.attribute_id, pavt.locale
-                FROM product_attribute_values pav
-                JOIN product_attribute_value_translations pavt
-                  ON pavt.value_id = pav.id
-                WHERE pav.tenant_id = $1
-                  AND pav.attribute_id IN ({placeholders})
-                  AND pav.product_id = {product_placeholder}
-                  AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
-                "#
-            ),
-            values,
-        ),
-    )
-    .all(conn)
-    .await?;
-
-    let mut filled_locales: HashMap<Uuid, HashSet<String>> = HashMap::new();
-    for row in filled {
-        filled_locales
-            .entry(row.attribute_id)
-            .or_default()
-            .insert(row.locale);
-    }
-
-    for attribute_id in attribute_ids {
-        let Some(required) = required_locales_by_attribute.get(&attribute_id) else {
-            continue;
-        };
-        let filled = filled_locales.get(&attribute_id);
-        let missing = required
-            .iter()
-            .filter(|locale| !filled.is_some_and(|locales| locales.contains(locale.as_str())))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !missing.is_empty() {
-            return Ok(Some((attribute_id, missing)));
-        }
-    }
-    Ok(None)
-}
-
     pub async fn clear_detached_product_attribute_values(
         &self,
         tenant_id: Uuid,
@@ -609,4 +530,83 @@ fn canonical_value_locale(locale: &str) -> CommerceResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
         .map_err(|error| CommerceError::Validation(error.to_string()))
+}
+
+#[derive(FromQueryResult)]
+struct ProductAttributeValueLocaleRow {
+    attribute_id: Uuid,
+    locale: String,
+}
+
+/// Returns the first declared-locale violation of a required-locale rule, ordered by attribute id.
+///
+/// The check runs only when a rule declares `requiredLocales`, so tenants without the rule keep
+/// the single existing publish-requirement query.
+async fn load_missing_required_locales<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    required_locales_by_attribute: &HashMap<Uuid, Vec<String>>,
+    present_rows: &HashSet<Uuid>,
+) -> CommerceResult<Option<(Uuid, Vec<String>)>>
+where
+    C: ConnectionTrait,
+{
+    let mut attribute_ids = required_locales_by_attribute
+        .keys()
+        .copied()
+        .filter(|attribute_id| present_rows.contains(attribute_id))
+        .collect::<Vec<_>>();
+    if attribute_ids.is_empty() {
+        return Ok(None);
+    }
+    attribute_ids.sort();
+
+    let (placeholders, mut values) = uuid_filter_values(tenant_id, &attribute_ids);
+    let product_placeholder = format!("${}", values.len() + 1);
+    values.push(product_id.into());
+    let filled = ProductAttributeValueLocaleRow::find_by_statement(
+        Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            format!(
+                r#"
+                SELECT pav.attribute_id, pavt.locale
+                FROM product_attribute_values pav
+                JOIN product_attribute_value_translations pavt
+                  ON pavt.value_id = pav.id
+                WHERE pav.tenant_id = $1
+                  AND pav.attribute_id IN ({placeholders})
+                  AND pav.product_id = {product_placeholder}
+                  AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
+                "#
+            ),
+            values,
+        ),
+    )
+    .all(conn)
+    .await?;
+
+    let mut filled_locales: HashMap<Uuid, HashSet<String>> = HashMap::new();
+    for row in filled {
+        filled_locales
+            .entry(row.attribute_id)
+            .or_default()
+            .insert(row.locale);
+    }
+
+    for attribute_id in attribute_ids {
+        let Some(required) = required_locales_by_attribute.get(&attribute_id) else {
+            continue;
+        };
+        let filled = filled_locales.get(&attribute_id);
+        let missing = required
+            .iter()
+            .filter(|locale| !filled.is_some_and(|locales| locales.contains(locale.as_str())))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Ok(Some((attribute_id, missing)));
+        }
+    }
+    Ok(None)
 }

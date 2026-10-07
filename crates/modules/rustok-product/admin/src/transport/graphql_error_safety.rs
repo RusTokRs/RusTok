@@ -23,7 +23,6 @@ const PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY: &str = "product_admin_category_gr
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
-const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_mutations";
 const PRODUCT_ADMIN_FALLBACK_MUTATION_GRAPHQL_BOUNDARY: &str =
     "product_admin_fallback_graphql_mutations";
 
