@@ -183,7 +183,7 @@ async fn test_set_price_tier_persists_quantity_window_and_resolves() {
         .await
         .unwrap();
 
-    let prices = service.get_variant_prices(variant_id).await.unwrap();
+    let prices = service.get_variant_prices(tenant_id, variant_id).await.unwrap();
     let tier = prices
         .into_iter()
         .find(|price| price.min_quantity == Some(10) && price.max_quantity.is_none())
@@ -262,9 +262,9 @@ async fn test_set_price_multiple_currencies() {
         .await
         .unwrap();
 
-    let usd_price = service.get_price(variant_id, "USD").await.unwrap();
-    let eur_price = service.get_price(variant_id, "EUR").await.unwrap();
-    let gbp_price = service.get_price(variant_id, "GBP").await.unwrap();
+    let usd_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    let eur_price = service.get_price(tenant_id, variant_id, "EUR").await.unwrap();
+    let gbp_price = service.get_price(tenant_id, variant_id, "GBP").await.unwrap();
 
     assert_eq!(usd_price, Some(dec!(99.99)));
     assert_eq!(eur_price, Some(dec!(89.99)));
@@ -349,7 +349,7 @@ async fn test_set_price_update_existing() {
         .await
         .unwrap();
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(79.99)));
 }
 
@@ -415,9 +415,9 @@ async fn test_set_prices_bulk() {
 
     assert!(result.is_ok());
 
-    let usd_price = service.get_price(variant_id, "USD").await.unwrap();
-    let eur_price = service.get_price(variant_id, "EUR").await.unwrap();
-    let gbp_price = service.get_price(variant_id, "GBP").await.unwrap();
+    let usd_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    let eur_price = service.get_price(tenant_id, variant_id, "EUR").await.unwrap();
+    let gbp_price = service.get_price(tenant_id, variant_id, "GBP").await.unwrap();
 
     assert_eq!(usd_price, Some(dec!(99.99)));
     assert_eq!(eur_price, Some(dec!(89.99)));
@@ -668,7 +668,7 @@ async fn test_get_price_existing() {
         .await
         .unwrap();
 
-    let result = service.get_price(variant_id, "USD").await;
+    let result = service.get_price(tenant_id, variant_id, "USD").await;
 
     assert!(result.is_ok());
     let price = result.unwrap();
@@ -681,7 +681,7 @@ async fn test_get_price_nonexistent() {
     let tenant_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 
-    let result = service.get_price(variant_id, "EUR").await;
+    let result = service.get_price(tenant_id, variant_id, "EUR").await;
 
     assert!(result.is_ok());
     let price = result.unwrap();
@@ -705,7 +705,7 @@ async fn test_get_price_after_update() {
         .await
         .unwrap();
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(79.99)));
 }
 
@@ -729,7 +729,7 @@ async fn test_get_variant_prices_multiple() {
         .await
         .unwrap();
 
-    let result = service.get_variant_prices(variant_id).await;
+    let result = service.get_variant_prices(tenant_id, variant_id).await;
 
     assert!(result.is_ok());
     let prices = result.unwrap();
@@ -786,9 +786,42 @@ async fn test_get_variant_prices_empty() {
         .unwrap();
     let variant_id = product.variants[0].id;
 
-    let result = service.get_variant_prices(variant_id).await;
+    let result = service.get_variant_prices(tenant_id, variant_id).await;
 
     assert!(result.is_ok());
     let prices = result.unwrap();
     assert_eq!(prices.len(), 0);
+}
+
+#[tokio::test]
+async fn test_price_reads_are_tenant_scoped() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(42.00), None)
+        .await
+        .unwrap();
+
+    // `price` rows carry no tenant column; the variant owns the scope, so a
+    // foreign tenant naming the identifier is refused rather than answered.
+    let foreign_tenant_id = Uuid::new_v4();
+    let foreign_price = service.get_price(foreign_tenant_id, variant_id, "USD").await;
+    assert!(
+        matches!(foreign_price, Err(CommerceError::VariantNotFound(id)) if id == variant_id),
+        "a foreign tenant must not read this variant's price row: {foreign_price:?}"
+    );
+    let foreign_prices = service
+        .get_variant_prices(foreign_tenant_id, variant_id)
+        .await;
+    assert!(
+        matches!(foreign_prices, Err(CommerceError::VariantNotFound(id)) if id == variant_id),
+        "a foreign tenant must not list this variant's price rows"
+    );
+
+    // The owning tenant keeps its reads.
+    let owned_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    assert_eq!(owned_price, Some(dec!(42.00)));
 }

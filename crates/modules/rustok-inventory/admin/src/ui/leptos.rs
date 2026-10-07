@@ -922,7 +922,7 @@ fn localized_product_status(locale: Option<&str>, status: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn format_product_meta(locale: Option<&str>, product: &InventoryProductListItem) -> String {
     let vendor = product
         .vendor

@@ -22,6 +22,7 @@ pub mod id;
 pub mod metrics;
 pub mod migrations;
 pub mod module;
+pub mod money;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;

@@ -1,7 +1,7 @@
 # rustok-outbox / CRATE_API
 
 ## Public Modules
-`entity`, `migration`, `ports`, `relay`, `transactional`, `transport`.
+`entity`, `migration`, `ports`, `relay`, `retention`, `transactional`, `transport`.
 
 ## Primary Public Types and Signatures
 - `pub struct TransactionalEventBus`
@@ -19,6 +19,13 @@
 - `pub struct OutboxTransport`
 - `pub trait TransactionalEventWriter`
 - `pub struct SysEventsMigration`
+- `pub struct OutboxRetention`, `pub struct OutboxRetentionConfig`, `pub struct OutboxPruneReport`
+- `pub async fn OutboxRetention::prune_once(&self) -> Result<OutboxPruneReport>`
+- `pub fn OutboxRetentionConfig::validate(&self) -> Result<()>`
+- `pub const DEFAULT_OUTBOX_RETENTION_BATCH_SIZE: u64`
+- `pub async fn create_sys_events_schema(manager) -> Result<(), DbErr>` / `drop_sys_events_schema` (`migration`)
+- `pub async fn create_sys_events_claim_index(manager)` / `create_sys_events_retention_index(manager)` / `drop_sys_events_claim_index` / `drop_sys_events_retention_index` (`migration`)
+- `pub async fn create_sys_events_superseded_indexes(manager)` / `drop_sys_events_superseded_indexes` (`migration`)
 - `pub use entity::{Entity as SysEvents, Model as SysEvent}`
 
 ## Events
@@ -27,11 +34,15 @@
 - Relays root events through `EventTransport::publish`.
 - Relays bounded typed families through `EventTransport::publish_contract`.
 - Validates payload metadata against the durable row before dispatch.
+- Retains delivered rows for a configured window: `OutboxRetention::prune_once` deletes only
+  `dispatched` rows whose `dispatched_at` is older than the window, in bounded batches, and never
+  touches `pending` (still owed) or `failed` (DLQ) rows.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-core`
 - `rustok-api`
 - `rustok-events`
+- `rustok-telemetry` (retention counters and the run timestamp gauge)
 
 ## Common AI Mistakes
 - Publishes an event directly to a transport instead of the transactional bus inside the owner transaction.
@@ -48,6 +59,8 @@
 - Deserializes every outbox payload only as `EventEnvelope<DomainEvent>` and sends bounded-family events to the DLQ.
 - Trusts duplicated `sys_events` metadata without comparing it to the envelope.
 - Reimplements relay leases, retry, DLQ, or retention in an owner-specific writer.
+- Prunes `pending` or `failed` rows, or prunes without a bounded batch and a configured window.
+- Duplicates the `sys_events` DDL in a platform migration instead of calling the owner schema helper.
 
 ## Minimum Contract Set
 

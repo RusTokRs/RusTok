@@ -1,5 +1,4 @@
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
@@ -44,8 +43,10 @@ impl BootstrapService {
                 region_id: Set(None),
                 amount: Set(price.amount),
                 compare_at_amount: Set(price.compare_at_amount),
-                legacy_amount: Set(decimal_to_cents(price.amount)),
-                legacy_compare_at_amount: Set(price.compare_at_amount.and_then(decimal_to_cents)),
+                legacy_amount: Set(legacy_amount_units(price.amount)),
+                legacy_compare_at_amount: Set(price
+                    .compare_at_amount
+                    .and_then(legacy_amount_units)),
                 min_quantity: Set(None),
                 max_quantity: Set(None),
             })
@@ -90,6 +91,16 @@ impl BootstrapService {
     }
 }
 
-fn decimal_to_cents(amount: Decimal) -> Option<i64> {
-    (amount * Decimal::from(100)).round().to_i64()
+/// Exponent of the retained two-decimal pricing mirror columns.
+pub const LEGACY_AMOUNT_EXPONENT: u8 = 2;
+
+/// Converts a major-unit amount into the two-decimal units retained by the
+/// `legacy_amount` / `legacy_compare_at_amount` mirror columns.
+///
+/// The conversion itself belongs to the canonical money owner (`rustok_core::money`, see
+/// ECOM-MONEY-02 in `docs/audits/ecommerce-deep-review-2026-10-07.md`); this helper only names the
+/// pricing-owned column precision and keeps the mirror `NULL` when the value cannot be represented
+/// in two decimals.
+pub fn legacy_amount_units(amount: Decimal) -> Option<i64> {
+    rustok_core::money::to_fixed_point_units(amount, LEGACY_AMOUNT_EXPONENT).ok()
 }

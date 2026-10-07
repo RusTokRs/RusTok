@@ -2,6 +2,9 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Tenant-less by schema: the row is keyed by `variant_id`, and the tenant
+/// boundary is the owning `product_variant`. Queries must load that variant
+/// tenant-scoped first and carry an `// INVARIANT:` note at the site.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "prices")]
 pub struct Model {

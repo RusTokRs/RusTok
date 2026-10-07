@@ -5,7 +5,6 @@ use flex::{
     split_donor_metadata,
 };
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
@@ -19,7 +18,7 @@ use validator::Validate;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
-use rustok_core::generate_id;
+use rustok_core::{generate_id, money};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -474,6 +473,16 @@ impl OrderService {
             .await?;
         }
 
+        // The event carries the order total in the currency's minor units. A total that cannot be
+        // represented in minor units must fail the transaction instead of being published as a
+        // silently wrong value.
+        let total_minor_units = money::to_minor_units(total_amount, currency_code.as_str())
+            .map_err(|error| {
+                OrderError::Validation(format!(
+                    "order total {total_amount} has no minor-unit form in {currency_code}: {error}"
+                ))
+            })?;
+
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -482,7 +491,7 @@ impl OrderService {
                 DomainEvent::OrderPlaced {
                     order_id,
                     customer_id: input.customer_id,
-                    total: decimal_to_minor_units(total_amount).unwrap_or(0),
+                    total: total_minor_units,
                     currency: currency_code,
                 },
             )
@@ -657,8 +666,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         active.status = Set(STATUS_DELIVERED.to_string());
         active.delivered_signature = Set(delivered_signature);
@@ -707,8 +716,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         let cancel_reason = reason.filter(|value| !value.trim().is_empty());
         active.status = Set(STATUS_CANCELLED.to_string());
@@ -766,8 +775,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         active.status = Set(next_status.to_string());
         active.updated_at = Set(now.into());
@@ -1153,10 +1162,6 @@ fn can_cancel(status: &str) -> bool {
         status,
         STATUS_PENDING | STATUS_CONFIRMED | STATUS_PAID | STATUS_SHIPPED
     )
-}
-
-fn decimal_to_minor_units(amount: Decimal) -> Option<i64> {
-    (amount.round_dp(2) * Decimal::from(100)).to_i64()
 }
 
 fn subtotal_amount(line_items: &[entities::order_line_item::Model]) -> Decimal {

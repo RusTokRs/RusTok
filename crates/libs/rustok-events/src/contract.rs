@@ -6,10 +6,11 @@ use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    BlogCommentsDelegationScheduleAuditEvent, DomainEvent, EventEnvelope, EventValidationError,
-    ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent, MarketplaceSellerEvent,
-    ProductIndexRefreshEvent, RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent,
-    SocialGraphRelationEvent, TranslationWorkflowEvent, ValidateEvent,
+    BlogCommentsDelegationScheduleAuditEvent, CheckoutOperationEvent, DomainEvent, EventEnvelope,
+    EventValidationError, ForumMentionEvent, ForumSearchProjectionEvent, MarketplaceListingEvent,
+    MarketplaceSellerEvent, ProductIndexRefreshEvent, RbacArtifactPermissionEvent,
+    RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent, TranslationWorkflowEvent,
+    ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -39,6 +40,8 @@ pub enum ContractEventPayload {
     Root(DomainEvent),
     #[serde(rename = "blog_comments_delegation_schedule_audit")]
     BlogCommentsDelegationScheduleAudit(BlogCommentsDelegationScheduleAuditEvent),
+    #[serde(rename = "checkout_operation")]
+    CheckoutOperation(CheckoutOperationEvent),
     #[serde(rename = "forum_mention")]
     ForumMention(ForumMentionEvent),
     #[serde(rename = "forum_search_projection")]
@@ -66,6 +69,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.event_type(),
             Self::BlogCommentsDelegationScheduleAudit(event) => event.event_type(),
+            Self::CheckoutOperation(event) => event.event_type(),
             Self::ForumMention(event) => event.event_type(),
             Self::ForumSearchProjection(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
@@ -83,6 +87,7 @@ impl ContractEventPayload {
         match self {
             Self::Root(event) => event.schema_version(),
             Self::BlogCommentsDelegationScheduleAudit(event) => event.schema_version(),
+            Self::CheckoutOperation(event) => event.schema_version(),
             Self::ForumMention(event) => event.schema_version(),
             Self::ForumSearchProjection(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
@@ -102,6 +107,7 @@ impl ValidateEvent for ContractEventPayload {
         match self {
             Self::Root(event) => event.validate(),
             Self::BlogCommentsDelegationScheduleAudit(event) => event.validate(),
+            Self::CheckoutOperation(event) => event.validate(),
             Self::ForumMention(event) => event.validate(),
             Self::ForumSearchProjection(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),

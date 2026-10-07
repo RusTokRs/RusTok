@@ -2,7 +2,7 @@
 slug = "outbox"
 name = "Outbox"
 version = "0.1.0"
-description = "Transactional event persistence, relay, retry, and DLQ lifecycle."
+description = "Transactional event persistence, relay, retry, DLQ, and delivered-event retention."
 ownership = "first_party"
 trust_level = "core"
 ui_classification = "admin_only"

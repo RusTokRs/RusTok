@@ -40,7 +40,9 @@ where
 /// resolving Redis URLs themselves. This keeps Redis lifecycle in one place.
 #[derive(Clone)]
 pub struct CacheService {
-    #[cfg(feature = "redis-cache")]
+    /// Requested Redis URL, present in every build so that a deployment which
+    /// configured Redis can never look healthy while the build serves a
+    /// memory-only cache.
     redis_url: Option<String>,
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
@@ -112,8 +114,17 @@ impl CacheService {
     }
 
     #[cfg(not(feature = "redis-cache"))]
-    pub fn from_url_with_options(_url: Option<&str>, options: CacheBackendOptions) -> Self {
+    pub fn from_url_with_options(url: Option<&str>, options: CacheBackendOptions) -> Self {
+        // This build has no Redis client. The requested configuration is still
+        // resolved and kept, so `redis_status()`/`health()` report a
+        // configured-but-unavailable cache instead of a healthy memory-only
+        // deployment.
+        let redis_url = url
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty())
+            .or_else(resolve_redis_url);
         Self {
+            redis_url,
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
             invalidations: CacheInvalidationService::new(),
@@ -134,14 +145,7 @@ impl CacheService {
 
     /// Returns the resolved Redis URL, if any.
     pub fn redis_url(&self) -> Option<&str> {
-        #[cfg(feature = "redis-cache")]
-        {
-            self.redis_url.as_deref()
-        }
-        #[cfg(not(feature = "redis-cache"))]
-        {
-            None
-        }
+        self.redis_url.as_deref()
     }
 
     /// Returns the default backend options used by `backend()`.
@@ -865,7 +869,6 @@ impl Drop for InstrumentedCacheBackend {
     }
 }
 
-#[cfg(feature = "redis-cache")]
 fn resolve_redis_url() -> Option<String> {
     std::env::var("RUSTOK_REDIS_URL")
         .ok()

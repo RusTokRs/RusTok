@@ -68,9 +68,9 @@ impl CheckoutFulfillmentStageExecutor {
             fulfillment_port: in_process_checkout_fulfillment_execution_port(db.clone()),
             order_payment_port: in_process_checkout_order_payment_settlement_port(
                 db.clone(),
-                event_bus,
+                event_bus.clone(),
             ),
-            operation_journal: CheckoutOperationJournal::new(db),
+            operation_journal: CheckoutOperationJournal::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(FULFILLMENT_EXECUTION_PORT_DEADLINE_SECONDS),
         }

@@ -228,7 +228,7 @@ impl CheckoutService {
             .validate_cart_inventory(tenant_id, actor_id, &cart)
             .await
         {
-            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
             return Err(error);
         }
         let context = match self
@@ -246,7 +246,7 @@ impl CheckoutService {
         {
             Ok(context) => context,
             Err(error) => {
-                let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
+                self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
                 return Err(stage_error("resolve_context")(error));
             }
         };
@@ -259,7 +259,7 @@ impl CheckoutService {
             )
             .await
         {
-            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
             return Err(error);
         }
         let order_metadata = merge_checkout_metadata(
@@ -643,7 +643,7 @@ impl CheckoutService {
         .await;
 
         if should_release_checkout_lock(&checkout_result) {
-            let _ = self.release_cart_checkout(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
         }
 
         checkout_result
@@ -793,6 +793,27 @@ impl CheckoutService {
             .await
             .map(|_| ())
             .map_err(|error| checkout_port_error("release_cart_checkout", error))
+    }
+
+    /// Releases the cart checkout lock, recording the failure instead of silently dropping it.
+    ///
+    /// A failed release leaves the cart in `checking_out`; that state is recoverable
+    /// (`recover_existing_checkout`/`begin_cart_checkout` on the next attempt), so it must not
+    /// replace the original money-path error, but it must never be invisible either.
+    async fn release_cart_checkout_or_log(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        cart: &rustok_cart::dto::CartResponse,
+    ) {
+        if let Err(error) = self.release_cart_checkout(tenant_id, actor_id, cart).await {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                cart_id = %cart.id,
+                error = %error,
+                "failed to release cart checkout lock; cart may remain in checking_out state"
+            );
+        }
     }
 
     async fn recover_existing_checkout(
@@ -987,10 +1008,19 @@ impl CheckoutService {
         order_id: Uuid,
         reason: &str,
     ) {
-        let _ = self
+        if let Err(error) = self
             .order_service
             .cancel_order(tenant_id, actor_id, order_id, Some(reason.to_string()))
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                order_id = %order_id,
+                reason = %reason,
+                error = %error,
+                "checkout compensation could not cancel the order"
+            );
+        }
     }
 
     async fn compensate_payment_and_order(
@@ -1001,7 +1031,7 @@ impl CheckoutService {
         order_id: Uuid,
         reason: &str,
     ) {
-        let _ = self
+        if let Err(error) = self
             .payment_service
             .cancel_collection(
                 tenant_id,
@@ -1011,11 +1041,29 @@ impl CheckoutService {
                     metadata: serde_json::json!({ "compensated": true }),
                 },
             )
-            .await;
-        let _ = self
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                payment_collection_id = %payment_collection_id,
+                reason = %reason,
+                error = %error,
+                "checkout compensation could not cancel the payment collection"
+            );
+        }
+        if let Err(error) = self
             .order_service
             .cancel_order(tenant_id, actor_id, order_id, Some(reason.to_string()))
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                order_id = %order_id,
+                reason = %reason,
+                error = %error,
+                "checkout compensation could not cancel the order"
+            );
+        }
     }
 }
 

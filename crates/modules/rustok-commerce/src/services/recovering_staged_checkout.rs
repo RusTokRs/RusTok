@@ -8,8 +8,6 @@ use super::{
     CheckoutOperationStatus, StagedCheckoutError, StagedCheckoutService,
 };
 
-const RECONCILIATION_REQUIRED_STATUS: &str = "reconciliation_required";
-
 #[derive(Debug, Error)]
 pub enum RecoveringStagedCheckoutError {
     #[error(transparent)]
@@ -57,7 +55,7 @@ impl RecoveringStagedCheckoutService {
             .operation_journal()
             .find_latest_by_cart(tenant_id, cart_id)
             .await?
-            && current.status == RECONCILIATION_REQUIRED_STATUS
+            && current.status == CheckoutOperationStatus::ReconciliationRequired.as_str()
         {
             return Err(reconciliation_required_error(current.id));
         }
@@ -86,7 +84,7 @@ impl RecoveringStagedCheckoutService {
                 let Some(operation) = operation else {
                     return Err(staged.into());
                 };
-                if operation.status == RECONCILIATION_REQUIRED_STATUS {
+                if operation.status == CheckoutOperationStatus::ReconciliationRequired.as_str() {
                     return Err(reconciliation_required_error(operation.id));
                 }
                 if operation.status != CheckoutOperationStatus::CompensationRequired.as_str() {

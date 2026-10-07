@@ -55,6 +55,28 @@ command above, and
 that exact output. Both events remain initial schema-version contracts; no
 parallel or compatibility event family was introduced.
 
+## Pending admission (2026-10-07)
+
+A new typed family was added to the canonical contract by the e-commerce deep review, remediation
+rows 25-27: the checkout operation journal now publishes `checkout.operation.parked`,
+`checkout.operation.reconciled` and `checkout.operation.admission_changed`
+(`crates/libs/rustok-events/src/checkout_operation.rs`, registered in `ContractEventPayload`,
+`event_schema()` and `event_schemas()`). The family is part of the same sealed payload surface, so
+the committed artifact below is **stale** until the maintainer runs the canonical generator once on
+that tree — `cargo test -p rustok-events` fails on
+`published_event_contract_matches_committed_release_artifact` until then, while every Node gate and
+the `Event contract digest admission` workflow contract itself still pass:
+
+```bash
+cargo run --locked -p rustok-events --example event_contract_digests -- --write
+node scripts/verify/verify-event-contract-digest-admission.mjs
+node scripts/verify/verify-checkout-operation-event-contract.mjs
+```
+
+Expected diff: `registry` and the `contract_payload` / `contract_envelope` digests change; the root
+event / root envelope digests do not. No hand-authored digest value is admitted, and the file in this
+repository must not be edited by hand.
+
 ## Review packet
 
 When the workflow is used, it archives:

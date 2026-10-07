@@ -18,9 +18,9 @@ use crate::providers::{
     PaymentProviderRegistry,
 };
 use crate::{
-    BeginProviderOperation, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED, PaymentError,
-    PaymentProviderOperationJournal, PaymentService,
+    BeginProviderOperation, CheckoutExecutionAdmissionPort, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_SUCCEEDED, PaymentError, PaymentProviderOperationJournal, PaymentService,
 };
 
 const ADMIN_COLLECTION_COMMAND_BOUNDARY: &str = "payment_admin_collection_command_port";
@@ -72,10 +72,20 @@ pub struct InProcessPaymentAdminCollectionCommandPort {
 }
 
 impl InProcessPaymentAdminCollectionCommandPort {
-    pub fn new(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
+    /// Builds the port with the checkout journal's admission reader wired in.
+    ///
+    /// Admin `authorize`/`capture` are extending effects, so they are fenced by
+    /// the checkout admission exactly like the checkout pipeline's; a port built
+    /// without the reader refuses those claims instead of guessing.
+    pub fn new(
+        db: DatabaseConnection,
+        provider_registry: PaymentProviderRegistry,
+        checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
+    ) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
-            operation_journal: PaymentProviderOperationJournal::new(db),
+            operation_journal: PaymentProviderOperationJournal::new(db)
+                .with_checkout_execution_admission_port(checkout_admission),
             provider_registry,
         }
     }
@@ -84,10 +94,12 @@ impl InProcessPaymentAdminCollectionCommandPort {
 pub fn in_process_payment_admin_collection_command_port(
     db: DatabaseConnection,
     provider_registry: PaymentProviderRegistry,
+    checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
 ) -> Arc<dyn PaymentAdminCollectionCommandPort> {
     Arc::new(InProcessPaymentAdminCollectionCommandPort::new(
         db,
         provider_registry,
+        checkout_admission,
     ))
 }
 
@@ -101,10 +113,15 @@ impl PaymentAdminCollectionCommandRuntime {
         Self { command_port }
     }
 
-    pub fn in_process(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
+    pub fn in_process(
+        db: DatabaseConnection,
+        provider_registry: PaymentProviderRegistry,
+        checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
+    ) -> Self {
         Self::new(in_process_payment_admin_collection_command_port(
             db,
             provider_registry,
+            checkout_admission,
         ))
     }
 
@@ -546,6 +563,9 @@ impl InProcessPaymentAdminCollectionCommandPort {
                     result,
                 });
             }
+            if let Some(refusal) = crate::execution_admission_refusal_error(&current) {
+                return Err(refusal);
+            }
             return Err(PortError::validation(
                 "payment.provider_operation_in_progress",
                 "payment provider operation is already in progress",
@@ -609,14 +629,22 @@ impl InProcessPaymentAdminCollectionCommandPort {
         let result_payload = match serde_json::to_value(&provider_result) {
             Ok(payload) => payload,
             Err(_) => {
-                let _ = self
+                if let Err(mark_error) = self
                     .operation_journal
                     .mark_reconciliation_required(
                         tenant_id,
                         journal_operation.id,
                         "payment.provider_result_serialization_failed",
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        tenant_id = %tenant_id,
+                        operation_id = %journal_operation.id,
+                        error = %mark_error,
+                        "failed to mark payment provider operation as reconciliation required"
+                    );
+                }
                 return Err(map_payment_error(
                     context,
                     owner_operation,
@@ -635,14 +663,22 @@ impl InProcessPaymentAdminCollectionCommandPort {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     journal_operation.id,
                     "payment.provider_success_checkpoint_failed",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %journal_operation.id,
+                    error = %mark_error,
+                    "failed to mark payment provider operation as reconciliation required"
+                );
+            }
             return Err(map_payment_error(
                 context,
                 owner_operation,
@@ -771,14 +807,22 @@ impl InProcessPaymentAdminCollectionCommandPort {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation_id,
                     format!("payment.local_{provider_operation}_commit_checkpoint_failed"),
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %operation_id,
+                    error = %mark_error,
+                    "failed to mark payment provider operation as reconciliation required"
+                );
+            }
             return Err(map_payment_error(
                 context,
                 owner_operation,
@@ -797,14 +841,22 @@ impl InProcessPaymentAdminCollectionCommandPort {
         provider_operation: &'static str,
         error: &PaymentError,
     ) {
-        let _ = self
+        if let Err(mark_error) = self
             .operation_journal
             .mark_reconciliation_required(
                 tenant_id,
                 operation_id,
                 format!("payment.local_{provider_operation}_persistence_failed"),
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                operation_id = %operation_id,
+                error = %mark_error,
+                "failed to mark payment provider operation as reconciliation required"
+            );
+        }
         log_local_persistence_failure(context, owner_operation, provider_operation, error);
     }
 

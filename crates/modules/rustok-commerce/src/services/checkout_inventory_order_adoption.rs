@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rustok_commerce_foundation::entities::{inventory_item, reservation_item};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set, Statement,
     TransactionTrait,
@@ -57,10 +58,10 @@ struct OrderLineBinding {
 }
 
 impl CheckoutInventoryOrderAdoptionService {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             db,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
@@ -214,9 +215,17 @@ impl CheckoutInventoryOrderAdoptionService {
         let txn = self.db.begin().await?;
 
         for mapping in mappings {
-            let binding = binding_by_cart_line
-                .get(&mapping.cart_line_item_id)
-                .expect("reservation set was validated before transaction");
+            let Some(binding) = binding_by_cart_line.get(&mapping.cart_line_item_id) else {
+                // INVARIANT: `validate_bindings` rejects any mapping without a
+                // matching binding before this function opens the transaction, so
+                // this branch is unreachable for a caller that went through it —
+                // and a money-path failure answers a typed conflict rather than
+                // panicking if that contract is ever bypassed.
+                return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
+                    "reservation {} has no validated binding for cart line {}",
+                    mapping.reservation_id, mapping.cart_line_item_id
+                )));
+            };
             validate_mapping(mapping, tenant_id, operation_id, binding)?;
 
             if let Some(existing_order_line_id) =

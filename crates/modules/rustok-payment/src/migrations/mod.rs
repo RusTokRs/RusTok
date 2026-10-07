@@ -16,6 +16,7 @@ mod m20260714_000118_enforce_refund_creation_identity;
 mod m20260714_000119_require_refund_creation_identity;
 mod m20260714_000120_allow_uncertain_provider_outcomes;
 mod m20261005_000121_enforce_provider_operation_ownership;
+mod m20261007_000122_add_provider_operation_admission;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -39,5 +40,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260714_000119_require_refund_creation_identity::Migration),
         Box::new(m20260714_000120_allow_uncertain_provider_outcomes::Migration),
         Box::new(m20261005_000121_enforce_provider_operation_ownership::Migration),
+        Box::new(m20261007_000122_add_provider_operation_admission::Migration),
     ]
 }

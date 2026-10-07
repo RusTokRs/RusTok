@@ -21,6 +21,9 @@ infrastructure for the platform event runtime.
 - rejection of root and typed-family envelopes whose metadata, registered schema,
   or semantic payload is invalid before persistence and relay;
 - relay, retry and DLQ semantics for the event runtime;
+- bounded retention of delivered events (`OutboxRetention`), configured at the
+  server boundary (`events.outbox_retention.*`) and supervised as the
+  `outbox_retention` runtime worker;
 - module-owned Leptos admin package `rustok-outbox-admin` with FFA split `core/transport/ui` for read-only relay visibility.
 
 ## Relay, retry and DLQ policy

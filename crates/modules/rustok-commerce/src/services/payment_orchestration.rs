@@ -51,7 +51,10 @@ impl PaymentOrchestrationService {
         Self {
             payment_service: PaymentService::new(db.clone()),
             refund_creation_service: PaymentRefundCreationService::new(db.clone()),
-            provider_operation_journal: PaymentProviderOperationJournal::new(db),
+            provider_operation_journal: PaymentProviderOperationJournal::new(db.clone())
+                .with_checkout_execution_admission_port(super::checkout_execution_admission_port(
+                    db,
+                )),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
     }

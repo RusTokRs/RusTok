@@ -317,6 +317,7 @@ pub async fn complete_storefront_checkout_input_with_product_port(
         pipeline,
         atomic_cart.handle,
         runtime.db_clone(),
+        event_bus.clone(),
     );
     let compensation = crate::CheckoutCompensationService::new(
         runtime.db_clone(),

@@ -693,7 +693,10 @@ async fn checkout_operation_lease_renewal_and_fencing_prevents_expired_executor_
     let (db, _, _, _) = setup().await;
     let tenant_id = Uuid::new_v4();
     let cart_id = Uuid::new_v4();
-    let journal = rustok_commerce::services::CheckoutOperationJournal::new(db.clone());
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(
+        db.clone(),
+        mock_transactional_event_bus(),
+    );
 
     let op = journal
         .begin(rustok_commerce::services::BeginCheckoutOperation {
@@ -782,7 +785,10 @@ async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orde
     let cart_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
 
-    let journal = rustok_commerce::services::CheckoutOperationJournal::new(db.clone());
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(
+        db.clone(),
+        mock_transactional_event_bus(),
+    );
     let op = journal
         .begin(rustok_commerce::services::BeginCheckoutOperation {
             tenant_id,

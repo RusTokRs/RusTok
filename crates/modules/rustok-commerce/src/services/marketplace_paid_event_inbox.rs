@@ -470,7 +470,7 @@ impl MarketplacePaidEventInboxService {
     ) -> Self {
         Self {
             journal: MarketplacePaidEventInboxJournal::new(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             plan_journal: CheckoutOrderPlanJournal::new(db.clone()),
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),

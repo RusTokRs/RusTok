@@ -29,7 +29,8 @@ use crate::middleware::tenant::{
     TenantInvalidationListenerStatus, tenant_invalidation_listener_snapshot,
 };
 use crate::services::app_lifecycle::{
-    OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
+    OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
+    RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
@@ -709,9 +710,14 @@ fn check_runtime_workers(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> Vec<ReadinessCheck> {
-    let relay_required = ctx
-        .shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
+    let event_runtime = ctx.shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>();
+    let relay_required = event_runtime
+        .as_ref()
         .and_then(|runtime| runtime.relay_config.clone())
+        .is_some();
+    let retention_required = event_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.outbox_retention.clone())
         .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
@@ -723,6 +729,15 @@ fn check_runtime_workers(
         ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
         stop_requested,
     )];
+
+    checks.push(runtime_worker_check(
+        "worker:outbox_retention",
+        retention_required,
+        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
+            OutboxRetentionWorkerHandle::is_finished,
+        ),
+        stop_requested,
+    ));
 
     checks.push(runtime_worker_check(
         "worker:remote_executor_reaper",
