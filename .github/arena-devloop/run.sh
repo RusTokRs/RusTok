@@ -10,8 +10,9 @@ overall=0
 git config user.name "arena-devloop"
 git config user.email "arena-devloop@users.noreply.github.com"
 
-fmt_packages=(-p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p rustok-page-builder
-  -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront)
+fmt_packages=(-p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p fly-dioxus
+  -p rustok-page-builder -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin
+  -p rustok-pages-storefront -p rustok-admin)
 if cargo fmt "${fmt_packages[@]}" >/tmp/fmt.log 2>&1; then
   if ! git diff --quiet; then
     git commit -am "style: cargo fmt (arena dev loop)" >/dev/null

@@ -10,3 +10,9 @@ cargo test -p rustok-page-builder --all-targets
 cargo test -p fly --lib
 rustup target add wasm32-unknown-unknown >/dev/null 2>&1; cargo check --target wasm32-unknown-unknown -p rustok-page-builder-admin --no-default-features --features hydrate --message-format=short
 cargo check --target wasm32-unknown-unknown -p rustok-pages-admin --no-default-features --features hydrate --message-format=short
+# Mirrors of the failing `Fly Page Builder` workflow steps (P0-6).
+cargo test -p fly-browser --all-targets
+cargo check -p fly-dioxus --features desktop && cargo check -p fly-leptos --no-default-features && cargo check --target wasm32-unknown-unknown -p fly-dioxus --features web && cargo check --target wasm32-unknown-unknown -p fly-leptos --no-default-features --features wasm-client
+cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr --message-format=short
+cargo clippy -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib --message-format=short -- -D warnings
+cargo clippy -p fly -p fly-ui -p fly-web -p fly-leptos -p fly-dioxus --all-targets --message-format=short -- -D warnings

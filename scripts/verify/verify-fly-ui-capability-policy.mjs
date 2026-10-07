@@ -33,8 +33,13 @@ const source = Object.fromEntries(
   ),
 );
 const failures = [];
+// rustfmt freely moves `.method()` chains onto their own lines; compare against a copy where such
+// line breaks are folded so markers stay stable across formatting.
+const foldMethodChains = (text) => text.replace(/\s*\n\s*\./g, '.');
 const requireMarker = (key, marker, message) => {
-  if (!source[key].includes(marker)) failures.push(message);
+  if (!source[key].includes(marker) && !foldMethodChains(source[key]).includes(marker)) {
+    failures.push(message);
+  }
 };
 const rejectMarker = (key, marker, message) => {
   if (source[key].includes(marker)) failures.push(message);
