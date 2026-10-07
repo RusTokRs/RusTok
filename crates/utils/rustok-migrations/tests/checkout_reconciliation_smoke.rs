@@ -5,10 +5,15 @@ use rustok_commerce::{
     BeginCheckoutOperation, CheckoutCompensationSweepService, CheckoutOperationCheckpoint,
     CheckoutOperationJournal, CheckoutOperationStage, checkout_execution_admission_port,
 };
+use rustok_api::{PortActor, PortContext};
 use rustok_migrations::SqliteTestMigrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_payment::dto::CreatePaymentCollectionInput;
-use rustok_payment::{BeginProviderOperation, PaymentProviderOperationJournal, PaymentService};
+use rustok_payment::{
+    BeginProviderOperation, CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
+    InProcessCheckoutPaymentCompensationPort, PaymentCollectionStatusKind,
+    PaymentProviderOperationJournal, PaymentService,
+};
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use serde_json::json;
 use std::sync::Arc;
@@ -411,5 +416,143 @@ async fn park_time_fence_reaches_provider_operations_before_the_collection_is_bo
     assert!(
         refused.is_none(),
         "a claim from the previous generation must be refused after the park"
+    );
+}
+
+/// The window the removed payment-collection guard used to cover: a checkout
+/// parks after its collection exists but before `checkpoint` writes the binding
+/// into the journal, so the compensation request carries no collection id. The
+/// payment owner resolves the attempt's collection from its own metadata link
+/// and cancels it, instead of reporting "nothing recorded" and leaving an open
+/// collection behind.
+#[tokio::test]
+async fn compensation_resolves_the_collection_before_the_binding_is_written() {
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let tenant_id = Uuid::new_v4();
+    let cart = CartService::new(db.clone())
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("unbound-compensation@example.com".to_string()),
+                region_id: None,
+                country_code: None,
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "USD".to_string(),
+                metadata: json!({"source": "checkout-unbound-compensation-smoke"}),
+            },
+        )
+        .await
+        .expect("cart fixture must be created");
+
+    let operation_journal = CheckoutOperationJournal::new(db.clone(), event_bus);
+    let operation = operation_journal
+        .begin(BeginCheckoutOperation {
+            tenant_id,
+            cart_id: cart.id,
+            idempotency_key: format!("checkout-unbound-compensation-{}", Uuid::new_v4()),
+            request_hash: "c".repeat(64),
+            snapshot_hash: None,
+        })
+        .await
+        .expect("checkout operation must begin");
+
+    let collection = PaymentService::new(db.clone())
+        .create_collection(
+            tenant_id,
+            CreatePaymentCollectionInput {
+                cart_id: Some(cart.id),
+                order_id: None,
+                customer_id: None,
+                currency_code: "USD".to_string(),
+                amount: Decimal::new(1000, 2),
+                metadata: json!({
+                    "checkout": {
+                        "operation_id": operation.id,
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("checkout payment collection must be created");
+
+    // The window: the collection exists, the journal has no binding for it.
+    let unbound = operation_journal
+        .get(tenant_id, operation.id)
+        .await
+        .expect("checkout operation must remain readable");
+    assert_eq!(unbound.payment_collection_id, None);
+
+    let compensation = InProcessCheckoutPaymentCompensationPort::new(db.clone());
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("checkout-unbound-compensation-smoke"),
+        "en",
+        format!("checkout:{}:compensation:payment", operation.id),
+    )
+    .with_causation_id(operation.id.to_string())
+    .with_idempotency_key(format!("checkout:{}:compensation:payment", operation.id))
+    .with_deadline(std::time::Duration::from_secs(10));
+
+    let snapshot = compensation
+        .compensate_checkout_payment(
+            context,
+            CheckoutPaymentCompensationRequest {
+                checkout_operation_id: operation.id,
+                cart_id: cart.id,
+                collection_id: None,
+                reason: Some("checkout_compensation".to_string()),
+                metadata: json!({
+                    "checkout": {
+                        "operation_id": operation.id,
+                        "compensation": true,
+                    }
+                }),
+            },
+        )
+        .await
+        .expect("payment compensation must answer")
+        .expect("the unbound collection must be resolved through the cart metadata link");
+
+    assert_eq!(snapshot.collection_id, collection.id);
+    assert_eq!(snapshot.status_kind(), PaymentCollectionStatusKind::Cancelled);
+
+    let persisted = PaymentService::new(db.clone())
+        .get_collection(tenant_id, collection.id)
+        .await
+        .expect("the compensated collection must remain readable");
+    assert_eq!(persisted.status_kind(), PaymentCollectionStatusKind::Cancelled);
+
+    // A different checkout must not adopt this collection: the resolution is
+    // keyed by the collection's metadata link, not by the cart alone.
+    let other_operation_id = Uuid::new_v4();
+    let other_context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("checkout-unbound-compensation-smoke"),
+        "en",
+        format!("checkout:{other_operation_id}:compensation:payment"),
+    )
+    .with_causation_id(other_operation_id.to_string())
+    .with_idempotency_key(format!("checkout:{other_operation_id}:compensation:payment"))
+    .with_deadline(std::time::Duration::from_secs(10));
+    let unmatched = compensation
+        .compensate_checkout_payment(
+            other_context,
+            CheckoutPaymentCompensationRequest {
+                checkout_operation_id: other_operation_id,
+                cart_id: cart.id,
+                collection_id: None,
+                reason: Some("checkout_compensation".to_string()),
+                metadata: json!({"checkout": {"operation_id": other_operation_id}}),
+            },
+        )
+        .await
+        .expect("payment compensation must answer")
+        .is_none();
+    assert!(
+        unmatched,
+        "another checkout must not adopt the collection of a different attempt"
     );
 }

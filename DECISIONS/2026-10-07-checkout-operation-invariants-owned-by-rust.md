@@ -374,6 +374,22 @@ collection returns a bounded `Conflict` naming the write-once binding instead of
 That keeps the money evidence attached to the checkout it belongs to: a re-pointed binding would detach
 provider operations, marketplace financial rows and refunds from their operation.
 
+The same window is closed on the compensation side. A park landing before `checkpoint` writes the
+binding reaches the payment compensation with a null `collection_id`, and the owner used to answer
+`Ok(None)` — "nothing recorded" — leaving the `pending` collection behind. The request now carries the
+checkout cart, exactly as the order compensation request always has, and
+`PaymentService::find_collection_by_cart_checkout_operation` resolves the attempt's collection from
+`metadata.checkout.operation_id` — the same link the claim gate reads — scoped to the tenant and the
+cart and without a status filter, because a collection this checkout already cancelled is one of the
+states the compensation has to confirm. A `pending` collection is therefore cancelled, a `cancelled`
+one is confirmed, a `captured` one still goes to manual reconciliation, and `Ok(None)` now means the
+cart holds no collection of that operation at all; the commerce wrapper compares the returned snapshot
+with the binding only when the journal recorded one. The integration tests in
+`crates/utils/rustok-migrations/tests/checkout_reconciliation_smoke.rs` cover the cancel and the
+refusal to adopt another checkout's collection. One already-failing verifier
+(`verify-payment-checkout-compensation-local-context`) pins the replaced owner shape as "preserved
+owner behavior" and therefore joins the ECOM-VERIFY-01 re-pin batch.
+
 `scripts/verify/verify-checkout-execution-admission-contract.mjs` now pins the new contract instead of
 the old one: the cart-scoped stamp signature and its resolution bounds, the fence passing `operation.cart_id`
 (and a `forbidText` on the binding-parameter form), the drop statements of the new migration plus the
