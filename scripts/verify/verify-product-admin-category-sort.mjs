@@ -56,7 +56,9 @@ for (const marker of ["AdminProductListQuery", "status must be `draft`, `active`
 for (const marker of ["TenantId.eq(tenant_id)", "Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc", "Id)"]) {
   requireText(files.ownerQuery, marker, `owner execution must retain ${marker}`);
 }
-for (const marker of ["async fn admin_product_catalog", "require_commerce_permission", "product_query_tenant", "list_admin_products_with_query"]) {
+// The Commerce root consumes the Product owner read port (`list_admin_products`)
+// instead of reaching into the owner service; the port is the sanctioned seam.
+for (const marker of ["async fn admin_product_catalog", "require_commerce_permission", "product_query_tenant", "list_admin_products("]) {
   requireText(files.graphqlRoot, marker, `admin GraphQL root must retain ${marker}`);
 }
 requireText(

@@ -32,7 +32,7 @@ function fixture(options = {}) {
   write(root, "crates/modules/rustok-product/src/services/catalog/admin_queries.rs", options.omitOwnerCategory
     ? `TenantId.eq(tenant_id) Status.eq(status) order_by_asc order_by_desc Id)`
     : `TenantId.eq(tenant_id) Status.eq(status) PrimaryCategoryId.eq(category_id) order_by_asc order_by_desc Id)`);
-  write(root, "crates/modules/rustok-commerce/src/graphql/product_catalog.rs", `async fn admin_product_catalog require_commerce_permission product_query_tenant list_admin_products_with_query`);
+  write(root, "crates/modules/rustok-commerce/src/graphql/product_catalog.rs", `async fn admin_product_catalog require_commerce_permission product_query_tenant list_admin_products(`);
   write(root, "crates/modules/rustok-product/docs/implementation-plan.md", `Connect admin search/status/category and deterministic date sorting\nverify-product-admin-category-sort.mjs`);
   return root;
 }

@@ -513,6 +513,38 @@ pub(crate) fn build_product_attribute_form_copy(locale: Option<&str>) -> Product
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAttributeValuesSectionCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub save: String,
+    pub saving: String,
+    pub saved: String,
+    pub nothing_dirty: String,
+}
+
+/// Copy for the mounted editor's typed attribute-value section.
+pub(crate) fn build_product_attribute_values_section_copy(
+    locale: Option<&str>,
+) -> ProductAttributeValuesSectionCopy {
+    ProductAttributeValuesSectionCopy {
+        title: t(locale, "product.attributes.valuesTitle", "Typed attributes"),
+        subtitle: t(
+            locale,
+            "product.attributes.valuesSubtitle",
+            "Values validated against the effective category schema.",
+        ),
+        save: t(locale, "product.attributes.valuesSave", "Save attribute values"),
+        saving: t(locale, "product.attributes.valuesSaving", "Saving..."),
+        saved: t(locale, "product.attributes.valuesSaved", "Attribute values saved"),
+        nothing_dirty: t(
+            locale,
+            "product.attributes.valuesNothingDirty",
+            "Nothing changed: typed values already match the saved state.",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductVariantsPanelCopy {
     pub title: String,
     pub subtitle: String,

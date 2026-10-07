@@ -7,7 +7,7 @@ use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, build_product_admin_list_input,
     serialize_attribute_filters,
 };
-use crate::transport;
+use crate::catalog_transport;
 
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
@@ -38,7 +38,7 @@ pub fn ProductAdmin() -> impl IntoView {
         let token = token.get();
         let tenant = tenant.get();
         let locale = options_locale.clone();
-        async move { transport::fetch_catalog_search_options(token, tenant, locale).await }
+        async move { catalog_transport::fetch_catalog_search_options(token, tenant, locale).await }
     });
 
     view! {

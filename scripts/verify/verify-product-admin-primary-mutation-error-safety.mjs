@@ -32,6 +32,8 @@ const paths = {
   facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
   safety: "crates/modules/rustok-product/admin/src/transport/graphql_error_safety.rs",
   legacy: "crates/modules/rustok-product/admin/src/transport.rs",
+  retry: "crates/modules/rustok-product/admin/src/transport/retry.rs",
+  lifecycle: "crates/modules/rustok-product/admin/src/transport/product_lifecycle_graphql.rs",
   graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
   graphqlHttp: "crates/ui/rustok-graphql/src/lib.rs",
   ui: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
@@ -52,6 +54,8 @@ const paths = {
 const facade = read(paths.facade);
 const safety = read(paths.safety);
 const legacy = read(paths.legacy);
+const retry = read(paths.retry);
+const lifecycle = read(paths.lifecycle);
 const graphql = read(paths.graphql);
 const graphqlHttp = read(paths.graphqlHttp);
 const ui = read(paths.ui);
@@ -210,13 +214,32 @@ for (const marker of [
   forbidText(mutationBlock, marker, `${paths.safety}: raw mutation value`);
 }
 
+// The lifecycle writes keep their caller idempotency identity: the private
+// gateway delegates to the retry layer, which mints and retains the scoped key
+// before reaching the lifecycle GraphQL module.
 for (const marker of [
-  "graphql_adapter::create_product(token, tenant_slug, tenant_id, user_id, draft).await",
-  "graphql_adapter::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await",
-  "graphql_adapter::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await",
-  "graphql_adapter::delete_product(token, tenant_slug, tenant_id, user_id, id).await",
+  "retry::create_product(token, tenant_slug, tenant_id, user_id, draft).await",
+  "retry::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await",
+  "retry::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await",
+  "retry::delete_product(token, tenant_slug, tenant_id, user_id, id).await",
 ]) {
   requireText(legacy, marker, `${paths.legacy}: preserved private mutation delegation`);
+}
+for (const marker of [
+  "retained_caller_key(&slot, operation, intent)",
+  "mark_lifecycle_succeeded(&slot)",
+  "product_lifecycle_graphql::create_product(",
+]) {
+  requireText(retry, marker, `${paths.retry}: retained lifecycle idempotency identity`);
+}
+for (const marker of [
+  "pub(crate) async fn create_product(",
+  "pub(crate) async fn update_product(",
+  "pub(crate) async fn change_product_status(",
+  "pub(crate) async fn delete_product(",
+  "idempotencyKey: $idempotencyKey",
+]) {
+  requireText(lifecycle, marker, `${paths.lifecycle}: idempotent lifecycle GraphQL contract`);
 }
 for (const marker of [
   "const CREATE_PRODUCT_MUTATION",

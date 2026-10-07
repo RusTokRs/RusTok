@@ -30,12 +30,14 @@ use crate::core::{
     product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
     text_or_none, build_product_media_panel_copy, build_product_variants_panel_copy,
     build_product_image_view_models, build_variant_row_view_models, VariantRowViewModel,
+    build_product_attribute_values_section_copy,
 };
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail,
+    ProductAdminBootstrap, ProductAttributeValueItem, ProductDetail, ProductEffectiveForm,
     ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
     UpdateProductImageDraft, VariantDraft, VariantPriceDraft,
 };
+use crate::catalog_transport;
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -2565,6 +2567,371 @@ fn ProductMediaPanel(
                     }.into_any()
                 }}
             </div>
+        </section>
+    }.into_any()
+}
+
+/// Mounted editor section that renders the product's effective typed schema.
+///
+/// The section loads the effective form and the saved values through the
+/// canonical transport facade, renders one typed field per schema attribute
+/// (grouped, disabled attributes excluded), persists only dirty patches, and
+/// keeps detached values visible with an explicit clear action.
+#[component]
+pub fn ProductAttributeValuesSection(
+    product_id: String,
+    locale: Option<String>,
+    on_saved: Callback<()>,
+) -> impl IntoView {
+    let token = use_token();
+    let tenant = use_tenant();
+    let form_copy = build_product_attribute_form_copy(locale.as_deref());
+    let form_copy_for_failure = form_copy.clone();
+    let form_loading = form_copy.loading.clone();
+    let form_select_category = form_copy.select_category.clone();
+    let form_no_attributes = form_copy.no_attributes.clone();
+    let form_ungrouped_label = form_copy.ungrouped_label.clone();
+    let form_required_label = form_copy.required_label.clone();
+    let form_empty_option_label = form_copy.empty_option_label.clone();
+    let form_boolean_true_label = form_copy.boolean_true_label.clone();
+    let form_boolean_false_label = form_copy.boolean_false_label.clone();
+    let form_detached_title = form_copy.detached_title.clone();
+    let form_detached_values_label = form_copy.detached_values_label.clone();
+    let form_clear_detached_label = form_copy.clear_detached_label.clone();
+    let form_detached_empty_label = form_copy.detached_empty_label.clone();
+    let section_copy = build_product_attribute_values_section_copy(locale.as_deref());
+    let section_title = section_copy.title.clone();
+    let section_subtitle = section_copy.subtitle.clone();
+    let section_save_label = section_copy.save.clone();
+    let section_saving_label = section_copy.saving.clone();
+    let section_saved_label = section_copy.saved.clone();
+    let section_nothing_dirty = section_copy.nothing_dirty.clone();
+    let error_copy = build_product_admin_error_copy(locale.as_deref());
+
+    let (busy, set_busy) = signal(false);
+    let (error, set_error) = signal(Option::<String>::None);
+    let (notice, set_notice) = signal(Option::<String>::None);
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let editor_state = RwSignal::new(ProductAttributeEditorState::default());
+
+    let loaded_product_id = product_id.clone();
+    let loaded_locale = locale.clone();
+    let detached_locale = locale.clone();
+    let form_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let pid = loaded_product_id.clone();
+        let loc = loaded_locale.clone().unwrap_or_default();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            let form = catalog_transport::fetch_effective_product_form(
+                tok.clone(),
+                ten.clone(),
+                bootstrap.current_tenant.id.clone(),
+                Some(pid.clone()),
+                None,
+                loc.clone(),
+            )
+            .await
+            .map_err(|failure| failure.to_string())?;
+            let values = catalog_transport::fetch_product_attribute_values(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                pid,
+                loc,
+            )
+            .await
+            .map_err(|failure| failure.to_string())?;
+            Ok::<(Option<ProductEffectiveForm>, Vec<ProductAttributeValueItem>), String>((
+                form, values,
+            ))
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(Ok((_, values))) = form_resource.get() {
+            editor_state.set(ProductAttributeEditorState::from_values(values));
+        }
+    });
+
+    let save_product_id = product_id.clone();
+    let save_locale = locale.clone();
+    let on_save = move |_| {
+        let attribute_types = form_resource
+            .get_untracked()
+            .and_then(Result::ok)
+            .and_then(|(form, _)| form)
+            .map(|form| {
+                form.attributes
+                    .into_iter()
+                    .map(|attribute| (attribute.attribute_id, attribute.value_type))
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let patches = match editor_state
+            .get_untracked()
+            .patches(save_locale.as_deref(), &attribute_types)
+        {
+            Ok(patches) => patches,
+            Err(message) => {
+                set_error.set(Some(message));
+                return;
+            }
+        };
+        if patches.is_empty() {
+            set_notice.set(Some(section_nothing_dirty.clone()));
+            return;
+        }
+
+        set_busy.set(true);
+        set_error.set(None);
+        set_notice.set(None);
+
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let pid = save_product_id.clone();
+        let loc = save_locale.clone().unwrap_or_default();
+        let saved_label = section_saved_label.clone();
+        let save_error_copy = error_copy.clone();
+        spawn_local(async move {
+            let result = async {
+                let bootstrap =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+                catalog_transport::save_product_attribute_values(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    pid,
+                    loc,
+                    patches,
+                )
+                .await
+            }
+            .await;
+
+            set_busy.set(false);
+            match result {
+                Ok(values) => {
+                    editor_state.set(ProductAttributeEditorState::from_values(values));
+                    set_notice.set(Some(saved_label));
+                    set_refresh_nonce.update(|value| *value += 1);
+                    on_saved.run(());
+                }
+                Err(failure) => set_error.set(Some(save_error_copy.save_product_failure(failure))),
+            }
+        });
+    };
+
+    let clear_product_id = product_id.clone();
+    let clear_locale = locale.clone();
+    let clear_error_copy = error_copy.clone();
+    let on_clear_detached = move |_| {
+        let attribute_ids = form_resource
+            .get_untracked()
+            .and_then(Result::ok)
+            .map(|(_, values)| values)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|value| value.detached)
+            .map(|value| value.attribute_id)
+            .collect::<Vec<_>>();
+        if attribute_ids.is_empty() {
+            return;
+        }
+
+        set_busy.set(true);
+        set_error.set(None);
+        set_notice.set(None);
+
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let pid = clear_product_id.clone();
+        let loc = clear_locale.clone().unwrap_or_default();
+        let clear_error = clear_error_copy.clone();
+        spawn_local(async move {
+            let result = async {
+                let bootstrap =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+                catalog_transport::clear_detached_product_attribute_values(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    pid,
+                    loc,
+                    attribute_ids,
+                )
+                .await
+            }
+            .await;
+
+            set_busy.set(false);
+            match result {
+                Ok(values) => {
+                    editor_state.set(ProductAttributeEditorState::from_values(values));
+                    set_refresh_nonce.update(|value| *value += 1);
+                    on_saved.run(());
+                }
+                Err(failure) => set_error.set(Some(clear_error.save_product_failure(failure))),
+            }
+        });
+    };
+
+    let has_detached_values = move || {
+        form_resource
+            .get()
+            .and_then(Result::ok)
+            .map(|(_, values)| values.iter().any(|value| value.detached))
+            .unwrap_or(false)
+    };
+
+    view! {
+        <section class="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="space-y-1">
+                    <h3 class="text-sm font-semibold text-foreground">{section_title.clone()}</h3>
+                    <p class="text-xs text-muted-foreground">{section_subtitle.clone()}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=on_save
+                    >
+                        {move || if busy.get() {
+                            section_saving_label.clone()
+                        } else {
+                            section_save_label.clone()
+                        }}
+                    </button>
+                </div>
+            </div>
+
+            <Show when=move || error.get().is_some()>
+                <div class="rounded-xl border border-rose-200 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:border-rose-900 dark:text-rose-400">
+                    {move || error.get().unwrap_or_default()}
+                </div>
+            </Show>
+            <Show when=move || notice.get().is_some()>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
+                    {move || notice.get().unwrap_or_default()}
+                </div>
+            </Show>
+
+            {move || match form_resource.get() {
+                None => {
+                    let loading = form_loading.clone();
+                    view! { <p class="text-xs text-muted-foreground">{loading}</p> }.into_any()
+                }
+                Some(Err(detail)) => {
+                    let load_failure = form_copy_for_failure.load_failure(detail);
+                    view! { <p class="text-xs text-destructive">{load_failure}</p> }.into_any()
+                }
+                Some(Ok((form, _))) => match form {
+                    None => {
+                        let select_category = form_select_category.clone();
+                        view! { <p class="text-xs text-muted-foreground">{select_category}</p> }.into_any()
+                    }
+                    Some(form) if form.attributes.is_empty() => {
+                        let no_attributes = form_no_attributes.clone();
+                        view! { <p class="text-xs text-muted-foreground">{no_attributes}</p> }.into_any()
+                    }
+                    Some(form) => {
+                        let mut groups: Vec<(String, Vec<crate::model::ProductEffectiveFormAttribute>)> = Vec::new();
+                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
+                            let group = attribute
+                                .group_label
+                                .clone()
+                                .or_else(|| attribute.group_code.clone())
+                                .unwrap_or_else(|| form_ungrouped_label.clone());
+                            if let Some((_, attributes)) = groups.iter_mut().find(|(code, _)| code == &group) {
+                                attributes.push(attribute);
+                            } else {
+                                groups.push((group, vec![attribute]));
+                            }
+                        }
+                        let required_label = form_required_label.clone();
+                        let empty_option_label = form_empty_option_label.clone();
+                        let boolean_true_label = form_boolean_true_label.clone();
+                        let boolean_false_label = form_boolean_false_label.clone();
+                        view! {
+                            <div class="space-y-5">
+                                {groups.into_iter().map(|(group, attributes)| view! {
+                                    <section class="space-y-3">
+                                        <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</h4>
+                                        <div class="grid gap-4 md:grid-cols-2">
+                                            {attributes.into_iter().map(|attribute| view! {
+                                                <TypedProductAttributeField
+                                                    attribute=attribute
+                                                    editor_state=editor_state
+                                                    required_label=required_label.clone()
+                                                    empty_option_label=empty_option_label.clone()
+                                                    boolean_true_label=boolean_true_label.clone()
+                                                    boolean_false_label=boolean_false_label.clone()
+                                                />
+                                            }).collect_view()}
+                                        </div>
+                                    </section>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }
+                },
+            }}
+
+            <Show when=has_detached_values>
+                <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-semibold text-foreground">{form_detached_title.clone()}</h4>
+                            <p class="text-[11px] text-muted-foreground">{form_detached_values_label.clone()}</p>
+                        </div>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                            disabled=move || busy.get()
+                            on:click=on_clear_detached
+                        >
+                            {form_clear_detached_label.clone()}
+                        </button>
+                    </div>
+                    <div class="mt-3 grid gap-2">
+                        {move || {
+                            let values = form_resource
+                                .get()
+                                .and_then(Result::ok)
+                                .map(|(_, values)| {
+                                    build_product_detached_attribute_value_view_models(
+                                        detached_locale.as_deref(),
+                                        &values,
+                                    )
+                                })
+                                .unwrap_or_default();
+                            if values.is_empty() {
+                                let empty_label = form_detached_empty_label.clone();
+                                view! { <p class="text-xs text-muted-foreground">{empty_label}</p> }.into_any()
+                            } else {
+                                view! {
+                                    <div class="grid gap-2">
+                                        {values.into_iter().map(|value| view! {
+                                            <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                                                <p class="font-medium text-foreground">{value.label}</p>
+                                                <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
+                                            </div>
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }}
+                    </div>
+                </div>
+            </Show>
         </section>
     }.into_any()
 }

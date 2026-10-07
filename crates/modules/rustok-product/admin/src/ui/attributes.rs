@@ -9,7 +9,7 @@ use crate::model::{
     ProductAttributeDraft, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary,
 };
-use crate::transport;
+use crate::catalog_transport;
 
 #[component]
 fn AttributeSchemasGrid(
@@ -220,10 +220,10 @@ pub fn AttributesPage() -> impl IntoView {
         let loc = locale_store.get_value().unwrap_or_default();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_product_attributes(
+            let res = catalog_transport::fetch_product_attributes(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -242,10 +242,10 @@ pub fn AttributesPage() -> impl IntoView {
         let loc = locale_store.get_value().unwrap_or_default();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_attribute_schemas(
+            let res = catalog_transport::fetch_attribute_schemas(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -450,12 +450,12 @@ pub fn AttributesPage() -> impl IntoView {
                                     position: 0,
                                 };
                                 spawn_local(async move {
-                                    let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                                    let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                                         set_is_busy.set(false);
                                         set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                                         return;
                                     };
-                                    let res = transport::create_product_attribute_option(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
+                                    let res = catalog_transport::create_product_attribute_option(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
                                     set_is_busy.set(false);
                                     match res {
                                         Ok(_) => {
@@ -555,12 +555,12 @@ pub fn AttributesPage() -> impl IntoView {
                                         let loc = locale_store.get_value().unwrap_or_default();
                                         let draft = ProductAttributeSchemaDraft { code, name, description };
                                         spawn_local(async move {
-                                            let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                                            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                                                 set_is_busy.set(false);
                                                 set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                                                 return;
                                             };
-                                            let res = transport::create_attribute_schema(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
+                                            let res = catalog_transport::create_attribute_schema(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
                                             set_is_busy.set(false);
                                             match res {
                                                 Ok(_) => {
@@ -775,12 +775,12 @@ pub fn AttributesPage() -> impl IntoView {
                                                 show_on_storefront: attr_show_on_storefront.get_untracked(),
                                             };
                                             spawn_local(async move {
-                                                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                                                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                                                     set_is_busy.set(false);
                                                     set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                                                     return;
                                                 };
-                                                let res = transport::create_product_attribute(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
+                                                let res = catalog_transport::create_product_attribute(tok, ten, bootstrap.current_tenant.id, bootstrap.me.id, loc, draft).await;
                                                 set_is_busy.set(false);
                                                 match res {
                                                     Ok(_) => {
