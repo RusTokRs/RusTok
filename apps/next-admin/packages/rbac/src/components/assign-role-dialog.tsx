@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from '@rustok/next-fluent';
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ export function AssignRoleDialog({
   tenantSlug,
   onSuccess
 }: AssignRoleDialogProps) {
+  const t = useTranslations('rbac');
   const { data: session } = useSession();
   const effectiveToken = token ?? session?.user?.rustokToken ?? null;
   const effectiveTenantSlug = tenantSlug ?? session?.user?.tenantSlug ?? null;
@@ -73,17 +75,15 @@ export function AssignRoleDialog({
     e.preventDefault();
     const trimmedId = userId.trim();
     if (!trimmedId) {
-      toast.error('User ID is required');
+      toast.error(t('assign.err.user.id.required'));
       return;
     }
     if (!UUID_REGEX.test(trimmedId)) {
-      toast.error(
-        'User ID must be a valid UUID (e.g. 00000000-0000-0000-0000-000000000000)'
-      );
+      toast.error(t('assign.err.uuid.invalid'));
       return;
     }
     if (!roleSlug) {
-      toast.error('Please select a role');
+      toast.error(t('assign.err.role.required'));
       return;
     }
 
@@ -94,16 +94,16 @@ export function AssignRoleDialog({
         { token: effectiveToken, tenantSlug: effectiveTenantSlug }
       );
       if (result.success) {
-        toast.success(`Role assigned successfully to user`);
+        toast.success(t('assign.toast.success'));
         onOpenChange(false);
         setUserId('');
         onSuccess?.();
       } else {
-        toast.error('Failed to assign role');
+        toast.error(t('assign.toast.fail'));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Assignment error: ${message}`);
+      toast.error(t('assign.toast.error', { error: message }));
     } finally {
       setIsSubmitting(false);
     }
@@ -114,18 +114,18 @@ export function AssignRoleDialog({
       <DialogContent className='sm:max-w-[440px]'>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Assign Role to User</DialogTitle>
+            <DialogTitle>{t('assign.dialog.title')}</DialogTitle>
             <DialogDescription>
-              Assign or update the permission role for a specific user ID.
+              {t('assign.dialog.desc')}
             </DialogDescription>
           </DialogHeader>
 
           <div className='grid gap-4 py-4'>
             <div className='grid gap-2'>
-              <Label htmlFor='user-id'>User ID (UUID)</Label>
+              <Label htmlFor='user-id'>{t('assign.field.user.id')}</Label>
               <Input
                 id='user-id'
-                placeholder='e.g. 00000000-0000-0000-0000-000000000000'
+                placeholder={t('assign.field.user.id.placeholder')}
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 disabled={isSubmitting}
@@ -134,14 +134,14 @@ export function AssignRoleDialog({
             </div>
 
             <div className='grid gap-2'>
-              <Label htmlFor='role-select'>Role</Label>
+              <Label htmlFor='role-select'>{t('assign.field.role')}</Label>
               <Select
                 value={roleSlug}
                 onValueChange={setRoleSlug}
                 disabled={isSubmitting}
               >
                 <SelectTrigger id='role-select'>
-                  <SelectValue placeholder='Select a role' />
+                  <SelectValue placeholder={t('assign.field.role.placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role) => (
@@ -164,10 +164,10 @@ export function AssignRoleDialog({
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              {t('btn.cancel')}
             </Button>
             <Button type='submit' disabled={isSubmitting}>
-              {isSubmitting ? 'Assigning...' : 'Assign Role'}
+              {isSubmitting ? t('assign.btn.submitting') : t('assign.btn.submit')}
             </Button>
           </DialogFooter>
         </form>
@@ -175,3 +175,4 @@ export function AssignRoleDialog({
     </Dialog>
   );
 }
+

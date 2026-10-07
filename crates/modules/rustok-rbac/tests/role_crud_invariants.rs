@@ -78,7 +78,12 @@ fn test_schema(
     let principal = AuthPrincipalContext::new(AuthPrincipalKind::DirectUser);
     let tenant = TenantContext {
         id: tenant_id,
+        name: "Test Tenant".to_string(),
         slug: "test-tenant".to_string(),
+        domain: None,
+        settings: serde_json::json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
     };
 
     Schema::build(RbacQuery, RbacMutation, EmptySubscription)
@@ -151,10 +156,20 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
     );
 
     // Seed system role super_admin
-    db.execute_unprepared(&format!(
-        "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ('{}', '{}', 'Super Admin', 'super_admin', 'Built-in', 1)",
-        Uuid::new_v4(), tenant_id
-    )).await.expect("insert system role");
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        vec![
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            "Super Admin".into(),
+            "super_admin".into(),
+            "Built-in".into(),
+            true.into(),
+        ],
+    ))
+    .await
+    .expect("insert system role");
 
     // Try to delete system role -> MUST FAIL
     let del_system_mutation = r#"
@@ -170,7 +185,9 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
     assert!(
         res.errors[0]
             .message
-            .contains("Cannot delete built-in system role")
+            .contains("Cannot delete built-in system role"),
+        "Actual error: {}",
+        res.errors[0].message
     );
 
     // Try to restrict super_admin permissions -> MUST FAIL
@@ -192,7 +209,9 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
     assert!(
         res.errors[0]
             .message
-            .contains("Super administrator permissions are immutable")
+            .contains("Super administrator permissions are immutable"),
+        "Actual error: {}",
+        res.errors[0].message
     );
 
     // 2. Create custom role -> MUST SUCCEED
@@ -259,12 +278,15 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
 
     // 4. Assign custom role to a user and try to delete -> MUST FAIL
     let target_user = Uuid::new_v4();
-    let custom_role_id = role["id"].as_str().expect("role id");
-    db.execute_unprepared(&format!(
-        "INSERT INTO user_roles (id, user_id, role_id) VALUES ('{}', '{}', '{}')",
-        Uuid::new_v4(),
-        target_user,
-        custom_role_id
+    let custom_role_id: Uuid = role["id"].as_str().expect("role id").parse().expect("parse uuid");
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",
+        vec![
+            Uuid::new_v4().into(),
+            target_user.into(),
+            custom_role_id.into(),
+        ],
     ))
     .await
     .expect("assign role");
@@ -282,13 +304,16 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
     assert!(
         res.errors[0]
             .message
-            .contains("currently assigned to 1 user(s)")
+            .contains("currently assigned to 1 user(s)"),
+        "Actual error: {}",
+        res.errors[0].message
     );
 
     // 5. Unassign user and delete custom role -> MUST SUCCEED
-    db.execute_unprepared(&format!(
-        "DELETE FROM user_roles WHERE role_id = '{}'",
-        custom_role_id
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "DELETE FROM user_roles WHERE role_id = ?1",
+        vec![custom_role_id.into()],
     ))
     .await
     .expect("unassign role");

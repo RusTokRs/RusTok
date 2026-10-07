@@ -695,6 +695,12 @@ rbac-perms-granted-for = Granted Permissions for { $name }:
 rbac-perms-total = { $count } total
 rbac-system-protected-tooltip = System roles cannot be deleted
 rbac-superadmin-locked-notice = Super Administrator possesses full immutable platform authority. All permissions are granted and cannot be restricted.
+rbac-role-desc-super-admin = Full unrestricted platform and tenant governance privileges
+rbac-role-desc-admin = Operational administrative control across modules and settings
+rbac-role-desc-manager = Catalog, content, orders, and fulfillment operations
+rbac-role-desc-customer = Standard storefront identity with read-only public access
+rbac-role-desc-custom = Custom platform role
+
 
 # Permission Matrix
 rbac-matrix-title = Permission Matrix
@@ -731,8 +737,57 @@ rbac-delete-dialog-warning = Built-in system roles cannot be deleted. Roles assi
 rbac-btn-delete = Delete Role
 rbac-btn-deleting = Deleting...
 
+# Assign Role Dialog
+rbac-assign-dialog-title = Assign Role to User
+rbac-assign-dialog-desc = Assign or update the permission role for a specific user ID.
+rbac-assign-field-user-id = User ID (UUID)
+rbac-assign-field-user-id-placeholder = e.g. 00000000-0000-0000-0000-000000000000
+rbac-assign-field-role = Role
+rbac-assign-field-role-placeholder = Select a role
+rbac-assign-btn-submit = Assign Role
+rbac-assign-btn-submitting = Assigning...
+rbac-assign-err-user-id-required = User ID is required
+rbac-assign-err-uuid-invalid = User ID must be a valid UUID (e.g. 00000000-0000-0000-0000-000000000000)
+rbac-assign-err-role-required = Please select a role
+rbac-assign-toast-success = Role assigned successfully to user
+rbac-assign-toast-fail = Failed to assign role
+rbac-assign-toast-error = Assignment error: { $error }
+
 # Toasts
 rbac-toast-create-success = Role created successfully
 rbac-toast-update-success = Role updated successfully
 rbac-toast-delete-success = Role deleted successfully
 rbac-toast-error = Operation failed
+
+# Users table and actions
+users-table-select-all = Select all
+users-table-select-row = Select row
+users-table-email-header = Email / User
+users-table-email-search-placeholder = Search by email or name...
+users-table-role-header = Role
+users-table-status-header = Status
+users-table-created-header = Created
+users-action-title = Actions
+users-action-open-menu = Open menu
+users-action-copy-id = Copy User ID
+users-action-change-role = Change Role
+users-action-view-profile = View Profile
+users-action-open-new-tab = Open in new tab
+users-toast-id-copied = User ID copied to clipboard
+users-toast-load-error = Failed to load users
+users-toast-update-success = User updated
+users-toast-deactivate-success = User deactivated
+users-toast-update-error = Failed to update user
+users-toast-deactivate-error = Failed to disable user
+users-detail-deactivate = Deactivate
+users-detail-workspace = Workspace
+users-detail-member-since = Member Since
+users-detail-name-placeholder = Full name
+users-detail-role-select-placeholder = Select a role
+users-toast-detail-load-error = Failed to load user
+users-toast-detail-update-success = User updated
+users-toast-detail-update-error = Failed to update user
+users-toast-detail-deactivate-success = User deactivated
+users-toast-detail-deactivate-error = Failed to disable user
+
+

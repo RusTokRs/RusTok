@@ -51,13 +51,6 @@ const ROLE_BADGE_VARIANT: Record<
   customer: 'outline'
 };
 
-const DEFAULT_ROLE_DESCRIPTION: Record<string, string> = {
-  super_admin: 'Full unrestricted platform and tenant governance privileges',
-  admin: 'Operational administrative control across modules and settings',
-  manager: 'Catalog, content, orders, and fulfillment operations',
-  customer: 'Standard storefront identity with read-only public access'
-};
-
 export function RolesTable({
   roles,
   onAssignRole,
@@ -216,8 +209,15 @@ export function RolesTable({
                 ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
               const description =
                 role.description ||
-                DEFAULT_ROLE_DESCRIPTION[role.slug] ||
-                'Custom platform role';
+                (role.slug === 'super_admin'
+                  ? t('role-desc-super-admin')
+                  : role.slug === 'admin'
+                    ? t('role-desc-admin')
+                    : role.slug === 'manager'
+                      ? t('role-desc-manager')
+                      : role.slug === 'customer'
+                        ? t('role-desc-customer')
+                        : t('role-desc-custom'));
 
               return (
                 <React.Fragment key={role.slug}>
@@ -244,7 +244,7 @@ export function RolesTable({
                     </TableCell>
                     <TableCell>
                       <Badge variant='secondary' className='font-mono text-xs'>
-                        {role.permissions.length} perms
+                        {t('perms-total', { count: role.permissions.length })}
                       </Badge>
                     </TableCell>
                     <TableCell>

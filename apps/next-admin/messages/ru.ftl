@@ -695,6 +695,12 @@ rbac-perms-granted-for = Выданные разрешения для { $name }:
 rbac-perms-total = всего { $count }
 rbac-system-protected-tooltip = Системные роли нельзя удалить
 rbac-superadmin-locked-notice = Суперадминистратор обладает полным неизменяемым авторитетом на платформе. Все разрешения выданы и не могут быть ограничены.
+rbac-role-desc-super-admin = Полные неограниченные привилегии управления платформой и тенантом
+rbac-role-desc-admin = Операционный административный контроль по всем модулям и настройкам
+rbac-role-desc-manager = Управление каталогом, контентом, заказами и логистикой
+rbac-role-desc-customer = Стандартная учетная запись витрины с публичным доступом
+rbac-role-desc-custom = Пользовательская роль платформы
+
 
 # Permission Matrix
 rbac-matrix-title = Матрица разрешений
@@ -731,8 +737,57 @@ rbac-delete-dialog-warning = Системные роли удалить нель
 rbac-btn-delete = Удалить роль
 rbac-btn-deleting = Удаление...
 
+# Assign Role Dialog
+rbac-assign-dialog-title = Назначить роль пользователю
+rbac-assign-dialog-desc = Назначьте или измените роль доступа для указанного ID пользователя.
+rbac-assign-field-user-id = ID пользователя (UUID)
+rbac-assign-field-user-id-placeholder = например, 00000000-0000-0000-0000-000000000000
+rbac-assign-field-role = Роль
+rbac-assign-field-role-placeholder = Выберите роль
+rbac-assign-btn-submit = Назначить роль
+rbac-assign-btn-submitting = Назначение...
+rbac-assign-err-user-id-required = ID пользователя обязателен
+rbac-assign-err-uuid-invalid = ID пользователя должен быть корректным UUID (например, 00000000-0000-0000-0000-000000000000)
+rbac-assign-err-role-required = Пожалуйста, выберите роль
+rbac-assign-toast-success = Роль успешно назначена пользователю
+rbac-assign-toast-fail = Не удалось назначить роль
+rbac-assign-toast-error = Ошибка назначения роли: { $error }
+
 # Toasts
 rbac-toast-create-success = Роль успешно создана
 rbac-toast-update-success = Роль успешно обновлена
 rbac-toast-delete-success = Роль успешно удалена
 rbac-toast-error = Произошла ошибка
+
+# Users table and actions
+users-table-select-all = Выбрать все
+users-table-select-row = Выбрать строку
+users-table-email-header = Email / Пользователь
+users-table-email-search-placeholder = Поиск по email или имени...
+users-table-role-header = Роль
+users-table-status-header = Статус
+users-table-created-header = Создан
+users-action-title = Действия
+users-action-open-menu = Открыть меню
+users-action-copy-id = Скопировать ID пользователя
+users-action-change-role = Изменить роль
+users-action-view-profile = Профиль пользователя
+users-action-open-new-tab = Открыть в новой вкладке
+users-toast-id-copied = ID пользователя скопирован в буфер обмена
+users-toast-load-error = Не удалось загрузить пользователей
+users-toast-update-success = Пользователь успешно обновлен
+users-toast-deactivate-success = Пользователь деактивирован
+users-toast-update-error = Не удалось обновить пользователя
+users-toast-deactivate-error = Не удалось деактивировать пользователя
+users-detail-deactivate = Деактивировать
+users-detail-workspace = Рабочее пространство
+users-detail-member-since = Зарегистрирован
+users-detail-name-placeholder = Полное имя
+users-detail-role-select-placeholder = Выберите роль
+users-toast-detail-load-error = Не удалось загрузить пользователя
+users-toast-detail-update-success = Данные пользователя обновлены
+users-toast-detail-update-error = Не удалось обновить данные пользователя
+users-toast-detail-deactivate-success = Пользователь деактивирован
+users-toast-detail-deactivate-error = Не удалось деактивировать пользователя
+
+

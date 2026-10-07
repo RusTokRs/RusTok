@@ -9,6 +9,7 @@ import { CircleDot, Shield, Text } from 'lucide-react';
 import Link from 'next/link';
 import type { User } from '@/entities/user';
 import { CellAction } from './cell-action';
+import { useTranslations } from '@rustok/next-fluent';
 
 export const ROLE_OPTIONS = [
   { label: 'Super Admin', value: 'SUPER_ADMIN' },
@@ -24,28 +25,58 @@ export const STATUS_OPTIONS = [
   { label: 'Pending', value: 'PENDING' }
 ];
 
+const SelectHeader: React.FC<{ table: any }> = ({ table }) => {
+  const t = useTranslations('users');
+  return (
+    <Checkbox
+      checked={
+        table.getIsAllPageRowsSelected() ||
+        (table.getIsSomePageRowsSelected() && 'indeterminate')
+      }
+      onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+      aria-label={t('table.select.all')}
+      className='translate-y-0.5'
+    />
+  );
+};
+
+const SelectCell: React.FC<{ row: any }> = ({ row }) => {
+  const t = useTranslations('users');
+  return (
+    <Checkbox
+      checked={row.getIsSelected()}
+      onCheckedChange={(value) => row.toggleSelected(!!value)}
+      aria-label={t('table.select.row')}
+      className='translate-y-0.5'
+    />
+  );
+};
+
+const EmailHeader: React.FC<{ column: any }> = ({ column }) => {
+  const t = useTranslations('users');
+  return <DataTableColumnHeader column={column} title={t('table.email.header')} />;
+};
+
+const RoleHeader: React.FC<{ column: any }> = ({ column }) => {
+  const t = useTranslations('users');
+  return <DataTableColumnHeader column={column} title={t('table.role.header')} />;
+};
+
+const StatusHeader: React.FC<{ column: any }> = ({ column }) => {
+  const t = useTranslations('users');
+  return <DataTableColumnHeader column={column} title={t('table.status.header')} />;
+};
+
+const CreatedHeader: React.FC<{ column: any }> = ({ column }) => {
+  const t = useTranslations('users');
+  return <DataTableColumnHeader column={column} title={t('table.created.header')} />;
+};
+
 export const columns: ColumnDef<StockFeatures, User, any>[] = [
   {
     id: 'select',
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && 'indeterminate')
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label='Select all'
-        className='translate-y-0.5'
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label='Select row'
-        className='translate-y-0.5'
-      />
-    ),
+    header: SelectHeader,
+    cell: SelectCell,
     enableSorting: false,
     enableHiding: false,
     size: 40
@@ -53,9 +84,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
   {
     id: 'email',
     accessorKey: 'email',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Email / User' />
-    ),
+    header: EmailHeader,
     cell: ({ row }) => {
       const user = row.original;
       return (
@@ -83,9 +112,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
   {
     id: 'role',
     accessorKey: 'role',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Role' />
-    ),
+    header: RoleHeader,
     cell: ({ getValue }) => {
       const role = String(getValue() ?? '').toUpperCase();
       const isSuperAdmin = role === 'SUPER_ADMIN';
@@ -119,9 +146,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
   {
     id: 'status',
     accessorKey: 'status',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Status' />
-    ),
+    header: StatusHeader,
     cell: ({ getValue }) => {
       const status = String(getValue() ?? '').toUpperCase();
       const isActive = status === 'ACTIVE';
@@ -149,9 +174,7 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
   {
     id: 'createdAt',
     accessorKey: 'createdAt',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Created' />
-    ),
+    header: CreatedHeader,
     cell: ({ getValue }) => {
       const raw = getValue() as string | null;
       if (!raw) return <span className='text-muted-foreground text-xs'>—</span>;
@@ -168,3 +191,4 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
     size: 50
   }
 ];
+
