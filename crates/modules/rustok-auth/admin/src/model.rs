@@ -190,3 +190,51 @@ pub struct UpdateUserInput {
     pub role: String,
     pub status: String,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthSessionItem {
+    pub id: String,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub last_used_at: Option<String>,
+    pub expires_at: String,
+    pub created_at: String,
+    pub current: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionsPayload {
+    pub sessions: Vec<AuthSessionItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionsQueryData {
+    pub sessions: SessionsPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeSessionResponse {
+    #[serde(rename = "revokeSession")]
+    pub revoke_session: RevokeSessionPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeSessionPayload {
+    pub success: bool,
+    pub revoked: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeAllSessionsResponse {
+    #[serde(rename = "revokeAllSessions")]
+    pub revoke_all_sessions: RevokeAllSessionsPayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeAllSessionsPayload {
+    pub success: bool,
+    #[serde(rename = "revokedCount")]
+    pub revoked_count: i32,
+}
+

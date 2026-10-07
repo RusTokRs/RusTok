@@ -3,6 +3,7 @@ import { PageContainer } from '@/widgets/app-shell';
 import { DataTableSkeleton } from '@/widgets/data-table';
 import { RolesPage } from '@rustok/rbac-admin';
 import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
 
 export const metadata = {
   title: 'Dashboard: Roles & Permissions'
@@ -10,6 +11,11 @@ export const metadata = {
 
 export default async function Page() {
   const session = await auth();
+  const role = session?.user?.role;
+  if (!role || role === 'CUSTOMER') {
+    redirect('/dashboard');
+  }
+
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
 

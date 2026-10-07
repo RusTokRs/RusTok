@@ -11,10 +11,10 @@ import type { User } from '@/entities/user';
 import { CellAction } from './cell-action';
 
 export const ROLE_OPTIONS = [
+  { label: 'Super Admin', value: 'SUPER_ADMIN' },
   { label: 'Admin', value: 'ADMIN' },
   { label: 'Manager', value: 'MANAGER' },
-  { label: 'Customer', value: 'CUSTOMER' },
-  { label: 'Moderator', value: 'MODERATOR' }
+  { label: 'Customer', value: 'CUSTOMER' }
 ];
 
 export const STATUS_OPTIONS = [
@@ -88,11 +88,20 @@ export const columns: ColumnDef<StockFeatures, User, any>[] = [
     ),
     cell: ({ getValue }) => {
       const role = String(getValue() ?? '').toUpperCase();
+      const isSuperAdmin = role === 'SUPER_ADMIN';
       const isAdmin = role === 'ADMIN';
       const isManager = role === 'MANAGER';
       return (
         <Badge
-          variant={isAdmin ? 'default' : isManager ? 'secondary' : 'outline'}
+          variant={
+            isSuperAdmin
+              ? 'destructive'
+              : isAdmin
+                ? 'default'
+                : isManager
+                  ? 'secondary'
+                  : 'outline'
+          }
           className='gap-1 text-xs'
         >
           <Shield className='h-3 w-3' />

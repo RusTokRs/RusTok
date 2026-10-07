@@ -1,3 +1,5 @@
+use rustok_grid::{ColumnAlign, GridColumnDef};
+
 use crate::i18n::t;
 use crate::model::{RbacAdminBootstrap, RbacModulePermissionGroup, RbacRoleInfo};
 
@@ -16,11 +18,123 @@ pub struct RbacPermissionsSectionViewModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RbacPermissionRowViewModel {
+    pub module_slug: String,
+    pub permission: String,
+    pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RbacAdminOverviewViewModel {
     pub info_cards: Vec<RbacInfoCardViewModel>,
     pub granted_permissions: RbacPermissionsSectionViewModel,
     pub roles: Vec<RbacRoleInfo>,
     pub module_permissions: Vec<RbacModulePermissionGroup>,
+}
+
+pub fn rbac_role_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("name", if is_ru { "Роль" } else { "Role" })
+            .width(200)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
+            .width(160)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "permissions_count",
+            if is_ru { "Разрешения" } else { "Permissions" },
+        )
+        .width(130)
+        .align(ColumnAlign::Center),
+        GridColumnDef::new(
+            "preview",
+            if is_ru { "Список прав" } else { "Permission List" },
+        )
+        .width(400)
+        .align(ColumnAlign::Left)
+        .not_sortable(),
+    ]
+}
+
+pub fn rbac_permission_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
+    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+    vec![
+        GridColumnDef::new("module", if is_ru { "Модуль" } else { "Module" })
+            .width(150)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("permission", if is_ru { "Ключ права" } else { "Permission Key" })
+            .width(260)
+            .align(ColumnAlign::Left),
+        GridColumnDef::new("roles", if is_ru { "Назначено ролям" } else { "Granted to Roles" })
+            .width(350)
+            .align(ColumnAlign::Left)
+            .not_sortable(),
+    ]
+}
+
+pub fn build_rbac_permission_rows(
+    groups: &[RbacModulePermissionGroup],
+    roles: &[RbacRoleInfo],
+) -> Vec<RbacPermissionRowViewModel> {
+    let mut rows = Vec::new();
+    for group in groups {
+        for perm in &group.permissions {
+            let mut matching_roles = Vec::new();
+            for role in roles {
+                if role.permissions.contains(perm) {
+                    matching_roles.push(role.display_name.clone());
+                }
+            }
+            rows.push(RbacPermissionRowViewModel {
+                module_slug: group.module_slug.clone(),
+                permission: perm.clone(),
+                roles: matching_roles,
+            });
+        }
+    }
+    rows.sort_by(|a, b| a.permission.cmp(&b.permission));
+    rows
+}
+
+pub fn filter_rbac_roles(roles: &[RbacRoleInfo], search: &str) -> Vec<RbacRoleInfo> {
+    let query = search.trim().to_lowercase();
+    if query.is_empty() {
+        return roles.to_vec();
+    }
+    roles
+        .iter()
+        .filter(|role| {
+            role.display_name.to_lowercase().contains(&query)
+                || role.slug.to_lowercase().contains(&query)
+                || role.permissions.iter().any(|p| p.to_lowercase().contains(&query))
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn filter_rbac_permission_rows(
+    rows: &[RbacPermissionRowViewModel],
+    search: &str,
+    module_filter: Option<&str>,
+) -> Vec<RbacPermissionRowViewModel> {
+    let query = search.trim().to_lowercase();
+    rows.iter()
+        .filter(|row| {
+            if let Some(m) = module_filter {
+                if m != "all" && !m.is_empty() && row.module_slug != m {
+                    return false;
+                }
+            }
+            if query.is_empty() {
+                return true;
+            }
+            row.permission.to_lowercase().contains(&query)
+                || row.module_slug.to_lowercase().contains(&query)
+                || row.roles.iter().any(|r| r.to_lowercase().contains(&query))
+        })
+        .cloned()
+        .collect()
 }
 
 pub fn build_rbac_admin_overview_view_model(
@@ -155,5 +269,58 @@ mod tests {
 
         let ru_err = format_rbac_admin_bootstrap_error(Some("ru"), "отказано в доступе");
         assert_eq!(ru_err, "Не удалось загрузить RBAC bootstrap: отказано в доступе");
+    }
+
+    #[test]
+    fn filter_rbac_roles_by_name_and_permission() {
+        let roles = vec![
+            RbacRoleInfo {
+                slug: "admin".to_string(),
+                display_name: "Admin".to_string(),
+                permissions: vec!["settings:read".to_string(), "users:create".to_string()],
+            },
+            RbacRoleInfo {
+                slug: "customer".to_string(),
+                display_name: "Customer".to_string(),
+                permissions: vec!["catalog:read".to_string()],
+            },
+        ];
+
+        assert_eq!(filter_rbac_roles(&roles, "admin").len(), 1);
+        assert_eq!(filter_rbac_roles(&roles, "settings").len(), 1);
+        assert_eq!(filter_rbac_roles(&roles, "nonexistent").len(), 0);
+        assert_eq!(filter_rbac_roles(&roles, "").len(), 2);
+    }
+
+    #[test]
+    fn build_and_filter_permission_rows() {
+        let groups = vec![
+            RbacModulePermissionGroup {
+                module_slug: "users".to_string(),
+                permissions: vec!["users:create".to_string(), "users:read".to_string()],
+            },
+            RbacModulePermissionGroup {
+                module_slug: "catalog".to_string(),
+                permissions: vec!["catalog:read".to_string()],
+            },
+        ];
+        let roles = vec![
+            RbacRoleInfo {
+                slug: "admin".to_string(),
+                display_name: "Admin".to_string(),
+                permissions: vec!["users:create".to_string(), "catalog:read".to_string()],
+            },
+        ];
+
+        let rows = build_rbac_permission_rows(&groups, &roles);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].permission, "catalog:read");
+        assert_eq!(rows[0].roles, vec!["Admin".to_string()]);
+
+        let filtered_mod = filter_rbac_permission_rows(&rows, "", Some("users"));
+        assert_eq!(filtered_mod.len(), 2);
+
+        let filtered_search = filter_rbac_permission_rows(&rows, "create", None);
+        assert_eq!(filtered_search.len(), 1);
     }
 }
