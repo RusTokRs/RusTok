@@ -157,7 +157,11 @@ product-scoped, filterable definition and executes exact typed EAV equality for
 localized/plain text, integer, decimal, boolean, date, datetime, select, and
 multiselect storage while excluding detached values. JSON attributes are
 explicitly rejected because this contract does not claim unindexed JSON
-comparison semantics. Recheck on 2026-07-29.
+comparison semantics. The storefront facet panel renders the owner-counted buckets of the requested attribute codes:
+each bucket links to the same catalog page with one `code=value` selection flipped, so selections
+live in the URL, and facets whose domain is unbounded keep the free-form filter input. The facet
+contract itself is shared (`rustok-grid`), while counting stays Product-owned.
+Recheck on 2026-07-29.
 
 Product write GraphQL derives tenant and actor exclusively from authenticated
 contexts. Product-owned `map_product_public_error` is shared by GraphQL and
@@ -307,6 +311,7 @@ rustok-pricing` dependency cycle.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
 - [x] Connect admin search/status/category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.
 - [x] Connect typed attribute_filters through storefront/admin UI state, native/GraphQL transports, filterable-definition validation, and Product-owned typed EAV execution.
+- [x] Render storefront facet buckets from the Product owner contract: the shared `rustok-grid` facet contract, owner-counted `code=value` buckets, and URL-toggled selections in the storefront facet panel.
 - `node scripts/verify/verify-product-catalog-read-runtime-composition.mjs`
 - `node scripts/verify/verify-product-catalog-read-runtime-composition.test.mjs`
 - `node scripts/verify/verify-product-native-checkout-catalog-runtime.mjs`

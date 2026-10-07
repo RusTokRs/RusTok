@@ -1,10 +1,13 @@
 use crate::catalog_controls::{
-    build_catalog_list_input, build_catalog_search_labels, serialize_attribute_filters,
+    build_catalog_facet_labels, build_catalog_list_input, build_catalog_search_labels,
+    serialize_attribute_filters,
 };
 use crate::core::{
-    build_catalog_rail_view_model, build_fetch_request, build_product_catalog_rail_labels,
-    build_route_input, build_selected_product_empty_view_model, build_selected_product_view_model,
-    build_shell_view_model, build_transport_error_dom_evidence, resolve_route_segment,
+    CatalogFacetFiltersViewModel, build_catalog_facet_codes,
+    build_catalog_facet_filters_view_model, build_catalog_rail_view_model, build_fetch_request,
+    build_product_catalog_rail_labels, build_route_input, build_selected_product_empty_view_model,
+    build_selected_product_view_model, build_shell_view_model, build_transport_error_dom_evidence,
+    resolve_route_segment,
 };
 use crate::model::{
     ProductCatalogSearchOptions, ProductDetail, ProductListItem, ProductPricingContext,
@@ -50,12 +53,24 @@ pub fn ProductView() -> impl IntoView {
         .clone()
         .unwrap_or_else(|| "desc".to_string());
     let options_locale = route_input.locale.clone().unwrap_or_default();
-    let options_resource = Resource::new_blocking(
-        move || options_locale.clone(),
-        move |locale| async move {
-            transport::fetch_catalog_search_options(locale)
+    let facet_route_base = route_context
+        .module_route_base(resolve_route_segment(route_context.route_segment.as_deref()).as_str());
+    let facet_labels = build_catalog_facet_labels(route_input.locale.as_deref());
+    let facet_controls = catalog_input.clone();
+    let catalog_support_resource = Resource::new_blocking(
+        move || (options_locale.clone(), catalog_input.clone()),
+        move |(locale, controls)| async move {
+            let options = transport::fetch_catalog_search_options(locale.clone())
                 .await
-                .unwrap_or_else(|_| ProductCatalogSearchOptions::default())
+                .unwrap_or_else(|_| ProductCatalogSearchOptions::default());
+            let facets = transport::fetch_catalog_facets(
+                locale,
+                controls,
+                build_catalog_facet_codes(&options),
+            )
+            .await
+            .unwrap_or_default();
+            (options, facets)
         },
     );
     let search_label = control_labels.search_label;
@@ -125,11 +140,11 @@ pub fn ProductView() -> impl IntoView {
                         </select>
                     }>
                         {move || {
-                            let options_resource = options_resource;
+                            let catalog_support_resource = catalog_support_resource;
                             let selected_category_id = category_options_selected.clone();
                             let all_categories = category_options_all_label.clone();
                             Suspend::new(async move {
-                                let options = options_resource.await;
+                                let (options, _facets) = catalog_support_resource.await;
                                 view! {
                                     <select
                                         id="product-catalog-category"
@@ -202,6 +217,24 @@ pub fn ProductView() -> impl IntoView {
                     {submit_label}
                 </button>
             </form>
+            <Suspense fallback=move || view! { <div class="mt-6 h-24 animate-pulse rounded-2xl bg-muted"></div> }>
+                {move || {
+                    let catalog_support_resource = catalog_support_resource;
+                    let facet_route_base = facet_route_base.clone();
+                    let facet_controls = facet_controls.clone();
+                    let facet_labels = facet_labels.clone();
+                    Suspend::new(async move {
+                        let (_options, facets) = catalog_support_resource.await;
+                        let view_model = build_catalog_facet_filters_view_model(
+                            facet_route_base.as_str(),
+                            facets.as_slice(),
+                            &facet_controls,
+                            facet_labels,
+                        );
+                        view! { <CatalogFacetFilters view_model /> }
+                    })
+                }}
+            </Suspense>
             <div class="mt-8">
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-3"><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
@@ -218,6 +251,92 @@ pub fn ProductView() -> impl IntoView {
             </div>
         </section>
     }
+}
+
+/// Storefront facet panel: every bucket toggles one `code=value` selection in the URL, so the
+/// panel keeps no client-side state, deep links stay shareable, and unbounded facet domains keep
+/// the free-form filter input owned by the catalog controls.
+#[component]
+pub fn CatalogFacetFilters(view_model: CatalogFacetFiltersViewModel) -> impl IntoView {
+    if view_model.show_empty_state {
+        return view! {
+            <p class="mt-6 text-sm text-muted-foreground">{view_model.empty_message}</p>
+        }
+        .into_any();
+    }
+
+    let title = view_model.title;
+    let clear_label = view_model.clear_label.clone();
+    let clear_href = view_model.clear_href;
+    let facets = view_model.facets;
+
+    view! {
+        <section class="mt-6 rounded-2xl border border-border bg-background p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-medium text-foreground">{title}</h3>
+                {clear_href.map(|href| {
+                    let clear_label = clear_label.clone();
+                    view! {
+                        <a
+                            class="text-xs font-medium text-muted-foreground underline-offset-2 transition hover:text-foreground hover:underline"
+                            href=href
+                        >
+                            {clear_label}
+                        </a>
+                    }
+                })}
+            </div>
+            <div class="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {facets.into_iter().map(|facet| {
+                    let facet_clear_label = facet.clear_label.clone();
+                    let facet_clear_href = facet.clear_href.clone();
+                    let unbounded_hint = facet.unbounded_hint.clone();
+                    let truncated_hint = facet.truncated_hint.clone();
+                    view! {
+                        <div class="min-w-0 space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="truncate text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                    {facet.label}
+                                </p>
+                                {facet_clear_href.map(|href| view! {
+                                    <a
+                                        class="shrink-0 text-xs text-muted-foreground transition hover:text-foreground"
+                                        href=href
+                                    >
+                                        {facet_clear_label.clone()}
+                                    </a>
+                                })}
+                            </div>
+                            {unbounded_hint.map(|hint| view! {
+                                <p class="text-xs text-muted-foreground">{hint}</p>
+                            })}
+                            <ul class="space-y-1">
+                                {facet.values.into_iter().map(|value| view! {
+                                    <li>
+                                        <a
+                                            class="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm text-foreground transition hover:bg-muted"
+                                            href=value.href
+                                            aria-pressed=value.selected.to_string()
+                                        >
+                                            <span class="flex min-w-0 items-center gap-2">
+                                                <span class="text-xs text-muted-foreground">{value.marker}</span>
+                                                <span class="truncate">{value.label}</span>
+                                            </span>
+                                            <span class="shrink-0 text-xs text-muted-foreground">{value.count_label}</span>
+                                        </a>
+                                    </li>
+                                }).collect_view()}
+                            </ul>
+                            {truncated_hint.map(|hint| view! {
+                                <p class="text-xs text-muted-foreground">{hint}</p>
+                            })}
+                        </div>
+                    }
+                }).collect_view()}
+            </div>
+        </section>
+    }
+    .into_any()
 }
 
 #[component]

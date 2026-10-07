@@ -1,9 +1,15 @@
 use rustok_api::locale_tags_match;
-use rustok_ui_core::normalize_optional_ui_text;
+use rustok_ui_core::{apply_ui_query_pairs, normalize_optional_ui_text};
 
+use crate::catalog_controls::{
+    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code,
+    has_attribute_filter_for_code, is_attribute_filter_selected, serialize_attribute_filters,
+    toggle_attribute_filter,
+};
 use crate::i18n::t;
 use crate::model::{
-    ProductDetail, ProductPricingContext, ProductPricingDetail, ProductTranslation, ProductVariant,
+    ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail, ProductPricingContext,
+    ProductPricingDetail, ProductTranslation, ProductVariant,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -624,6 +630,181 @@ pub fn count_label(template: &str, total: u64) -> String {
     template.replace("{count}", &total.to_string())
 }
 
+/// One facet bucket rendered as a toggle link; selection always round-trips through the URL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetValueViewModel {
+    pub value: String,
+    pub label: String,
+    pub count_label: String,
+    pub selected: bool,
+    /// Checkbox-like marker the adapter renders in front of the label.
+    pub marker: String,
+    pub href: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetViewModel {
+    pub code: String,
+    pub label: String,
+    pub is_enumerable: bool,
+    /// Shown when the facet domain is unbounded and the storefront keeps its free-form input.
+    pub unbounded_hint: Option<String>,
+    pub is_truncated: bool,
+    /// Shown when the owner cut the bucket list at its facet-value limit.
+    pub truncated_hint: Option<String>,
+    /// Link that drops this facet's selections; `None` while nothing of it is selected.
+    pub clear_href: Option<String>,
+    pub clear_label: String,
+    pub values: Vec<CatalogFacetValueViewModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetFiltersViewModel {
+    pub title: String,
+    pub facets: Vec<CatalogFacetViewModel>,
+    pub show_empty_state: bool,
+    pub empty_message: String,
+    /// Link that drops every attribute-filter selection; `None` when nothing is selected.
+    pub clear_href: Option<String>,
+    pub clear_label: String,
+}
+
+/// Attribute codes the facet panel asks the owner to count, in catalog search-option order.
+///
+/// The owner counts only the facets a client asks for, so the storefront derives the request from
+/// the same search options it offers as filter inputs — blank and duplicate codes are dropped.
+pub fn build_catalog_facet_codes(options: &ProductCatalogSearchOptions) -> Vec<String> {
+    let mut codes: Vec<String> = Vec::new();
+    for option in &options.attribute_options {
+        let code = option.value.trim();
+        if code.is_empty() || codes.iter().any(|existing| existing == code) {
+            continue;
+        }
+        codes.push(code.to_string());
+    }
+    codes
+}
+
+/// Query of the current catalog page with one facet selection flipped.
+pub fn build_catalog_facet_toggle_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    code: &str,
+    value: &str,
+) -> String {
+    let filters = toggle_attribute_filter(controls.attribute_filters.as_slice(), code, value);
+    build_catalog_query_with_filters(module_route_base, controls, filters)
+}
+
+/// Query of the current catalog page without the selections of one facet.
+pub fn build_catalog_facet_clear_code_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    code: &str,
+) -> String {
+    let filters = clear_attribute_filter_code(controls.attribute_filters.as_slice(), code);
+    build_catalog_query_with_filters(module_route_base, controls, filters)
+}
+
+/// Query of the current catalog page without any attribute-filter selection.
+pub fn build_catalog_facet_clear_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+) -> String {
+    build_catalog_query_with_filters(module_route_base, controls, Vec::new())
+}
+
+fn build_catalog_query_with_filters(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    filters: Vec<String>,
+) -> String {
+    let serialized = serialize_attribute_filters(filters.as_slice());
+    apply_ui_query_pairs(
+        module_route_base,
+        &[
+            ("search", controls.search.clone()),
+            ("category_id", controls.category_id.clone()),
+            ("sort_by", controls.sort_by.clone()),
+            ("sort_direction", controls.sort_direction.clone()),
+            (
+                "attribute_filters",
+                (!serialized.is_empty()).then_some(serialized),
+            ),
+            ("currency", controls.currency_code.clone()),
+        ],
+    )
+}
+
+pub fn build_catalog_facet_filters_view_model(
+    module_route_base: &str,
+    facets: &[ProductCatalogFacet],
+    controls: &CatalogListInput,
+    labels: CatalogFacetLabels,
+) -> CatalogFacetFiltersViewModel {
+    let facets: Vec<CatalogFacetViewModel> = facets
+        .iter()
+        .map(|facet| CatalogFacetViewModel {
+            code: facet.code.clone(),
+            label: facet.label.clone(),
+            is_enumerable: facet.is_enumerable,
+            unbounded_hint: (!facet.is_enumerable).then(|| labels.unbounded_hint.clone()),
+            is_truncated: facet.is_truncated,
+            truncated_hint: facet.is_truncated.then(|| labels.truncated_hint.clone()),
+            clear_href: has_attribute_filter_for_code(
+                controls.attribute_filters.as_slice(),
+                facet.code.as_str(),
+            )
+            .then(|| {
+                build_catalog_facet_clear_code_query(
+                    module_route_base,
+                    controls,
+                    facet.code.as_str(),
+                )
+            }),
+            clear_label: labels.clear_label.clone(),
+            values: facet
+                .values
+                .iter()
+                .map(|value| {
+                    let selected = is_attribute_filter_selected(
+                        controls.attribute_filters.as_slice(),
+                        facet.code.as_str(),
+                        value.value.as_str(),
+                    );
+                    CatalogFacetValueViewModel {
+                        value: value.value.clone(),
+                        label: value.label.clone(),
+                        count_label: count_label(labels.count_template.as_str(), value.count),
+                        selected,
+                        marker: if selected {
+                            labels.selected_marker.clone()
+                        } else {
+                            labels.unselected_marker.clone()
+                        },
+                        href: build_catalog_facet_toggle_query(
+                            module_route_base,
+                            controls,
+                            facet.code.as_str(),
+                            value.value.as_str(),
+                        ),
+                    }
+                })
+                .collect(),
+        })
+        .collect();
+
+    CatalogFacetFiltersViewModel {
+        title: labels.title,
+        show_empty_state: facets.is_empty(),
+        empty_message: labels.empty_message,
+        clear_href: (!controls.attribute_filters.is_empty())
+            .then(|| build_catalog_facet_clear_query(module_route_base, controls)),
+        clear_label: labels.clear_label,
+        facets,
+    }
+}
+
 /// Formats the catalog-card "from" price snapshot provided by the Product owner.
 pub fn format_product_list_price_from(
     template: &str,
@@ -769,6 +950,139 @@ pub fn build_pricing_href(
 mod tests {
     use super::*;
     use crate::model::{ProductDetail, ProductPrice, ProductPricingContext, ProductTranslation};
+
+    fn catalog_controls_with_attribute_filters(filters: &[&str]) -> CatalogListInput {
+        CatalogListInput {
+            search: Some("bag".to_string()),
+            category_id: Some("category-1".to_string()),
+            sort_by: Some("created_at".to_string()),
+            sort_direction: Some("asc".to_string()),
+            attribute_filters: filters.iter().map(|value| (*value).to_string()).collect(),
+            currency_code: Some("USD".to_string()),
+        }
+    }
+
+    #[test]
+    fn facet_codes_follow_search_options_without_blanks_and_duplicates() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: vec![
+                crate::model::ProductCatalogSearchOption {
+                    value: "color".to_string(),
+                    label: "Color".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: " color ".to_string(),
+                    label: "Color again".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: "   ".to_string(),
+                    label: "Blank".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: "size".to_string(),
+                    label: "Size".to_string(),
+                },
+            ],
+        };
+
+        assert_eq!(build_catalog_facet_codes(&options), vec!["color", "size"]);
+    }
+
+    #[test]
+    fn facet_toggle_query_flips_one_selection_and_keeps_the_rest() {
+        let controls = catalog_controls_with_attribute_filters(&["color=red", "size=m"]);
+        let href = build_catalog_facet_toggle_query("/products", &controls, "color", "red");
+        assert_eq!(
+            href,
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&attribute_filters=size%3Dm&currency=USD"
+        );
+
+        let href = build_catalog_facet_toggle_query("/products", &controls, "color", "blue");
+        assert_eq!(
+            href,
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&attribute_filters=color%3Dred%3Bsize%3Dm%3Bcolor%3Dblue&currency=USD"
+        );
+    }
+
+    #[test]
+    fn facet_clear_queries_drop_selections_without_touching_other_controls() {
+        let controls = catalog_controls_with_attribute_filters(&["color=red", "size=m"]);
+        assert_eq!(
+            build_catalog_facet_clear_query("/products", &controls),
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&currency=USD"
+        );
+        let href = build_catalog_facet_clear_code_query("/products", &controls, "size");
+        assert!(href.contains("attribute_filters=color%3Dred"));
+        assert!(!href.contains("size"));
+    }
+
+    #[test]
+    fn facet_view_model_marks_selection_counts_and_unbounded_domains() {
+        let facets = vec![
+            ProductCatalogFacet {
+                code: "color".to_string(),
+                label: "Color".to_string(),
+                value_type: "select".to_string(),
+                is_localized: true,
+                is_enumerable: true,
+                is_truncated: true,
+                total_products: 12,
+                values: vec![crate::model::ProductCatalogFacetValue {
+                    value: "red".to_string(),
+                    label: "Red".to_string(),
+                    count: 7,
+                }],
+            },
+            ProductCatalogFacet {
+                code: "weight".to_string(),
+                label: "Weight".to_string(),
+                value_type: "decimal".to_string(),
+                is_localized: false,
+                is_enumerable: false,
+                is_truncated: false,
+                total_products: 3,
+                values: Vec::new(),
+            },
+        ];
+        let controls = catalog_controls_with_attribute_filters(&["color=red"]);
+        let view_model = build_catalog_facet_filters_view_model(
+            "/products",
+            facets.as_slice(),
+            &controls,
+            crate::catalog_controls::build_catalog_facet_labels(Some("en")),
+        );
+
+        assert!(!view_model.show_empty_state);
+        assert_eq!(view_model.facets.len(), 2);
+        let color = view_model.facets.first().expect("color facet");
+        assert_eq!(color.label, "Color");
+        assert!(color.is_truncated);
+        assert!(color.truncated_hint.is_some());
+        let red = color.values.first().expect("red bucket");
+        assert!(red.selected);
+        assert_eq!(red.count_label, "(7)");
+        assert!(red.href.contains("attribute_filters="));
+        let weight = view_model.facets.get(1).expect("weight facet");
+        assert!(!weight.is_enumerable);
+        assert!(weight.unbounded_hint.is_some());
+        assert!(weight.values.is_empty());
+        assert!(view_model.clear_href.is_some());
+    }
+
+    #[test]
+    fn facet_view_model_stays_empty_and_clears_nothing_without_selection() {
+        let controls = CatalogListInput::default();
+        let view_model = build_catalog_facet_filters_view_model(
+            "/products",
+            &[],
+            &controls,
+            crate::catalog_controls::build_catalog_facet_labels(None),
+        );
+        assert!(view_model.show_empty_state);
+        assert!(view_model.clear_href.is_none());
+        assert!(view_model.facets.is_empty());
+    }
 
     fn without_bidi_isolates(value: &str) -> String {
         value.replace(['\u{2068}', '\u{2069}'], "")

@@ -31,7 +31,10 @@ const storefrontQuery = read("crates/modules/rustok-product/src/services/catalog
 const adminQuery = read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs");
 const storefrontControls = read("crates/modules/rustok-product/storefront/src/catalog_controls.rs");
 const storefrontUi = read("crates/modules/rustok-product/storefront/src/ui/leptos.rs");
+const storefrontCore = read("crates/modules/rustok-product/storefront/src/core.rs");
 const storefrontNative = read("crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs");
+const storefrontFacetsNative = read("crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs");
+const uiCore = read("crates/ui/rustok-ui-core/src/ui.rs");
 const storefrontGraphql = read("crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs");
 const adminControls = read("crates/modules/rustok-product/admin/src/catalog_controls.rs");
 const adminUi = read("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs");
@@ -65,17 +68,52 @@ requireAll(execution, [
 requireAll(storefrontQuery, ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"], "storefront owner query");
 requireAll(adminQuery, ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"], "admin owner query");
 requireAll(storefrontControls, ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"], "storefront controls");
-requireAll(storefrontUi, ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"'], "storefront UI");
+requireAll(storefrontControls, [
+  "build_catalog_facet_labels",
+  "toggle_attribute_filter",
+  "is_attribute_filter_selected",
+], "storefront facet controls");
+requireAll(storefrontCore, [
+  "build_catalog_facet_codes",
+  "build_catalog_facet_filters_view_model",
+  "build_catalog_facet_toggle_query",
+  "apply_ui_query_pairs",
+], "storefront facet view model");
+requireAll(uiCore, ["pub fn apply_ui_query_pairs"], "shared UI query helper");
+requireAll(storefrontUi, [
+  'read_route_query_value(&route_context, "attribute_filters")',
+  'name="attribute_filters"',
+  "<CatalogFacetFilters",
+  "build_catalog_facet_filters_view_model",
+], "storefront UI");
+requireAll(storefrontFacetsNative, [
+  "storefront_catalog_facets_native",
+  "storefront_catalog_facets",
+  "attribute_filters: Vec<String>",
+  "facet_codes: Vec<String>",
+], "storefront facet native");
 requireAll(storefrontNative, ["attribute_filters: Vec<String>", "try_from_transport_with_attribute_filters"], "storefront native");
-requireAll(storefrontGraphql, ["attributeFilters", "attribute_filters: controls.attribute_filters"], "storefront GraphQL");
+requireAll(storefrontGraphql, [
+  "attributeFilters",
+  "attribute_filters: controls.attribute_filters",
+  "STOREFRONT_CATALOG_FACETS_QUERY",
+  "facetCodes",
+  "fetch_catalog_facets",
+], "storefront GraphQL");
 requireAll(adminControls, ["pub attribute_filters: Vec<String>", "serialize_attribute_filters"], "admin controls");
 requireAll(adminUi, ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"', "provide_context(catalog_controls)"], "admin UI");
 requireAll(adminNative, ["attribute_filters: Vec<String>", "try_from_transport_with_attribute_filters"], "admin native");
 requireAll(adminGraphql, ["attributeFilters", "attribute_filters: controls.attribute_filters"], "admin GraphQL");
-requireAll(graphqlRoot, ["pub attribute_filters: Vec<String>", "try_new_with_attribute_filters", "try_from_transport_with_attribute_filters"], "GraphQL roots");
+requireAll(graphqlRoot, [
+  "pub attribute_filters: Vec<String>",
+  "try_new_with_attribute_filters",
+  "try_from_transport_with_attribute_filters",
+  "storefront_product_catalog_facets",
+], "GraphQL roots");
 requireAll(plan, [
   "- [x] Connect storefront/admin UI controls to optional catalog filters/sorts.",
   "Connect typed attribute_filters through storefront/admin UI state",
+  "Render storefront facet buckets from the Product owner contract",
   "verify-product-catalog-attribute-filters.mjs",
 ], "implementation plan");
 

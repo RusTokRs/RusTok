@@ -136,6 +136,7 @@ The general owner boundary verifier imports the focused guard:
 
 ```bash
 node scripts/verify/verify-product-storefront-boundary.mjs
+node scripts/verify/verify-product-catalog-attribute-filters.mjs
 ```
 
 ## Evidence boundary
@@ -149,6 +150,11 @@ The evidence establishes only that the source and guardrail are present and
 have been reviewed. It does not establish compilation, browser execution,
 GraphQL runtime behavior, mounted parity, workflow success, CI success, or
 production behavior.
+
+The catalog facet read (`fetch_catalog_facets`) uses the same private adapter, the same typed
+reparse and the same static public envelopes. Its request shape is logged as bounded facts only:
+the locale length, the shared catalog-control shapes, and the number of requested facet codes
+(`facet_code_count`) — never a facet code, a bucket label, or a bucket count.
 
 The broad ecommerce correlation-safe mapper cleanup remains open.
 

@@ -12,6 +12,40 @@ pub struct ProductCatalogSearchOptions {
     pub attribute_options: Vec<ProductCatalogSearchOption>,
 }
 
+/// One selectable facet bucket with the live product count for the current filter set.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductCatalogFacetValue {
+    /// `code=<value>` payload: an option id for dictionary attributes, `true`/`false` for booleans.
+    pub value: String,
+    pub label: String,
+    pub count: u64,
+}
+
+/// A facet the Product owner resolved for the current catalog filter set.
+///
+/// The facet contract itself lives in `rustok-grid`; this model is the storefront transport shape
+/// of it (`GqlStorefrontCatalogFacet` on the GraphQL path, the owner service on the native path).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductCatalogFacet {
+    pub code: String,
+    pub label: String,
+    /// Stored attribute value type, e.g. `select`.
+    #[serde(rename = "valueType")]
+    pub value_type: String,
+    #[serde(rename = "isLocalized")]
+    pub is_localized: bool,
+    /// False when the value domain is unbounded (text, numeric, date): `values` stays empty.
+    #[serde(rename = "isEnumerable")]
+    pub is_enumerable: bool,
+    /// True when the bucket list was cut at the owner facet-value limit.
+    #[serde(rename = "isTruncated")]
+    pub is_truncated: bool,
+    /// Products matching every other active facet that carry a value for this attribute.
+    #[serde(rename = "totalProducts")]
+    pub total_products: u64,
+    pub values: Vec<ProductCatalogFacetValue>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontProductsData {
     pub products: ProductList,

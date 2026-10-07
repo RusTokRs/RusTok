@@ -38,6 +38,11 @@ published catalog discovery.
   pricing context so catalog browsing can pivot into pricing inspection without
   rebuilding the query state by hand.
 - Consume the host-provided effective locale from `UiRouteContext` and resolve selected product copy against that locale before falling back to another translation.
+- Render the catalog facet panel (`ui::leptos::CatalogFacetFilters`) from the owner-resolved facet
+  contract: every bucket is a link that flips one `code=value` selection in the URL
+  (`core::build_catalog_facet_toggle_query`), unbounded facet domains keep the free-form filter
+  input, and the panel owns no client-side state. Facet semantics come from the shared
+  `rustok-grid` contract; counting stays Product-owned.
 
 ## Entry points
 
@@ -46,5 +51,7 @@ published catalog discovery.
 - `core::build_selected_product_view_model`
 - `core::build_pricing_href`
 - `transport::fetch_products`
+- `transport::fetch_catalog_facets`
+- `ui::leptos::CatalogFacetFilters`
 
 See also `../README.md` and `../docs/README.md`.

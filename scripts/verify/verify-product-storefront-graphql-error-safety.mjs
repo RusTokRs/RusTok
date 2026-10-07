@@ -46,16 +46,19 @@ for (const [value, label] of [
   [".map_err(|error| context.map_error(error))", "facade error mapping"],
   ["catalog_list_native::fetch_products(native_request, native_controls)", "native catalog path preservation"],
   ["native_server_adapter::fetch_catalog_search_options(native_locale)", "native search-options path preservation"],
+  ["GraphqlCallContext::fetch_catalog_facets(", "facet operation context"],
+  ["catalog_facets_native::fetch_catalog_facets(", "native facet path preservation"],
 ]) requireText(transport, value, label);
 
-if ((transport.match(/\.map_err\(\|error\| context\.map_error\(error\)\)/g) || []).length !== 2) {
-  failures.push(`${transportPath}: expected exactly two GraphQL context mappings`);
+if ((transport.match(/\.map_err\(\|error\| context\.map_error\(error\)\)/g) || []).length !== 3) {
+  failures.push(`${transportPath}: expected exactly three GraphQL context mappings`);
 }
 
 for (const [value, label] of [
   ["pub(super) struct GraphqlCallContext", "private call context"],
   ["pub(super) fn fetch_products", "catalog context constructor"],
   ["pub(super) fn fetch_catalog_search_options", "search-options context constructor"],
+  ["pub(super) fn fetch_catalog_facets", "facet context constructor"],
   ["GraphqlHttpError::from_str", "typed display reparse"],
   ["let ApiError::Graphql(raw_error) = error else", "GraphQL-only remap"],
   ["return error;", "non-GraphQL pass-through"],
@@ -101,6 +104,7 @@ for (const [value, label] of [
   ["sort_by_present", "safe sort presence"],
   ["sort_direction_present", "safe direction presence"],
   ["attribute_filter_count", "safe filter count"],
+  ["facet_code_count", "safe facet-code count"],
 ]) requireText(policy, value, label);
 
 for (const value of [
@@ -130,6 +134,7 @@ for (const [value, label] of [
   ["STOREFRONT_PRODUCT_QUERY", "detail query preservation"],
   ["STOREFRONT_PRICING_PRODUCT_QUERY", "pricing query preservation"],
   ["STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY", "search-options query preservation"],
+  ["STOREFRONT_CATALOG_FACETS_QUERY", "facet query preservation"],
 ]) requireText(adapter, value, label);
 
 requireText(native, "pub enum ApiError", "shared transport error contract");

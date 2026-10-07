@@ -1,3 +1,4 @@
+mod catalog_facets_native;
 mod catalog_list_native;
 mod graphql_adapter;
 mod graphql_error_safety;
@@ -5,7 +6,7 @@ mod native_server_adapter;
 
 use crate::catalog_controls::CatalogListInput;
 use crate::core::FetchRequest;
-use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
+use crate::model::{ProductCatalogFacet, ProductCatalogSearchOptions, StorefrontProductsData};
 use rustok_ui_transport::{
     UiTransportError, UiTransportPath, UiTransportResult, execute_selected_transport,
 };
@@ -38,6 +39,39 @@ pub async fn fetch_products(
             let context =
                 graphql_error_safety::GraphqlCallContext::fetch_products(&request, &controls);
             graphql_adapter::fetch_products(request, controls)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+    )
+    .await
+}
+
+/// Facet bucket counts for the requested attribute codes on the selected transport path.
+pub async fn fetch_catalog_facets(
+    locale: String,
+    controls: CatalogListInput,
+    facet_codes: Vec<String>,
+) -> TransportResult<Vec<ProductCatalogFacet>> {
+    let native_locale = locale.clone();
+    let native_controls = controls.clone();
+    let native_facet_codes = facet_codes.clone();
+    execute_selected_transport(
+        "product",
+        selected_transport_path(),
+        move || {
+            catalog_facets_native::fetch_catalog_facets(
+                Some(native_locale),
+                native_controls,
+                native_facet_codes,
+            )
+        },
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::fetch_catalog_facets(
+                Some(locale.as_str()),
+                &controls,
+                facet_codes.as_slice(),
+            );
+            graphql_adapter::fetch_catalog_facets(Some(locale), controls, facet_codes)
                 .await
                 .map_err(|error| context.map_error(error))
         },

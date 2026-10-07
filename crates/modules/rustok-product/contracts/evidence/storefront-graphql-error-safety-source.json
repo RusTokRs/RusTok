@@ -5,7 +5,8 @@
   "scope": "product-owned storefront GraphQL catalog, detail, pricing, and catalog-search-options transport",
   "covered_operations": [
     "fetch_products",
-    "fetch_catalog_search_options"
+    "fetch_catalog_search_options",
+    "fetch_catalog_facets"
   ],
   "source_contract": {
     "public_consumer_boundary_sanitized": true,
@@ -34,7 +35,9 @@
     "raw_tenant_slug_logged": false,
     "raw_graphql_error_public": false,
     "non_graphql_errors_pass_through": true,
-    "broad_ecommerce_cleanup_closed": false
+    "broad_ecommerce_cleanup_closed": false,
+    "facet_codes_defaulted": true,
+    "facet_code_count_logged": true
   },
   "internal_diagnostics": {
     "raw_graphql_error": false,

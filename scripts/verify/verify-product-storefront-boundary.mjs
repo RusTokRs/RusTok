@@ -109,6 +109,8 @@ for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "Resour
 for (const marker of [
   "build_product_catalog_rail_labels",
   "build_catalog_rail_view_model",
+  "build_catalog_facet_codes",
+  "build_catalog_facet_filters_view_model",
   "build_shell_view_model",
   "build_transport_error_dom_evidence",
   "build_selected_product_empty_view_model",
@@ -127,6 +129,7 @@ assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call
 assertContains(ui, "build_product_catalog_rail_labels", `${uiPath}: UI must consume core-owned catalog rail labels`);
 assertContains(ui, "build_catalog_rail_view_model", `${uiPath}: UI must consume core-owned catalog rail view-model`);
 assertContains(ui, "build_catalog_list_input", `${uiPath}: UI must build typed catalog control state`);
+assertContains(ui, "<CatalogFacetFilters", `${uiPath}: UI must render the core-owned facet filter panel`);
 assertContains(ui, 'read_route_query_value(&route_context, "search")', `${uiPath}: UI must read the snake_case search query key`);
 assertContains(ui, 'name="search"', `${uiPath}: UI must expose the search query control`);
 assertContains(ui, "transport::fetch_products(request, controls)", `${uiPath}: UI must pass typed controls to the transport facade`);
@@ -156,6 +159,8 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "Produ
 assertContains(transport, "fetch_products", `${transportPath}: transport facade must expose fetch_products`);
 assertContains(transport, "CatalogListInput", `${transportPath}: transport facade must accept typed catalog controls`);
 assertContains(transport, "mod catalog_list_native;", `${transportPath}: transport facade must wire the owner-native catalog list path`);
+assertContains(transport, "mod catalog_facets_native;", `${transportPath}: transport facade must wire the owner-native catalog facets path`);
+assertContains(transport, "fetch_catalog_facets", `${transportPath}: transport facade must expose fetch_catalog_facets`);
 assertContains(transport, "catalog_list_native::fetch_products", `${transportPath}: selected native path must execute the owner-native catalog list`);
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
 assertContains(transport, "mod graphql_error_safety;", `${transportPath}: transport facade must wire GraphQL error safety`);

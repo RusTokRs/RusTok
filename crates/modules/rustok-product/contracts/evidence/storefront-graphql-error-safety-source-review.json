@@ -57,7 +57,9 @@
     "pricing_context_changed": false,
     "transport_selection_changed": false,
     "request_response_dto_changed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "facet_operation_added": true,
+    "facet_codes_defaulted": true
   },
   "preserved_behavior": [
     "explicit feature-based transport selection",
