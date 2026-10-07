@@ -488,6 +488,13 @@ impl CatalogService {
             }
             _ => false,
         };
+        let will_archive = match input.status.as_ref() {
+            Some(status) => {
+                *status == entities::product::ProductStatus::Archived
+                    && existing_product.status != entities::product::ProductStatus::Archived
+            }
+            _ => false,
+        };
         let will_deactivate = match input.status.as_ref() {
             Some(status) => {
                 *status != entities::product::ProductStatus::Active
@@ -659,6 +666,20 @@ impl CatalogService {
                 DomainEvent::ProductPublished { product_id },
             )
             .await?;
+        } else if will_archive {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductArchived { product_id },
+            )
+            .await?;
+        } else if will_deactivate {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductUnpublished { product_id },
+            )
+            .await?;
         }
         if primary_category_changed {
             txn.publish(
@@ -781,12 +802,44 @@ impl CatalogService {
         txn.publish(
             tenant_id,
             Some(actor_id),
-            DomainEvent::ProductUpdated { product_id },
+            DomainEvent::ProductUnpublished { product_id },
         )
         .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product unpublished successfully");
+
+        self.get_product(tenant_id, product_id).await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn archive_product(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Archiving product");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+
+        let mut product_active: entities::product::ActiveModel = product.into();
+        product_active.status = Set(entities::product::ProductStatus::Archived);
+        product_active.published_at = Set(None);
+        product_active.updated_at = Set(Utc::now().into());
+        product_active.update(&txn).await?;
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductArchived { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+        info!(product_id = %product_id, "Product archived successfully");
 
         self.get_product(tenant_id, product_id).await
     }

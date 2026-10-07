@@ -13,7 +13,10 @@ pub mod services;
 pub use dto::*;
 pub use error::{ProductRelationError, ProductRelationResult};
 pub use ports::ProductRelationsPort;
-pub use services::ProductRelationService;
+pub use services::{
+    CREATE_RELATION_OPERATION, PRODUCT_RELATION_OWNER_SLUG, ProductRelationCommandContext,
+    ProductRelationCommandError, ProductRelationService, relation_command_error,
+};
 
 pub struct ProductRelationsModule;
 

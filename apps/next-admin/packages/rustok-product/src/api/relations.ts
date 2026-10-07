@@ -31,8 +31,8 @@ query ProductAdminProductRelations($productId: UUID!, $relationType: GqlRelation
 `;
 
 export const ADD_RELATION_MUTATION = `
-mutation ProductAdminAddRelation($input: AddProductRelationInput!) {
-  addProductRelation(input: $input) {
+mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRelationInput!) {
+  addProductRelation(idempotencyKey: $idempotencyKey, input: $input) {
     id
     productId
     relatedProductId
@@ -101,12 +101,13 @@ export async function addProductRelation(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
-    { input: AddProductRelationInput },
+    { idempotencyKey: string; input: AddProductRelationInput },
     { addProductRelation: ProductRelation }
   >(
     ADD_RELATION_MUTATION,
-    { input },
+    { idempotencyKey, input },
     opts.token,
     opts.tenantSlug
   );

@@ -202,6 +202,14 @@ impl ProductCatalogCommandPort for ProductMediaValidatedCommandPort {
         self.inner.unpublish_product(context, product_id).await
     }
 
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        self.inner.archive_product(context, product_id).await
+    }
+
     async fn create_variant(
         &self,
         context: PortContext,

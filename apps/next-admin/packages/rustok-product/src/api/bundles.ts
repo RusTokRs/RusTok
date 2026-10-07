@@ -70,8 +70,8 @@ query Bundles($filter: GqlBundleFilter, $page: Int, $perPage: Int, $locale: Stri
 }`;
 
 const CREATE_BUNDLE_MUTATION = `
-mutation CreateBundle($input: CreateBundleInputGql!, $locale: String) {
-  createBundle(input: $input, locale: $locale) {
+mutation CreateBundle($idempotencyKey: String!, $input: CreateBundleInputGql!, $locale: String) {
+  createBundle(idempotencyKey: $idempotencyKey, input: $input, locale: $locale) {
     ${BUNDLE_FIELDS}
   }
 }`;
@@ -89,8 +89,8 @@ mutation DeleteBundle($id: UUID!) {
 }`;
 
 const ADD_BUNDLE_ITEM_MUTATION = `
-mutation AddBundleItem($bundleId: UUID!, $item: BundleItemInputGql!) {
-  addBundleItem(bundleId: $bundleId, item: $item) {
+mutation AddBundleItem($idempotencyKey: String!, $bundleId: UUID!, $item: BundleItemInputGql!) {
+  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, item: $item) {
     id
     bundleId
     productId
@@ -214,8 +214,10 @@ export async function createBundle(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
+      idempotencyKey: string;
       input: {
         bundleProductId?: string | null;
         slug: string;
@@ -233,6 +235,7 @@ export async function createBundle(
   >(
     CREATE_BUNDLE_MUTATION,
     {
+      idempotencyKey,
       input: {
         bundleProductId: input.bundleProductId || null,
         slug: input.slug,
@@ -333,8 +336,10 @@ export async function addBundleItem(
   }
 
   const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
   const data = await executor<
     {
+      idempotencyKey: string;
       bundleId: string;
       item: {
         productId: string;
@@ -349,6 +354,7 @@ export async function addBundleItem(
   >(
     ADD_BUNDLE_ITEM_MUTATION,
     {
+      idempotencyKey,
       bundleId: input.bundleId,
       item: {
         productId: input.productId,

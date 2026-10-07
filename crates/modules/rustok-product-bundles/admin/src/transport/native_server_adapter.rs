@@ -7,6 +7,8 @@ use crate::model::{
 };
 #[cfg(feature = "ssr")]
 use crate::model::{BundleAdminItemRecord, BundleAdminListItem, BundleAdminTranslation};
+#[cfg(feature = "ssr")]
+use rustok_product_bundles::BundleCommandError;
 
 #[derive(Debug, Clone)]
 pub struct NativeBundleAdminError(pub String);
@@ -204,13 +206,12 @@ async fn bundle_command_native(
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_bundles::{
-            BundlePort, BundleService, CreateBundleInput, UpdateBundleInput,
+            BundleCommandContext, BundlePort, BundleService, CreateBundleInput, UpdateBundleInput,
             dto::BundleItemInput,
         };
         use rust_decimal::Decimal;
         use std::str::FromStr;
 
-        let _ = idempotency_key;
         let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -232,8 +233,12 @@ async fn bundle_command_native(
                 };
 
                 let created = service
-                    .create_bundle(
-                        tenant.id,
+                    .create_bundle_idempotent(
+                        BundleCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            idempotency_key.as_str(),
+                        ),
                         CreateBundleInput {
                             bundle_product_id: None,
                             slug: draft.slug,
@@ -251,7 +256,7 @@ async fn bundle_command_native(
                         },
                     )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
 
                 Ok(BundleAdminCommandResult {
                     bundle: Some(BundleAdminRecord {
@@ -353,9 +358,13 @@ async fn bundle_command_native(
                     .map(|s| parse_uuid(s, "variant_id"))
                     .transpose()?;
 
-                let _ = service
-                    .add_bundle_item(
-                        tenant.id,
+                service
+                    .add_bundle_item_idempotent(
+                        BundleCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            idempotency_key.as_str(),
+                        ),
                         b_id,
                         BundleItemInput {
                             product_id: p_id,
@@ -367,7 +376,7 @@ async fn bundle_command_native(
                         },
                     )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(bundle_command_error_copy(&error)))?;
 
                 let refreshed = service
                     .get_bundle(tenant.id, b_id, None)
@@ -467,6 +476,15 @@ async fn bundle_command_native(
         Err(ServerFnError::new(
             "bundle commands require the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+/// Bounded operator copy for one failed idempotent bundle command.
+fn bundle_command_error_copy(error: &BundleCommandError) -> String {
+    match error {
+        BundleCommandError::Domain(error) => error.to_string(),
+        BundleCommandError::Receipt(error) => error.message.clone(),
     }
 }
 

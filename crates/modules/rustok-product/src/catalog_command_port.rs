@@ -51,6 +51,12 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         product_id: Uuid,
     ) -> Result<ProductResponse, PortError>;
 
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError>;
+
     async fn create_variant(
         &self,
         context: PortContext,
@@ -170,6 +176,18 @@ impl ProductCatalogCommandPort for CatalogService {
         let operation = "unpublish_product";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
         self.unpublish_product(tenant_id, actor_id, product_id)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        let operation = "archive_product";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.archive_product(tenant_id, actor_id, product_id)
             .await
             .map_err(|error| product_command_error(&context, operation, error))
     }

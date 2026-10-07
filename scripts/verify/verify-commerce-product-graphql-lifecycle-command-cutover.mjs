@@ -131,13 +131,17 @@ for (const required of [
 
 const create = functionSlice(mutations, "create_product", "update_product");
 const update = functionSlice(mutations, "update_product", "publish_product");
-const publish = functionSlice(mutations, "publish_product", "delete_product");
+const publish = functionSlice(mutations, "publish_product", "unpublish_product");
+const unpublish = functionSlice(mutations, "unpublish_product", "archive_product");
+const archive = functionSlice(mutations, "archive_product", "delete_product");
 const remove = functionSlice(mutations, "delete_product", "create_product_attribute");
 
 for (const [slice, operation, permission, portCall, productIdentity] of [
   [create, "create_product", "Permission::PRODUCTS_CREATE", ".create_product(port_context.clone(), domain_input)", "None"],
   [update, "update_product", "Permission::PRODUCTS_UPDATE", ".update_product(port_context.clone(), id, domain_input)", "Some(id)"],
   [publish, "publish_product", "Permission::PRODUCTS_UPDATE", ".publish_product(port_context.clone(), id)", "Some(id)"],
+  [unpublish, "unpublish_product", "Permission::PRODUCTS_UPDATE", ".unpublish_product(port_context.clone(), id)", "Some(id)"],
+  [archive, "archive_product", "Permission::PRODUCTS_UPDATE", ".archive_product(port_context.clone(), id)", "Some(id)"],
   [remove, "delete_product", "Permission::PRODUCTS_DELETE", ".delete_product(port_context.clone(), id)", "Some(id)"],
 ]) {
   for (const required of [
@@ -160,6 +164,8 @@ for (const [slice, operation, permission, portCall, productIdentity] of [
     `.create_product(tenant_id, user_id`,
     `.update_product(tenant_id, user_id`,
     `.publish_product(tenant_id, user_id`,
+    `.unpublish_product(tenant_id, user_id`,
+    `.archive_product(tenant_id, user_id`,
     `.delete_product(tenant_id, user_id`,
     "product_catalog_port_error(",
   ]) {

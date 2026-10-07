@@ -110,12 +110,11 @@ async fn product_relations_command_native(
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_relations::{
-            ProductRelationService, ProductRelationsPort,
+            ProductRelationCommandContext, ProductRelationService, ProductRelationsPort,
             dto::{CreateProductRelationInput, RelationType, ReorderProductRelationsInput},
         };
         use std::str::FromStr;
 
-        let _ = idempotency_key;
         let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -136,9 +135,12 @@ async fn product_relations_command_native(
                     .map_err(|e| ServerFnError::new(e.to_string()))?;
 
                 let created = service
-                    .create_relation(
-                        tenant.id,
-                        Some(auth.user_id),
+                    .create_relation_idempotent(
+                        ProductRelationCommandContext::new(
+                            tenant.id,
+                            Some(auth.user_id),
+                            idempotency_key.as_str(),
+                        ),
                         CreateProductRelationInput {
                             product_id: p_id,
                             related_product_id: rel_p_id,
@@ -148,7 +150,7 @@ async fn product_relations_command_native(
                         },
                     )
                     .await
-                    .map_err(|e| ServerFnError::new(e.to_string()))?;
+                    .map_err(|error| ServerFnError::new(relation_command_error_copy(&error)))?;
 
                 Ok(ProductRelationsAdminCommandResult {
                     item: Some(ProductRelationItem {
@@ -230,6 +232,18 @@ async fn product_relations_command_native(
         Err(ServerFnError::new(
             "product_relations command requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+use rustok_product_relations::ProductRelationCommandError;
+
+#[cfg(feature = "ssr")]
+/// Bounded operator copy for one failed idempotent relation command.
+fn relation_command_error_copy(error: &ProductRelationCommandError) -> String {
+    match error {
+        ProductRelationCommandError::Domain(error) => error.to_string(),
+        ProductRelationCommandError::Receipt(error) => error.message.clone(),
     }
 }
 

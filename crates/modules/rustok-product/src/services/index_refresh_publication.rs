@@ -171,6 +171,8 @@ async fn load_product_root_actor(
         DomainEvent::ProductCreated { product_id }
         | DomainEvent::ProductUpdated { product_id }
         | DomainEvent::ProductPublished { product_id }
+        | DomainEvent::ProductUnpublished { product_id }
+        | DomainEvent::ProductArchived { product_id }
         | DomainEvent::ProductDeleted { product_id }
         | DomainEvent::VariantCreated { product_id, .. }
         | DomainEvent::VariantUpdated { product_id, .. }

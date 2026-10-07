@@ -67,6 +67,85 @@ impl ProductRelationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
+
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+}
+
+/// Creates one relation inside the caller transaction.
+///
+/// Both the plain owner port method and the receipt-bound owner command use this exact body, so an
+/// idempotent retry can never diverge from the non-idempotent write path.
+pub(crate) async fn create_relation_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    input: CreateProductRelationInput,
+) -> ProductRelationResult<ProductRelationDto> {
+    if input.product_id == input.related_product_id {
+        return Err(ProductRelationError::SelfRelationNotAllowed(input.product_id));
+    }
+
+    let rel_type_str = input.relation_type.as_str().to_owned();
+    lock_products_in_order(
+        txn,
+        tenant_id,
+        input.product_id,
+        input.related_product_id,
+    )
+    .await?;
+
+    let exists = ProductRelation::find()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::ProductId.eq(input.product_id))
+        .filter(Column::RelatedProductId.eq(input.related_product_id))
+        .filter(Column::RelationType.eq(&rel_type_str))
+        .one(txn)
+        .await?;
+
+    if exists.is_some() {
+        return Err(ProductRelationError::RelationAlreadyExists {
+            product_id: input.product_id,
+            related_product_id: input.related_product_id,
+            relation_type: rel_type_str,
+        });
+    }
+
+    let position = match input.position {
+        Some(pos) => pos,
+        None => {
+            let max_pos: Option<i32> = ProductRelation::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::ProductId.eq(input.product_id))
+                .filter(Column::RelationType.eq(&rel_type_str))
+                .select_only()
+                .column_as(Column::Position.max(), "max_pos")
+                .into_tuple()
+                .one(txn)
+                .await?
+                .flatten();
+
+            max_pos.map_or(0, |m| m + 1)
+        }
+    };
+
+    let now = Utc::now();
+    let id = Uuid::new_v4();
+
+    let active = ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        product_id: Set(input.product_id),
+        related_product_id: Set(input.related_product_id),
+        relation_type: Set(rel_type_str),
+        position: Set(position),
+        metadata: Set(input.metadata.unwrap_or_else(|| serde_json::json!({}))),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    };
+
+    let model = active.insert(txn).await?;
+    Ok(model.into())
 }
 
 impl From<crate::entities::product_relation::Model> for ProductRelationDto {
@@ -158,72 +237,10 @@ impl ProductRelationsPort for ProductRelationService {
         _actor_id: Option<Uuid>,
         input: CreateProductRelationInput,
     ) -> ProductRelationResult<ProductRelationDto> {
-        if input.product_id == input.related_product_id {
-            return Err(ProductRelationError::SelfRelationNotAllowed(input.product_id));
-        }
-
-        let rel_type_str = input.relation_type.as_str().to_owned();
         let txn = self.db.begin().await?;
-        lock_products_in_order(
-            &txn,
-            tenant_id,
-            input.product_id,
-            input.related_product_id,
-        )
-        .await?;
-
-        let exists = ProductRelation::find()
-            .filter(Column::TenantId.eq(tenant_id))
-            .filter(Column::ProductId.eq(input.product_id))
-            .filter(Column::RelatedProductId.eq(input.related_product_id))
-            .filter(Column::RelationType.eq(&rel_type_str))
-            .one(&txn)
-            .await?;
-
-        if exists.is_some() {
-            return Err(ProductRelationError::RelationAlreadyExists {
-                product_id: input.product_id,
-                related_product_id: input.related_product_id,
-                relation_type: rel_type_str,
-            });
-        }
-
-        let position = match input.position {
-            Some(pos) => pos,
-            None => {
-                let max_pos: Option<i32> = ProductRelation::find()
-                    .filter(Column::TenantId.eq(tenant_id))
-                    .filter(Column::ProductId.eq(input.product_id))
-                    .filter(Column::RelationType.eq(&rel_type_str))
-                    .select_only()
-                    .column_as(Column::Position.max(), "max_pos")
-                    .into_tuple()
-                    .one(&txn)
-                    .await?
-                    .flatten();
-
-                max_pos.map_or(0, |m| m + 1)
-            }
-        };
-
-        let now = Utc::now();
-        let id = Uuid::new_v4();
-
-        let active = ActiveModel {
-            id: Set(id),
-            tenant_id: Set(tenant_id),
-            product_id: Set(input.product_id),
-            related_product_id: Set(input.related_product_id),
-            relation_type: Set(rel_type_str),
-            position: Set(position),
-            metadata: Set(input.metadata.unwrap_or_else(|| serde_json::json!({}))),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        };
-
-        let model = active.insert(&txn).await?;
+        let relation = create_relation_in_tx(&txn, tenant_id, input).await?;
         txn.commit().await?;
-        Ok(model.into())
+        Ok(relation)
     }
 
     async fn update_relation(

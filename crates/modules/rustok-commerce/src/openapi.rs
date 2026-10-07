@@ -31,6 +31,7 @@ mod marketplace_financial;
         crate::controllers::admin::delete_product,
         crate::controllers::admin::publish_product,
         crate::controllers::admin::unpublish_product,
+        crate::controllers::admin::archive_product,
         crate::controllers::admin::list_orders,
         crate::controllers::admin::show_order,
         crate::controllers::admin::mark_order_paid,

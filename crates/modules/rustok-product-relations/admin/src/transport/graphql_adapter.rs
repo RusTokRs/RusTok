@@ -24,8 +24,8 @@ query ProductAdminProductRelations($productId: UUID!, $relationType: GqlRelation
 "#;
 
 const ADD_RELATION_MUTATION: &str = r#"
-mutation ProductAdminAddRelation($input: AddProductRelationInput!) {
-  addProductRelation(input: $input) {
+mutation ProductAdminAddRelation($idempotencyKey: String!, $input: AddProductRelationInput!) {
+  addProductRelation(idempotencyKey: $idempotencyKey, input: $input) {
     id
     productId
     relatedProductId
@@ -145,7 +145,7 @@ pub async fn load_relations(
 pub async fn execute_command(
     token: Option<String>,
     tenant_slug: Option<String>,
-    _idempotency_key: String,
+    idempotency_key: String,
     command: ProductRelationsAdminCommand,
 ) -> Result<ProductRelationsAdminCommandResult, GraphqlProductRelationsAdminError> {
     match command {
@@ -163,10 +163,13 @@ pub async fn execute_command(
             }
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 input: AddInput,
             }
 
             let vars = Vars {
+                idempotency_key,
                 input: AddInput {
                     product_id: draft.product_id,
                     related_product_id: draft.related_product_id,

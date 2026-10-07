@@ -715,6 +715,56 @@ pub async fn unpublish_product(
     Ok(Json(product))
 }
 
+/// Shared admin product archive handler.
+pub async fn archive_product(
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<ProductResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_UPDATE],
+        "Permission denied: products:update required",
+    )?;
+
+    let idempotency_key = admin_product_lifecycle_idempotency_key(
+        &headers,
+        tenant.id,
+        auth.user_id,
+        id,
+        "archive_product",
+    )?;
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "archive_product",
+        idempotency_key,
+    );
+    let product = runtime
+        .product_catalog_command_port()
+        .archive_product(port_context.clone(), id)
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "archive_product",
+                ),
+                &port_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(product))
+}
+
 #[derive(Debug, serde::Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct ListProductsParams {
     #[serde(flatten)]

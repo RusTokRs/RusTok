@@ -166,6 +166,8 @@ impl ValidateEvent for DomainEvent {
             Self::ProductCreated { product_id }
             | Self::ProductUpdated { product_id }
             | Self::ProductPublished { product_id }
+            | Self::ProductUnpublished { product_id }
+            | Self::ProductArchived { product_id }
             | Self::ProductDeleted { product_id } => {
                 validators::validate_not_nil_uuid("product_id", product_id)?;
                 Ok(())
