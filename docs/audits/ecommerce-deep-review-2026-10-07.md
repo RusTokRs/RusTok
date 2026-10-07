@@ -84,7 +84,8 @@ with its precise location, impact, and required owner decision.
 | ECOM-PANIC-01 | P2 / robustness | Money paths | `expect`/`unwrap` on the money path without a documented invariant (`marketplace_financial_runtime`, `checkout_inventory_order_adoption`, `payment`, UI). | partially fixed (row 60: both reachable money-path panics are typed errors and the digest helpers carry `// INVARIANT:` notes; the host-composition panic remains an owner decision) |
 | ECOM-LOG-01 | P2 / hygiene | Cart | `eprintln!("DEBUG MAP ...")` raw debug prints inside money error mapping. | fixed |
 | ECOM-REFUND-01 | P2 / correctness | Refunds | Two refund tables (`refund`, `refund_creation`) with two independent services; cross-table reconciliation is unproven. | needs owner decision |
-| ECOM-ERR-01 | P3 / hygiene | Money crates | ~165 swallowed `let _ =` / `.ok()` / `unwrap_or*` results and ~131 `unwrap/expect` in the seven money crates (migrations excluded). | partially fixed |
+| ECOM-ERR-01 | P3 / hygiene | Money crates | ~165 swallowed `let _ =` / `.ok()` / `unwrap_or*` results and ~131 `unwrap/expect` in the seven money crates (migrations excluded). | partially fixed (survey pass: the production code of all 21 reviewed module roots now holds 0 `panic!`/`todo!`/`unimplemented!` and one short-circuited `.unwrap()`; the 156 `.expect()` split into static-contract, infallible-operation and documented-invariant classes — see §"Survey pass") |
+| ECOM-LINT-01 | P3 / hygiene | Ecommerce modules | 17 `AGENTS.md` §14 lint suppressions (`#[allow(dead_code)]`, `#[allow(unused_imports)]`, `#[allow(unreachable_code)]`, `cfg_attr(not(feature = "ssr"), allow(dead_code))`) across the reviewed modules — the pattern the repository's own remediation gate refuses for added lines. | partially fixed (row 64: 11 sites removed or replaced by the survey pass; the 6 remaining sites all sit inside the ECOM-VERIFY-01 gate-pinned shim clusters) |
 | ECOM-RECON-01 | P2 / operability | Checkout recovery | `reconciliation_required` was terminal in both directions: absent from the Rust journal model, and the DB guards refused every transition out of it, so a parked operation permanently blocked its cart and no admin surface could close it. | fixed (state machine in Rust + action registry + admin list/actions) |
 | ECOM-RECON-02 | P2 / parity | Checkout migration | MySQL carries only the parking trigger: no status/transition guard and no `ux_checkout_operations_active_cart` equivalent (MySQL has no partial indexes), so the one-active-checkout-per-cart invariant is unenforced there. | closed — not applicable (MySQL is not deployed; owner decision 2026-10-07) |
 | ECOM-DB-01 | P2 / contract | Checkout guards | The checkout state machine, the parking rewrite, the lease/completion shape and cross-row tenant lookups lived in PL/pgSQL/SQLite/MySQL constraint triggers, which `AGENTS.md` explicitly forbids ("state transition validations, workflow guards ... MUST be owned and validated by typed Rust domain entities and services"; "Do NOT implement ... cross-row business validations inside PL/pgSQL constraint triggers"). This split-brain is what produced ECOM-RECON-01. | fixed (guards dropped by `m20261007_000010`, rules moved to `CheckoutOperationJournal`; decision recorded as ADR `DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md`) |
@@ -844,6 +845,7 @@ rounding defect.
 | 61 | `crates/modules/rustok-cart/storefront/src/ui/leptos.rs` | ECOM-UI-01: the cart drawer's non-empty branch read `cart.unwrap()`. The value was derived from `cart` one line above (`items`), so the panic was unreachable, but it stayed a latent money-path-adjacent panic for any future second source of `items`. The branch now borrows `cart.as_ref()` and returns an empty view on the impossible `None`, with the derivation invariant stated at the branch — no panic, no duplicated empty state. `verify-cart-storefront-boundary` and `verify-ui-client-dependency-boundary` are green on this tree and on `origin/main`. |
 | 62 | `crates/libs/rustok-core/src/money.rs` + `crates/libs/rustok-core/{Cargo.toml,src/lib.rs}` + `crates/modules/rustok-{cart,order,pricing,pricing-persistence,commerce,payment}/…` | ECOM-MONEY-02: `rustok-core::money` is now the canonical owner — ISO 4217 exponent tables (zero/three/four decimals, undefined minor units), currency-code normalization, currency-aware rounding (`MidpointAwayFromZero`) and exact/rounding major↔minor conversions, all answering the typed `MoneyError` instead of a silent two-decimal guess. Every duplicate was deleted in the same change: cart `currency_exponent`/`decimal_to_minor_units`, order `currency_exponent`/`decimal_to_minor_units`, pricing `currency_exponent`/`decimal_to_minor_units`/`decimal_to_cents`, pricing-persistence `decimal_to_cents` (now `legacy_amount_units`, documented as the derived two-decimal mirror), cart `marketplace_snapshot::validate_decimal_unit_price` and commerce `marketplace_provider_reversal_event_adapter::decimal_to_minor_exact` (exponent-explicit, through the owner). Failures are no longer masked: `.unwrap_or_default()`/`.unwrap_or(snapshot.unit_amount)` on the cart marketplace snapshot path became typed errors and the subtotal uses a checked multiply. `rustok-payment` keeps Stripe's contract as an explicit tested divergence table (MGA = 0, ISK = 2, IQD = 2, LYD = 2) and rejects fractional ISK amounts; the first pass's `VUV` entry was corrected (both tables record 0). ADR `DECISIONS/2026-10-07-canonical-money-owner.md`; money unit tests added; the 213-verifier sweep reports the same verdicts as before the change (98 PASS / 115 FAIL). |
 | 63 | `crates/modules/rustok-pricing/src/services/pricing.rs` | ECOM-MONEY-04 (pricing half): the price-list preview and rule application rounded every discounted amount with `round_dp(2)`, which loses the third decimal of KWD/BHD and leaves invalid fractions on JPY/ISK. Both sites now round through `rustok_core::money::round_to_currency` at the currency's precision; `apply_price_list_rule_to_resolved_price` returns `CommerceResult<ResolvedPrice>` and the resolver propagates the typed error instead of substituting a value. |
+| 64 | `crates/modules/rustok-{distribution,inventory,pricing,product}/…` | ECOM-LINT-01: the §14 suppression sweep over the reviewed modules found 17 sites; eleven are gone in this pass. `rustok-distribution/src/product_index/relation_admission.rs` loses its file-level `#![allow(dead_code)]` — every item is referenced from `channel_relation_convergence.rs`/`channel_relation_resolver.rs`, so the allowance was stale. The test-only helper clusters are now test-scoped instead of allow-silenced: `rustok-inventory/admin/src/ui/leptos.rs::format_product_meta` and `rustok-pricing/admin/src/core/presentation.rs::{format_product_meta, PricingProductListItemViewModel, build_product_list_item_view_model, pricing_product_list_item_class}`, each having no caller outside its own `mod tests`. The pricing storefront `#[allow(unreachable_code)]` (`transport/mod.rs`) is gone: the test's GraphQL closure returns the refusal as a typed `ApiError` instead of panicking past an unreachable tail, the same shape the neighbouring closures already use. In the product storefront adapter the ungated `#[allow(unused_imports)]` model import is split so that only the types the `ssr` paths use stay `#[cfg(feature = "ssr")]` (the genuinely-unused `ProductPricingContext` import is deleted), and `normalize_public_channel_slug` plus `core::resolve_requested_locale` are `#[cfg(feature = "ssr")]` like every caller already was. Nine verifiers over the touched files (`verify-product-storefront-boundary`, `verify-product-storefront-graphql-error-safety`, `verify-search-ui-boundary`, `verify-ffa-ui-migration-contract`, `verify-pricing-storefront-boundary`, `verify-pricing-storefront-graphql-error-safety`, `verify-index-product-channel-relation-admission`, `verify-inventory-admin-boundary`, `verify-pricing-admin-boundary`) were re-run against the pristine `bb9357f` worktree: identical verdicts, all green on both trees. |
 
 **Not applied (owner decision required):** ECOM-PANIC-01 remainder (the host-composition panic in
 `marketplace_financial_runtime::financial_port` — fail-fast on a missing port; a typed error has to
@@ -875,6 +877,11 @@ ECOM-RECON-02 was closed by owner decision (MySQL is not deployed) and ECOM-DB-0
 second pass, see §"P3 / hygiene findings".
 
 The re-verification pass added one more: the storefront line-item compatibility shims — `graphql/mutations/helpers.rs:619` `resolve_storefront_line_item_input`, `:1018` `validate_storefront_line_item_quantity` and `:1039` `validate_storefront_variant_inventory` (the last one has no reference at all outside the dead code), plus the two wrappers at `graphql/mutations/safe_helpers.rs:451` and `:508` that only forward to `typed_line_item_helpers`, and the two `#[allow(dead_code)]` in `graphql/mutations/mod.rs` that exist only to silence them — have no production caller left (the bare calls in `graphql/mutations/cart.rs` resolve to the typed module through the re-export glob), but five repository verifiers pin them *as* the implementation. Removing them is a gate re-pin, not a code deletion, and waits for the same ECOM-VERIFY-01 decision.
+The survey pass added the rest of the same bucket: the product admin transport family
+(`transport.rs` + `transport/{graphql_adapter,native_server_adapter,product_lifecycle_graphql}.rs`)
+keeps four file-level `#![allow(dead_code)]` because its seven verifiers read a facade
+(`catalog_transport.rs`) that does not exist in the tree, and the glob-reexport allowance on
+`layered_order_helpers.rs` belongs to the storefront shims above — see §"Survey pass".
 
 ## Binding-guard pass (the last database business rule on the money path)
 
@@ -1674,6 +1681,50 @@ risking a wrong release artifact — the honest move is the exact command as mai
 than a hand-edited digest. Everything else this pass found is fixed in the tree.
 
 **Re-verification pass.** A second read of the same tree tried to finish the storefront line-item cleanup and re-ran the 33 verifiers that read the files this work touches. The cleanup was withdrawn: the five verifiers listed in the not-applied note pin the legacy bodies as the implementation, and three gates that are already red at the base commit still assert the shims' shape, so deleting them would need those pins re-pointed at `typed_line_item_helpers` first. The two changes this pass did land (rows 54-55) leave the 33-verifier subset byte-identical to the pristine `a53a4dd` worktree: 11 passing and 22 failing on both sides, with the same sets.
+
+### Survey pass — §14 suppressions, raw-SQL tenancy and panic sweep (2026-10-07)
+
+Remediation row 64. The survey half of this review (the non-money ecommerce modules) was re-run with
+three sweeps over the 21 reviewed module roots, tests and migrations excluded.
+
+**§14 lint suppressions.** 17 sites found, 11 removed or replaced (row 64). The 6 that remain are not
+left because they are harmless: each one silences code that a repository verifier pins *as* the
+implementation. Two are the commerce GraphQL shim allowances recorded by the re-verification pass
+(`graphql/mutations/mod.rs:8,17`), one is the glob-reexport allowance on the same shim cluster
+(`layered_order_helpers.rs:1`), and four are the file-level `#![allow(dead_code)]` of the product admin
+transport family (`transport.rs`, `transport/{graphql_adapter,native_server_adapter,product_lifecycle_graphql}.rs`).
+That family carries its own evidence trail: its seven verifiers
+(`verify-product-admin-{graphql-read-diagnostic-safety,category-sort,fallback-mutation-error-safety,primary-mutation-error-safety,catalog-options-error-safety,lifecycle-retry-consumer}` and
+`verify-commerce-product-schema-write-consumer-cutover`) are red on this tree and on `origin/main`
+alike, because the facade file they read (`crates/modules/rustok-product/admin/src/catalog_transport.rs`)
+does not exist in the tree; the diagnostics they pin (`GraphqlReadContext` with its five constructors in
+`transport/graphql_error_safety.rs`) have no caller anywhere in the workspace. Repairing that contour is
+the same owner decision as ECOM-VERIFY-01, not a review fix.
+
+**Raw SQL without a tenant predicate.** 20 non-migration `Statement::from_string` /
+`from_sql_and_values` sites keep no `tenant_id` inside a 25-line window. All 20 were read individually
+and none is a defect: 14 are window false-positives — the tenant arrives through the SQL constant or
+builder (`SALES_CHANNEL_ROWS_CTE`, `PRODUCT_VARIANT_ROWS_CTE`, `PRODUCT_ROWS_CTE`,
+`channel_resolution_query(tenant_id, …)`, the translation-progress counts, `product_attribute_value_options`
+inserts); `channel_resolution_invalidation_state` (`rustok-channel/src/invalidation_generation.rs:7`) is
+a deployment-wide singleton keyed by `scope` (`scope TEXT PRIMARY KEY, generation BIGINT`) with no tenant
+dimension to filter on; and the five product attribute/variant `*_translations` inserts
+(`catalog_schema_service.rs:932,1313`, `catalog_schema_service/{attributes/translation.rs:398,schemas/translation.rs:391,values/variant.rs:672}`)
+target tables whose schema has no `tenant_id` column — the tenant is enforced one statement above, on
+the tenant-scoped parent row (`SELECT id FROM product_attribute_options WHERE tenant_id = $1 … FOR UPDATE`).
+
+**Panics and forbidden macros.** Production code (tests and migrations excluded) of the same 21 roots
+contains 0 `panic!`, 0 `todo!`, 0 `unimplemented!` and a single `.unwrap()` — the product-relations admin
+bulk-delete loop, `res.is_err() || !res.unwrap().is_success()`, where the `||` short-circuit makes the
+unwrap unreachable. The 156 `.expect()` calls split into static-contract constants
+(`translation_target.rs`/`*_index.rs` owner-slug, resource-kind and UUID contracts), infallible
+operations (`write!` into a `String`, serializing an already-parsed `serde_json::Value`), documented
+`// INVARIANT:` guards (`operation_id.expect(…)` on the changed-owner apply paths of commerce
+collections, inventory stock locations and marketplace seller translations, each naming the
+`(!unchanged).then(generate_id)` construction that makes the value `Some`), bounded `i64::try_from`
+page lookaheads, and the one host-composition fail-fast already recorded as the ECOM-PANIC-01 owner
+decision. This closes the survey-side reading of ECOM-ERR-01's `unwrap/expect` count; the
+swallowed-result half stays with ECOM-ERR-01.
 
 ## Appendix B — prior art: Medusa v2 (comparison, 2026-10-07)
 

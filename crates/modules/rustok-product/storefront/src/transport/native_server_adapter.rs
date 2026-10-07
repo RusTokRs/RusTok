@@ -9,14 +9,13 @@ use crate::core::build_pricing_context;
 #[cfg(feature = "ssr")]
 use crate::core::{resolve_requested_locale, sanitize_channel_slug, sanitize_uuid_string};
 
-#[allow(unused_imports)]
-use crate::model::{
-    ProductCatalogSearchOption, ProductCatalogSearchOptions, ProductDetail, ProductEffectivePrice,
-    ProductList, ProductListItem, ProductPricingContext, ProductPricingDetail,
-    ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
-};
+use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 #[cfg(feature = "ssr")]
-use crate::model::{ProductPrice, ProductTranslation, ProductVariant};
+use crate::model::{
+    ProductCatalogSearchOption, ProductDetail, ProductEffectivePrice, ProductList, ProductListItem,
+    ProductPrice, ProductPricingDetail, ProductPricingVariant, ProductScopedPrice,
+    ProductTranslation, ProductVariant,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -163,7 +162,7 @@ pub async fn fetch_catalog_search_options(
         .map_err(ApiError::from)
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "ssr")]
 fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)

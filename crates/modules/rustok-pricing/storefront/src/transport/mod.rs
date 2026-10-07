@@ -104,9 +104,9 @@ mod tests {
             },
             move || async move {
                 let _ = query;
-                panic!("GraphQL transport must not run in native mode");
-                #[allow(unreachable_code)]
-                Err::<StorefrontPricingData, ApiError>(ApiError::Graphql("unreachable".into()))
+                Err::<StorefrontPricingData, ApiError>(ApiError::Graphql(
+                    "GraphQL transport must not run in native mode".into(),
+                ))
             },
         ))
         .expect("native success should be returned");
