@@ -9,6 +9,7 @@ Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure 
 - **Columns**: column definitions, alignment, sizing, and pin configuration.
 - **Resize**: column resizing math with min/max clamps (pointer and keyboard).
 - **Filters**: column filter specifications (Text, Select, NumberRange, DateRange, Boolean).
+- **Facets**: server-computed facet descriptors (buckets with counts), the enumerable/open domain split, truncation, and the drill-down rule that excludes a facet's own selection while counting it.
 - **Sorting**: deterministic single-column sort state machine (the adapter can delegate actual ordering to the server).
 - **Selection**: row selection, bulk action tracking, all/partial helpers.
 - **Pagination**: dual pagination models (classic paged vs infinite scroll), with overflow-safe bounds and one-based display indexes.
@@ -26,10 +27,29 @@ Every type repairs its own state, so no renderer and no server handler has to de
 | `SortState` | `column_id` and `direction` are either both set or both unset; `normalize()` repairs deserialized state. |
 | `GridPagination` | `page ∈ 1..=total_pages()`, `page_size >= 1`, `total_pages() >= 1`; all arithmetic is integer and overflow-safe (`u64` totals, `saturating_*`, no `f64` rounding on large data sets). `go_to_page` returns the *effective* page. |
 | `RowSelection` | Ordered (deterministic serialization); `is_all_selected` on an empty page is `false`, `retain_ids` prunes rows that left the data set. |
+| `GridFacet` | Bucket lists are cut at `MAX_GRID_FACET_VALUES` with `is_truncated` reporting it; open domains never carry buckets; `other_selection` never returns the facet's own entries. |
 
 `GridState` composes all of the above and offers `normalize()`, `set_filter()`, `toggle_sort()` and `clamp_widths()` so that a filter or sort change always resets pagination to page 1.
 
 The id of the synthetic selection column is exported as `CHECKBOX_COLUMN_ID` — adapters must never hard-code the string.
+
+## Facets
+
+Facet *counts* belong to the module that owns the data: a grid adapter never counts rows, and a
+domain module never renders. The contract in between is this crate:
+
+- the owning module computes buckets (value, label, count) under the current filter set and
+  returns them as `GridFacet` values. `GridFacet::from_buckets` enforces the value limit and sets
+  `is_truncated`; `GridFacet::open` describes a facet with an unbounded domain (free text,
+  numbers, dates) that has a total but no enumerable buckets;
+- `FacetDomain` tells the adapter how to render the facet: a dictionary (single or multi select),
+  a boolean toggle row, or a free-form input;
+- `selection_except` / `GridFacet::other_selection` implement the drill-down rule — a facet is
+  counted with every *other* active filter, so its counts describe what the user would get by
+  choosing a bucket instead of what is already selected;
+- `FacetValue::to_filter_option` / `GridFacet::filter_options` turn buckets into the same
+  `FilterOption` vocabulary the filter row already uses, so an adapter renders counts without a
+  second code path.
 
 ## Adapters
 

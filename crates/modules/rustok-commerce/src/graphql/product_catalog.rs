@@ -4,7 +4,10 @@ use rustok_api::{
     graphql::require_module_enabled,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_product::{AdminProductListQuery, StorefrontProductListQuery};
+use rustok_product::{
+    AdminProductListQuery, StorefrontCatalogFacet, StorefrontCatalogFacetValue,
+    StorefrontCatalogFacetsRequest, StorefrontProductListQuery,
+};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -138,6 +141,58 @@ pub struct AdminProductCatalogItem {
     pub published_at: Option<String>,
 }
 
+/// One bucket of an enumerable storefront facet.
+#[derive(SimpleObject)]
+pub struct GqlStorefrontCatalogFacetValue {
+    /// `code=<value>` value of this bucket: an option id for dictionary attributes, `true` or
+    /// `false` for booleans.
+    pub value: String,
+    pub label: String,
+    pub count: u64,
+}
+
+/// Storefront facet: bucket counts of one attribute under the current filter set.
+#[derive(SimpleObject)]
+pub struct GqlStorefrontCatalogFacet {
+    pub code: String,
+    pub label: String,
+    /// Stored attribute value type, e.g. `select`.
+    pub value_type: String,
+    pub is_localized: bool,
+    /// False when the value domain is unbounded (text, numeric, date): `values` stays empty and
+    /// the storefront keeps its free-form input.
+    pub is_enumerable: bool,
+    pub is_truncated: bool,
+    /// Products matching every other active facet that carry a value for this attribute.
+    pub total_products: u64,
+    pub values: Vec<GqlStorefrontCatalogFacetValue>,
+}
+
+impl From<StorefrontCatalogFacetValue> for GqlStorefrontCatalogFacetValue {
+    fn from(value: StorefrontCatalogFacetValue) -> Self {
+        Self {
+            value: value.value,
+            label: value.label,
+            count: value.count,
+        }
+    }
+}
+
+impl From<StorefrontCatalogFacet> for GqlStorefrontCatalogFacet {
+    fn from(facet: StorefrontCatalogFacet) -> Self {
+        Self {
+            code: facet.code,
+            label: facet.label,
+            value_type: facet.value_type,
+            is_localized: facet.is_localized,
+            is_enumerable: facet.is_enumerable,
+            is_truncated: facet.is_truncated,
+            total_products: facet.total_products,
+            values: facet.values.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ProductCatalogQuery;
 
@@ -238,6 +293,87 @@ impl ProductCatalogQuery {
                 })
                 .collect(),
         })
+    }
+
+    /// Bucket counts for typed EAV facets under the current storefront filter set.
+    ///
+    /// `facet_codes` lists the attribute codes to count; facets come back in that order. Each
+    /// facet ignores its own selection, so the counts are drill-down numbers (OR inside one
+    /// attribute, AND between attributes).
+    async fn storefront_product_catalog_facets(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+        filter: Option<StorefrontProductCatalogFilter>,
+        facet_codes: Vec<String>,
+    ) -> Result<Vec<GqlStorefrontCatalogFacet>> {
+        require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
+        require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data_opt::<RequestContext>();
+        let requested_locale = locale
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| request_context.map(|context| context.locale.clone()))
+            .unwrap_or_else(|| tenant.default_locale.clone());
+        let public_channel_slug = request_context
+            .and_then(|context| context.channel_slug.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let filter = filter.unwrap_or_default();
+        let list_query = StorefrontProductListQuery::try_new_with_attribute_filters(
+            filter.search,
+            filter.category_id,
+            filter.sort_by,
+            filter.sort_direction,
+            filter.attribute_filters,
+        )
+        .map_err(|error| {
+            map_product_service_error(error, "storefront_product_catalog_facets_input")
+        })?;
+
+        let port_context = PortContext::new(
+            tenant.id.to_string(),
+            PortActor::service("commerce-storefront-graphql"),
+            requested_locale.as_str(),
+            "commerce-graphql-product:storefront-catalog-facets".to_string(),
+        )
+        .with_deadline(std::time::Duration::from_secs(2));
+        let port_context = match public_channel_slug.as_deref() {
+            Some(channel) => port_context.with_channel(channel),
+            None => port_context,
+        };
+        let product_read_runtime =
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            );
+        let facets = product_read_runtime
+            .read_port()
+            .load_storefront_catalog_facets(
+                port_context.clone(),
+                StorefrontCatalogFacetsRequest {
+                    locale: Some(requested_locale),
+                    fallback_locale: Some(tenant.default_locale.clone()),
+                    public_channel_slug,
+                    query: list_query,
+                    facet_codes,
+                },
+            )
+            .await
+            .map_err(|error| {
+                product_catalog_port_error(
+                    &port_context,
+                    error,
+                    "storefront_product_catalog_facets",
+                )
+            })?;
+
+        Ok(facets.into_iter().map(Into::into).collect())
     }
 
     async fn admin_product_catalog(

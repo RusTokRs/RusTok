@@ -38,6 +38,20 @@ pub struct FilteredPublishedProductsRequest {
     pub query: StorefrontProductListQuery,
 }
 
+/// Request for the storefront catalog facet projection.
+///
+/// Facets are counted for the whole filtered catalog, so the pagination fields of `query` are
+/// ignored by the owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorefrontCatalogFacetsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub public_channel_slug: Option<String>,
+    pub query: StorefrontProductListQuery,
+    /// Attribute codes to count, in display order; empty means "no facets".
+    pub facet_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorefrontProductProjectionSubject {
     ProductId { product_id: Uuid },

@@ -9,7 +9,7 @@ use super::{
 };
 use rustok_api::PortError;
 use rustok_outbox::idempotency;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, FromQueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, FromQueryResult, Statement};
 use serde::Serialize;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -369,11 +369,11 @@ async fn load_storefront_filter_definitions(
         .enumerate()
         .map(|(index, filter)| {
             values.push(filter.code.to_ascii_lowercase().into());
-            storefront_sql_placeholder(backend, index + 2)
+            crate::services::catalog::helpers::sql_placeholder(backend, index + 2)
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let tenant_placeholder = storefront_sql_placeholder(backend, 1);
+    let tenant_placeholder = crate::services::catalog::helpers::sql_placeholder(backend, 1);
     StorefrontAttributeFilterDefinitionRow::find_by_statement(Statement::from_sql_and_values(
         backend,
         format!(
@@ -467,9 +467,9 @@ async fn load_active_option_id(
     code: &str,
 ) -> CommerceResult<Option<Uuid>> {
     let backend = db.get_database_backend();
-    let tenant = storefront_sql_placeholder(backend, 1);
-    let attribute = storefront_sql_placeholder(backend, 2);
-    let code_placeholder = storefront_sql_placeholder(backend, 3);
+    let tenant = crate::services::catalog::helpers::sql_placeholder(backend, 1);
+    let attribute = crate::services::catalog::helpers::sql_placeholder(backend, 2);
+    let code_placeholder = crate::services::catalog::helpers::sql_placeholder(backend, 3);
     let row =
         StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
             backend,
@@ -493,13 +493,6 @@ async fn load_active_option_id(
         .one(db)
         .await?;
     Ok(row.map(|row| row.id))
-}
-
-fn storefront_sql_placeholder(backend: DbBackend, index: usize) -> String {
-    match backend {
-        DbBackend::Sqlite => "?".to_string(),
-        _ => format!("${index}"),
-    }
 }
 
 fn map_term_error(code: &str, error: ProductAttributeTermError) -> CommerceError {

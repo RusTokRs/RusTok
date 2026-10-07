@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::dto::ProductResponse;
 use crate::entities::product_variant;
-use crate::{AdminProductList, StorefrontProductList};
+use crate::{AdminProductList, StorefrontCatalogFacet, StorefrontProductList};
 
 use super::diagnostics::{
     parse_port_tenant_id, product_error_to_port_error, product_storage_error,
@@ -13,7 +13,7 @@ use super::diagnostics::{
 use super::types::{
     AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
     LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
-    PublishedProductsRequest, StorefrontProductProjectionRequest,
+    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
     VariantProductProjectionRequest, validate_admin_products_request,
     validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
@@ -25,6 +25,7 @@ const READ_VARIANT_PRODUCT_PROJECTION_OPERATION: &str = "read_variant_product_pr
 const READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION: &str = "read_storefront_product_projection";
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
 const LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION: &str = "list_filtered_published_products";
+const LOAD_STOREFRONT_CATALOG_FACETS_OPERATION: &str = "load_storefront_catalog_facets";
 const LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION: &str = "list_legacy_storefront_products";
 const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
 const LIST_LEGACY_ADMIN_PRODUCTS_OPERATION: &str = "list_legacy_admin_products";
@@ -67,6 +68,20 @@ pub trait ProductCatalogReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.filtered_published_list_unavailable",
             "filtered product listing is unavailable",
+        ))
+    }
+
+    /// Optional storefront facet capability: per-attribute bucket counts under the current
+    /// filter set. Consumers that need no facets (or adapters that cannot count yet) stay
+    /// source-compatible and fail closed.
+    async fn load_storefront_catalog_facets(
+        &self,
+        _context: PortContext,
+        _request: StorefrontCatalogFacetsRequest,
+    ) -> Result<Vec<StorefrontCatalogFacet>, PortError> {
+        Err(PortError::unavailable(
+            "product.catalog_facets_unavailable",
+            "product catalog facets are unavailable",
         ))
     }
 
@@ -228,6 +243,28 @@ impl ProductCatalogReadPort for crate::CatalogService {
             request.fallback_locale.as_deref(),
             request.public_channel_slug.as_deref(),
             request.query,
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn load_storefront_catalog_facets(
+        &self,
+        context: PortContext,
+        request: StorefrontCatalogFacetsRequest,
+    ) -> Result<Vec<StorefrontCatalogFacet>, PortError> {
+        let owner_operation = LOAD_STOREFRONT_CATALOG_FACETS_OPERATION;
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+        crate::CatalogService::storefront_catalog_facets(
+            self,
+            tenant_id,
+            locale,
+            request.fallback_locale.as_deref(),
+            request.public_channel_slug.as_deref(),
+            &request.query,
+            request.facet_codes.as_slice(),
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
