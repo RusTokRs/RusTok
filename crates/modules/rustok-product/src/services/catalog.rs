@@ -2,6 +2,7 @@ mod admin_queries;
 mod attribute_filters;
 mod commands;
 pub mod concurrency;
+mod facets;
 pub mod helpers;
 mod image_translation;
 mod image_translation_changes;
@@ -18,6 +19,10 @@ mod variant_translation_changes;
 mod variant_translation_progress;
 
 pub(crate) use concurrency::{REVISION_CONFLICT_PREFIX, revision_conflict_of};
+pub use facets::{
+    MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, StorefrontCatalogFacet,
+    StorefrontCatalogFacetValue,
+};
 pub use image_translation::{
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,

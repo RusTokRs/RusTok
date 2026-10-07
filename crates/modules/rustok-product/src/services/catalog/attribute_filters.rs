@@ -11,6 +11,7 @@ use crate::services::catalog_attribute_terms::{
 use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
+use super::helpers::sql_placeholder;
 use super::types::validate_product_attribute_filters;
 
 #[derive(Debug, FromQueryResult)]
@@ -351,11 +352,4 @@ fn custom_condition(
             )
         });
     Condition::all().add(Expr::cust_with_values(sql, values))
-}
-
-fn sql_placeholder(backend: DbBackend, index: usize) -> String {
-    match backend {
-        DbBackend::Sqlite => "?".to_string(),
-        _ => format!("${index}"),
-    }
 }

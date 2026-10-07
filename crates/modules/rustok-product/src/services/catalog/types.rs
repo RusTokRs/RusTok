@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-const MAX_ATTRIBUTE_FILTERS: usize = 8;
+pub(crate) const MAX_ATTRIBUTE_FILTERS: usize = 8;
 const MAX_ATTRIBUTE_FILTER_CODE_LENGTH: usize = 128;
 const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 

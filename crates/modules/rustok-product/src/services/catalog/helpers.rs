@@ -452,6 +452,18 @@ where
     .await
 }
 
+/// Positional placeholder for one bound value in a hand-written SQL fragment.
+///
+/// SQLite uses anonymous `?` markers while PostgreSQL numbers them; every `custom_condition`-style
+/// fragment in the catalog service resolves its `{pN}` markers through this helper, and sea-query
+/// re-numbers the emitted placeholders as the surrounding statement is written.
+pub(crate) fn sql_placeholder(backend: DbBackend, index: usize) -> String {
+    match backend {
+        DbBackend::Sqlite => "?".to_string(),
+        _ => format!("${index}"),
+    }
+}
+
 pub fn product_channel_visibility_condition(
     backend: DbBackend,
     public_channel_slug: Option<&str>,

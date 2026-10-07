@@ -402,7 +402,10 @@ impl CatalogService {
     }
 }
 
-fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> sea_orm::Condition {
+pub(super) fn product_title_search_condition(
+    backend: sea_orm::DbBackend,
+    search: &str,
+) -> sea_orm::Condition {
     let pattern = format!("%{search}%");
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
