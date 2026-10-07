@@ -246,6 +246,168 @@ for (const marker of [
   );
 }
 
+
+// --- Authoring surfaces: variant axes and category-schema authoring must stay
+// reachable from the mounted admin on both surfaces (PROD-AXES-001,
+// PROD-SCHEMA-UI-001). A read-only placeholder here is a regression.
+assertContains(
+  editorSource,
+  "<ProductVariantAxesSection",
+  `${editorPath}: the mounted editor must own the variant-axis authoring surface`
+);
+assertAbsent(
+  editorSource,
+  "variant_axes_str",
+  `${editorPath}: the read-only variant-axis placeholder must not come back`
+);
+assertAbsent(
+  editorSource,
+  "Comma-separated attribute axes",
+  `${editorPath}: the read-only variant-axis placeholder must not come back`
+);
+
+const lifecycleIdentity = readRepo(
+  "crates/modules/rustok-product/admin/src/lifecycle_retry_identity.rs"
+);
+assertContains(
+  lifecycleIdentity,
+  "SetVariantAxes,",
+  "lifecycle_retry_identity.rs: the axis write must keep a retry-identity slot"
+);
+
+const axisGraphql = readRepo(
+  "crates/modules/rustok-product/admin/src/transport/product_lifecycle_graphql.rs"
+);
+for (const marker of [
+  "const SET_VARIANT_AXES_MUTATION",
+  "setProductVariantAxes(idempotencyKey: $idempotencyKey, productId: $productId, input: $input)",
+  "pub(crate) async fn set_variant_axes(",
+]) {
+  assertContains(
+    axisGraphql,
+    marker,
+    `product_lifecycle_graphql.rs: the axis write must keep its idempotent GraphQL contract (${marker})`
+  );
+}
+assertContains(
+  readRepo("crates/modules/rustok-product/admin/src/transport/retry.rs"),
+  "ProductAdminLifecycleOperation::SetVariantAxes",
+  "transport/retry.rs: the axis write must keep its retained caller identity"
+);
+for (const facadePath of [
+  "crates/modules/rustok-product/admin/src/transport.rs",
+  "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+]) {
+  assertContains(
+    readRepo(facadePath),
+    "set_variant_axes,",
+    `${facadePath}: the axis write must stay re-exported through both admin import paths`
+  );
+}
+for (const marker of [
+  "pub fn ProductVariantAxesSection(",
+  "catalog_transport::set_variant_axes(",
+  "SetVariantAxesDraft { axes }",
+  "attribute.variant_axis_policy != \"forbidden\"",
+  "attribute.default_variant_axis",
+]) {
+  assertContains(
+    leptosAdapter,
+    marker,
+    `${uiDir}/leptos.rs: the shared variant-axis section must stay complete (${marker})`
+  );
+}
+
+const attributesPage = readRepo(`${uiDir}/attributes.rs`);
+for (const marker of [
+  "use super::leptos::ProductSchemaAuthoringCard;",
+  "<ProductSchemaAuthoringCard locale=",
+]) {
+  assertContains(
+    attributesPage,
+    marker,
+    `${uiDir}/attributes.rs: the mounted attribute page must expose schema authoring (${marker})`
+  );
+}
+for (const marker of [
+  "pub fn ProductSchemaAuthoringCard(locale: Option<String>)",
+  "fn apply_schema_authoring_result(",
+  "catalog_transport::set_category_schema_mode(",
+  "catalog_transport::create_product_attribute_schema_group(",
+  "catalog_transport::create_category_attribute_group(",
+  "catalog_transport::bind_schema_attribute(",
+  "catalog_transport::bind_category_attribute(",
+]) {
+  assertContains(
+    leptosAdapter,
+    marker,
+    `${uiDir}/leptos.rs: the schema authoring card must drive the five owner commands (${marker})`
+  );
+}
+assertAbsent(
+  leptosAdapter,
+  "let _ = catalog_transport::",
+  `${uiDir}/leptos.rs: owner command results must not be discarded`
+);
+
+// Next admin must expose the same authoring surfaces.
+const nextApi = readRepo("apps/next-admin/packages/rustok-product/src/api/products.ts");
+for (const marker of [
+  "export const SET_VARIANT_AXES_MUTATION",
+  "export async function setVariantAxes(",
+  "setProductVariantAxes: VariantAxisConfig[]",
+]) {
+  assertContains(
+    nextApi,
+    marker,
+    `apps/next-admin/packages/rustok-product/src/api/products.ts: the Next admin must keep the axis write (${marker})`
+  );
+}
+assertContains(
+  readRepo("apps/next-admin/packages/rustok-product/src/api/attributes.ts"),
+  "export async function createProductAttributeSchemaGroup(",
+  "apps/next-admin/packages/rustok-product/src/api/attributes.ts: the Next admin must keep schema-group creation"
+);
+assertContains(
+  readRepo("apps/next-admin/packages/rustok-product/src/index.ts"),
+  "export * from './components/attributes/schema-authoring-card';",
+  "apps/next-admin/packages/rustok-product/src/index.ts: the schema authoring card must stay exported"
+);
+assertContains(
+  readRepo("apps/next-admin/packages/rustok-product/src/pages/attributes-page.tsx"),
+  "<SchemaAuthoringCard",
+  "apps/next-admin/packages/rustok-product/src/pages/attributes-page.tsx: the schema authoring card must stay mounted"
+);
+const nextAuthoringActions = readRepo(
+  "apps/next-admin/src/app/dashboard/product/attributes/actions.ts"
+);
+for (const marker of [
+  "export async function setCategorySchemaModeAction(",
+  "export async function createSchemaAttributeGroupAction(",
+  "export async function bindSchemaAttributeAction(",
+  "export async function createCategoryAttributeGroupAction(",
+  "export async function bindCategoryAttributeAction(",
+]) {
+  assertContains(
+    nextAuthoringActions,
+    marker,
+    `attributes/actions.ts: every schema authoring command needs a server action (${marker})`
+  );
+}
+for (const marker of [
+  "onSetSchemaMode={setCategorySchemaModeAction}",
+  "onCreateSchemaGroup={createSchemaAttributeGroupAction}",
+  "onCreateCategoryGroup={createCategoryAttributeGroupAction}",
+  "onBindSchemaAttribute={bindSchemaAttributeAction}",
+  "onBindCategoryAttribute={bindCategoryAttributeAction}",
+]) {
+  assertContains(
+    readRepo("apps/next-admin/src/app/dashboard/product/attributes/page.tsx"),
+    marker,
+    `apps/next-admin/.../attributes/page.tsx: the schema authoring actions must stay wired (${marker})`
+  );
+}
+
 if (failures.length > 0) {
   console.error("[verify-product-admin-operation-results] failures:");
   for (const failure of failures) {

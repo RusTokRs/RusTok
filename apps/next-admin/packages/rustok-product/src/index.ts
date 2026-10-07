@@ -42,6 +42,7 @@ export * from './components/attributes/attributes-table';
 export * from './components/attributes/attribute-create-dialog';
 export * from './components/attributes/attribute-options-dialog';
 export * from './components/attributes/attribute-schemas-card';
+export * from './components/attributes/schema-authoring-card';
 export * from './components/products/product-header-bar';
 export * from './components/products/product-general-card';
 export * from './components/products/product-category-card';

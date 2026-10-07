@@ -113,6 +113,13 @@ export interface BindSchemaAttributePayload {
   position: number;
 }
 
+export interface CreateProductAttributeSchemaGroupPayload {
+  schemaId: string;
+  code: string;
+  label: string;
+  position?: number;
+}
+
 export interface ProductAttributeOptionSummary {
   id: string;
   code: string;
