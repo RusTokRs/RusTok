@@ -636,10 +636,11 @@ migration — no SQL state machine to re-state.
 The decision is recorded as
 [`DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md`](../../DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md)
 (`Accepted`, implementation `In progress`, registered in `DECISIONS/README.md` and `docs/index.md`;
-`npm run verify:adrs` passes for 110 decisions). The one deliberate remainder is the same rule applied
-to `payment_provider_operations_checkout_guard` (`m20260713_000016`) — the ADR lists it as the
-remaining cutover, to be removed once the equivalent check exists in `rustok-payment`'s provider
-execution path.
+`npm run verify:adrs` passes for 110 decisions). The one deliberate remainder named here — the same
+rule applied to `payment_provider_operations_checkout_guard` (`m20260713_000016`), to be removed once
+the equivalent check exists in `rustok-payment`'s provider execution path — has since been removed
+(fourth pass: the typed admission level and the claim gate, `m20261007_000013`), together with the
+payment-collection binding guard (`m20260713_000015`, sixth pass), so the remainder is closed.
 
 **ECOM-VERIFY-01 — the admin checkout-operation verifiers are already red.**
 `scripts/verify/verify-commerce-admin-checkout-operation-diagnostic-safety.mjs` and
@@ -937,10 +938,13 @@ action journal, the action registry and the RBAC split exist in `rustok-commerce
 §"Remediation log" (rows 13–21), and the ownership of that state machine is recorded as an accepted
 ADR (`DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md`); the compensation attempt
 cap with its parking path, the park/action metrics and the outbox events for park/close also shipped
-(increment 1 is complete, see rows 22–26), so what remains open from this table is increments 3–4,
-plus the admission cutover that deletes the last database business rule (`m20260713_000016`,
-§"Remaining cutover: provider execution admission" in the ADR). The parts below that are not
-implemented yet are marked as such.
+(increment 1 is complete, see rows 22–26), so what remains open from this table is increments 3–4.
+The admission cutover that this paragraph used to list as open is complete: the provider-execution
+guard `m20260713_000016` was removed in the fourth pass (`m20261007_000013`, rows 30–32) and the
+payment-collection binding guard `m20260713_000015` in the sixth pass
+(`m20261007_000015_drop_payment_collection_binding_trigger`, rows 56–57), so no business rule of this
+contour lives in database code any more (§"Remaining cutover: provider execution admission" in the
+ADR records both). The parts below that are not implemented yet are marked as such.
 
 ### A.1 Separate the three roles now mixed into one status
 

@@ -4,7 +4,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use rustok_api::PortError;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set, sea_query::Expr,
+    QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -402,13 +402,13 @@ impl PaymentProviderOperationJournal {
         C: ConnectionTrait,
     {
         let collection_ids: Vec<Uuid> = payment_collection::Entity::find()
+            .select_only()
+            .column(payment_collection::Column::Id)
             .filter(payment_collection::Column::TenantId.eq(tenant_id))
             .filter(payment_collection::Column::CartId.eq(cart_id))
+            .into_tuple::<Uuid>()
             .all(db)
-            .await?
-            .into_iter()
-            .map(|collection| collection.id)
-            .collect();
+            .await?;
         if collection_ids.is_empty() {
             return Ok(0);
         }
