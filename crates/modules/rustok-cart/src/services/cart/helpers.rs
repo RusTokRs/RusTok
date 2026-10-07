@@ -1,6 +1,5 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, Statement,
@@ -16,7 +15,7 @@ use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, normalize_locale_tag,
 };
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
-use rustok_core::generate_id;
+use rustok_core::{generate_id, money};
 use rustok_fulfillment::{
     ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
 };
@@ -1361,35 +1360,18 @@ where
     Ok(())
 }
 
-pub fn currency_exponent(currency_code: &str) -> i16 {
-    match currency_code.to_ascii_uppercase().as_str() {
-        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF"
-        | "UGX" | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
-        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
-        _ => 2,
-    }
-}
-
 /// Rounds a major-unit amount to the minor-unit precision of the given currency.
 ///
 /// Money arithmetic inside a cart must use the tenant's currency precision, not a hard-coded two
 /// decimals: 0-decimal currencies (JPY/ISK/…) would otherwise gain a phantom fractional part and
 /// 3-decimal currencies (BHD/KWD/…) would lose the third decimal before the amount is converted to
-/// minor units for the provider.
+/// minor units for the provider. The currency table and the rounding rule live in the canonical
+/// owner (`rustok_core::money`, see ECOM-MONEY-02 in
+/// `docs/audits/ecommerce-deep-review-2026-10-07.md`); this function only maps its typed error into
+/// [`CartError`].
 pub fn round_to_currency(amount: Decimal, currency_code: &str) -> CartResult<Decimal> {
-    let exponent = currency_exponent(currency_code);
-    let exponent = u32::try_from(exponent).map_err(|_| {
-        CartError::Validation(format!(
-            "unsupported currency exponent {exponent} for currency {currency_code}"
-        ))
-    })?;
-    Ok(amount.round_dp(exponent))
-}
-
-pub fn decimal_to_minor_units(amount: Decimal, exponent: i16) -> Option<i64> {
-    let factor = 10_i64.checked_pow(u32::try_from(exponent.max(0)).ok()?)?;
-    let scaled = amount.checked_mul(Decimal::from(factor))?;
-    scaled.round().to_i64()
+    money::round_to_currency(amount, currency_code)
+        .map_err(|error| CartError::Validation(error.to_string()))
 }
 
 pub async fn update_line_item_marketplace_snapshot_in_tx<C>(
@@ -1407,16 +1389,30 @@ where
             .one(conn)
             .await?
     {
-        let exponent = snapshot.currency_exponent;
-        let unit_amount =
-            decimal_to_minor_units(unit_price, exponent).unwrap_or(snapshot.unit_amount);
+        let exponent = u8::try_from(snapshot.currency_exponent).map_err(|_| {
+            CartError::Validation(format!(
+                "stored currency exponent {} is not a supported minor-unit exponent",
+                snapshot.currency_exponent
+            ))
+        })?;
+        let unit_amount = money::to_fixed_point_units(unit_price, exponent).map_err(|error| {
+            CartError::Validation(format!(
+                "marketplace unit price {unit_price} cannot be converted to minor units: {error}"
+            ))
+        })?;
         let subtotal_amount = unit_amount
             .checked_mul(i64::from(quantity))
             .ok_or_else(|| CartError::Validation("marketplace subtotal overflow".to_string()))?;
-        let discount_amount = discount_amount_decimal
-            .and_then(|d| decimal_to_minor_units(d, exponent))
-            .unwrap_or(0)
-            .min(subtotal_amount);
+        let discount_amount = match discount_amount_decimal {
+            Some(discount) => money::to_fixed_point_units(discount, exponent)
+                .map_err(|error| {
+                    CartError::Validation(format!(
+                        "marketplace discount {discount} is not convertible to minor units: {error}"
+                    ))
+                })?
+                .min(subtotal_amount),
+            None => 0,
+        };
         let total_amount = subtotal_amount
             .checked_sub(discount_amount)
             .and_then(|val| val.checked_add(snapshot.tax_amount))

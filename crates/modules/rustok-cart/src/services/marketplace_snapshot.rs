@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use rust_decimal::{Decimal, prelude::ToPrimitive};
-use rustok_core::generate_id;
+use rust_decimal::Decimal;
+use rustok_core::{generate_id, money};
 use rustok_fulfillment::{
     ShippingOptionReadPort, in_process_shipping_option_read_port,
 };
@@ -377,21 +377,12 @@ fn validate_decimal_unit_price(
     unit_price: Decimal,
     input: &MarketplaceCartLineSnapshotInput,
 ) -> CartResult<()> {
-    let exponent = u32::try_from(input.currency_exponent)
+    let exponent = u8::try_from(input.currency_exponent)
         .map_err(|_| CartError::Validation("currency exponent must be non-negative".to_string()))?;
-    let factor = 10_i64
-        .checked_pow(exponent)
-        .ok_or_else(|| CartError::Validation("currency exponent is too large".to_string()))?;
-    let scaled = unit_price
-        .checked_mul(Decimal::from(factor))
-        .ok_or_else(|| CartError::Validation("marketplace unit price overflow".to_string()))?;
-    if !scaled.fract().is_zero() {
-        return Err(CartError::Validation(format!(
-            "unit price {unit_price} cannot be represented exactly with currency exponent {exponent}"
-        )));
-    }
-    let minor_units = scaled.to_i64().ok_or_else(|| {
-        CartError::Validation("marketplace unit price exceeds minor-unit range".to_string())
+    let minor_units = money::to_fixed_point_units_exact(unit_price, exponent).map_err(|error| {
+        CartError::Validation(format!(
+            "unit price {unit_price} does not fit exponent {exponent} exactly: {error}"
+        ))
     })?;
     if minor_units != input.unit_amount {
         return Err(CartError::Validation(format!(

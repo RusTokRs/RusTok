@@ -5,7 +5,6 @@ use flex::{
     split_donor_metadata,
 };
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
@@ -19,7 +18,7 @@ use validator::Validate;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
-use rustok_core::generate_id;
+use rustok_core::{generate_id, money};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -477,10 +476,10 @@ impl OrderService {
         // The event carries the order total in the currency's minor units. A total that cannot be
         // represented in minor units must fail the transaction instead of being published as a
         // silently wrong value.
-        let total_minor_units = decimal_to_minor_units(total_amount, currency_code.as_str())
-            .ok_or_else(|| {
+        let total_minor_units = money::to_minor_units(total_amount, currency_code.as_str())
+            .map_err(|error| {
                 OrderError::Validation(format!(
-                    "order total {total_amount} cannot be represented in minor units for currency {currency_code}"
+                    "order total {total_amount} has no minor-unit form in {currency_code}: {error}"
                 ))
             })?;
 
@@ -1163,27 +1162,6 @@ fn can_cancel(status: &str) -> bool {
         status,
         STATUS_PENDING | STATUS_CONFIRMED | STATUS_PAID | STATUS_SHIPPED
     )
-}
-
-/// Currency exponents used by the platform's minor-unit table.
-///
-/// Values are the platform-internal table owned today by
-/// `rustok-cart::services::cart::helpers::currency_exponent`; `rustok-order` cannot depend on that
-/// crate (dependency direction), so the table is duplicated here until a canonical money owner is
-/// established. See `docs/audits/ecommerce-deep-review-2026-10-07.md` (ECOM-MONEY-02).
-fn currency_exponent(currency_code: &str) -> u32 {
-    match currency_code.trim().to_ascii_uppercase().as_str() {
-        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF" | "UGX"
-        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
-        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
-        _ => 2,
-    }
-}
-
-fn decimal_to_minor_units(amount: Decimal, currency_code: &str) -> Option<i64> {
-    let exponent = currency_exponent(currency_code);
-    let factor = Decimal::from(10_u64.checked_pow(exponent)?);
-    (amount * factor).round().to_i64()
 }
 
 fn subtotal_amount(line_items: &[entities::order_line_item::Model]) -> Decimal {

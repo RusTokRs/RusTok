@@ -1,5 +1,4 @@
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
@@ -13,7 +12,7 @@ use uuid::Uuid;
 use rustok_api::{locale_tags_match, normalize_locale_tag};
 use rustok_channel::entities::channel;
 use rustok_core::events::ValidateEvent;
-use rustok_core::generate_id;
+use rustok_core::{generate_id, money};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_product::{
@@ -451,9 +450,17 @@ impl PricingService {
             )
             .await?;
         let base_amount = price.compare_at_amount.unwrap_or(price.amount);
-        let adjusted_amount = (base_amount
-            * ((Decimal::from(100) - discount_percent) / Decimal::from(100)))
-        .round_dp(2);
+        // ECOM-MONEY-04: a preview must round at the currency's precision, not always to two
+        // decimals, so the value it shows is the value the owner can represent.
+        let adjusted_amount = money::round_to_currency(
+            base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
+            currency_code,
+        )
+        .map_err(|error| {
+            CommerceError::Validation(format!(
+                "discounted preview for {currency_code} cannot be rounded: {error}"
+            ))
+        })?;
 
         Ok(PriceAdjustmentPreview {
             kind: PriceAdjustmentKind::PercentageDiscount,
@@ -916,9 +923,10 @@ impl PricingService {
                 let mut price_active: entities::price::ActiveModel = price.into();
                 price_active.amount = Set(amount);
                 price_active.compare_at_amount = Set(compare_at_amount);
-                price_active.legacy_amount = Set(decimal_to_cents(amount));
-                price_active.legacy_compare_at_amount =
-                    Set(compare_at_amount.and_then(decimal_to_cents));
+                price_active.legacy_amount =
+                    Set(rustok_pricing_persistence::legacy_amount_units(amount));
+                price_active.legacy_compare_at_amount = Set(compare_at_amount
+                    .and_then(rustok_pricing_persistence::legacy_amount_units));
                 price_active.price_list_id = Set(price_list_id);
                 price_active.channel_id = Set(channel_id);
                 price_active.channel_slug = Set(channel_slug.clone());
@@ -937,8 +945,9 @@ impl PricingService {
                     region_id: Set(None),
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
-                    legacy_amount: Set(decimal_to_cents(amount)),
-                    legacy_compare_at_amount: Set(compare_at_amount.and_then(decimal_to_cents)),
+                    legacy_amount: Set(rustok_pricing_persistence::legacy_amount_units(amount)),
+                    legacy_compare_at_amount: Set(compare_at_amount
+                        .and_then(rustok_pricing_persistence::legacy_amount_units)),
                     min_quantity: Set(min_quantity),
                     max_quantity: Set(max_quantity),
                 };
@@ -946,12 +955,13 @@ impl PricingService {
             }
         }
 
-        let old_cents = old_amount.and_then(|amount| decimal_to_minor_units(amount, currency_code));
+        let old_cents =
+            old_amount.and_then(|amount| money::to_minor_units(amount, currency_code).ok());
         // The event carries minor units, so the amount must be scaled by the currency exponent and
         // must never be silently replaced by zero.
-        let new_cents = decimal_to_minor_units(amount, currency_code).ok_or_else(|| {
+        let new_cents = money::to_minor_units(amount, currency_code).map_err(|error| {
             CommerceError::Validation(format!(
-                "price amount {amount} cannot be represented in minor units for currency {currency_code}"
+                "price amount {amount} has no minor-unit form in {currency_code}: {error}"
             ))
         })?;
 
@@ -1039,9 +1049,11 @@ impl PricingService {
                     price_active.channel_id = Set(price_input.channel_id);
                     price_active.channel_slug =
                         Set(normalize_channel_slug(price_input.channel_slug.as_deref()));
-                    price_active.legacy_amount = Set(decimal_to_cents(price_input.amount));
-                    price_active.legacy_compare_at_amount =
-                        Set(price_input.compare_at_amount.and_then(decimal_to_cents));
+                    price_active.legacy_amount =
+                        Set(rustok_pricing_persistence::legacy_amount_units(price_input.amount));
+                    price_active.legacy_compare_at_amount = Set(price_input
+                        .compare_at_amount
+                        .and_then(rustok_pricing_persistence::legacy_amount_units));
                     price_active.update(&txn).await?;
                 }
                 None => {
@@ -1057,10 +1069,12 @@ impl PricingService {
                         region_id: Set(None),
                         amount: Set(price_input.amount),
                         compare_at_amount: Set(price_input.compare_at_amount),
-                        legacy_amount: Set(decimal_to_cents(price_input.amount)),
+                        legacy_amount: Set(rustok_pricing_persistence::legacy_amount_units(
+                            price_input.amount,
+                        )),
                         legacy_compare_at_amount: Set(price_input
                             .compare_at_amount
-                            .and_then(decimal_to_cents)),
+                            .and_then(rustok_pricing_persistence::legacy_amount_units)),
                         min_quantity: Set(None),
                         max_quantity: Set(None),
                     };
@@ -1069,12 +1083,12 @@ impl PricingService {
             }
 
             let currency_code = price_input.currency_code.as_str();
-            let old_cents =
-                old_amount.and_then(|amount| decimal_to_minor_units(amount, currency_code));
-            let new_cents =
-                decimal_to_minor_units(price_input.amount, currency_code).ok_or_else(|| {
+            let old_cents = old_amount
+                .and_then(|amount| money::to_minor_units(amount, currency_code).ok());
+            let new_cents = money::to_minor_units(price_input.amount, currency_code)
+                .map_err(|error| {
                     CommerceError::Validation(format!(
-                        "price amount {} cannot be represented in minor units for currency {currency_code}",
+                        "price amount {} has no minor-unit form in {currency_code}: {error}",
                         price_input.amount
                     ))
                 })?;
@@ -1187,7 +1201,7 @@ impl PricingService {
             .all(&self.db)
             .await?;
 
-        Ok(select_best_price(
+        select_best_price(
             prices,
             context.region_id,
             active_price_list_id,
@@ -1208,7 +1222,7 @@ impl PricingService {
                 );
             }
 
-            ResolvedPrice {
+            Ok(ResolvedPrice {
                 currency_code,
                 amount: price.amount,
                 compare_at_amount: price.compare_at_amount,
@@ -1220,8 +1234,9 @@ impl PricingService {
                 price_list_id: price.price_list_id,
                 channel_id: price.channel_id,
                 channel_slug: price.channel_slug,
-            }
-        }))
+            })
+        })
+        .transpose()
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
@@ -1681,33 +1696,6 @@ impl PricingService {
     }
 }
 
-/// Two-decimal representation used exclusively by the retained `legacy_amount` /
-/// `legacy_compare_at_amount` columns.
-fn decimal_to_cents(amount: Decimal) -> Option<i64> {
-    (amount * Decimal::from(100)).round_dp(0).to_i64()
-}
-
-/// Currency exponents used by the platform's minor-unit table.
-///
-/// Values are the platform-internal table owned today by
-/// `rustok-cart::services::cart::helpers::currency_exponent`; `rustok-pricing` cannot depend on that
-/// crate, so the table is duplicated here until a canonical money owner is established.
-/// See `docs/audits/ecommerce-deep-review-2026-10-07.md` (ECOM-MONEY-02).
-fn currency_exponent(currency_code: &str) -> u32 {
-    match currency_code.trim().to_ascii_uppercase().as_str() {
-        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF" | "UGX"
-        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
-        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
-        _ => 2,
-    }
-}
-
-/// Converts a major-unit amount into the currency's minor units for domain-event payloads.
-fn decimal_to_minor_units(amount: Decimal, currency_code: &str) -> Option<i64> {
-    let factor = Decimal::from(10_u64.checked_pow(currency_exponent(currency_code))?);
-    (amount * factor).round().to_i64()
-}
-
 #[allow(clippy::result_large_err)]
 fn normalize_resolution_currency(currency_code: &str) -> CommerceResult<String> {
     let normalized = currency_code.trim().to_ascii_uppercase();
@@ -2131,15 +2119,24 @@ fn apply_price_list_rule_to_resolved_price(
     price: entities::price::Model,
     price_list_id: Uuid,
     rule: &PriceListRule,
-) -> ResolvedPrice {
+) -> CommerceResult<ResolvedPrice> {
     match rule.kind {
         PriceListRuleKind::PercentageDiscount => {
             let base_amount = price.compare_at_amount.unwrap_or(price.amount);
-            let amount = (base_amount
-                * ((Decimal::from(100) - rule.adjustment_percent) / Decimal::from(100)))
-            .round_dp(2);
+            // ECOM-MONEY-04: the discounted amount must be rounded at the currency's precision;
+            // always rounding to two decimals loses the third decimal of KWD/BHD amounts and
+            // leaves fractions on zero-decimal currencies such as JPY.
+            let amount = money::round_to_currency(
+                base_amount * ((Decimal::from(100) - rule.adjustment_percent) / Decimal::from(100)),
+                &currency_code,
+            )
+            .map_err(|error| {
+                CommerceError::Validation(format!(
+                    "price-list discount for {currency_code} cannot be rounded: {error}"
+                ))
+            })?;
 
-            ResolvedPrice {
+            Ok(ResolvedPrice {
                 currency_code,
                 amount,
                 compare_at_amount: Some(base_amount),
@@ -2151,7 +2148,7 @@ fn apply_price_list_rule_to_resolved_price(
                 price_list_id: Some(price_list_id),
                 channel_id: price.channel_id,
                 channel_slug: price.channel_slug,
-            }
+            })
         }
     }
 }
