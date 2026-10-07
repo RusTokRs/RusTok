@@ -314,12 +314,17 @@ impl FulfillmentProviderOperationJournal {
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
         validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)?;
+        let mut provider_reference = normalize_optional(provider_reference);
         if let Some(provider_result) = provider_result.as_ref() {
             validate_durable_provider_payload(provider_result, "provider_result")?;
             let current = self.get(tenant_id, operation_id).await?;
-            let _ = validate_provider_result_for_operation(
+            // The validated contract also recovers the reference from the provider payload when the
+            // caller supplied none (the adapter errored after the call, or persisting the success
+            // result failed); persisting the raw argument would strand the reconciliation row
+            // without the reference an operator needs.
+            provider_reference = validate_provider_result_for_operation(
                 &current,
-                provider_reference.clone(),
+                provider_reference,
                 provider_result,
             )?;
         }
@@ -330,7 +335,7 @@ impl FulfillmentProviderOperationJournal {
             )
             .col_expr(
                 provider_operation::Column::ProviderReference,
-                Expr::value(normalize_optional(provider_reference)),
+                Expr::value(provider_reference),
             )
             .col_expr(
                 provider_operation::Column::ProviderResult,

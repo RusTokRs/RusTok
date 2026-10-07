@@ -327,6 +327,9 @@ impl MarketplaceReversalAdaptationFailureJournal {
                 marketplace_reversal_adaptation_failure::Column::UpdatedAt,
                 Expr::value(now),
             )
+            .filter(
+                marketplace_reversal_adaptation_failure::Column::TenantId.eq(existing.tenant_id),
+            )
             .filter(marketplace_reversal_adaptation_failure::Column::Id.eq(existing.id))
             .filter(
                 marketplace_reversal_adaptation_failure::Column::Status

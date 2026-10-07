@@ -598,6 +598,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Some(now)),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .exec(&self.db)
@@ -647,6 +648,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::value(now),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
             .exec(&self.db)
@@ -697,6 +699,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::UpdatedAt,
                 Expr::current_timestamp(),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(
                 provider_operation::Column::Status.is_in([
@@ -760,6 +763,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::CommittedAt,
                 Expr::value(Some(now)),
             )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(
                 provider_operation::Column::Status.is_in([
