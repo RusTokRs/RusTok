@@ -324,6 +324,10 @@ pub struct AttributeBinding {
     pub visibility_overrides: AttributeVisibilityOverrides,
     #[serde(default = "empty_json_object")]
     pub validation_overrides: Value,
+    /// Effective rule object: the attribute-level `validation` merged with the schema and
+    /// category `validation_overrides` that apply to this binding.
+    #[serde(default = "empty_json_object")]
+    pub validation: Value,
     pub source: EffectiveAttributeSource,
     #[serde(default = "default_axis_policy")]
     pub variant_axis_policy: String,
@@ -514,6 +518,7 @@ fn apply_local_category_bindings(
                         position: local.position.unwrap_or(0),
                         visibility_overrides: local.visibility_overrides.clone(),
                         validation_overrides: local.validation_overrides.clone(),
+                        validation: Value::Object(Default::default()),
                         source: EffectiveAttributeSource::CategoryLocal,
                         variant_axis_policy: local
                             .variant_axis_policy
@@ -603,6 +608,7 @@ mod tests {
             position,
             visibility_overrides: AttributeVisibilityOverrides::default(),
             validation_overrides: Value::Object(Default::default()),
+            validation: Value::Object(Default::default()),
             source: EffectiveAttributeSource::Schema,
             variant_axis_policy: "forbidden".to_string(),
             default_variant_axis: false,

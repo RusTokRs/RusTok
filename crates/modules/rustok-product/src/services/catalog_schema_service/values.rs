@@ -159,15 +159,23 @@ impl ProductCatalogSchemaService {
         else {
             return Ok(());
         };
-        let required_attribute_ids = form
-            .attributes
-            .iter()
-            .filter(|binding| binding.is_required && !binding.is_disabled)
-            .map(|binding| binding.attribute_id)
-            .collect::<Vec<_>>();
+        let mut required_attribute_ids = Vec::new();
+        let mut required_locales_by_attribute: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+            let rules =
+                attribute_validation::parse_product_attribute_validation(&binding.validation)?;
+            if binding.is_required || rules.required || !rules.required_locales.is_empty() {
+                required_attribute_ids.push(binding.attribute_id);
+            }
+            if !rules.required_locales.is_empty() {
+                required_locales_by_attribute.insert(binding.attribute_id, rules.required_locales);
+            }
+        }
         if required_attribute_ids.is_empty() {
             return Ok(());
         }
+        required_attribute_ids.sort();
+        required_attribute_ids.dedup();
 
         let (placeholders, mut values) = uuid_filter_values(tenant_id, &required_attribute_ids);
         let product_placeholder = format!("${}", values.len() + 1);
@@ -223,9 +231,9 @@ impl ProductCatalogSchemaService {
             .filter(|attribute_id| !present_rows.contains(attribute_id))
             .map(|attribute_id| attribute_id.to_string())
             .collect::<Vec<_>>();
-        for row in rows {
+        for row in &rows {
             if !row.is_filled()? {
-                missing.push(row.code);
+                missing.push(row.code.clone());
             }
         }
         missing.sort();
@@ -235,6 +243,24 @@ impl ProductCatalogSchemaService {
                 "required product attributes are missing: {}",
                 missing.join(", ")
             )));
+        }
+
+        if !required_locales_by_attribute.is_empty() {
+            let missing_locales = load_missing_required_locales(
+                conn,
+                tenant_id,
+                product_id,
+                &required_locales_by_attribute,
+                &present_rows,
+            )
+            .await?;
+            if let Some((attribute_id, locales)) = missing_locales {
+                return Err(attribute_validation::rule_failure(
+                    attribute_id,
+                    "requiredLocales",
+                    format!("missing locales {}", locales.join(", ")),
+                ));
+            }
         }
         Ok(())
     }
@@ -250,15 +276,19 @@ impl ProductCatalogSchemaService {
         let form = self
             .load_effective_form_for_category(tenant_id, category_id, &[])
             .await?;
-        let required_attribute_ids = form
-            .attributes
-            .iter()
-            .filter(|binding| binding.is_required && !binding.is_disabled)
-            .map(|binding| binding.attribute_id)
-            .collect::<Vec<_>>();
+        let mut required_attribute_ids = Vec::new();
+        for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+            let rules =
+                attribute_validation::parse_product_attribute_validation(&binding.validation)?;
+            if binding.is_required || rules.required || !rules.required_locales.is_empty() {
+                required_attribute_ids.push(binding.attribute_id);
+            }
+        }
         if required_attribute_ids.is_empty() {
             return Ok(());
         }
+        required_attribute_ids.sort();
+        required_attribute_ids.dedup();
         let missing = load_attribute_codes(&self.db, tenant_id, &required_attribute_ids).await?;
         Err(CommerceError::Validation(format!(
             "required product attributes are missing: {}",
@@ -293,6 +323,11 @@ impl ProductCatalogSchemaService {
             .filter(|binding| !binding.is_disabled)
             .map(|binding| binding.attribute_id)
             .collect::<HashSet<_>>();
+        let validation_by_attribute = form
+            .attributes
+            .iter()
+            .map(|binding| (binding.attribute_id, binding.validation.clone()))
+            .collect::<HashMap<_, _>>();
 
         let patch_attribute_ids = patches
             .iter()
@@ -306,7 +341,7 @@ impl ProductCatalogSchemaService {
                 Statement::from_sql_and_values(
                     self.db.get_database_backend(),
                     format!(
-                        "SELECT id, value_type, scope, is_localized FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+                        "SELECT id, value_type, scope, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
                     ),
                     values,
                 ),
@@ -344,6 +379,7 @@ impl ProductCatalogSchemaService {
             .collect::<HashMap<_, _>>()
         };
 
+        let no_rules = Value::Object(Default::default());
         let mut seen = HashSet::new();
         for patch in &patches {
             validate_uuid("attribute_id", patch.attribute_id)?;
@@ -365,7 +401,10 @@ impl ProductCatalogSchemaService {
                     patch.attribute_id
                 ))
             })?;
-            validate_product_value_patch(definition, patch, &options)?;
+            let validation = validation_by_attribute
+                .get(&patch.attribute_id)
+                .unwrap_or(&no_rules);
+            validate_product_value_patch(definition, patch, &options, validation)?;
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -399,6 +438,85 @@ impl ProductCatalogSchemaService {
         txn.commit().await?;
         Ok(result)
     }
+
+#[derive(FromQueryResult)]
+struct ProductAttributeValueLocaleRow {
+    attribute_id: Uuid,
+    locale: String,
+}
+
+/// Returns the first declared-locale violation of a required-locale rule, ordered by attribute id.
+///
+/// The check runs only when a rule declares `requiredLocales`, so tenants without the rule keep
+/// the single existing publish-requirement query.
+async fn load_missing_required_locales<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    required_locales_by_attribute: &HashMap<Uuid, Vec<String>>,
+    present_rows: &HashSet<Uuid>,
+) -> CommerceResult<Option<(Uuid, Vec<String>)>>
+where
+    C: ConnectionTrait,
+{
+    let mut attribute_ids = required_locales_by_attribute
+        .keys()
+        .copied()
+        .filter(|attribute_id| present_rows.contains(attribute_id))
+        .collect::<Vec<_>>();
+    if attribute_ids.is_empty() {
+        return Ok(None);
+    }
+    attribute_ids.sort();
+
+    let (placeholders, mut values) = uuid_filter_values(tenant_id, &attribute_ids);
+    let product_placeholder = format!("${}", values.len() + 1);
+    values.push(product_id.into());
+    let filled = ProductAttributeValueLocaleRow::find_by_statement(
+        Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            format!(
+                r#"
+                SELECT pav.attribute_id, pavt.locale
+                FROM product_attribute_values pav
+                JOIN product_attribute_value_translations pavt
+                  ON pavt.value_id = pav.id
+                WHERE pav.tenant_id = $1
+                  AND pav.attribute_id IN ({placeholders})
+                  AND pav.product_id = {product_placeholder}
+                  AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
+                "#
+            ),
+            values,
+        ),
+    )
+    .all(conn)
+    .await?;
+
+    let mut filled_locales: HashMap<Uuid, HashSet<String>> = HashMap::new();
+    for row in filled {
+        filled_locales
+            .entry(row.attribute_id)
+            .or_default()
+            .insert(row.locale);
+    }
+
+    for attribute_id in attribute_ids {
+        let Some(required) = required_locales_by_attribute.get(&attribute_id) else {
+            continue;
+        };
+        let filled = filled_locales.get(&attribute_id);
+        let missing = required
+            .iter()
+            .filter(|locale| !filled.is_some_and(|locales| locales.contains(locale.as_str())))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Ok(Some((attribute_id, missing)));
+        }
+    }
+    Ok(None)
+}
 
     pub async fn clear_detached_product_attribute_values(
         &self,

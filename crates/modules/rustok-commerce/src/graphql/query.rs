@@ -5,7 +5,7 @@ use super::{
     rustok_order_shim as rustok_order, rustok_payment_shim as rustok_payment,
     rustok_pricing_shim as rustok_pricing,
 };
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, FieldError, Json, Object, Result};
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
 use rustok_api::{
@@ -1975,6 +1975,7 @@ impl CommerceQuery {
                 source: effective_attribute_source_name(attribute.source).to_string(),
                 variant_axis_policy: attribute.variant_axis_policy.as_str().to_string(),
                 default_variant_axis: attribute.default_variant_axis,
+                validation: Json(attribute.validation),
             })
             .collect();
 

@@ -1,5 +1,8 @@
 use uuid::Uuid;
 
+use crate::services::catalog_schema_service::attribute_validation::{
+    attribute_validation_public_message, attribute_validation_rule_of,
+};
 use crate::CommerceError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,9 +70,18 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
             false,
         ),
         CommerceError::DuplicateSku(sku) => ("duplicate_sku", 1, sku.chars().count(), 0, 0, false),
-        CommerceError::Validation(message) => {
-            ("validation", 1, message.chars().count(), 0, 0, false)
-        }
+        CommerceError::Validation(message) => (
+            if attribute_validation_rule_of(message).is_some() {
+                "attribute_validation"
+            } else {
+                "validation"
+            },
+            1,
+            message.chars().count(),
+            0,
+            0,
+            false,
+        ),
         CommerceError::NoVariants => ("no_variants", 0, 0, 0, 0, false),
         CommerceError::VariantNotFound(id) => (
             "variant_not_found",
@@ -100,6 +112,15 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
         uuid_non_nil_count,
         opaque_payload_present,
     }
+}
+
+/// Bounded public copy for one attribute-rule violation.
+///
+/// The prefix is produced by the Product rule engine only, and the copy comes from the closed
+/// rule set, so no tenant-authored text can reach a public error.
+fn attribute_validation_public_failure(message: &str) -> (&'static str, &'static str, bool) {
+    let rule = attribute_validation_rule_of(message).unwrap_or_default();
+    (attribute_validation_public_message(rule), "PRODUCT_ATTRIBUTE_VALIDATION", false)
 }
 
 pub fn map_product_public_error(
@@ -139,6 +160,9 @@ pub fn map_product_public_error(
             "DUPLICATE_SKU",
             false,
         ),
+        CommerceError::Validation(message) if attribute_validation_rule_of(message).is_some() => {
+            attribute_validation_public_failure(message)
+        }
         CommerceError::Validation(_) => ("Product request is invalid", "PRODUCT_VALIDATION", false),
         CommerceError::NoVariants => (
             "Product requires at least one variant",

@@ -54,6 +54,10 @@ pub struct ProductEffectiveFormAttributeProjection {
     pub source: EffectiveAttributeSource,
     pub variant_axis_policy: String,
     pub default_variant_axis: bool,
+    /// Effective validation rule object: the attribute-level `validation` merged with every
+    /// schema/category `validation_overrides` that applies to this binding.
+    #[serde(default)]
+    pub validation: serde_json::Value,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -282,6 +286,7 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
                 source: binding.source,
                 variant_axis_policy: binding.variant_axis_policy,
                 default_variant_axis: binding.default_variant_axis,
+                validation: binding.validation,
             });
         }
 

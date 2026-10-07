@@ -158,6 +158,11 @@ impl ProductCatalogSchemaService {
             .filter(|binding| !binding.is_disabled)
             .map(|binding| binding.attribute_id)
             .collect::<HashSet<_>>();
+        let validation_by_attribute = form
+            .attributes
+            .iter()
+            .map(|binding| (binding.attribute_id, binding.validation.clone()))
+            .collect::<HashMap<_, _>>();
 
         let patch_attribute_ids = patches
             .iter()
@@ -175,6 +180,7 @@ impl ProductCatalogSchemaService {
             .collect::<Vec<_>>();
         let options = load_variant_patch_options(&self.db, tenant_id, &selected_option_ids).await?;
 
+        let no_rules = Value::Object(Default::default());
         let mut seen = HashSet::new();
         for patch in &patches {
             validate_uuid("attribute_id", patch.attribute_id)?;
@@ -196,7 +202,10 @@ impl ProductCatalogSchemaService {
                     patch.attribute_id
                 ))
             })?;
-            validate_variant_value_patch(definition, patch, &options)?;
+            let validation = validation_by_attribute
+                .get(&patch.attribute_id)
+                .unwrap_or(&no_rules);
+            validate_variant_value_patch(definition, patch, &options, validation)?;
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -443,7 +452,7 @@ where
         Statement::from_sql_and_values(
             conn.get_database_backend(),
             format!(
-                "SELECT id, value_type, scope, is_localized FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+                "SELECT id, value_type, scope, is_localized, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
             ),
             values,
         ),
@@ -485,6 +494,7 @@ fn validate_variant_value_patch(
     definition: &ProductAttributeWriteDefinitionRow,
     patch: &ProductAttributeValuePatch,
     options: &HashMap<Uuid, Uuid>,
+    validation: &Value,
 ) -> CommerceResult<()> {
     if !matches!(definition.scope.as_str(), "variant" | "both") {
         return Err(CommerceError::Validation(format!(
@@ -559,6 +569,13 @@ fn validate_variant_value_patch(
             )));
         }
     }
+
+    attribute_validation::validate_attribute_value_rules(
+        patch.attribute_id,
+        &attribute_validation::parse_product_attribute_validation(validation)?,
+        value_type,
+        &patch.value,
+    )?;
     Ok(())
 }
 

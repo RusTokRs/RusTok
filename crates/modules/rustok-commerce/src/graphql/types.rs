@@ -278,6 +278,9 @@ pub struct GqlProductEffectiveFormAttribute {
     pub source: String,
     pub variant_axis_policy: String,
     pub default_variant_axis: bool,
+    /// Effective validation rules: attribute-level `validation` merged with the schema and category
+    /// `validation_overrides` that apply to this binding.
+    pub validation: Json<serde_json::Value>,
 }
 
 #[derive(SimpleObject)]
@@ -1018,6 +1021,8 @@ pub struct CreateProductAttributeInput {
     pub is_searchable: bool,
     pub is_sortable: bool,
     pub show_on_storefront: bool,
+    /// Declared validation rules of the attribute (see the Product rule engine schema).
+    pub validation: Option<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject)]
@@ -1077,6 +1082,8 @@ pub struct BindSchemaAttributeInput {
     pub is_required: bool,
     pub is_disabled: bool,
     pub position: i32,
+    /// Schema-level rule overrides applied on top of the attribute-level `validation`.
+    pub validation_overrides: Option<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject)]
@@ -1088,6 +1095,8 @@ pub struct BindCategoryAttributeInput {
     pub is_required: Option<bool>,
     pub is_disabled: bool,
     pub position: Option<i32>,
+    /// Category-level rule overrides applied on top of the schema binding rules.
+    pub validation_overrides: Option<Json<serde_json::Value>>,
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]

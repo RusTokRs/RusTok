@@ -1046,6 +1046,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation = match input.validation {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::CreateProductAttributeInput {
             code: input.code,
             value_type: parse_attribute_value_type(&input.value_type)?,
@@ -1061,7 +1065,7 @@ impl CommerceCatalogMutation {
             filter_display: None,
             facet_mode: None,
             position: 0,
-            validation: serde_json::Value::Object(Default::default()),
+            validation,
             default_value: None,
             metadata: serde_json::Value::Object(Default::default()),
             translations: vec![rustok_product::services::AttributeTranslationInput {
@@ -1337,6 +1341,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation_overrides = match input.validation_overrides {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::BindSchemaAttributeInput {
             schema_id: input.schema_id,
             attribute_id: input.attribute_id,
@@ -1345,7 +1353,7 @@ impl CommerceCatalogMutation {
             is_disabled: input.is_disabled,
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
-            validation_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(
@@ -1377,6 +1385,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation_overrides = match input.validation_overrides {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::BindCategoryAttributeInput {
             category_id: input.category_id,
             attribute_id: input.attribute_id,
@@ -1386,7 +1398,7 @@ impl CommerceCatalogMutation {
             is_disabled: input.is_disabled,
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
-            validation_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(
