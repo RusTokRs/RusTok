@@ -91,8 +91,14 @@ struct FacetOptionCodeRow {
 }
 
 #[derive(Debug, FromQueryResult)]
-struct FacetBucketRow {
-    bucket: String,
+struct FacetOptionBucketRow {
+    option_id: Uuid,
+    product_count: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct FacetBooleanBucketRow {
+    value_boolean: bool,
     product_count: i64,
 }
 
@@ -198,32 +204,32 @@ pub(super) async fn load_storefront_catalog_facets(
         if is_enumerable {
             let buckets = load_facet_buckets(db, definition, &products_condition).await?;
             let mut collected = Vec::with_capacity(buckets.len());
-            for bucket in buckets {
+            for (bucket, count) in buckets {
                 if collected.len() == MAX_CATALOG_FACET_VALUES {
                     is_truncated = true;
                     break;
                 }
-                if let Ok(option_id) = Uuid::parse_str(&bucket.bucket) {
+                if let Ok(option_id) = Uuid::parse_str(&bucket) {
                     option_ids.push(option_id);
                 }
-                collected.push(bucket);
+                collected.push((bucket, count));
             }
             let slot = facets.len();
             option_bucket_slots.push((
                 slot,
                 collected
                     .iter()
-                    .filter_map(|bucket| Uuid::parse_str(&bucket.bucket).ok())
+                    .filter_map(|(bucket, _)| Uuid::parse_str(bucket).ok())
                     .collect(),
             ));
             values = collected
                 .into_iter()
-                .map(|bucket| StorefrontCatalogFacetValue {
+                .map(|(value, count)| StorefrontCatalogFacetValue {
                     // Dictionary buckets get their localized label below; a bucket without a
                     // dictionary entry (boolean) keeps its raw value as the label.
-                    label: bucket.bucket.clone(),
-                    value: bucket.bucket,
-                    count: bucket.product_count.max(0) as u64,
+                    label: value.clone(),
+                    value,
+                    count,
                 })
                 .collect();
         }
@@ -621,7 +627,7 @@ async fn load_facet_buckets(
     db: &DatabaseConnection,
     definition: &FacetDefinitionRow,
     products_condition: &Condition,
-) -> CommerceResult<Vec<FacetBucketRow>> {
+) -> CommerceResult<Vec<(String, u64)>> {
     let value_type = AttributeValueType::from_storage(&definition.value_type).map_err(|_| {
         CommerceError::Validation(format!(
             "attribute {} has an unsupported stored value type",
@@ -632,13 +638,17 @@ async fn load_facet_buckets(
     let backend = db.get_database_backend();
     let pav = Alias::new("facet_pav");
     let mut query = facet_base_query(backend, &definition.id);
-    match value_type {
+    // Buckets are selected as their native column types and rendered to strings in Rust: casting
+    // a uuid column to text would depend on the backend's storage encoding, and the same SQL runs
+    // on PostgreSQL and the portable SQLite test schema.
+    let buckets = match value_type {
         AttributeValueType::Select | AttributeValueType::Multiselect => {
             let pavo = Alias::new("facet_pavo");
             query
+                .column((pavo.clone(), Alias::new("option_id")))
                 .expr_as(
-                    Expr::cust("CAST(facet_pavo.option_id AS TEXT)"),
-                    Alias::new("bucket"),
+                    Expr::cust("COUNT(DISTINCT products.id)"),
+                    Alias::new("product_count"),
                 )
                 .join_as(
                     JoinType::InnerJoin,
@@ -647,35 +657,54 @@ async fn load_facet_buckets(
                     Expr::col((pavo.clone(), Alias::new("value_id")))
                         .equals((pav.clone(), Alias::new("id"))),
                 )
-                .group_by_col((pavo.clone(), Alias::new("option_id")));
+                .group_by_col((pavo.clone(), Alias::new("option_id")))
+                .cond_where(products_condition.clone())
+                .order_by_expr(Expr::cust("product_count"), Order::Desc)
+                .order_by((pavo.clone(), Alias::new("option_id")), Order::Asc)
+                // One extra row distinguishes "exactly the limit" from "truncated".
+                .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
+
+            let (sql, values) = query.build(backend);
+            FacetOptionBucketRow::find_by_statement(Statement::from_sql_and_values(
+                backend, sql, values,
+            ))
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|row| (row.option_id.to_string(), row.product_count.max(0) as u64))
+            .collect::<Vec<_>>()
         }
         AttributeValueType::Boolean => {
             query
+                .column((pav.clone(), Alias::new("value_boolean")))
                 .expr_as(
-                    Expr::cust("CASE WHEN facet_pav.value_boolean THEN 'true' ELSE 'false' END"),
-                    Alias::new("bucket"),
+                    Expr::cust("COUNT(DISTINCT products.id)"),
+                    Alias::new("product_count"),
                 )
-                .group_by_col((pav.clone(), Alias::new("value_boolean")));
-        }
-        _ => return Ok(Vec::new()),
-    }
-    query
-        .expr_as(
-            Expr::cust("COUNT(DISTINCT products.id)"),
-            Alias::new("product_count"),
-        )
-        .cond_where(products_condition.clone())
-        .order_by_expr(Expr::cust("product_count"), Order::Desc)
-        .order_by_expr(Expr::cust("bucket"), Order::Asc)
-        // One extra row distinguishes "exactly the limit" from "truncated".
-        .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
+                .group_by_col((pav.clone(), Alias::new("value_boolean")))
+                .cond_where(products_condition.clone())
+                .order_by_expr(Expr::cust("product_count"), Order::Desc)
+                .order_by((pav.clone(), Alias::new("value_boolean")), Order::Asc)
+                .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
 
-    let (sql, values) = query.build(backend);
-    let rows =
-        FacetBucketRow::find_by_statement(Statement::from_sql_and_values(backend, sql, values))
+            let (sql, values) = query.build(backend);
+            FacetBooleanBucketRow::find_by_statement(Statement::from_sql_and_values(
+                backend, sql, values,
+            ))
             .all(db)
-            .await?;
-    Ok(rows)
+            .await?
+            .into_iter()
+            .map(|row| {
+                (
+                    row.value_boolean.to_string(),
+                    row.product_count.max(0) as u64,
+                )
+            })
+            .collect::<Vec<_>>()
+        }
+        _ => Vec::new(),
+    };
+    Ok(buckets)
 }
 
 /// `FROM products JOIN product_attribute_values facet_pav ON ...` with the tenant, attribute and

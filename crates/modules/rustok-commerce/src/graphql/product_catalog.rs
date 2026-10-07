@@ -305,7 +305,7 @@ impl ProductCatalogQuery {
         ctx: &Context<'_>,
         locale: Option<String>,
         filter: Option<StorefrontProductCatalogFilter>,
-        facet_codes: Vec<String>,
+        #[graphql(default)] facet_codes: Vec<String>,
     ) -> Result<Vec<GqlStorefrontCatalogFacet>> {
         require_module_enabled(ctx, PRODUCT_MODULE_SLUG).await?;
         require_storefront_channel_enabled(ctx).await?;
