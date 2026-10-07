@@ -497,8 +497,8 @@ fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
 
 #[cfg(feature = "ssr")]
 fn parse_decimal(value: &str, field: &str) -> Result<rust_decimal::Decimal, ServerFnError> {
+    use rust_decimal::Decimal;
     use std::str::FromStr;
 
-    rust_decimal::Decimal::from_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+    Decimal::from_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
