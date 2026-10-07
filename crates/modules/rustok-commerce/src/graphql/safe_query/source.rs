@@ -12,16 +12,16 @@ mod rustok_api_shim {
         TenantContext, locale_tags_match,
     };
 
+    /// The scoped alias surface `query.rs` consumes when it is compiled inside this
+    /// boundary. Only the two constructors the query implementation actually calls are
+    /// exposed; the rest of the upstream surface is dead here and would need a lint
+    /// suppression to keep, which AGENTS.md §14 refuses.
     pub mod graphql {
         use super::super::super::query_error_boundary::BoundaryError;
 
-        #[allow(dead_code)]
         pub trait GraphQLError {
             fn unauthenticated() -> BoundaryError;
             fn permission_denied(message: &str) -> BoundaryError;
-            fn internal_error(message: &str) -> BoundaryError;
-            fn bad_user_input(message: &str) -> BoundaryError;
-            fn not_found(message: &str) -> BoundaryError;
         }
 
         impl GraphQLError for BoundaryError {
@@ -34,26 +34,6 @@ mod rustok_api_shim {
             fn permission_denied(message: &str) -> BoundaryError {
                 BoundaryError::from(
                     <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::permission_denied(message),
-                )
-            }
-
-            fn internal_error(message: &str) -> BoundaryError {
-                BoundaryError::from(
-                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::internal_error(message),
-                )
-            }
-
-            fn bad_user_input(message: &str) -> BoundaryError {
-                BoundaryError::from(
-                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::bad_user_input(message),
-                )
-            }
-
-            fn not_found(message: &str) -> BoundaryError {
-                BoundaryError::from(
-                    <::async_graphql::FieldError as ::rustok_api::graphql::GraphQLError>::not_found(
-                        message,
-                    ),
                 )
             }
         }

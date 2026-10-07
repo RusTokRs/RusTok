@@ -38,7 +38,6 @@ const workflow = requireMarkers(workflowPath, [
   "event-contract-digests.patch",
   "manifest.env",
   "SHA256SUMS",
-  "actions/upload-artifact@",
   "steps.generate.outputs.status == 'drift' && inputs.mode == 'verify'",
   "no repository write was performed",
 ]);
@@ -63,6 +62,18 @@ for (const forbidden of [
 
 if (/^\s{2}(push|pull_request):/m.test(workflow)) {
   fail(`${workflowPath} must remain manually dispatched by contract`);
+}
+
+// The action is pinned to a full commit SHA (the repository's supply-chain rule), so the
+// version cannot be matched as a tag reference; accept the pinned form with its `# v7` comment
+// and refuse the unpinned tag form.
+if (!/uses: actions\/upload-artifact@[0-9a-f]{40} # v7\b/.test(workflow)) {
+  fail(
+    `${workflowPath} must pin the packet upload to actions/upload-artifact@<40-hex sha> # v7`,
+  );
+}
+if (/uses: actions\/upload-artifact@v\d/.test(workflow)) {
+  fail(`${workflowPath} must not reference an unpinned action tag`);
 }
 
 const generatorPath =

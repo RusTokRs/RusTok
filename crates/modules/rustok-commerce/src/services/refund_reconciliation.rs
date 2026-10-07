@@ -23,7 +23,10 @@ impl RefundReconciliationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
-            provider_operation_journal: PaymentProviderOperationJournal::new(db),
+            provider_operation_journal: PaymentProviderOperationJournal::new(db.clone())
+                .with_checkout_execution_admission_port(super::checkout_execution_admission_port(
+                    db,
+                )),
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
     }
@@ -166,14 +169,22 @@ impl RefundReconciliationService {
         let provider_result_payload = match serde_json::to_value(&provider_result) {
             Ok(payload) => payload,
             Err(_) => {
-                let _ = self
+                if let Err(mark_error) = self
                     .provider_operation_journal
                     .mark_reconciliation_required(
                         tenant_id,
                         operation.id,
                         "refund provider result serialization failed after external success",
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        tenant_id = %tenant_id,
+                        operation_id = %operation.id,
+                        error = %mark_error,
+                        "failed to mark refund provider operation as reconciliation required"
+                    );
+                }
                 return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                     refund_id,
                     source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
@@ -192,14 +203,22 @@ impl RefundReconciliationService {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .provider_operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation.id,
                     "refund provider success could not be durably checkpointed",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %operation.id,
+                    error = %mark_error,
+                    "failed to mark refund provider operation as reconciliation required"
+                );
+            }
             return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                 refund_id,
                 source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),
@@ -211,14 +230,22 @@ impl RefundReconciliationService {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .provider_operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation.id,
                     "refund provider journal commit failed after external success",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %operation.id,
+                    error = %mark_error,
+                    "failed to mark refund provider operation as reconciliation required"
+                );
+            }
             return Err(PaymentOrchestrationError::ProviderAfterRefundReservation {
                 refund_id,
                 source: PaymentError::provider_outcome_unknown(&provider_id, "refund"),

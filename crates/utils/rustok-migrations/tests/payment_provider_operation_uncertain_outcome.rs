@@ -192,6 +192,12 @@ async fn provider_operation_tenant_ownership_is_enforced_at_service_and_database
         updated_at: Set(now),
         provider_completed_at: Set(None),
         committed_at: Set(None),
+        // A row written by a runtime that predates the admission contract: the
+        // generation starts at zero and the gate adopts it only while the
+        // checkout owner reports `open`.
+        admission_epoch: Set(0),
+        admission_refusal_code: Set(None),
+        admission_refused_at: Set(None),
     }
     .insert(&db)
     .await;

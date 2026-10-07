@@ -174,11 +174,14 @@ impl FulfillmentOrchestrationService {
                 })
             })
             .collect::<FulfillmentOrchestrationResult<Vec<_>>>()?;
-        // INVARIANT: input.items is validated as non-empty at lines 99-103 and mapped 1-to-1 into requested_group.
-        let canonical_group = requested_group
-            .first()
-            .cloned()
-            .expect("requested items already validated as non-empty");
+        // INVARIANT: `input.items` is validated as non-empty at lines 99-103 and
+        // mapped 1-to-1 into `requested_group`; the empty branch fails with the
+        // same typed validation error instead of panicking inside the path.
+        let Some(canonical_group) = requested_group.first().cloned() else {
+            return Err(FulfillmentOrchestrationError::Validation(
+                "manual fulfillment items must not be empty".to_string(),
+            ));
+        };
         if requested_group.iter().any(|group| {
             group.shipping_profile_slug != canonical_group.shipping_profile_slug
                 || group.seller_id != canonical_group.seller_id

@@ -56,10 +56,10 @@ pub struct CheckoutOrderCreationExecutor {
 impl CheckoutOrderCreationExecutor {
     pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            order_service: OrderService::new(db.clone(), event_bus),
+            order_service: OrderService::new(db.clone(), event_bus.clone()),
             order_identity_port: in_process_checkout_order_identity_port(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
-            adoption_service: CheckoutInventoryOrderAdoptionService::new(db),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
+            adoption_service: CheckoutInventoryOrderAdoptionService::new(db, event_bus),
             port_deadline: Duration::from_secs(ORDER_IDENTITY_PORT_DEADLINE_SECONDS),
         }
     }

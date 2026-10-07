@@ -71,6 +71,8 @@ impl TestDatabase {
             request_hash: Set("1".repeat(64)),
             snapshot_hash: Set(Some("2".repeat(64))),
             status: Set(CheckoutOperationStatus::Executing.as_str().to_string()),
+            execution_admission: Set("open".to_string()),
+            admission_epoch: Set(1),
             stage: Set(CheckoutOperationStage::PaymentReady.as_str().to_string()),
             order_id: Set(Some(order_id)),
             payment_collection_id: Set(None),

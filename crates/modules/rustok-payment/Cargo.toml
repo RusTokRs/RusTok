@@ -20,6 +20,8 @@ reqwest = { workspace = true, optional = true, features = ["json"] }
 rust_decimal.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
+rustok-events.workspace = true
+rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 secrecy = { workspace = true, optional = true }

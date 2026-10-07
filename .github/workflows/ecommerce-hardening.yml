@@ -34,6 +34,14 @@ jobs:
           node-version: 22
       - name: Verify mounted checkout cutover
         run: node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs
+      - name: Verify checkout operation event contract
+        run: npm run verify:commerce:checkout-operation-events
+      - name: Verify checkout execution admission contract
+        run: npm run verify:commerce:checkout-execution-admission
+      - name: Verify money-path query index alignment
+        run: npm run verify:commerce:money-path-query-indexes
+      - name: Verify outbox retention and event metric wiring
+        run: npm run verify:outbox:retention-event-metrics
       - name: Verify admin return-decision owner ports
         run: node scripts/verify/verify-commerce-rest-admin-return-decision-order-owner-port-cutover.mjs
       - name: Verify GraphQL return-decision owner ports

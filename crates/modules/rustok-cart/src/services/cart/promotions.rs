@@ -16,7 +16,7 @@ use super::helpers::{
     SHIPPING_PROMOTION_SCOPE, ensure_active, load_cart, load_cart_for_update_in_tx,
     normalize_required_adjustment_source_id, promotion_metadata, recalculate_totals,
     reconcile_cart_shipping_state, resolve_promotion_base_amount,
-    resolve_shipping_promotion_base_amount, sanitize_adjustment_metadata,
+    resolve_shipping_promotion_base_amount, round_to_currency, sanitize_adjustment_metadata,
 };
 use super::types::{CartPromotionKind, CartPromotionPreview};
 
@@ -52,10 +52,12 @@ impl CartService {
         let source_id = normalize_required_adjustment_source_id(source_id)?;
         let base_amount =
             resolve_promotion_base_amount(&line_items, &adjustments, line_item_id, &source_id)?;
-        let adjusted_amount = (base_amount
-            * ((Decimal::from(100) - discount_percent) / Decimal::from(100)))
-        .round_dp(2);
-        let adjustment_amount = (base_amount - adjusted_amount).round_dp(2);
+        let adjusted_amount = round_to_currency(
+            base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
+            &cart.currency_code,
+        )?;
+        let adjustment_amount =
+            round_to_currency(base_amount - adjusted_amount, &cart.currency_code)?;
 
         Ok(CartPromotionPreview {
             kind: CartPromotionKind::PercentageDiscount,
@@ -144,13 +146,16 @@ impl CartService {
             ));
         }
 
+        let adjustment_amount = round_to_currency(amount, &cart.currency_code)?;
+        let adjusted_amount = round_to_currency(base_amount - amount, &cart.currency_code)?;
+
         Ok(CartPromotionPreview {
             kind: CartPromotionKind::FixedDiscount,
             line_item_id,
             currency_code: cart.currency_code,
             base_amount,
-            adjustment_amount: amount.round_dp(2),
-            adjusted_amount: (base_amount - amount).round_dp(2),
+            adjustment_amount,
+            adjusted_amount,
         })
     }
 
@@ -214,10 +219,12 @@ impl CartService {
         let source_id = normalize_required_adjustment_source_id(source_id)?;
         let base_amount =
             resolve_shipping_promotion_base_amount(cart.shipping_total, &adjustments, &source_id);
-        let adjusted_amount = (base_amount
-            * ((Decimal::from(100) - discount_percent) / Decimal::from(100)))
-        .round_dp(2);
-        let adjustment_amount = (base_amount - adjusted_amount).round_dp(2);
+        let adjusted_amount = round_to_currency(
+            base_amount * ((Decimal::from(100) - discount_percent) / Decimal::from(100)),
+            &cart.currency_code,
+        )?;
+        let adjustment_amount =
+            round_to_currency(base_amount - adjusted_amount, &cart.currency_code)?;
 
         Ok(CartPromotionPreview {
             kind: CartPromotionKind::PercentageDiscount,
@@ -286,13 +293,16 @@ impl CartService {
             ));
         }
 
+        let adjustment_amount = round_to_currency(amount, &cart.currency_code)?;
+        let adjusted_amount = round_to_currency(base_amount - amount, &cart.currency_code)?;
+
         Ok(CartPromotionPreview {
             kind: CartPromotionKind::FixedDiscount,
             line_item_id: None,
             currency_code: cart.currency_code,
             base_amount,
-            adjustment_amount: amount.round_dp(2),
-            adjusted_amount: (base_amount - amount).round_dp(2),
+            adjustment_amount,
+            adjusted_amount,
         })
     }
 
@@ -405,7 +415,7 @@ impl CartService {
             cart_line_item_id: Set(line_item_id),
             source_type: Set(PROMOTION_ADJUSTMENT_SOURCE_TYPE.to_string()),
             source_id: Set(Some(source_id)),
-            amount: Set(amount.round_dp(2)),
+            amount: Set(round_to_currency(amount, &cart.currency_code)?),
             currency_code: Set(cart.currency_code.to_ascii_uppercase()),
             metadata: Set(sanitize_adjustment_metadata(metadata)),
             created_at: Set(Utc::now().into()),

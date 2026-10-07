@@ -240,6 +240,9 @@ impl InProcessCheckoutPaymentExecutionPort {
                     result,
                 });
             }
+            if let Some(refusal) = crate::execution_admission_refusal_error(&current) {
+                return Err(refusal);
+            }
             return Err(manual_reconciliation(
                 context,
                 owner_operation,

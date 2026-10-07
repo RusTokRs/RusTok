@@ -1,19 +1,24 @@
 use axum::{
     Json,
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
 };
 use chrono::{DateTime, FixedOffset};
-use rustok_api::{AuthContext, Permission, TenantContext};
+use rust_decimal::Decimal;
+use rustok_api::{AuthContext, Permission, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::in_process_cart_checkout_port;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::{CommerceHttpRuntime, common::ensure_permissions};
-use crate::{CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError};
+use crate::{
+    CheckoutCompensationError, CheckoutInventoryReservationError, CheckoutOperationError,
+    CheckoutReconciliationAction, CheckoutReconciliationActionRequest, CheckoutReconciliationError,
+    CheckoutReconciliationOutcome, CheckoutReconciliationService,
+};
 
 const ADMIN_CHECKOUT_OPERATION_OWNER: &str = "rustok_commerce.admin_checkout_operation";
 const ADMIN_CHECKOUT_OPERATION_BOUNDARY: &str = "commerce_admin_checkout_operation_http";
@@ -106,6 +111,12 @@ pub struct AdminCheckoutOperationResponse {
     pub id: Uuid,
     pub cart_id: Uuid,
     pub status: String,
+    /// Provider execution admission level (`open` / `settling` / `closed`) the
+    /// checkout journal owns for this operation.
+    pub execution_admission: String,
+    /// Monotonic admission generation a provider operation must carry to be
+    /// admitted for execution.
+    pub admission_epoch: i64,
     pub stage: String,
     pub order_id: Option<Uuid>,
     pub payment_collection_id: Option<Uuid>,
@@ -135,11 +146,68 @@ pub struct AdminCheckoutCompensationSweepResponse {
     pub compensated: usize,
     pub retryable: usize,
     pub manual_reconciliation: usize,
+    /// Operations this sweep parked because their compensation attempts were
+    /// exhausted; every one of them is now visible in the reconciliation list.
+    pub exhausted: usize,
     pub failures: Vec<AdminCheckoutCompensationSweepFailure>,
+}
+
+/// One operator decision on a parked checkout operation.
+///
+/// Which fields are mandatory depends on `action`, and the rules live next to
+/// the action in `CheckoutReconciliationAction`: `attest_external` needs
+/// `outcome` + `evidence_ref`, `write_off` needs `second_approver_id`,
+/// `refund_partial` needs `amount`, and every other field is rejected when it
+/// does not belong to the action.
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+pub struct AdminCheckoutReconciliationActionInput {
+    pub action: CheckoutReconciliationAction,
+    /// Operator justification, recorded on the operation row and in the journal.
+    pub reason: String,
+    /// Terminal outcome for `attest_external`.
+    pub outcome: Option<CheckoutReconciliationOutcome>,
+    /// Out-of-band artefact reference for `attest_external`.
+    pub evidence_ref: Option<String>,
+    /// Second approver for `write_off`; must differ from the calling operator.
+    pub second_approver_id: Option<Uuid>,
+    /// Refund amount for `refund_partial`.
+    pub amount: Option<Decimal>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+pub struct AdminCheckoutReconciliationActionResponse {
+    pub id: Uuid,
+    pub checkout_operation_id: Uuid,
+    pub action: String,
+    pub result_status: String,
+    pub amount: Option<Decimal>,
+    pub currency_code: Option<String>,
+    pub reason: String,
+    pub evidence_ref: Option<String>,
+    pub operator_id: Uuid,
+    pub approver_id: Option<Uuid>,
+    pub refund_id: Option<Uuid>,
+    pub refund_status: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
+pub struct AdminCheckoutReconciliationActionListQuery {
+    /// Page size, clamped to the journal's list limit.
+    pub limit: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, ToSchema, IntoParams)]
+pub struct AdminCheckoutOperationListQuery {
+    /// Exact status filter, for example `reconciliation_required`.
+    pub status: Option<String>,
+    /// Page size, clamped to the journal's list limit.
+    pub limit: Option<u64>,
 }
 
 pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
     axum::Router::new()
+        .route("/", axum::routing::get(list_checkout_operations))
         .route(
             "/compensation-sweep",
             axum::routing::post(sweep_checkout_compensations),
@@ -148,6 +216,11 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
         .route(
             "/{id}/compensate",
             axum::routing::post(compensate_checkout_operation),
+        )
+        .route(
+            "/{id}/actions",
+            axum::routing::post(execute_checkout_reconciliation_action)
+                .get(list_checkout_reconciliation_actions),
         )
 }
 
@@ -173,7 +246,7 @@ pub async fn show_checkout_operation(
         &[Permission::ORDERS_READ],
         "Permission denied: orders:read required",
     )?;
-    let operation = crate::CheckoutOperationJournal::new(runtime.db_clone())
+    let operation = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
         .get(tenant.id, id)
         .await
         .map_err(|error| {
@@ -247,6 +320,178 @@ pub async fn compensate_checkout_operation(
 }
 
 #[utoipa::path(
+    get,
+    path = "/admin/checkout-operations",
+    tag = "admin",
+    params(AdminCheckoutOperationListQuery),
+    responses(
+        (status = 200, description = "Checkout operations", body = Vec<AdminCheckoutOperationResponse>),
+        (status = 400, description = "Invalid status filter"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn list_checkout_operations(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<AdminCheckoutOperationListQuery>,
+) -> HttpResult<Json<Vec<AdminCheckoutOperationResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
+    let operations = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
+        .list_by_status(tenant.id, query.status.as_deref(), query.limit.unwrap_or(50))
+        .await
+        .map_err(|error| {
+            map_operation_error(
+                AdminCheckoutOperationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    None,
+                    "list_checkout_operations",
+                ),
+                error,
+            )
+        })?;
+    Ok(Json(operations.into_iter().map(map_operation).collect()))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/checkout-operations/{id}/actions",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Checkout operation ID")),
+    request_body = AdminCheckoutReconciliationActionInput,
+    responses(
+        (status = 201, description = "Reconciliation action recorded", body = AdminCheckoutReconciliationActionResponse),
+        (status = 400, description = "Invalid request"), (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"), (status = 404, description = "Checkout operation not found"),
+        (status = 409, description = "Checkout operation is not parked in reconciliation_required"),
+        (status = 502, description = "Payment owner rejected the reconciliation step")
+    )
+)]
+pub async fn execute_checkout_reconciliation_action(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    Json(input): Json<AdminCheckoutReconciliationActionInput>,
+) -> HttpResult<(StatusCode, Json<AdminCheckoutReconciliationActionResponse>)> {
+    let action = input.action;
+    // The permission set is derived from the action itself, so a money moving
+    // action can never be reachable through the safe-action permission path.
+    ensure_permissions(
+        &auth,
+        action.required_permissions(),
+        action_permission_message(action),
+    )?;
+    let idempotency_key = require_idempotency_key(&headers)?;
+    let context = reconciliation_port_context(
+        &tenant,
+        &auth,
+        &request_context,
+        id,
+        idempotency_key.as_str(),
+    );
+    let service = CheckoutReconciliationService::new(
+        runtime.db_clone(),
+        runtime.event_bus(),
+        runtime.payment_admin_read_port(),
+        runtime.payment_admin_refund_command_port(),
+        runtime.payment_admin_collection_command_port(),
+    );
+    let record = service
+        .execute(
+            context,
+            CheckoutReconciliationActionRequest {
+                tenant_id: tenant.id,
+                operation_id: id,
+                action,
+                operator_id: auth.user_id,
+                idempotency_key,
+                reason: input.reason,
+                outcome: input.outcome,
+                evidence_ref: input.evidence_ref,
+                second_approver_id: input.second_approver_id,
+                amount: input.amount,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_reconciliation_error(
+                AdminCheckoutOperationErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "execute_checkout_reconciliation_action",
+                ),
+                error,
+            )
+        })?;
+    tracing::info!(
+        owner = ADMIN_CHECKOUT_OPERATION_OWNER,
+        tenant_id = %tenant.id,
+        operator_id = %auth.user_id,
+        checkout_operation_id = %record.checkout_operation_id,
+        reconciliation_action = record.action.as_str(),
+        result_status = record.result_status.as_str(),
+        "checkout reconciliation action recorded"
+    );
+    Ok((StatusCode::CREATED, Json(map_reconciliation_action(record))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/checkout-operations/{id}/actions",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Checkout operation ID"), AdminCheckoutReconciliationActionListQuery),
+    responses(
+        (status = 200, description = "Reconciliation actions", body = Vec<AdminCheckoutReconciliationActionResponse>),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn list_checkout_reconciliation_actions(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Query(query): Query<AdminCheckoutReconciliationActionListQuery>,
+) -> HttpResult<Json<Vec<AdminCheckoutReconciliationActionResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::ORDERS_READ],
+        "Permission denied: orders:read required",
+    )?;
+    let actions = CheckoutReconciliationService::new(
+        runtime.db_clone(),
+        runtime.event_bus(),
+        runtime.payment_admin_read_port(),
+        runtime.payment_admin_refund_command_port(),
+        runtime.payment_admin_collection_command_port(),
+    )
+    .list_actions(tenant.id, id, query.limit.unwrap_or(50))
+    .await
+    .map_err(|error| {
+        map_reconciliation_error(
+            AdminCheckoutOperationErrorContext::new(
+                tenant.id,
+                auth.user_id,
+                Some(id),
+                "list_checkout_reconciliation_actions",
+            ),
+            error,
+        )
+    })?;
+    Ok(Json(
+        actions.into_iter().map(map_reconciliation_action).collect(),
+    ))
+}
+
+#[utoipa::path(
     post,
     path = "/admin/checkout-operations/compensation-sweep",
     tag = "admin",
@@ -298,6 +543,7 @@ pub async fn sweep_checkout_compensations(
         compensated: report.compensated,
         retryable: report.retryable,
         manual_reconciliation: report.manual_reconciliation,
+        exhausted: report.exhausted,
         failures: report
             .failures
             .into_iter()
@@ -317,6 +563,8 @@ fn map_operation(
         id: operation.id,
         cart_id: operation.cart_id,
         status: operation.status,
+        execution_admission: operation.execution_admission,
+        admission_epoch: operation.admission_epoch,
         stage: operation.stage,
         order_id: operation.order_id,
         payment_collection_id: operation.payment_collection_id,
@@ -326,6 +574,181 @@ fn map_operation(
         created_at: operation.created_at,
         updated_at: operation.updated_at,
         completed_at: operation.completed_at,
+    }
+}
+
+fn map_reconciliation_action(
+    action: crate::entities::checkout_reconciliation_action::Model,
+) -> AdminCheckoutReconciliationActionResponse {
+    AdminCheckoutReconciliationActionResponse {
+        id: action.id,
+        checkout_operation_id: action.checkout_operation_id,
+        action: action.action,
+        result_status: action.result_status,
+        amount: action.amount,
+        currency_code: action.currency_code,
+        reason: action.reason,
+        evidence_ref: action.evidence_ref,
+        operator_id: action.operator_id,
+        approver_id: action.approver_id,
+        refund_id: action.refund_id,
+        refund_status: action.refund_status,
+        created_at: action.created_at,
+    }
+}
+
+fn action_permission_message(action: CheckoutReconciliationAction) -> &'static str {
+    if action.moves_money() {
+        "Permission denied: orders:manage and payments:update required"
+    } else {
+        "Permission denied: orders:manage required"
+    }
+}
+
+fn require_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
+    let value = headers
+        .get("Idempotency-Key")
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_required",
+                "Idempotency-Key header is required for reconciliation actions",
+            )
+        })?
+        .to_str()
+        .map_err(|_| {
+            HttpError::new(
+                StatusCode::BAD_REQUEST,
+                "commerce_admin_idempotency_key_invalid",
+                "Idempotency-Key header is invalid",
+            )
+        })?
+        .trim()
+        .to_string();
+    if value.is_empty() || value.chars().count() > 191 {
+        return Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_idempotency_key_invalid",
+            "Idempotency-Key header must contain 1 to 191 characters",
+        ));
+    }
+    Ok(value)
+}
+
+fn reconciliation_port_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    operation_id: Uuid,
+    idempotency_key: &str,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-checkout-reconciliation:{operation_id}"),
+    )
+    .with_idempotency_key(idempotency_key.to_string())
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_reconciliation_error(
+    context: AdminCheckoutOperationErrorContext,
+    error: CheckoutReconciliationError,
+) -> HttpError {
+    let (policy, source_owner) = reconciliation_error_policy(&error);
+    admin_checkout_operation_http_error(
+        &context,
+        source_owner,
+        policy,
+        "commerce admin checkout reconciliation action failed",
+    )
+}
+
+fn reconciliation_error_policy(
+    error: &CheckoutReconciliationError,
+) -> (AdminCheckoutOperationHttpPolicy, &'static str) {
+    match error {
+        CheckoutReconciliationError::Validation(_) => (
+            (
+                StatusCode::BAD_REQUEST,
+                "checkout_reconciliation_invalid_request",
+                "Checkout reconciliation request is invalid",
+                "validation",
+            ),
+            "rustok_commerce.checkout_reconciliation",
+        ),
+        CheckoutReconciliationError::NotFound(_) => (
+            (
+                StatusCode::NOT_FOUND,
+                "checkout_operation_not_found",
+                "Checkout operation not found",
+                "not_found",
+            ),
+            "rustok_commerce.checkout_operation",
+        ),
+        CheckoutReconciliationError::JournalConflict(_) => (
+            (
+                StatusCode::CONFLICT,
+                "checkout_reconciliation_idempotency_conflict",
+                "Idempotency key already used for a different reconciliation action",
+                "journal_conflict",
+            ),
+            "rustok_commerce.checkout_reconciliation",
+        ),
+        CheckoutReconciliationError::Conflict(_) => (
+            (
+                StatusCode::CONFLICT,
+                "checkout_reconciliation_conflict",
+                "Checkout reconciliation cannot proceed from the current state",
+                "conflict",
+            ),
+            "rustok_commerce.checkout_reconciliation",
+        ),
+        CheckoutReconciliationError::PaymentOwner { retryable: true, .. } => (
+            (
+                StatusCode::CONFLICT,
+                "checkout_reconciliation_pending",
+                "Checkout reconciliation will be retried",
+                "retryable_payment_owner",
+            ),
+            "rustok_payment.admin_refund_command",
+        ),
+        CheckoutReconciliationError::PaymentOwner { .. } => (
+            (
+                StatusCode::BAD_GATEWAY,
+                "checkout_reconciliation_payment_failed",
+                "Payment owner rejected the reconciliation step",
+                "payment_owner_failed",
+            ),
+            "rustok_payment.admin_refund_command",
+        ),
+        CheckoutReconciliationError::CloseAfterMoneyMoved { .. } => (
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Checkout reconciliation requires operator follow-up",
+                "close_after_money_moved",
+            ),
+            "rustok_commerce.checkout_reconciliation",
+        ),
+        CheckoutReconciliationError::Operation(source) => (
+            checkout_operation_error_policy(source),
+            "rustok_commerce.checkout_operation",
+        ),
+        CheckoutReconciliationError::Database(_) => (
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Checkout reconciliation storage is unavailable",
+                "database",
+            ),
+            "rustok_commerce.checkout_reconciliation",
+        ),
     }
 }
 

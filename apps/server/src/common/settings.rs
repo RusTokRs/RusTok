@@ -179,6 +179,8 @@ pub struct EventSettings {
     #[serde(default)]
     pub dlq: DlqSettings,
     #[serde(default)]
+    pub outbox_retention: OutboxRetentionSettings,
+    #[serde(default)]
     pub backpressure: EventBackpressureSettings,
     #[serde(default)]
     pub iggy: IggyConfig,
@@ -240,6 +242,36 @@ impl Default for DlqSettings {
         Self {
             enabled: default_dlq_enabled(),
             max_attempts: default_dlq_max_attempts(),
+        }
+    }
+}
+
+/// Bounded retention for delivered outbox rows.
+///
+/// The outbox is both the delivery queue and the durable record of what was
+/// delivered, so retention only ever removes rows that reached the transport
+/// (`status = 'dispatched'` with a `dispatched_at` older than the window).
+/// Undelivered rows still owe a delivery and dead-lettered rows are the DLQ an
+/// operator works through; the pruner never touches either.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OutboxRetentionSettings {
+    #[serde(default = "default_outbox_retention_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_outbox_retention_days")]
+    pub retention_days: u64,
+    #[serde(default = "default_outbox_retention_batch_size")]
+    pub batch_size: u64,
+    #[serde(default = "default_outbox_retention_interval_seconds")]
+    pub interval_seconds: u64,
+}
+
+impl Default for OutboxRetentionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_outbox_retention_enabled(),
+            retention_days: default_outbox_retention_days(),
+            batch_size: default_outbox_retention_batch_size(),
+            interval_seconds: default_outbox_retention_interval_seconds(),
         }
     }
 }
@@ -647,6 +679,7 @@ impl Default for EventSettings {
             channel_capacity: default_event_channel_capacity(),
             relay_retry_policy: RelayRetryPolicy::default(),
             dlq: DlqSettings::default(),
+            outbox_retention: OutboxRetentionSettings::default(),
             backpressure: EventBackpressureSettings::default(),
             iggy: IggyConfig::default(),
         }
@@ -1157,6 +1190,22 @@ fn default_dlq_enabled() -> bool {
 
 fn default_dlq_max_attempts() -> i32 {
     10
+}
+
+fn default_outbox_retention_enabled() -> bool {
+    true
+}
+
+fn default_outbox_retention_days() -> u64 {
+    30
+}
+
+fn default_outbox_retention_batch_size() -> u64 {
+    rustok_outbox::DEFAULT_OUTBOX_RETENTION_BATCH_SIZE
+}
+
+fn default_outbox_retention_interval_seconds() -> u64 {
+    3_600
 }
 
 fn default_backpressure_max_queue_depth() -> usize {

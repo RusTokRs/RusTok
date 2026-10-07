@@ -17,6 +17,8 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_payment::providers::PaymentProviderRegistry;
 use sea_orm::DatabaseConnection;
 
+use crate::services::checkout_execution_admission_port;
+
 #[derive(Clone)]
 pub struct CommerceHttpRuntime {
     db: DatabaseConnection,
@@ -85,6 +87,7 @@ impl CommerceHttpRuntime {
             rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
                 db.clone(),
                 payment_provider_registry.clone(),
+                checkout_execution_admission_port(db.clone()),
             );
         let payment_admin_refund_command_runtime =
             rustok_payment::PaymentAdminRefundCommandRuntime::in_process(
@@ -371,6 +374,7 @@ impl CommerceHttpRuntime {
                 rustok_payment::PaymentAdminCollectionCommandRuntime::in_process(
                     runtime.db_clone(),
                     payment_provider_registry.clone(),
+                    checkout_execution_admission_port(runtime.db_clone()),
                 )
             });
         let payment_admin_refund_command_runtime = runtime

@@ -27,6 +27,7 @@ tokio.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-telemetry.workspace = true
 
 [dev-dependencies]
 sea-orm = { workspace = true, features = ["sqlx-sqlite"] }

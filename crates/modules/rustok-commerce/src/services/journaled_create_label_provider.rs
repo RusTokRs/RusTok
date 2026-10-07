@@ -199,13 +199,21 @@ async fn commit_create_label(
     operation_id: uuid::Uuid,
 ) -> FulfillmentResult<()> {
     if let Err(source) = journal.mark_committed(tenant_id, operation_id).await {
-        let _ = journal
+        if let Err(mark_error) = journal
             .mark_reconciliation_required(
                 tenant_id,
                 operation_id,
                 format!("create_label provider succeeded, but journal commit failed: {source}"),
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                operation_id = %operation_id,
+                error = %mark_error,
+                "failed to mark provider operation as reconciliation required"
+            );
+        }
         return Err(FulfillmentError::Validation(format!(
             "create_label provider succeeded, but operation {operation_id} could not be committed: {source}"
         )));

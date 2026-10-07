@@ -390,6 +390,10 @@ fn collection_copy_revision(
 }
 
 fn digest_json(hasher: &mut Sha256, value: &Value) {
+    // INVARIANT: serializing an already-parsed `serde_json::Value` cannot fail
+    // (no maps with non-string keys, no custom serializers), so the digest either
+    // covers the whole value or this function panics — it never hashes a partial
+    // payload that would collide with a different input.
     let bytes = serde_json::to_vec(value).expect("serde_json::Value serialization is infallible");
     hasher.update((bytes.len() as u64).to_be_bytes());
     hasher.update(bytes);
