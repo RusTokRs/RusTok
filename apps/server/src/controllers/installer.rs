@@ -10,7 +10,7 @@ use rustok_installer::{
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
     load_base_distribution_receipt, redact_install_plan,
 };
-use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
+use rustok_installer_persistence::{InstallStepReceiptItem, InstallerPersistenceService};
 use rustok_web::HttpError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -71,7 +71,7 @@ pub struct InstallJobStatusResponse {
 #[derive(Debug, Serialize)]
 pub struct InstallReceiptsResponse {
     pub session_id: Uuid,
-    pub receipts: Vec<install_step_receipt::Model>,
+    pub receipts: Vec<InstallStepReceiptItem>,
 }
 
 #[derive(Debug, Serialize)]

@@ -270,12 +270,41 @@ impl InstallerPersistenceService {
     pub async fn list_receipts(
         &self,
         session_id: Uuid,
-    ) -> Result<Vec<install_step_receipt::Model>, sea_orm::DbErr> {
-        install_step_receipt::Entity::find()
+    ) -> Result<Vec<InstallStepReceiptItem>, sea_orm::DbErr> {
+        let receipts = install_step_receipt::Entity::find()
             .filter(install_step_receipt::Column::SessionId.eq(session_id))
             .order_by_asc(install_step_receipt::Column::CreatedAt)
             .all(&self.db)
-            .await
+            .await?;
+        Ok(receipts.into_iter().map(Into::into).collect())
+    }
+}
+
+/// Typed installer step receipt DTO decoupled from persistence entities.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InstallStepReceiptItem {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub step: String,
+    pub outcome: String,
+    pub input_checksum: String,
+    pub diagnostics: serde_json::Value,
+    pub installer_version: String,
+    pub created_at: chrono::DateTime<Utc>,
+}
+
+impl From<install_step_receipt::Model> for InstallStepReceiptItem {
+    fn from(model: install_step_receipt::Model) -> Self {
+        Self {
+            id: model.id,
+            session_id: model.session_id,
+            step: model.step,
+            outcome: model.outcome,
+            input_checksum: model.input_checksum,
+            diagnostics: model.diagnostics,
+            installer_version: model.installer_version,
+            created_at: model.created_at,
+        }
     }
 }
 
