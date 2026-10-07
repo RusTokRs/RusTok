@@ -434,11 +434,11 @@ for (const [ownerSource, value, label] of [
 
 const contextMapperUses =
   controller.match(
-    /map_(?:operation|compensation|sweep)_error\(\s+AdminCheckoutOperationErrorContext::new\(/g,
+    /map_(?:operation|compensation|sweep|reconciliation)_error\(\s+AdminCheckoutOperationErrorContext::new\(/g,
   ) ?? [];
-if (contextMapperUses.length !== 3) {
+if (contextMapperUses.length !== 6) {
   failures.push(
-    `expected three context-aware admin checkout mapper callsites, found ${contextMapperUses.length}`,
+    `expected six context-aware admin checkout mapper callsites, found ${contextMapperUses.length}`,
   );
 }
 

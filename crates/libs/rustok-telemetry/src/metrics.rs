@@ -250,6 +250,64 @@ fn tenant_metric_bucket(tenant_id: &str) -> String {
 }
 
 // ============================================================================
+// Checkout Reconciliation Metrics
+// ============================================================================
+
+lazy_static! {
+    /// Checkout operations parked in `reconciliation_required`, by reason.
+    ///
+    /// Labels are the bounded park reasons (`manual_reconciliation`,
+    /// `attempts_exhausted`); no tenant identifier is attached, per the bounded
+    /// tenant cardinality contract.
+    pub static ref CHECKOUT_RECONCILIATION_PARKED_TOTAL: IntCounterVec = create_int_counter_vec(
+        "rustok_checkout_reconciliation_parked_total",
+        "Total checkout operations parked for operator reconciliation, by reason",
+        &["reason"],
+    );
+
+    /// Operator reconciliation actions, by action and result.
+    ///
+    /// `action` is the closed registry vocabulary and `result` is the closed
+    /// outcome vocabulary (`succeeded`, `rejected`, `conflict`, `payment_owner`,
+    /// `close_after_money_moved`, `storage_error`).
+    pub static ref CHECKOUT_RECONCILIATION_ACTIONS_TOTAL: IntCounterVec = create_int_counter_vec(
+        "rustok_checkout_reconciliation_actions_total",
+        "Total checkout reconciliation actions by action and result",
+        &["action", "result"],
+    );
+
+    /// Provider executions refused by the checkout execution admission contract.
+    ///
+    /// `reason` is the bounded refusal vocabulary
+    /// (`checkout_admission_settling`, `checkout_admission_closed`,
+    /// `checkout_admission_unavailable`, `checkout_admission_epoch_mismatch`,
+    /// `checkout_admission_effect_unknown`) and `operation` is the bounded effect
+    /// class the gate decided on (`extending`, `unwinding`, `unknown`), not the
+    /// raw journal string — an operation outside the contract's vocabulary
+    /// collapses into `unknown` so the label set stays finite. The recorder is
+    /// `record_provider_execution_admission_refused`, called with
+    /// `refusal_metric_operation_label`.
+    pub static ref PROVIDER_EXECUTION_ADMISSION_REFUSED_TOTAL: IntCounterVec =
+        create_int_counter_vec(
+            "rustok_payment_provider_execution_admission_refused_total",
+            "Total provider executions refused by the checkout admission contract, by operation and reason",
+            &["operation", "reason"],
+        );
+
+    /// Delivered outbox events removed by the bounded retention prune.
+    pub static ref OUTBOX_PRUNED_TOTAL: IntCounter = create_int_counter(
+        "rustok_outbox_pruned_total",
+        "Total delivered outbox events removed by the retention prune",
+    );
+
+    /// Unix timestamp of the last successful retention prune run.
+    pub static ref OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS: IntGauge = create_int_gauge(
+        "rustok_outbox_retention_last_run_timestamp_seconds",
+        "Unix timestamp of the last successful outbox retention prune run",
+    );
+}
+
+// ============================================================================
 // Registration Helper
 // ============================================================================
 
@@ -327,6 +385,15 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(RATE_LIMIT_DISTRIBUTED_MODE.clone()))?;
     registry.register(Box::new(RATE_LIMIT_BACKEND_UNAVAILABLE_TOTAL.clone()))?;
     registry.register(Box::new(RATE_LIMIT_EXCEEDED_TOTAL.clone()))?;
+
+    // Outbox retention
+    registry.register(Box::new(OUTBOX_PRUNED_TOTAL.clone()))?;
+    registry.register(Box::new(OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.clone()))?;
+
+    // Checkout reconciliation
+    registry.register(Box::new(CHECKOUT_RECONCILIATION_PARKED_TOTAL.clone()))?;
+    registry.register(Box::new(CHECKOUT_RECONCILIATION_ACTIONS_TOTAL.clone()))?;
+    registry.register(Box::new(PROVIDER_EXECUTION_ADMISSION_REFUSED_TOTAL.clone()))?;
 
     // Media
     registry.register(Box::new(MEDIA_UPLOADS_TOTAL.clone()))?;
@@ -407,6 +474,21 @@ pub fn record_event_dispatch_latency_ms(consumer: &str, event_type: &str, latenc
     EVENT_DISPATCH_LATENCY_MS
         .with_label_values(&[consumer, event_type])
         .observe(latency_ms);
+}
+
+/// Record delivered outbox events removed by one bounded retention prune.
+pub fn record_outbox_pruned(count: u64) {
+    OUTBOX_PRUNED_TOTAL.inc_by(count);
+}
+
+/// Record that a retention prune run completed, so operators can alert on a
+/// pruner that stopped running instead of on an empty table.
+pub fn record_outbox_retention_run() {
+    let unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.set(i64::try_from(unix_seconds).unwrap_or(i64::MAX));
 }
 
 /// Update circuit breaker state (0=closed, 1=open, 2=half-open)
@@ -522,6 +604,27 @@ pub fn update_db_connections(state: &str, count: i64) {
 pub fn record_db_query_error(query_type: &str, error_type: &str) {
     DATABASE_QUERY_ERRORS_TOTAL
         .with_label_values(&[query_type, error_type])
+        .inc();
+}
+
+/// Record a checkout operation parked for operator reconciliation.
+pub fn record_checkout_reconciliation_parked(reason: &str) {
+    CHECKOUT_RECONCILIATION_PARKED_TOTAL
+        .with_label_values(&[reason])
+        .inc();
+}
+
+/// Record the outcome of one operator reconciliation action.
+pub fn record_checkout_reconciliation_action(action: &str, result: &str) {
+    CHECKOUT_RECONCILIATION_ACTIONS_TOTAL
+        .with_label_values(&[action, result])
+        .inc();
+}
+
+/// Record a provider execution refused by the checkout admission contract.
+pub fn record_provider_execution_admission_refused(operation: &str, reason: &str) {
+    PROVIDER_EXECUTION_ADMISSION_REFUSED_TOTAL
+        .with_label_values(&[operation, reason])
         .inc();
 }
 

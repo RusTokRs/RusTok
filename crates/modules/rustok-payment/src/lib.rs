@@ -74,12 +74,10 @@ pub use stripe_provider::*;
 
 pub use error::{PaymentError, PaymentResult};
 pub use services::{
-    BeginProviderOperation, ChargebackLifecycleEventApplier, CheckpointProviderEvent,
-    CompleteProviderEvent, FailProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_FAILED,
-    PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED,
-    PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING,
-    PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-    PROVIDER_OPERATION_SUCCEEDED, PaymentDomainEventApplier, PaymentLifecycleEventApplier,
+    BeginProviderOperation, ChargebackLifecycleEventApplier, CheckoutAdmissionDecision,
+    CheckoutAdmissionLinkState, CheckoutAdmissionRefusal, CheckoutExecutionAdmissionPort,
+    CheckoutExecutionAdmissionRecord, CheckpointProviderEvent, CompleteProviderEvent,
+    FailProviderEvent, PaymentDomainEventApplier, PaymentLifecycleEventApplier,
     PaymentObservedDomainEventApplier, PaymentProviderEventApplier, PaymentProviderEventApplyError,
     PaymentProviderEventContext, PaymentProviderEventExecution, PaymentProviderEventIngressError,
     PaymentProviderEventIngressResult, PaymentProviderEventIngressService,
@@ -88,7 +86,13 @@ pub use services::{
     PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
     PaymentProviderOperationJournal, PaymentProviderProcessedEventObserver,
     PaymentRefundCreationService, PaymentService, ReceiveProviderEvent,
-    RefundLifecycleEventApplier, VerifiedProviderEvent,
+    RefundLifecycleEventApplier, VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
+    PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED, PROVIDER_EVENT_PROCESSING,
+    PROVIDER_EVENT_RECEIVED, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_ERROR,
+    PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_PENDING,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
+    ProviderExecutionAdmission, ProviderExecutionEffect, decide_checkout_admission_claim,
+    execution_admission_refusal_error, refusal_metric_operation_label,
 };
 
 pub struct PaymentModule;

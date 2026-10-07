@@ -516,6 +516,8 @@ async fn checkout_order_inventory_lifecycle_guard_rejects_inventory_reserved_and
         request_hash: Set("req-hash".to_string()),
         snapshot_hash: Set(Some("snap-hash".to_string())),
         status: Set("executing".to_string()),
+        execution_admission: Set("open".to_string()),
+        admission_epoch: Set(1),
         stage: Set("inventory_reserved".to_string()),
         order_id: Set(Some(order.id)),
         payment_collection_id: Set(None),

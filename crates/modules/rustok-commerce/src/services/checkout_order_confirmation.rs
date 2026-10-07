@@ -30,8 +30,8 @@ pub struct CheckoutOrderConfirmationExecutor {
 impl CheckoutOrderConfirmationExecutor {
     pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            order_service: OrderService::new(db.clone(), event_bus),
-            operation_journal: CheckoutOperationJournal::new(db),
+            order_service: OrderService::new(db.clone(), event_bus.clone()),
+            operation_journal: CheckoutOperationJournal::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
     }

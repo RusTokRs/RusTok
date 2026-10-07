@@ -104,6 +104,9 @@ impl InProcessCheckoutPaymentCompensationPort {
     ) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
+            // Cancellation claims are unwinding effects and never consult the
+            // checkout admission; the missing reader is deliberate and fails
+            // closed for any other effect kind.
             operation_journal: PaymentProviderOperationJournal::new(db),
             provider_registry,
         }
@@ -291,6 +294,9 @@ impl InProcessCheckoutPaymentCompensationPort {
                     operation_id: current.id,
                     metadata: result.metadata,
                 });
+            }
+            if let Some(refusal) = crate::execution_admission_refusal_error(&current) {
+                return Err(refusal);
             }
             return Err(manual_reconciliation(
                 context,

@@ -77,13 +77,16 @@ impl CacheService {
             };
         }
         if !client_initialized {
+            let last_error = if cfg!(feature = "redis-cache") {
+                "Redis URL is configured but the client could not be initialized".to_string()
+            } else {
+                "Redis URL is configured but this build has no Redis client (`redis-cache` feature is disabled)".to_string()
+            };
             return RedisCacheStatus {
                 url_present: true,
                 client_initialized: false,
                 connectivity_healthy: false,
-                last_error: Some(
-                    "Redis URL is configured but the client could not be initialized".to_string(),
-                ),
+                last_error: Some(last_error),
             };
         }
 

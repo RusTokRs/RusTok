@@ -38,6 +38,11 @@ mod m20260721_000006_create_marketplace_reversal_adaptation_failures;
 mod m20260721_000007_align_language_agnostic_locale_contract;
 mod m20260909_000008_add_collection_translation_change_journal;
 mod m20260930_000009_harden_return_completion_operation_identity;
+mod m20261007_000010_move_checkout_operation_guards_to_rust;
+mod m20261007_000011_create_checkout_reconciliation_actions;
+mod m20261007_000012_add_checkout_operation_admission;
+mod m20261007_000013_drop_provider_execution_checkout_guard;
+mod m20261007_000014_add_checkout_operation_admin_list_index;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -88,6 +93,19 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20260930_000009_harden_return_completion_operation_identity::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261007_000010_move_checkout_operation_guards_to_rust::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261007_000011_create_checkout_reconciliation_actions::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261007_000012_add_checkout_operation_admission::Migration,
+        m20261007_000013_drop_provider_execution_checkout_guard::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261007_000014_add_checkout_operation_admin_list_index::Migration,
     ));
     migrations
 }
@@ -266,6 +284,26 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     dependencies.push(MigrationDependencyDescriptor::new(
         "m20260930_000009_harden_return_completion_operation_identity",
         vec!["m20260716_000006_create_return_completion_commands"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000010_move_checkout_operation_guards_to_rust",
+        vec!["m20260713_000017_classify_checkout_reconciliation"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000011_create_checkout_reconciliation_actions",
+        vec!["m20261007_000010_move_checkout_operation_guards_to_rust"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000012_add_checkout_operation_admission",
+        vec!["m20261007_000011_create_checkout_reconciliation_actions"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000013_drop_provider_execution_checkout_guard",
+        vec!["m20261007_000012_add_checkout_operation_admission"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000014_add_checkout_operation_admin_list_index",
+        vec!["m20260713_000009_create_checkout_operations"],
     ));
     dependencies
 }

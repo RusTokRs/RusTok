@@ -1,6 +1,7 @@
 //! Canonical event contracts crate for RusToK.
 
 mod blog_comments_schedule_audit;
+mod checkout_operation;
 mod contract;
 mod forum_mention;
 mod forum_search_projection;
@@ -20,6 +21,17 @@ pub use blog_comments_schedule_audit::{
     BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS, BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE,
     BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
     BlogCommentsDelegationScheduleAuditEvent, blog_comments_schedule_audit_event_schema,
+};
+pub use checkout_operation::{
+    CHECKOUT_OPERATION_ADMISSIONS, CHECKOUT_OPERATION_ADMISSION_CHANGED_EVENT_TYPE,
+    CHECKOUT_OPERATION_ADMISSION_CLOSED, CHECKOUT_OPERATION_ADMISSION_OPEN,
+    CHECKOUT_OPERATION_ADMISSION_SETTLING, CHECKOUT_OPERATION_EVENT_SCHEMAS,
+    CHECKOUT_OPERATION_EVENT_SCHEMA_VERSION, CHECKOUT_OPERATION_OUTCOMES,
+    CHECKOUT_OPERATION_OUTCOME_COMPENSATED, CHECKOUT_OPERATION_OUTCOME_COMPENSATION_REQUIRED,
+    CHECKOUT_OPERATION_OUTCOME_FAILED, CHECKOUT_OPERATION_PARKED_EVENT_TYPE,
+    CHECKOUT_OPERATION_PARK_REASONS, CHECKOUT_OPERATION_PARK_REASON_ATTEMPTS_EXHAUSTED,
+    CHECKOUT_OPERATION_PARK_REASON_MANUAL_RECONCILIATION, CHECKOUT_OPERATION_RECONCILED_EVENT_TYPE,
+    CheckoutOperationEvent, checkout_operation_event_schema,
 };
 pub use contract::{
     ContractEventEnvelope, ContractEventPayload, EventContract, EventContractEnvelopeError,
@@ -77,6 +89,7 @@ pub use EventEnvelope as RootEventEnvelope;
 pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
     schema::event_schema(event_type)
         .or_else(|| blog_comments_schedule_audit_event_schema(event_type))
+        .or_else(|| checkout_operation_event_schema(event_type))
         .or_else(|| forum_mention_event_schema(event_type))
         .or_else(|| forum_search_projection_event_schema(event_type))
         .or_else(|| marketplace_listing_event_schema(event_type))
@@ -93,6 +106,7 @@ pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema> {
     EVENT_SCHEMAS
         .iter()
         .chain(BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS.iter())
+        .chain(CHECKOUT_OPERATION_EVENT_SCHEMAS.iter())
         .chain(FORUM_MENTION_EVENT_SCHEMAS.iter())
         .chain(FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS.iter())
         .chain(MARKETPLACE_LISTING_EVENT_SCHEMAS.iter())

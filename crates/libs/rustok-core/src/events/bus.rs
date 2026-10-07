@@ -146,9 +146,16 @@ impl EventBus {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");
         }
 
+        let published_event_type = envelope.event_type.clone();
+        let published_tenant_id = envelope.tenant_id;
+
         match self.sender.send(envelope) {
             Ok(_) => {
                 self.stats.events_published.fetch_add(1, Ordering::Relaxed);
+                rustok_telemetry::metrics::record_event_published(
+                    &published_event_type,
+                    &published_tenant_id.to_string(),
+                );
                 tracing::debug!("Event published successfully");
                 Ok(())
             }

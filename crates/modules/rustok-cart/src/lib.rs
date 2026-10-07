@@ -4,7 +4,6 @@ use sea_orm_migration::MigrationTrait;
 
 mod atomic_checkout_guard;
 pub mod atomic_checkout_port;
-pub mod checkout_admission;
 pub mod checkout_snapshot;
 pub mod dto;
 pub mod entities;
@@ -27,7 +26,6 @@ pub use atomic_checkout_port::{
     AtomicCartCheckoutPort, AtomicCartCheckoutPricingResolver, CartCheckoutLineItemPricingUpdate,
     CartCheckoutPricingPlan,
 };
-pub use checkout_admission::{CheckoutAdmission, admit_checkout, ensure_checkout_admitted};
 pub use checkout_snapshot::*;
 pub use dto::*;
 pub use entities::*;

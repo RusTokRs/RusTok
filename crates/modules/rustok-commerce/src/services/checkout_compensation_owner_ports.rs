@@ -98,7 +98,7 @@ impl CheckoutCompensationService {
         Self {
             owner_db: db.clone(),
             event_bus: event_bus.clone(),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             reservation_port,
             cart_port,

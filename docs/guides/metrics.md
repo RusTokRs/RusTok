@@ -55,19 +55,19 @@ Track event processing, throughput, and queue health.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `rustok_event_bus_published_total` | Counter | `event_type`, `tenant_id` | Total events published |
-| `rustok_event_bus_dispatched_total` | Counter | `event_type`, `handler` | Total events dispatched to handlers |
-| `rustok_event_bus_queue_depth` | Gauge | `transport` | Current event queue depth |
-| `rustok_event_bus_processing_duration_seconds` | Histogram | `event_type`, `handler` | Event processing duration |
+| `rustok_event_bus_published_total` | Counter | `event_type`, `tenant_bucket` | Events accepted by the in-process bus (`EventBus::publish_envelope`); the tenant is reduced to a bounded bucket, never a raw tenant id |
+| `rustok_event_bus_dispatched_total` | Counter | `event_type`, `handler` | Handler invocations by `EventDispatcher` (one sample per attempt; `handler` is the static handler name) |
+| `rustok_event_bus_queue_depth` | Gauge | `transport` | Current event queue depth (`server_event_bus` from the local bus, `outbox` from the durable backlog) |
+| `rustok_event_bus_processing_duration_seconds` | Histogram | `event_type`, `handler` | Handler invocation duration |
 | `rustok_event_bus_errors_total` | Counter | `event_type`, `error_type` | Event processing errors |
-| `rustok_event_bus_lag_seconds` | Histogram | `event_type` | Time between publish and processing |
+| `rustok_event_bus_lag_seconds` | Histogram | `event_type` | Time between the envelope timestamp and dispatch |
 
 **Example Usage:**
 
 ```rust
 use rustok_telemetry::metrics;
 
-// Record event publication
+// Record event publication (the runtime calls this from EventBus::publish_envelope)
 metrics::record_event_published("ProductCreated", &tenant_id.to_string());
 
 // Record event dispatch
@@ -214,6 +214,24 @@ Extended HTTP metrics.
 | `rustok_http_response_size_bytes` | Histogram | `method`, `endpoint` | Response size |
 | `rustok_http_active_connections` | Gauge | - | Active connections |
 
+### Checkout Operation Metrics
+
+Track the operator reconciliation queue and the checkout execution admission contract.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `rustok_checkout_reconciliation_parked_total` | Counter | `reason` | Operations parked for operator reconciliation, by bounded reason (`manual_reconciliation`, `attempts_exhausted`) |
+| `rustok_checkout_reconciliation_actions_total` | Counter | `action`, `result` | Operator reconciliation actions, by the closed action registry (`refund_full`, `refund_partial`, `void_authorization`, `write_off`, `attest_external`, `retry_compensation`) and the closed result vocabulary (`succeeded`, `rejected`, `conflict`, `payment_owner`, `close_after_money_moved`, `storage_error`) |
+| `rustok_payment_provider_execution_admission_refused_total` | Counter | `operation`, `reason` | Provider executions refused by the checkout admission contract; `reason` is the bounded refusal code (`checkout_admission_settling`, `checkout_admission_closed`, `checkout_admission_unavailable`, `checkout_admission_epoch_mismatch`, `checkout_admission_effect_unknown`) and `operation` is the bounded effect class the gate decided on (`extending`, `unwinding`, `unknown`) |
+
+The admission counter never carries the raw journal operation string: an operation outside the
+contract's vocabulary is counted as `unknown`, and the raw value stays in the WARN log line. A refusal
+on an *extending* claim is the alertable case — a charge, capture or new authorization was blocked
+while the checkout was settling or closed — whereas *unwinding* effects (cancels, voids, refund
+completion) are admitted by design, so compensation is never trapped by the contract. Counts on
+`effect_unknown` mean a provider operation outside the contract's vocabulary was attempted and should
+be investigated.
+
 ---
 
 ## Grafana Dashboards
@@ -272,8 +290,11 @@ rate(rustok_cache_operations_total{result="hit"}[5m]) /
 (rate(rustok_cache_operations_total{result="hit"}[5m]) +
  rate(rustok_cache_operations_total{result="miss"}[5m]))
 
-# Event queue depth
+# Event queue depth (per transport: server_event_bus, outbox)
 rustok_event_bus_queue_depth
+
+# Durable outbox backlog (same reading as rustok_event_bus_queue_depth{transport="outbox"})
+rustok_outbox_backlog_size
 
 # Circuit breaker status
 rustok_circuit_breaker_state{service="redis"}
@@ -321,6 +342,23 @@ rustok_circuit_breaker_state{service="redis"}
 **Threshold:** 500ms P95 latency
 **Duration:** 5 minutes
 **Action:** Warning
+
+### Outbox Retention
+
+Track delivered-event retention, so a pruner that stopped running is visible before the table grows
+unbounded again.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `rustok_outbox_pruned_total` | Counter | — | Delivered outbox events removed by the retention prune |
+| `rustok_outbox_retention_last_run_timestamp_seconds` | Gauge | — | Unix timestamp of the last completed prune run |
+| `rustok_runtime_worker_state` | Gauge | `worker` | Worker state (`outbox_retention`: `-1` missing, `0` disabled, `1` running, `2` stopped) |
+| `rustok_runtime_worker_failures_total` | Counter | `worker` | Failed prune runs (`outbox_retention`) |
+
+The window and the batch size are configuration
+(`settings.rustok.events.outbox_retention.{enabled,retention_days,batch_size,interval_seconds}`), not
+metric labels: retention deletes only `dispatched` rows whose `dispatched_at` is older than the
+window, never `pending` or `failed` rows.
 
 ### EventBus Alerts
 

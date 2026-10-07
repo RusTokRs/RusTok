@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_order::{OrderResponse, OrderStatusKind};
+use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
     CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
@@ -63,10 +64,13 @@ pub struct CheckoutPaymentStageExecutor {
 }
 
 impl CheckoutPaymentStageExecutor {
-    pub fn new(db: sea_orm::DatabaseConnection) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            payment_port: in_process_checkout_payment_execution_port(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            payment_port: in_process_checkout_payment_execution_port(
+                db.clone(),
+                super::checkout_execution_admission_port(db.clone()),
+            ),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             owner_db: db,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(PAYMENT_EXECUTION_PORT_DEADLINE_SECONDS),
@@ -77,10 +81,12 @@ impl CheckoutPaymentStageExecutor {
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
     ) -> Self {
+        let checkout_admission = super::checkout_execution_admission_port(self.owner_db.clone());
         self.payment_port = Arc::new(
             InProcessCheckoutPaymentExecutionPort::with_provider_registry(
                 self.owner_db.clone(),
                 payment_provider_registry,
+                checkout_admission,
             ),
         );
         self

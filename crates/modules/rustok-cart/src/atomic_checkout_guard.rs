@@ -219,7 +219,6 @@ fn map_atomic_checkout_error(
     owner_operation: &'static str,
     error: PortError,
 ) -> PortError {
-    eprintln!("DEBUG MAP ATOMIC CHECKOUT ERROR: {error:?}");
     tracing::error!(
         error = ?error,
         correlation_id = %context.correlation_id,

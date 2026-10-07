@@ -474,6 +474,16 @@ impl OrderService {
             .await?;
         }
 
+        // The event carries the order total in the currency's minor units. A total that cannot be
+        // represented in minor units must fail the transaction instead of being published as a
+        // silently wrong value.
+        let total_minor_units = decimal_to_minor_units(total_amount, currency_code.as_str())
+            .ok_or_else(|| {
+                OrderError::Validation(format!(
+                    "order total {total_amount} cannot be represented in minor units for currency {currency_code}"
+                ))
+            })?;
+
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -482,7 +492,7 @@ impl OrderService {
                 DomainEvent::OrderPlaced {
                     order_id,
                     customer_id: input.customer_id,
-                    total: decimal_to_minor_units(total_amount).unwrap_or(0),
+                    total: total_minor_units,
                     currency: currency_code,
                 },
             )
@@ -1155,8 +1165,25 @@ fn can_cancel(status: &str) -> bool {
     )
 }
 
-fn decimal_to_minor_units(amount: Decimal) -> Option<i64> {
-    (amount.round_dp(2) * Decimal::from(100)).to_i64()
+/// Currency exponents used by the platform's minor-unit table.
+///
+/// Values are the platform-internal table owned today by
+/// `rustok-cart::services::cart::helpers::currency_exponent`; `rustok-order` cannot depend on that
+/// crate (dependency direction), so the table is duplicated here until a canonical money owner is
+/// established. See `docs/audits/ecommerce-deep-review-2026-10-07.md` (ECOM-MONEY-02).
+fn currency_exponent(currency_code: &str) -> u32 {
+    match currency_code.trim().to_ascii_uppercase().as_str() {
+        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF" | "UGX"
+        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
+        _ => 2,
+    }
+}
+
+fn decimal_to_minor_units(amount: Decimal, currency_code: &str) -> Option<i64> {
+    let exponent = currency_exponent(currency_code);
+    let factor = Decimal::from(10_u64.checked_pow(exponent)?);
+    (amount * factor).round().to_i64()
 }
 
 fn subtotal_amount(line_items: &[entities::order_line_item::Model]) -> Decimal {

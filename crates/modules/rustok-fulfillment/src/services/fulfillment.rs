@@ -452,7 +452,7 @@ impl FulfillmentService {
     ) -> FulfillmentResult<Vec<CheckoutFulfillmentRecord>> {
         validate_tenant_id(tenant_id)?;
         let checkout_plan_hash =
-            validate_checkout_identity(checkout_operation_id, 0, checkout_plan_hash)?;
+            validate_checkout_identity(checkout_operation_id, checkout_plan_hash)?;
 
         let mut requested_indices = BTreeSet::new();
         for (index, input) in &plans {
@@ -1950,7 +1950,6 @@ pub(crate) fn normalize_checkout_plan_hash(checkout_plan_hash: &str) -> Fulfillm
 
 fn validate_checkout_identity(
     checkout_operation_id: Uuid,
-    checkout_fulfillment_index: u32,
     checkout_plan_hash: &str,
 ) -> FulfillmentResult<String> {
     if checkout_operation_id.is_nil() {
@@ -1959,7 +1958,6 @@ fn validate_checkout_identity(
         ));
     }
     let checkout_plan_hash = normalize_checkout_plan_hash(checkout_plan_hash)?;
-    let _ = checkout_fulfillment_index;
     Ok(checkout_plan_hash)
 }
 

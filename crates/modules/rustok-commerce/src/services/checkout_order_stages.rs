@@ -67,10 +67,11 @@ impl CheckoutOrderStageExecutor {
         inventory_port: Arc<dyn InventoryReservationIdentityPort>,
     ) -> Self {
         Self {
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             plan_journal: CheckoutOrderPlanJournal::new(db.clone()),
             inventory_executor: CheckoutInventoryReservationExecutor::new(
                 db.clone(),
+                event_bus.clone(),
                 inventory_port,
             ),
             order_creation: CheckoutOrderCreationExecutor::new(db.clone(), event_bus.clone()),

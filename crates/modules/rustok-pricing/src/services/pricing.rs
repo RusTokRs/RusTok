@@ -946,8 +946,14 @@ impl PricingService {
             }
         }
 
-        let old_cents = old_amount.and_then(decimal_to_cents);
-        let new_cents = decimal_to_cents(amount).unwrap_or(0);
+        let old_cents = old_amount.and_then(|amount| decimal_to_minor_units(amount, currency_code));
+        // The event carries minor units, so the amount must be scaled by the currency exponent and
+        // must never be silently replaced by zero.
+        let new_cents = decimal_to_minor_units(amount, currency_code).ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "price amount {amount} cannot be represented in minor units for currency {currency_code}"
+            ))
+        })?;
 
         let event = DomainEvent::PriceUpdated {
             variant_id,
@@ -1062,8 +1068,16 @@ impl PricingService {
                 }
             }
 
-            let old_cents = old_amount.and_then(decimal_to_cents);
-            let new_cents = decimal_to_cents(price_input.amount).unwrap_or(0);
+            let currency_code = price_input.currency_code.as_str();
+            let old_cents =
+                old_amount.and_then(|amount| decimal_to_minor_units(amount, currency_code));
+            let new_cents =
+                decimal_to_minor_units(price_input.amount, currency_code).ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "price amount {} cannot be represented in minor units for currency {currency_code}",
+                        price_input.amount
+                    ))
+                })?;
 
             let event = DomainEvent::PriceUpdated {
                 variant_id,
@@ -1144,6 +1158,9 @@ impl PricingService {
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
+        // INVARIANT: `price` rows carry no tenant column; the tenant boundary of
+        // this query is the `product_variant` row validated tenant-scoped above,
+        // and every price write goes through that variant.
         let prices = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
@@ -1644,8 +1661,31 @@ impl PricingService {
     }
 }
 
+/// Two-decimal representation used exclusively by the retained `legacy_amount` /
+/// `legacy_compare_at_amount` columns.
 fn decimal_to_cents(amount: Decimal) -> Option<i64> {
     (amount * Decimal::from(100)).round_dp(0).to_i64()
+}
+
+/// Currency exponents used by the platform's minor-unit table.
+///
+/// Values are the platform-internal table owned today by
+/// `rustok-cart::services::cart::helpers::currency_exponent`; `rustok-pricing` cannot depend on that
+/// crate, so the table is duplicated here until a canonical money owner is established.
+/// See `docs/audits/ecommerce-deep-review-2026-10-07.md` (ECOM-MONEY-02).
+fn currency_exponent(currency_code: &str) -> u32 {
+    match currency_code.trim().to_ascii_uppercase().as_str() {
+        "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF" | "UGX"
+        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+        "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
+        _ => 2,
+    }
+}
+
+/// Converts a major-unit amount into the currency's minor units for domain-event payloads.
+fn decimal_to_minor_units(amount: Decimal, currency_code: &str) -> Option<i64> {
+    let factor = Decimal::from(10_u64.checked_pow(currency_exponent(currency_code))?);
+    (amount * factor).round().to_i64()
 }
 
 #[allow(clippy::result_large_err)]

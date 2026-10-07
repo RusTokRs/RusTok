@@ -21,6 +21,16 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     pub provider_completed_at: Option<DateTimeWithTimeZone>,
     pub committed_at: Option<DateTimeWithTimeZone>,
+    /// Checkout admission generation the claim gate observed on this operation.
+    ///
+    /// `0` marks a row created before the admission contract; such a row is
+    /// adopted into the generation the checkout owner reports, but only while
+    /// the projected level is `open`.
+    pub admission_epoch: i64,
+    /// Bounded reason of the last refused claim (see `CheckoutAdmissionRefusal`).
+    pub admission_refusal_code: Option<String>,
+    /// When the last refused claim was recorded.
+    pub admission_refused_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

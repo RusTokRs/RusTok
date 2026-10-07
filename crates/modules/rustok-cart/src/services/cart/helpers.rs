@@ -952,6 +952,8 @@ where
         .ok_or(CartError::Validation(
             "Region not found for cart".to_string(),
         ))?;
+    // INVARIANT: `region_country_tax_policy` has no tenant column; the tenant
+    // boundary is the region loaded with `cart.tenant_id` above.
     let country_tax_policies = region_country_tax_policy::Entity::find()
         .filter(region_country_tax_policy::Column::RegionId.eq(region_id))
         .all(conn)
@@ -1366,6 +1368,22 @@ pub fn currency_exponent(currency_code: &str) -> i16 {
         "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
         _ => 2,
     }
+}
+
+/// Rounds a major-unit amount to the minor-unit precision of the given currency.
+///
+/// Money arithmetic inside a cart must use the tenant's currency precision, not a hard-coded two
+/// decimals: 0-decimal currencies (JPY/ISK/…) would otherwise gain a phantom fractional part and
+/// 3-decimal currencies (BHD/KWD/…) would lose the third decimal before the amount is converted to
+/// minor units for the provider.
+pub fn round_to_currency(amount: Decimal, currency_code: &str) -> CartResult<Decimal> {
+    let exponent = currency_exponent(currency_code);
+    let exponent = u32::try_from(exponent).map_err(|_| {
+        CartError::Validation(format!(
+            "unsupported currency exponent {exponent} for currency {currency_code}"
+        ))
+    })?;
+    Ok(amount.round_dp(exponent))
 }
 
 pub fn decimal_to_minor_units(amount: Decimal, exponent: i16) -> Option<i64> {

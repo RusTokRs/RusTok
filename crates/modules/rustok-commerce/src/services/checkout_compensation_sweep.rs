@@ -12,10 +12,18 @@ use uuid::Uuid;
 
 use crate::entities::checkout_operation;
 
-use super::{CheckoutCompensationError, CheckoutCompensationService, CheckoutOperationStatus};
+use super::{
+    CheckoutCompensationError, CheckoutCompensationService, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStatus, MAX_CHECKOUT_COMPENSATION_ATTEMPTS,
+};
 
 const DEFAULT_SWEEP_LIMIT: u64 = 25;
 const MAX_SWEEP_LIMIT: u64 = 100;
+
+/// Bounded failure code recorded when the sweep cannot park an operation whose
+/// compensation attempts are exhausted (a concurrent worker won the race, or the
+/// row moved out of the compensation states).
+const EXHAUSTION_PARK_FAILED_CODE: &str = "checkout.compensation_exhaustion_park_failed";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckoutCompensationSweepFailure {
@@ -30,12 +38,18 @@ pub struct CheckoutCompensationSweepReport {
     pub compensated: usize,
     pub retryable: usize,
     pub manual_reconciliation: usize,
+    /// Operations parked by this sweep because their compensation attempts were
+    /// exhausted (`attempt_count >= MAX_CHECKOUT_COMPENSATION_ATTEMPTS`). They
+    /// are counted apart from `manual_reconciliation` because the park decision
+    /// was made by the sweep cap, not by a `ManualReconciliation` failure.
+    pub exhausted: usize,
     pub failures: Vec<CheckoutCompensationSweepFailure>,
 }
 
 pub struct CheckoutCompensationSweepService {
     db: DatabaseConnection,
     compensation: CheckoutCompensationService,
+    journal: CheckoutOperationJournal,
 }
 
 impl CheckoutCompensationSweepService {
@@ -48,10 +62,11 @@ impl CheckoutCompensationSweepService {
         Self {
             compensation: CheckoutCompensationService::new(
                 db.clone(),
-                event_bus,
+                event_bus.clone(),
                 reservation_port,
                 cart_port,
             ),
+            journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             db,
         }
     }
@@ -103,6 +118,39 @@ impl CheckoutCompensationSweepService {
             ..Default::default()
         };
         for operation in candidates {
+            if operation.attempt_count >= MAX_CHECKOUT_COMPENSATION_ATTEMPTS {
+                // A cart must not stay in an endless retry loop: park the
+                // operation for an operator instead of claiming it again. Both
+                // compensation states are parkable, so a worker that died with
+                // an expired lease is covered by the same decision.
+                let reason = format!(
+                    "checkout compensation sweep worker `{}` found attempt_count {} at or above the cap",
+                    worker_id.as_ref(),
+                    operation.attempt_count
+                );
+                match self
+                    .journal
+                    .park_exhausted_compensation(tenant_id, operation.id, reason)
+                    .await
+                {
+                    Ok(_) => report.exhausted += 1,
+                    Err(error) => {
+                        report.retryable += 1;
+                        report.failures.push(CheckoutCompensationSweepFailure {
+                            operation_id: operation.id,
+                            manual_reconciliation: false,
+                            error_code: EXHAUSTION_PARK_FAILED_CODE.to_string(),
+                        });
+                        tracing::error!(
+                            operation_id = %operation.id,
+                            error_code = EXHAUSTION_PARK_FAILED_CODE,
+                            error_kind = operation_error_kind(&error),
+                            "checkout compensation exhaustion park failed"
+                        );
+                    }
+                }
+                continue;
+            }
             let lease_owner = format!(
                 "checkout-compensation:{}:{}",
                 worker_id.as_ref(),
@@ -133,6 +181,16 @@ impl CheckoutCompensationSweepService {
             }
         }
         Ok(report)
+    }
+}
+
+/// Bounded error kind for a failed exhaustion park (`CheckoutOperationError`).
+fn operation_error_kind(error: &CheckoutOperationError) -> &'static str {
+    match error {
+        CheckoutOperationError::Validation(_) => "validation",
+        CheckoutOperationError::NotFound(_) => "not_found",
+        CheckoutOperationError::Conflict(_) => "conflict",
+        CheckoutOperationError::Database(_) => "database",
     }
 }
 

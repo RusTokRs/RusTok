@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rustok_commerce_foundation::entities::{inventory_item, reservation_item};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set, Statement,
     TransactionTrait,
@@ -57,10 +58,10 @@ struct OrderLineBinding {
 }
 
 impl CheckoutInventoryOrderAdoptionService {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             db,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }

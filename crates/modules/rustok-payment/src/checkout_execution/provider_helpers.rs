@@ -134,14 +134,35 @@ impl InProcessCheckoutPaymentExecutionPort {
                 boundary = PAYMENT_EXECUTION_BOUNDARY,
                 "payment local commit checkpoint failed"
             );
-            let _ = self
+            if let Err(mark_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation_id,
                     format!("payment.local_{provider_operation}_commit_checkpoint_failed"),
                 )
-                .await;
+                .await
+            {
+                // The journal write that records the manual-reconciliation state
+                // can itself fail. That failure must be visible, but this path
+                // logs bounded facts only: no raw operation id, no error text, and
+                // no second PaymentError extraction (the checkpoint encoding
+                // contract fixes that count).
+                tracing::error!(
+                    operation_id_non_nil = !operation_id.is_nil(),
+                    provider_operation,
+                    reconciliation_mark_failed = true,
+                    reconciliation_mark_error_is_validation = matches!(
+                        mark_error,
+                        PaymentError::Validation(_)
+                    ),
+                    correlation_id = %context.correlation_id,
+                    operation = owner_operation,
+                    code = "payment.checkout_execution_reconciliation_mark_failed",
+                    boundary = PAYMENT_EXECUTION_BOUNDARY,
+                    "payment provider operation could not be marked as reconciliation required"
+                );
+            }
             return Err(manual_reconciliation(
                 context,
                 owner_operation,

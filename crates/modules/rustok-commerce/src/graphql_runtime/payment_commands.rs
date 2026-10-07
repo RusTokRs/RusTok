@@ -7,6 +7,8 @@ use rustok_payment::{
 };
 use sea_orm::DatabaseConnection;
 
+use crate::services::checkout_execution_admission_port;
+
 /// Host-selected Payment owner commands consumed by mounted Commerce GraphQL mutations.
 ///
 /// Commerce composes the existing collection create/reuse, collection lifecycle, and refund
@@ -36,7 +38,11 @@ impl CommercePaymentCommandRuntime {
     pub fn in_process(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
         Self::new(
             PaymentCollectionRuntime::in_process(db.clone()),
-            PaymentAdminCollectionCommandRuntime::in_process(db.clone(), provider_registry.clone()),
+            PaymentAdminCollectionCommandRuntime::in_process(
+                db.clone(),
+                provider_registry.clone(),
+                checkout_execution_admission_port(db.clone()),
+            ),
             PaymentAdminRefundCommandRuntime::in_process(db, provider_registry),
         )
     }

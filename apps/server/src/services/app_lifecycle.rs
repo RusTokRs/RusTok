@@ -8,8 +8,9 @@ use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
-    EventRuntime, RelayRuntimeConfig, spawn_outbox_relay_worker,
+    EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
+use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
@@ -61,6 +62,7 @@ impl StopHandle {
 }
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+static OUTBOX_RETENTION_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static REMOTE_EXECUTOR_REAPER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "mod-seo")]
 static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -124,6 +126,21 @@ pub struct OutboxRelayWorkerHandle {
 }
 
 impl OutboxRelayWorkerHandle {
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
+}
+
+pub struct OutboxRetentionWorkerHandle {
+    instance_id: u64,
+    _handle: JoinHandle<()>,
+}
+
+impl OutboxRetentionWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
@@ -209,6 +226,18 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
     }
 
+    if !runtime_ctx.shared_contains::<OutboxRetentionWorkerHandle>() {
+        let retention_config = runtime_ctx
+            .shared_get::<std::sync::Arc<EventRuntime>>()
+            .and_then(|runtime| runtime.outbox_retention.clone());
+        if let Some(retention_config) = retention_config {
+            runtime_ctx.shared_insert(spawn_outbox_retention_handle(
+                retention_config,
+                stop_rx.clone(),
+            ));
+        }
+    }
+
     if settings.registry.remote_executor.enabled
         && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
     {
@@ -279,6 +308,22 @@ fn spawn_relay_worker_handle(
     OutboxRelayWorkerHandle {
         instance_id,
         _handle: spawn_outbox_relay_worker(relay_config, stop_rx),
+    }
+}
+
+fn spawn_outbox_retention_handle(
+    retention_config: OutboxRetentionRuntimeConfig,
+    stop_rx: tokio::sync::watch::Receiver<bool>,
+) -> OutboxRetentionWorkerHandle {
+    let instance_id = OUTBOX_RETENTION_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(
+        worker = "outbox_retention",
+        instance_id,
+        "Starting runtime worker"
+    );
+    OutboxRetentionWorkerHandle {
+        instance_id,
+        _handle: spawn_outbox_retention_worker(retention_config, stop_rx),
     }
 }
 
@@ -472,17 +517,20 @@ fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &st
 #[cfg(test)]
 mod tests {
     use super::{
-        OutboxRelayWorkerHandle, connect_runtime_workers_with_runtime, resolve_boot_database_uri,
-        should_use_local_sqlite_fallback,
+        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, connect_runtime_workers_with_runtime,
+        resolve_boot_database_uri, should_use_local_sqlite_fallback,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
     use rustok_core::events::{EventBus, MemoryTransport};
-    use rustok_outbox::{OutboxRelay, OutboxTransport};
+    use rustok_outbox::{OutboxRelay, OutboxRetention, OutboxTransport};
     use rustok_test_utils::setup_test_db;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::{sync::Arc, time::Duration};
 
-    use crate::services::event_transport_factory::{EventRuntime, RelayRuntimeConfig};
+    use crate::services::event_transport_factory::{
+        EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
+    };
 
     #[test]
     fn uses_sqlite_fallback_when_database_url_is_missing_and_uri_is_empty() {
@@ -542,6 +590,13 @@ mod tests {
     #[tokio::test]
     async fn connect_runtime_workers_is_idempotent_for_outbox_relay_handle() {
         let db = setup_test_db().await;
+        // The retention worker prunes against `sys_events`, so the schema it
+        // reads exists before the worker starts (a missing table would make every
+        // run log a failure instead of proving the worker is wired).
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("outbox schema for the retention worker");
         let relay_config = RelayRuntimeConfig {
             interval: Duration::from_secs(60),
             relay: OutboxRelay::new(db.clone(), Arc::new(MemoryTransport::new())),
@@ -552,6 +607,12 @@ mod tests {
             transport: Arc::new(OutboxTransport::new(db.clone())),
             listener_bus: EventBus::new(),
             relay_config: Some(relay_config),
+            // Both outbox workers are resolved from the runtime, so enabling
+            // retention here also proves the second handle is started once.
+            outbox_retention: Some(OutboxRetentionRuntimeConfig {
+                interval: Duration::from_secs(60),
+                retention: OutboxRetention::new(db.clone()),
+            }),
             channel_capacity: 128,
             relay_fallback_active: false,
         });
@@ -573,6 +634,22 @@ mod tests {
             .expect("relay handle should still be stored");
 
         assert_eq!(first_instance_id, second_instance_id);
+
+        let first_retention_instance_id = runtime_ctx
+            .shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::instance_id)
+            .expect("retention handle should be stored");
+
+        connect_runtime_workers_with_runtime(runtime_ctx.clone())
+            .await
+            .expect("third worker connect should be idempotent");
+        let second_retention_instance_id = runtime_ctx
+            .shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::instance_id)
+            .expect("retention handle should still be stored");
+
+        assert_eq!(
+            first_retention_instance_id, second_retention_instance_id,
+            "the retention worker must not be started twice"
+        );
 
         // Gracefully shut down background workers to avoid hanging tests
         if let Some(stop_handle) = runtime_ctx.shared_get::<super::StopHandle>() {

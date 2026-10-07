@@ -12,6 +12,8 @@ pub struct Model {
     pub request_hash: String,
     pub snapshot_hash: Option<String>,
     pub status: String,
+    pub execution_admission: String,
+    pub admission_epoch: i64,
     pub stage: String,
     pub order_id: Option<Uuid>,
     pub payment_collection_id: Option<Uuid>,

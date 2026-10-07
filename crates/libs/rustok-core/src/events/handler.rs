@@ -183,6 +183,7 @@ impl EventDispatcher {
     ) {
         let dispatch_started_at = Instant::now();
         let event_type = envelope.event.event_type().to_string();
+        consumer_runtime.record_publish_lag(&event_type, envelope.timestamp);
         let matching_handlers: Vec<_> = handlers
             .iter()
             .filter(|handler| handler.handles(&envelope.event))
@@ -289,10 +290,23 @@ impl EventDispatcher {
     ) -> Result<(), Error> {
         let mut attempts = 0;
         let max_attempts = config.retry_count + 1;
+        let event_type = envelope.event.event_type();
+        let handler_name = handler.name();
 
         loop {
             attempts += 1;
-            match handler.handle(&envelope).await {
+            let attempt_started_at = Instant::now();
+            let outcome = handler.handle(&envelope).await;
+            // Every invocation of a named handler is one dispatch, so retries are
+            // counted as separate dispatches and the duration histogram observes the
+            // same population the dispatched counter counts.
+            rustok_telemetry::metrics::record_event_dispatched(event_type, handler_name);
+            rustok_telemetry::metrics::record_event_processing_duration(
+                event_type,
+                handler_name,
+                attempt_started_at.elapsed().as_secs_f64(),
+            );
+            match outcome {
                 Ok(()) => {
                     debug!(
                         handler = handler.name(),

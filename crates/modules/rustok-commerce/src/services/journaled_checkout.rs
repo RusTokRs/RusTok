@@ -114,6 +114,7 @@ impl JournaledCheckoutService {
             pipeline,
             atomic_cart_checkout,
             self.db.clone(),
+            event_bus.clone(),
         )
         .with_lease_seconds(self.lease_seconds);
         let compensation = super::CheckoutCompensationService::new(

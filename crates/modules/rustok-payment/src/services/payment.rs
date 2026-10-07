@@ -101,10 +101,14 @@ impl PaymentService {
 
         match insert {
             Ok(_) => self.get_collection(tenant_id, collection_id).await,
-            Err(error) if cart_id.is_some() && is_unique_constraint(&error) => {
+            Err(error) if is_unique_constraint(&error) => {
+                let Some(cart_id) = cart_id else {
+                    // The unique constraint can only be violated by a cart-scoped collection.
+                    return Err(error.into());
+                };
                 self.recover_active_cart_collection(CartCollectionRecovery {
                     tenant_id,
-                    cart_id: cart_id.expect("cart_id was checked before race recovery"),
+                    cart_id,
                     order_id,
                     customer_id,
                     currency_code,

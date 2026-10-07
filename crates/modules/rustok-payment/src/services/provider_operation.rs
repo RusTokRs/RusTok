@@ -1,15 +1,23 @@
-use chrono::Utc;
+use std::sync::Arc;
+
+use chrono::{DateTime, FixedOffset, Utc};
+use rustok_api::PortError;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
 
 use rustok_core::generate_id;
 
-use crate::entities::{payment_collection, provider_operation, refund};
+use crate::entities::{provider_operation, refund};
 use crate::error::{PaymentError, PaymentResult};
+use crate::services::checkout_admission::{
+    CheckoutAdmissionDecision, CheckoutAdmissionLinkState, CheckoutAdmissionRefusal,
+    CheckoutExecutionAdmissionPort, ProviderExecutionEffect, decide_checkout_admission_claim,
+    refusal_metric_operation_label, resolve_checkout_operation_id,
+};
 use crate::providers::{
     MAX_EXTERNAL_REFERENCE_LENGTH, PaymentProviderOperationResult,
     validate_provider_operation_payload,
@@ -36,11 +44,30 @@ pub struct BeginProviderOperation {
 #[derive(Clone)]
 pub struct PaymentProviderOperationJournal {
     db: DatabaseConnection,
+    admission_port: Option<Arc<dyn CheckoutExecutionAdmissionPort>>,
 }
 
 impl PaymentProviderOperationJournal {
+    /// Journal without a checkout admission reader.
+    ///
+    /// Provider operations whose payment collection is linked to a checkout
+    /// operation then fail closed on extending claims
+    /// (`checkout_admission_unavailable`): a missing wire is a refusal, never a
+    /// silent bypass. Collections that carry no checkout link are unaffected.
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            admission_port: None,
+        }
+    }
+
+    /// Wires the checkout journal's admission reader into the claim gate.
+    pub fn with_checkout_execution_admission_port(
+        mut self,
+        port: Arc<dyn CheckoutExecutionAdmissionPort>,
+    ) -> Self {
+        self.admission_port = Some(port);
+        self
     }
 
     /// Create an operation journal row or return the existing row for the same
@@ -62,6 +89,14 @@ impl PaymentProviderOperationJournal {
 
         let id = generate_id();
         let now = Utc::now();
+        // The generation this operation is created under. `0` means the
+        // collection is not linked to a checkout operation (or the checkout has
+        // not projected its admission yet): the claim gate admits such a row
+        // only while the linked checkout is `open`, which mirrors the database
+        // guard this contract replaces.
+        let admission_epoch = self
+            .checkout_admission_epoch(input.tenant_id, input.payment_collection_id)
+            .await;
         let insert = provider_operation::ActiveModel {
             id: Set(id),
             tenant_id: Set(input.tenant_id),
@@ -79,6 +114,9 @@ impl PaymentProviderOperationJournal {
             updated_at: Set(now.into()),
             provider_completed_at: Set(None),
             committed_at: Set(None),
+            admission_epoch: Set(admission_epoch),
+            admission_refusal_code: Set(None),
+            admission_refused_at: Set(None),
         }
         .insert(&self.db)
         .await;
@@ -145,16 +183,100 @@ impl PaymentProviderOperationJournal {
             .map_err(Into::into)
     }
 
+    /// Claims a provider operation for execution.
+    ///
+    /// This is the single enforcement point of the checkout execution admission
+    /// contract (`DECISIONS/2026-10-07-checkout-operation-invariants-owned-by-rust.md`),
+    /// the rule the database trigger `payment_provider_operations_checkout_guard`
+    /// used to own:
+    ///
+    /// * An operation whose payment collection is linked to a checkout operation
+    ///   is admitted for an **extending** effect (`authorize`, `capture`) only
+    ///   while the checkout owner reports the level `open` and the generation the
+    ///   operation carries still matches. Level and generation are read through
+    ///   the checkout owner port and confirmed by the conditional write itself;
+    ///   the park that changes them stamps the new generation on the collection's
+    ///   non-terminal operations first, so a claim decided under the previous
+    ///   generation fails its write instead of executing.
+    /// * An **unwinding** effect (`cancel`, `refund`) is always admitted: the
+    ///   compensation itself needs the provider, which is exactly what the
+    ///   trigger got wrong (ECOM-ADM-02).
+    /// * A collection with no checkout link is not fenced at all, matching the
+    ///   trigger's scope.
+    /// * A refusal is fail-closed and observable: the bounded reason is written
+    ///   to `admission_refusal_code`, counted in
+    ///   `rustok_payment_provider_execution_admission_refused_total`, and the
+    ///   caller sees `Ok(None)` while
+    ///   [`execution_admission_refusal_error`] turns the recorded reason into a
+    ///   bounded owner error.
     pub async fn claim_execution(
         &self,
         tenant_id: Uuid,
         id: Uuid,
     ) -> PaymentResult<Option<provider_operation::Model>> {
         validate_operation_identity(tenant_id, id)?;
+        let Some(operation) = self.find_optional(tenant_id, id).await? else {
+            return Ok(None);
+        };
+        if !matches!(
+            operation.status.as_str(),
+            PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR
+        ) {
+            return Ok(None);
+        }
+        let effect = ProviderExecutionEffect::for_operation(operation.operation.as_str());
+        let link = if matches!(effect, Some(ProviderExecutionEffect::Unwinding)) {
+            // Unwinding effects are never fenced, so they do not read the
+            // checkout at all: compensation must not be blocked by a checkout
+            // that cannot be read.
+            CheckoutAdmissionLinkState::Unlinked
+        } else {
+            self.checkout_admission_link(tenant_id, operation.payment_collection_id)
+                .await
+        };
+        match decide_checkout_admission_claim(link, effect, operation.admission_epoch) {
+            CheckoutAdmissionDecision::Unfenced => self.claim_without_fence(tenant_id, id).await,
+            CheckoutAdmissionDecision::Admitted { epoch, adopt_legacy } => {
+                self.claim_extending(
+                    tenant_id,
+                    id,
+                    operation.operation.as_str(),
+                    epoch,
+                    adopt_legacy,
+                )
+                .await
+            }
+            CheckoutAdmissionDecision::Refused(refusal) => {
+                self.record_admission_refusal(
+                    tenant_id,
+                    id,
+                    operation.operation.as_str(),
+                    refusal,
+                )
+                .await?;
+                Ok(None)
+            }
+        }
+    }
+
+    /// Claim without a checkout fence: the operation is unlinked or unwinding.
+    async fn claim_without_fence(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> PaymentResult<Option<provider_operation::Model>> {
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
                 Expr::value(PROVIDER_OPERATION_EXECUTING),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionRefusalCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionRefusedAt,
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
             )
             .col_expr(
                 provider_operation::Column::UpdatedAt,
@@ -173,6 +295,242 @@ impl PaymentProviderOperationJournal {
             return Ok(None);
         }
         self.get(tenant_id, id).await.map(Some)
+    }
+
+    /// Claim an extending effect under the generation the checkout owner reports.
+    ///
+    /// One conditional write: the operation moves to `executing` only while its
+    /// stored generation still matches the observed one and its status is still
+    /// claimable. A park that moves the checkout into the settling set stamps the
+    /// new generation on the collection's non-terminal operations
+    /// ([`Self::stamp_admission_epoch`]) before it publishes the new admission,
+    /// so a claim that loses that race fails this filter instead of executing
+    /// under a generation the checkout has already left.
+    async fn claim_extending(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        operation: &str,
+        epoch: i64,
+        adopt_legacy: bool,
+    ) -> PaymentResult<Option<provider_operation::Model>> {
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_EXECUTING),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionEpoch,
+                Expr::value(epoch),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionRefusalCode,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionRefusedAt,
+                Expr::value(Option::<DateTime<FixedOffset>>::None),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(id))
+            .filter(
+                provider_operation::Column::Status
+                    .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),
+            );
+        let update = if adopt_legacy {
+            // `0` is the pre-contract generation: it is adopted into the
+            // observed one, but only while the level is `open` (decided above).
+            update.filter(provider_operation::Column::AdmissionEpoch.is_in([0, epoch]))
+        } else {
+            update.filter(provider_operation::Column::AdmissionEpoch.eq(epoch))
+        };
+        let update = update.exec(&self.db).await?;
+        if update.rows_affected == 1 {
+            return self.get(tenant_id, id).await.map(Some);
+        }
+        let current = self.find_optional(tenant_id, id).await?;
+        let still_claimable = current.as_ref().is_some_and(|current| {
+            matches!(
+                current.status.as_str(),
+                PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR
+            )
+        });
+        if still_claimable {
+            // The row was claimable, so the generation filter is what refused:
+            // the checkout moved on between the read and the write.
+            self.record_admission_refusal(
+                tenant_id,
+                id,
+                operation,
+                CheckoutAdmissionRefusal::EpochMismatch,
+            )
+            .await?;
+        }
+        Ok(None)
+    }
+
+    /// Stamps an admission generation on a collection's non-terminal operations.
+    ///
+    /// The checkout journal calls this inside its own transaction whenever an
+    /// admission level change is published: bumping the generation on operations
+    /// that have not started executing invalidates the claims that were decided
+    /// under the previous generation instead of letting them race the park.
+    /// Operations already `executing` keep their generation — their invocation
+    /// was admitted before the park — and the conditional claim write of a racing
+    /// caller fails on the generation filter.
+    pub async fn stamp_admission_epoch<C>(
+        &self,
+        db: &C,
+        tenant_id: Uuid,
+        payment_collection_id: Uuid,
+        epoch: i64,
+    ) -> PaymentResult<u64>
+    where
+        C: ConnectionTrait,
+    {
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::AdmissionEpoch,
+                Expr::value(epoch),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(
+                provider_operation::Column::PaymentCollectionId.eq(payment_collection_id),
+            )
+            .filter(
+                provider_operation::Column::Status
+                    .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),
+            )
+            .exec(db)
+            .await?;
+        Ok(update.rows_affected)
+    }
+
+    /// Admission of the checkout operation a payment collection is linked to.
+    ///
+    /// Unwinding claims never consult the admission, so the caller skips this
+    /// read for them: a checkout that cannot be read must never be able to trap
+    /// money that has to move back.
+    async fn checkout_admission_link(
+        &self,
+        tenant_id: Uuid,
+        payment_collection_id: Uuid,
+    ) -> CheckoutAdmissionLinkState {
+        let checkout_operation_id =
+            match resolve_checkout_operation_id(&self.db, tenant_id, payment_collection_id).await {
+                Ok(checkout_operation_id) => checkout_operation_id,
+                Err(error) => {
+                    tracing::warn!(
+                        tenant_id_length = tenant_id.to_string().chars().count(),
+                        failure = "checkout_link_lookup_failed",
+                        error_is_database = matches!(error, PaymentError::Database(_)),
+                        owner = "rustok_payment",
+                        "checkout link lookup failed; treating the admission as unavailable"
+                    );
+                    return CheckoutAdmissionLinkState::Unavailable;
+                }
+            };
+        let Some(checkout_operation_id) = checkout_operation_id else {
+            return CheckoutAdmissionLinkState::Unlinked;
+        };
+        let Some(port) = self.admission_port.as_ref() else {
+            return CheckoutAdmissionLinkState::Unavailable;
+        };
+        match port
+            .read_checkout_execution_admission(tenant_id, checkout_operation_id)
+            .await
+        {
+            Ok(None) => CheckoutAdmissionLinkState::Unavailable,
+            Ok(Some(record)) => CheckoutAdmissionLinkState::Resolved(record),
+            Err(error) => {
+                tracing::warn!(
+                    tenant_id_length = tenant_id.to_string().chars().count(),
+                    port_error_kind = ?error.kind,
+                    port_error_code = error.code.as_str(),
+                    owner = "rustok_payment",
+                    "checkout admission read failed; treating the admission as unavailable"
+                );
+                CheckoutAdmissionLinkState::Unavailable
+            }
+        }
+    }
+
+    /// Generation an operation created for this collection is admitted under.
+    ///
+    /// `0` means "not observed": the claim gate adopts such a row only while the
+    /// checkout is `open` (see [`decide_checkout_admission_claim`]).
+    async fn checkout_admission_epoch(
+        &self,
+        tenant_id: Uuid,
+        payment_collection_id: Uuid,
+    ) -> i64 {
+        match self
+            .checkout_admission_link(tenant_id, payment_collection_id)
+            .await
+        {
+            CheckoutAdmissionLinkState::Resolved(record) => record.admission_epoch,
+            CheckoutAdmissionLinkState::Unlinked | CheckoutAdmissionLinkState::Unavailable => 0,
+        }
+    }
+
+    /// Records the bounded refusal reason on the row and in the metric.
+    async fn record_admission_refusal(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        operation: &str,
+        refusal: CheckoutAdmissionRefusal,
+    ) -> PaymentResult<()> {
+        provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::AdmissionRefusalCode,
+                Expr::value(refusal.as_str()),
+            )
+            .col_expr(
+                provider_operation::Column::AdmissionRefusedAt,
+                Expr::current_timestamp(),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(id))
+            .exec(&self.db)
+            .await?;
+        rustok_telemetry::metrics::record_provider_execution_admission_refused(
+            refusal_metric_operation_label(operation),
+            refusal.as_str(),
+        );
+        tracing::warn!(
+            tenant_id_length = tenant_id.to_string().chars().count(),
+            operation,
+            reason = refusal.as_str(),
+            owner = "rustok_payment",
+            "provider execution refused by the checkout admission contract"
+        );
+        Ok(())
+    }
+
+    /// Tenant-scoped optional read used by the claim gate.
+    async fn find_optional(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> PaymentResult<Option<provider_operation::Model>> {
+        provider_operation::Entity::find_by_id(id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn mark_provider_succeeded(
@@ -449,6 +807,36 @@ async fn validate_begin_identity(
     }
 
     Ok(())
+}
+
+/// Bounded owner error for a provider operation whose last claim was refused by
+/// the checkout execution admission contract.
+///
+/// The claim gate records the refusal on the row instead of returning a typed
+/// error, so the callers that observe `Ok(None)` from
+/// [`PaymentProviderOperationJournal::claim_execution`] can turn the recorded
+/// reason into one bounded owner error. `None` means the claim was simply not
+/// claimable (another worker holds it, or the provider result is already
+/// persisted).
+pub fn execution_admission_refusal_error(
+    operation: &provider_operation::Model,
+) -> Option<PortError> {
+    let refusal = operation
+        .admission_refusal_code
+        .as_deref()
+        .and_then(CheckoutAdmissionRefusal::parse)?;
+    Some(match refusal {
+        // A projection that drifted away can be repaired, so the caller may
+        // retry once the checkout journal has projected its admission again.
+        CheckoutAdmissionRefusal::Unavailable => PortError::unavailable(
+            refusal.error_code(),
+            "provider execution is fenced by an unresolved checkout admission",
+        ),
+        _ => PortError::conflict(
+            refusal.error_code(),
+            "provider execution is refused by the checkout admission contract",
+        ),
+    })
 }
 
 fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> PaymentResult<()> {

@@ -93,7 +93,7 @@ impl CheckoutStagePipeline {
     ) -> Self {
         Self {
             db: db.clone(),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             plan_journal: CheckoutOrderPlanJournal::new(db.clone()),
             order_stage: CheckoutOrderStageExecutor::new(
                 db.clone(),
@@ -105,9 +105,13 @@ impl CheckoutStagePipeline {
             marketplace_economics_checkpoint_journal:
                 CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
             marketplace_financial_stage: None,
-            payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
-            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus),
-            finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
+            payment_stage: CheckoutPaymentStageExecutor::new(db.clone(), event_bus.clone()),
+            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
+            finalization: CheckoutFinalizationExecutor::new(
+                db.clone(),
+                event_bus,
+                cart_checkout_port,
+            ),
             payment_service: PaymentService::new(db.clone()),
             fulfillment_service: FulfillmentService::new(db),
         }

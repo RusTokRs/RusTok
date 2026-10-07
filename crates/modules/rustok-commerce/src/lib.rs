@@ -43,6 +43,8 @@ mod storefront_shipping;
 extern crate self as rustok_commerce;
 
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod state_machine_proptest;
 
 pub use collection_translation_changes::{
@@ -66,7 +68,11 @@ pub use services::{
     CheckoutInventoryReservationStatus, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
     CheckoutOperationStatus, CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,
-    CheckoutOrderConfirmationResult, CheckoutOrderCreationError, CheckoutOrderCreationExecutor,
+    CheckoutOrderConfirmationResult, CheckoutReconciliationAction,
+    CheckoutReconciliationActionRequest, CheckoutReconciliationDecision,
+    CheckoutReconciliationError, CheckoutReconciliationOutcome, CheckoutReconciliationResult,
+    CheckoutReconciliationService, ReconciliationResolution,
+    CheckoutOrderCreationError, CheckoutOrderCreationExecutor,
     CheckoutOrderCreationResult, CheckoutOrderPlanError, CheckoutOrderPlanJournal,
     CheckoutOrderPlanPayload, CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
     CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
@@ -93,6 +99,7 @@ pub use services::{
     ReturnRefundDecisionInput, ShippingProfileService, StagedCheckoutError, StagedCheckoutResult,
     StagedCheckoutService, StoreContextError, StoreContextResult, StoreContextService,
 };
+pub use services::checkout_execution_admission_port;
 #[cfg(feature = "marketplace-financial")]
 pub use services::{
     CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialResult,
