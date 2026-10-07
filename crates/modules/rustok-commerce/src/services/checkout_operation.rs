@@ -685,8 +685,8 @@ impl CheckoutOperationJournal {
     /// operations the previous generation admitted are one unit of work. The
     /// payment claim gate fences on the generation stored on the provider
     /// operation (`payment_provider_operations.admission_epoch`), so this write
-    /// stamps the collection's non-terminal operations with the new generation
-    /// before the new level becomes visible: a claim that was decided under the
+    /// stamps the cart's non-terminal operations with the new generation before
+    /// the new level becomes visible: a claim that was decided under the
     /// previous generation fails its own conditional write instead of racing the
     /// park, and a claim that already committed is ordered before it.
     async fn publish_admission_changed<C>(
@@ -731,6 +731,16 @@ impl CheckoutOperationJournal {
     /// Stamps the new generation on the provider operations that were admitted
     /// under the previous one, inside the writer's transaction.
     ///
+    /// The scope is the cart, not `operation.payment_collection_id`: the binding
+    /// column is a convenience the payment stage writes once it reaches
+    /// `payment_authorized`, so a park that lands between the payment collection
+    /// being created and that write would have nothing to stamp if this fence read
+    /// the binding. `ux_checkout_operations_active_cart` allows one live operation
+    /// per cart and every provider operation of this checkout belongs to a
+    /// collection of that cart, so this scope stamps every claim the park must
+    /// invalidate — and it also fences the previous generation's claims at
+    /// `begin`, when the new row has no binding yet.
+    ///
     /// A failure fails the whole admission transition: the journal must never
     /// publish a level that in-flight claims can still execute through.
     async fn invalidate_provider_execution_admitted_by<C>(
@@ -741,25 +751,12 @@ impl CheckoutOperationJournal {
     where
         C: ConnectionTrait,
     {
-        // Nothing to invalidate before a collection is bound: a fresh operation
-        // stamps its generation at creation and a provider operation always names
-        // an existing collection, so no claim can carry this operation's previous
-        // generation yet. From the moment a collection is bound, every extending
-        // provider operation of this checkout carries the old generation and is
-        // stamped below. The binding is written by the payment stage
-        // (`checkpoint`) and, while `m20260713_000015` is still installed, by the
-        // payment-collection guard; dropping that guard without moving the binding
-        // earlier would make this early return reachable for a checkout that
-        // already has claims (see the review's finding on the binding trigger).
-        let Some(payment_collection_id) = operation.payment_collection_id else {
-            return Ok(());
-        };
         let stamped = self
             .payment_operations
-            .stamp_admission_epoch(
+            .stamp_admission_epoch_for_cart(
                 txn,
                 operation.tenant_id,
-                payment_collection_id,
+                operation.cart_id,
                 operation.admission_epoch,
             )
             .await
@@ -1055,14 +1052,38 @@ impl CheckoutOperationJournal {
         if let Some(payment_collection_id) = input.payment_collection_id {
             ensure_payment_collection_tenant(&self.db, input.tenant_id, payment_collection_id)
                 .await?;
-            update = update.col_expr(
-                checkout_operation::Column::PaymentCollectionId,
-                Expr::value(Some(payment_collection_id)),
-            );
+            // The binding is write-once, the rule the removed payment-collection
+            // guard enforced from the collection side: the operation may accept a
+            // collection while it carries none, or re-assert the one it already
+            // carries, but it may never be re-pointed at a different collection.
+            // Provider operations, marketplace financial rows and refunds are all
+            // keyed by the collection this column names, so a silent rebind would
+            // detach the money evidence from the checkout it belongs to. The
+            // predicate is part of the same conditional write, so there is no
+            // read-then-write window.
+            let binding = checkout_operation::Column::PaymentCollectionId;
+            update = update
+                .filter(
+                    Condition::any()
+                        .add(binding.is_null())
+                        .add(binding.eq(payment_collection_id)),
+                )
+                .col_expr(binding, Expr::value(Some(payment_collection_id)));
         }
 
         let result = update.exec(&self.db).await?;
         if result.rows_affected == 0 {
+            let current = self.get(input.tenant_id, input.operation_id).await?;
+            match (current.payment_collection_id, input.payment_collection_id) {
+                (Some(bound), Some(requested)) if bound != requested => {
+                    return Err(CheckoutOperationError::Conflict(format!(
+                        "checkout operation {} is already bound to payment collection {bound}; \
+                         refusing to rebind it to {requested}",
+                        input.operation_id
+                    )));
+                }
+                _ => {}
+            }
             return Err(self
                 .cas_conflict(input.tenant_id, input.operation_id, "checkpoint")
                 .await?);

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use rustok_core::generate_id;
 
-use crate::entities::{provider_operation, refund};
+use crate::entities::{payment_collection, provider_operation, refund};
 use crate::error::{PaymentError, PaymentResult};
 use crate::services::checkout_admission::{
     CheckoutAdmissionDecision, CheckoutAdmissionLinkState, CheckoutAdmissionRefusal,
@@ -302,10 +302,10 @@ impl PaymentProviderOperationJournal {
     /// One conditional write: the operation moves to `executing` only while its
     /// stored generation still matches the observed one and its status is still
     /// claimable. A park that moves the checkout into the settling set stamps the
-    /// new generation on the collection's non-terminal operations
-    /// ([`Self::stamp_admission_epoch`]) before it publishes the new admission,
-    /// so a claim that loses that race fails this filter instead of executing
-    /// under a generation the checkout has already left.
+    /// new generation on the cart's non-terminal operations
+    /// ([`Self::stamp_admission_epoch_for_cart`]) before it publishes the new
+    /// admission, so a claim that loses that race fails this filter instead of
+    /// executing under a generation the checkout has already left.
     async fn claim_extending(
         &self,
         tenant_id: Uuid,
@@ -373,7 +373,8 @@ impl PaymentProviderOperationJournal {
         Ok(None)
     }
 
-    /// Stamps an admission generation on a collection's non-terminal operations.
+    /// Stamps an admission generation on the non-terminal operations of every
+    /// payment collection a cart owns.
     ///
     /// The checkout journal calls this inside its own transaction whenever an
     /// admission level change is published: bumping the generation on operations
@@ -382,16 +383,35 @@ impl PaymentProviderOperationJournal {
     /// Operations already `executing` keep their generation — their invocation
     /// was admitted before the park — and the conditional claim write of a racing
     /// caller fails on the generation filter.
-    pub async fn stamp_admission_epoch<C>(
+    ///
+    /// The scope is the cart, not the single collection the journal happens to
+    /// have bound: at most one collection per cart is active
+    /// (`ux_payment_collections_active_cart`) and the checkout journal admits one
+    /// live checkout per cart, so the cart is the smallest scope that is
+    /// guaranteed to hold every provider operation this checkout may still claim
+    /// through — independently of the binding write the commerce payment stage
+    /// performs only once it reaches `payment_authorized`.
+    pub async fn stamp_admission_epoch_for_cart<C>(
         &self,
         db: &C,
         tenant_id: Uuid,
-        payment_collection_id: Uuid,
+        cart_id: Uuid,
         epoch: i64,
     ) -> PaymentResult<u64>
     where
         C: ConnectionTrait,
     {
+        let collection_ids: Vec<Uuid> = payment_collection::Entity::find()
+            .filter(payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(payment_collection::Column::CartId.eq(cart_id))
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|collection| collection.id)
+            .collect();
+        if collection_ids.is_empty() {
+            return Ok(0);
+        }
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::AdmissionEpoch,
@@ -402,9 +422,7 @@ impl PaymentProviderOperationJournal {
                 Expr::current_timestamp(),
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
-            .filter(
-                provider_operation::Column::PaymentCollectionId.eq(payment_collection_id),
-            )
+            .filter(provider_operation::Column::PaymentCollectionId.is_in(collection_ids))
             .filter(
                 provider_operation::Column::Status
                     .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),

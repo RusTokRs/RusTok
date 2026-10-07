@@ -815,24 +815,25 @@ rounding defect.
 | 53 | `docs/guides/metrics.md` | the three metric families this work registered — `rustok_checkout_reconciliation_parked_total`, `rustok_checkout_reconciliation_actions_total` and `rustok_payment_provider_execution_admission_refused_total` — were absent from the operator guide, while the guide already documented the EventBus and outbox families. The new "Checkout Operation Metrics" section lists each metric with its bounded label vocabularies and states what an *extending* refusal means versus the by-design admission of unwinding effects. |
 | 54 | `crates/modules/rustok-commerce/src/services/checkout_marketplace_financial.rs` | the legacy mount of the marketplace journal still carried a duplicate of the flow the hardened branch owns — its own `CheckoutMarketplaceFinancialError`/`Result` with `retryable()`, its own `post_after_capture_if_present` plus the three validators it called, and the `map_port_error`/`boundary_code` translation (also `LEDGER_DEADLINE`) that existed only for that duplicate. The composed build selects `checkout_marketplace_financial_hardened.rs` as `checkout_marketplace_financial` and mounts the legacy file only for the journal primitives the hardened branch imports (`checkout_marketplace_financial_hardened.rs:14`), so none of the removed items had a reader. The journal (`begin`/`get`/`claim`/`complete_with_ledger`/`mark_retryable_error`/`mark_operator_review`) and the normalizers it calls stay, 285 lines lighter; no verify gate reads the file (`grep -rl checkout_marketplace_financial scripts/` is empty). |
 | 55 | `crates/modules/rustok-commerce/src/graphql/safe_query/source.rs` | the scoped `rustok_api` shim kept a five-method `GraphQLError` mirror of `rustok_api::graphql::GraphQLError`, three of which nothing calls — silenced with `#[allow(dead_code)]`, the pattern AGENTS.md §14 refuses, on the commerce GraphQL read boundary. The mirror now exposes exactly what the query implementation calls (`permission_denied`, `unauthenticated`) plus the `require_module_enabled` wrapper. Checked first: zero callers of `internal_error`/`bad_user_input`/`not_found` inside the shim's compilation unit (`graphql/mod.rs:215` uses the real crate trait, not the mirror), and every verifier that reads the file was re-run against the pristine tree with matching results. |
+| 56 | `crates/modules/rustok-commerce/src/migrations/{m20261007_000015_drop_payment_collection_binding_trigger.rs,mod.rs}` + `crates/modules/rustok-payment/src/services/provider_operation.rs` + `crates/modules/rustok-commerce/src/services/checkout_operation.rs` + `scripts/verify/verify-checkout-execution-admission-contract.mjs` + `crates/utils/rustok-migrations/tests/checkout_reconciliation_smoke.rs` | the payment-collection binding guard — the last cross-module business rule in database code on the money path — is removed, and the two rules it owned are ported to typed Rust. `m20260713_000015` validated the collection's checkout identity and **wrote** `checkout_operations.payment_collection_id` from a trigger on `payment_collections`, i.e. a second writer of a column the checkout journal owns. Its identity rule was already exceeded by `validate_collection` in the payment stage and its binding write by `checkpoint`; what had kept it alive was an ordering: `invalidate_provider_execution_admitted_by` read `operation.payment_collection_id` and returned early while it was null, and the reachable case is `begin` — a fresh operation for a cart that already has in-flight claims of the previous attempt's collection. The fence now takes the **cart** (`PaymentProviderOperationJournal::stamp_admission_epoch_for_cart`): it resolves the tenant's collections of that cart and stamps their non-terminal (`pending`, `provider_error`) provider operations inside the transition's own transaction, which is exact rather than merely wider — `ux_payment_collections_active_cart` (`m20260713_000106`) admits one active collection per cart and `ux_checkout_operations_active_cart` one live checkout per cart — and the tenant filter keeps foreign operations out. `checkpoint` absorbed the guard's remaining rule, binding immutability: the same conditional write accepts an unbound operation or re-asserts the collection it already carries, and a rebind attempt answers a bounded `Conflict` naming the write-once binding, because provider operations, marketplace financial rows and refunds are keyed by that column (nothing else in Rust or in the schema enforced it). `m20261007_000015_drop_payment_collection_binding_trigger` drops the triggers and the PL/pgSQL function on PostgreSQL, SQLite and MySQL with one statement per `execute_unprepared` call (the SQLite and MySQL drivers prepare one statement at a time), `down()` restores the original migration's text byte-identically, the migration is registered with explicit dependencies on the table owner and on the migration it supersedes, and an applied migration (`m20260713_000015`) is left untouched. The contract verifier pins the cart-scoped signature and its bounds, the fence passing `operation.cart_id` (forbidding the binding-parameter form), the drop/restore statements and the write-once binding; the integration tests `park_time_fence_reaches_provider_operations_before_the_collection_is_bound` (new) and the rebind block in `manual_checkout_reconciliation_is_terminal_and_blocks_provider_execution` pin the runtime behaviour. Recorded rather than changed: a checkout parked between the collection being created and `checkpoint` now leaves that `pending` collection uncancelled — the payment compensation reports `Ok(None)` for a null `collection_id`, no money can be authorized before `checkpoint`, and the next attempt on the cart adopts the collection through `find_reusable_collection_by_cart` + `attach_order_to_collection`, which re-points the collection's metadata link at the new operation; every reader that must be exact past `payment_ready` is served by the binding, which `checkpoint` writes in the same conditional update that advances the stage. |
+| 57 | `crates/modules/rustok-commerce/src/migrations/mod.rs` + `scripts/verify/verify-rust-constructor-arity{,.test}.mjs` + `package.json` + `.github/workflows/hardening-gates.yml` | a compile error the deep review itself introduced and no gate caught: the migration registration passed two `::Migration` values to one `Box::new` (`m20261007_000012`, `m20261007_000013`), which cannot compile — `Box::new` takes exactly one argument — so the pushed branch was broken until this pass found it with a source sweep. The registration is now two `push` calls, and the class is guarded: `verify-rust-constructor-arity.mjs` scans every `Box::new`/`Rc::new`/`Arc::new` in `crates`, `apps`, `xtask`, `examples` and `tests`, blanks comments and string bodies, collapses closure parameter lists and generic argument lists into single units and ignores rustfmt's trailing comma, then fails with `file:line` when a constructor receives two or more top-level arguments. `verify-rust-constructor-arity.test.mjs` carries the negative fixture (the exact `Box::new(A, B)` shape) and thirteen tolerated shapes, and both run in the repository-hardening job. A tree-wide sweep with the same rubric found no other occurrence: the remaining multi-comma hits are the five legitimate two-parameter closures (`pages/admin/builder.rs:132`, `fly/web/browser_runtime.rs:111`, `leptos-ui-routing/lib.rs:159`/`:178`, `forms/leptos/inputs.rs:1469`). |
 
 **Not applied (owner decision required):** ECOM-EVT-01 (payment events — ADR + composition roots),
 ECOM-DUP-01 (legacy checkout removal — intentional deletion), ECOM-COMP-02 (auto-refund policy for
 captured-then-failed checkouts — the manual path, the bounded retry loop and the alerting counters
 now exist, the automatic refund and the outbox events do not), ECOM-ZERO-01 (zero-total checkout), ECOM-MONEY-02 (canonical money owner — ADR),
 ECOM-DUP-02/ANALYTICS-01 (metric ownership + currency dimension), ECOM-REFUND-01 (refund owner).
-The verification pass added one more: the payment-collection binding trigger
-(`m20260713_000015_bind_checkout_payment_collections`) is a *second* writer of
-`checkout_operations.payment_collection_id` and a cross-module business rule inside a trigger — the
-same class the ADR moved to Rust for the state machine and the provider-execution guard. Its identity
-validation is already replicated (and exceeded) by `validate_collection` in the payment stage, and the
-binding write is replicated by `checkpoint`, so it looks removable; it is **not** removed here because
-the removal changes a load-bearing ordering: `invalidate_provider_execution_admitted_by` silently
-skips stamping while no collection is bound, and the trigger is what guarantees that a checkout with
-provider operations always has the binding before it can park. The increment is therefore "bind the
-collection in the same transaction that creates it (or make the invalidation resolve the collection
-through a payment port), then drop the trigger with the same up-drops / down-restores pattern as
-`m20261007_000010`" — see the verification-pass subsection.
+The verification pass added one more, and the binding-guard pass resolved it: the
+payment-collection binding trigger (`m20260713_000015_bind_checkout_payment_collections`) was a *second*
+writer of `checkout_operations.payment_collection_id` and a cross-module business rule inside a trigger —
+the same class the ADR moved to Rust for the state machine and the provider-execution guard. Its identity
+validation was already replicated (and exceeded) by `validate_collection` in the payment stage, and the
+binding write by `checkpoint`, so it was removable; what kept it alive was a load-bearing ordering —
+`invalidate_provider_execution_admitted_by` silently skipped stamping while no collection was bound, and
+the trigger guaranteed that a checkout with provider operations always had the binding before it could
+park. The fence now resolves the **cart** instead of the binding and the guard is dropped by
+`m20261007_000015_drop_payment_collection_binding_trigger` with the up-drops / down-restores pattern of
+`m20261007_000010` (remediation row 56).
 The tail pass added three more owner decisions: outbox retention for delivered events (a prune worker
 would delete the event record), the dead `rustok_event_bus_*` metric family (wire it to the relay or
 retire it), and the duplicated `sys_events` creation between the platform migrator and the outbox
@@ -845,6 +846,87 @@ ECOM-RECON-02 was closed by owner decision (MySQL is not deployed) and ECOM-DB-0
 second pass, see §"P3 / hygiene findings".
 
 The re-verification pass added one more: the storefront line-item compatibility shims — `graphql/mutations/helpers.rs:619` `resolve_storefront_line_item_input`, `:1018` `validate_storefront_line_item_quantity` and `:1039` `validate_storefront_variant_inventory` (the last one has no reference at all outside the dead code), plus the two wrappers at `graphql/mutations/safe_helpers.rs:451` and `:508` that only forward to `typed_line_item_helpers`, and the two `#[allow(dead_code)]` in `graphql/mutations/mod.rs` that exist only to silence them — have no production caller left (the bare calls in `graphql/mutations/cart.rs` resolve to the typed module through the re-export glob), but five repository verifiers pin them *as* the implementation. Removing them is a gate re-pin, not a code deletion, and waits for the same ECOM-VERIFY-01 decision.
+
+## Binding-guard pass (the last database business rule on the money path)
+
+Remediation row 56. The pass closes the tail the verification pass had to leave open — the
+payment-collection binding trigger — and, with it, the last database business rule of the checkout
+contour.
+
+*What the guard did.* `m20260713_000015_bind_checkout_payment_collections` installed
+`bind_checkout_payment_collection()` and `payment_collections_bind_checkout_operation*` triggers that
+(a) validated the collection's checkout identity against tenant, cart, order and the existing binding,
+and (b) **wrote** `checkout_operations.payment_collection_id` — a column the checkout journal owns.
+That is the class of object the ADR moved to Rust twice (the checkout state machine and the
+provider-execution admission), and it was the second writer of the binding column.
+
+*Why it survived the verification pass.* Both of its rules looked redundant (`validate_collection`
+checks strictly more; `checkpoint` writes the binding), but the park-time invalidation read
+`operation.payment_collection_id` and returned early while it was null, and the trigger was what
+guaranteed a checkout with claims always had the binding before a park. The concrete reachable case
+is `begin`: a new operation for a cart whose previous attempt still has in-flight claims on its own
+collection — the fresh row has no binding, so the early return skipped exactly the claims the park
+was supposed to invalidate.
+
+*What replaced it.* The fence now takes the **cart**:
+`PaymentProviderOperationJournal::stamp_admission_epoch_for_cart` resolves the tenant's collections of
+that cart (`payment_collections.tenant_id` + `cart_id`) and stamps their non-terminal
+(`pending`, `provider_error`) provider operations in the transition's own transaction. The scope is
+exact rather than merely wider: a provider operation is created by the payment stage from a collection
+of the checkout's cart, `ux_payment_collections_active_cart` (`m20260713_000106`) admits one active
+collection per cart, and `ux_checkout_operations_active_cart` admits one live checkout per cart, so the
+cart holds every claim that can still reach this checkout and no other tenant's operations are touched.
+`checkpoint` absorbed the guard's remaining rule — the binding is **write-once**: the same conditional
+write that stores the collection accepts an unbound operation or re-asserts the collection it already
+carries and refuses to re-point it, answering a bounded `Conflict` that names the write-once binding.
+Nothing in Rust or in the schema enforced that rule after the guard went away, and provider
+operations, marketplace financial rows and refunds are all keyed by the column.
+
+*The migration.* `m20261007_000015` is left untouched (an applied migration is immutable).
+`m20261007_000015_drop_payment_collection_binding_trigger` (`rustok-commerce`) drops the trigger and
+the PL/pgSQL function on PostgreSQL, SQLite and MySQL with one statement per `execute_unprepared`
+call — the SQLite and MySQL drivers prepare a single statement at a time, so a batched text would
+silently drop the rest — and its `down()` restores the original text, verified byte-identical by
+extracting the three installer blocks of `m20260713_000015` and comparing them with the restored
+strings. The registration carries explicit dependencies on the table owner
+(`m20260713_000009_create_checkout_operations`) and on the migration it supersedes
+(`m20260713_000015_bind_checkout_payment_collections`).
+
+*Parity note, recorded rather than fixed.* The installer of `m20260713_000015` issues its two SQLite
+and two MySQL `CREATE TRIGGER` statements through a single `execute_unprepared` call each, while the
+drop path is per-statement. The drop path is the one that has to be exact; `down()` deliberately
+re-installs the historic text verbatim so a rollback reproduces exactly the objects the original
+migration would have produced. MySQL is not deployed for this contour (owner decision on
+ECOM-RECON-02), so no production backend can be in the half-installed state today.
+
+*Recorded rather than changed.* With the trigger gone, a checkout parked in the window between the
+collection being created and `checkpoint` leaves that `pending` collection uncancelled: the payment
+compensation answers `Ok(None)` for a null `collection_id` and the commerce wrapper treats that as
+"nothing recorded". It is not a money risk — nothing can be authorized before `checkpoint` writes the
+binding, since the stage pipeline refuses to advance past `payment_ready` without it — and the next
+attempt on the cart adopts the collection through `find_reusable_collection_by_cart` +
+`attach_order_to_collection`, which re-points the collection's metadata link at the new operation. The
+alternative (a payment-side resolver plus a request field) was rejected as scope without value while
+every decision-bearing reader sits past `payment_ready`, where the stage invariant guarantees the
+binding. The admin collection command's response may show a null binding for such a parked operation;
+that is display-only.
+
+*Verification for this pass.* `verify-checkout-execution-admission-contract.mjs` passes with the new
+pins and fails against the pristine base commit with **130** findings (115 with the revision that
+predates this pass, so the fifteen new expectations are exactly the removed trigger, its restore
+text, the cart-scoped signature and the write-once binding guard). The 99-gate subset built from every
+verifier that mentions the touched files is identical to the pristine base apart from the four gates
+this branch already owns plus the new arity gate and its self-test; `verify-docs` and `verify-adrs`
+pass. Also verified in this pass: no other migration or gate still installs
+`bind_checkout_payment_collection` or reads the dropped function, and the payment journal may not even
+name `checkout_operations` (the verifier forbids it), so the payment half of the contract stays
+binding-free.
+
+*Also in this pass.* Remediation row 57: a compile error this review had introduced in the
+`rustok-commerce` migration registration (two migrations passed to one `Box::new`) is fixed and guarded
+by a new repository-wide verifier with a negative-fixture self-test, wired into the
+repository-hardening job. Remaining owner decisions from the earlier passes are unchanged
+(ECOM-VERIFY-01 gate re-pins, the gate-canon decision); nothing in this pass depends on them.
 
 ## Appendix A — target design for reconciliation (proposal, owner decision)
 
@@ -1150,10 +1232,10 @@ Payment half — delivered in the same pass, so the trigger can go:
   four payment claim call sites (admin collection command, admin refund command, checkout
   compensation, checkout capture/authorize) turn into a bounded owner error instead of a silent `None`;
 - park-time invalidation instead of a race: every level change stamps the new generation on the
-  collection's non-terminal provider operations **inside the transition's own transaction**
-  (`invalidate_provider_execution_admitted_by` → `stamp_admission_epoch`), so a claim decided under
-  the previous generation fails its own conditional write; the operations already `executing` keep
-  their generation because their invocation was admitted before the park;
+  cart's non-terminal provider operations **inside the transition's own transaction**
+  (`invalidate_provider_execution_admitted_by` → `stamp_admission_epoch_for_cart`), so a claim decided
+  under the previous generation fails its own conditional write; the operations already `executing`
+  keep their generation because their invocation was admitted before the park;
 - `m20261007_000013_drop_provider_execution_checkout_guard` drops the trigger and its PL/pgSQL
   function with the same `up`-drops / `down`-restores pattern as `m20261007_000010`, and
   `verify-checkout-execution-admission-contract.mjs` now checks both halves (payment migration,

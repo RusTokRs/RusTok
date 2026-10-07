@@ -43,6 +43,7 @@ mod m20261007_000011_create_checkout_reconciliation_actions;
 mod m20261007_000012_add_checkout_operation_admission;
 mod m20261007_000013_drop_provider_execution_checkout_guard;
 mod m20261007_000014_add_checkout_operation_admin_list_index;
+mod m20261007_000015_drop_payment_collection_binding_trigger;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -108,6 +109,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20261007_000014_add_checkout_operation_admin_list_index::Migration,
+    ));
+    migrations.push(Box::new(
+        m20261007_000015_drop_payment_collection_binding_trigger::Migration,
     ));
     migrations
 }
@@ -306,6 +310,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     dependencies.push(MigrationDependencyDescriptor::new(
         "m20261007_000014_add_checkout_operation_admin_list_index",
         vec!["m20260713_000009_create_checkout_operations"],
+    ));
+    dependencies.push(MigrationDependencyDescriptor::new(
+        "m20261007_000015_drop_payment_collection_binding_trigger",
+        vec![
+            "m20261007_000014_add_checkout_operation_admin_list_index",
+            "m20260713_000015_bind_checkout_payment_collections",
+        ],
     ));
     dependencies
 }

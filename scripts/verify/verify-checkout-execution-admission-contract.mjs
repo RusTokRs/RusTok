@@ -296,8 +296,18 @@ requireText(
 requireText(paymentJournal, 'pub async fn claim_execution(', 'claim gate entry point');
 requireText(
   paymentJournal,
-  'pub async fn stamp_admission_epoch<C>(',
+  'pub async fn stamp_admission_epoch_for_cart<C>(',
   'park-time generation stamp owner command',
+);
+requireText(
+  paymentJournal,
+  'payment_collection::Column::CartId.eq(cart_id)',
+  'cart-scoped stamp resolves the cart\'s collections',
+);
+requireText(
+  paymentJournal,
+  'provider_operation::Column::PaymentCollectionId.is_in(collection_ids)',
+  'cart-scoped stamp bounds the operation set by the resolved collections',
 );
 requireText(
   paymentJournal,
@@ -441,8 +451,18 @@ requireText(
 );
 requireText(
   journal,
-  '.stamp_admission_epoch(',
+  '.stamp_admission_epoch_for_cart(',
   'park-time generation stamp call',
+);
+requireText(
+  journal,
+  'operation.cart_id,',
+  'the fence passes the cart, not the payment collection binding',
+);
+forbidText(
+  journal,
+  'stamp_admission_epoch_for_cart(\n                txn,\n                operation.tenant_id,\n                operation.payment_collection_id,',
+  'the fence must not read the payment collection binding',
 );
 requireText(
   journal,
@@ -468,6 +488,77 @@ requireText(
   triggerDrop,
   'CREATE TRIGGER payment_provider_operations_checkout_guard',
   'guard restoration in down()',
+);
+
+// The payment-collection binding guard is dropped the same way: the binding
+// write moves to `checkpoint` and the race it closed is fenced on the cart.
+const bindingTriggerDrop = read(
+  'crates/modules/rustok-commerce/src/migrations/m20261007_000015_drop_payment_collection_binding_trigger.rs',
+);
+requireText(
+  bindingTriggerDrop,
+  'DROP TRIGGER IF EXISTS payment_collections_bind_checkout_operation',
+  'binding trigger removal (postgres)',
+);
+requireText(
+  bindingTriggerDrop,
+  'DROP FUNCTION IF EXISTS bind_checkout_payment_collection();',
+  'binding trigger function removal (postgres)',
+);
+requireText(
+  bindingTriggerDrop,
+  'DROP TRIGGER IF EXISTS payment_collections_bind_checkout_operation_insert;',
+  'binding trigger removal (sqlite/mysql insert)',
+);
+requireText(
+  bindingTriggerDrop,
+  'DROP TRIGGER IF EXISTS payment_collections_bind_checkout_operation_update;',
+  'binding trigger removal (sqlite/mysql update)',
+);
+requireText(
+  bindingTriggerDrop,
+  'CREATE OR REPLACE FUNCTION bind_checkout_payment_collection()',
+  'binding trigger restoration in down()',
+);
+requireText(
+  bindingTriggerDrop,
+  'CREATE TRIGGER payment_collections_bind_checkout_operation',
+  'binding trigger restoration in down() (postgres)',
+);
+requireText(
+  bindingTriggerDrop,
+  'CREATE TRIGGER payment_collections_bind_checkout_operation_insert',
+  'binding trigger restoration in down() (sqlite/mysql)',
+);
+requireText(
+  journal,
+  'The scope is the cart, not `operation.payment_collection_id`',
+  'the invalidation documents why it does not read the binding',
+);
+
+// The binding the guard used to write is now write-once in typed Rust: the
+// checkpoint accepts an unbound operation, re-asserts the collection it already
+// carries and refuses to re-point the operation at another one in the same
+// conditional write.
+requireText(
+  journal,
+  '.add(binding.is_null())',
+  'checkpoint accepts an operation without a binding',
+);
+requireText(
+  journal,
+  '.add(binding.eq(payment_collection_id))',
+  'checkpoint re-asserts the collection it already carries',
+);
+requireText(
+  journal,
+  'is already bound to payment collection',
+  'checkpoint refuses to re-point the binding',
+);
+requireText(
+  journal,
+  'The binding is write-once',
+  'the checkpoint documents the write-once binding',
 );
 const commerceMigrationsMod = read('crates/modules/rustok-commerce/src/migrations/mod.rs');
 requireText(
