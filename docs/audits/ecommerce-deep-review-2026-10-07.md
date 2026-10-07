@@ -67,9 +67,9 @@ with its precise location, impact, and required owner decision.
 | ID | Severity | Area | Finding | Status |
 |---|---|---|---|---|
 | ECOM-MONEY-01 | **P1 / money** | Order events | `OrderPlaced.total` uses an unconditional ×100 conversion and `unwrap_or(0)`; wrong scale for 0/3-decimal currencies, silent 0 on overflow. | fixed |
-| ECOM-MONEY-02 | **P1 / money** | Currency policy | Four divergent currency-exponent implementations with no canonical owner; provider table disagrees with platform table for ISK/VUV/MGA/IQD/LYD (possible 100× amount at the PSP). | partially fixed, ADR required |
+| ECOM-MONEY-02 | **P1 / money** | Currency policy | Four divergent currency-exponent implementations with no canonical owner; provider table disagrees with platform table for ISK/VUV/MGA/IQD/LYD (possible 100× amount at the PSP). | fixed (row 62: canonical owner `rustok-core::money` + ADR, every copy deleted, Stripe mapping explicit and tested; the corrected divergence list is ISK/MGA/IQD/LYD — `VUV` agrees in both tables) |
 | ECOM-MONEY-03 | **P1 / money** | Pricing events | `PriceUpdated.new_amount`/`old_amount` use `decimal_to_cents(...).unwrap_or(0)`; silent 0, wrong scale. | fixed |
-| ECOM-MONEY-04 | P2 / money | Promotions, pricing | Money rounding hard-coded to `round_dp(2)` regardless of currency (precision loss for 3-decimal currencies). | fixed (cart), reported (pricing rules) |
+| ECOM-MONEY-04 | P2 / money | Promotions, pricing | Money rounding hard-coded to `round_dp(2)` regardless of currency (precision loss for 3-decimal currencies). | fixed (row 63: cart promotions *and* the pricing price-list preview/rule sites now round through the canonical owner) |
 | ECOM-EVT-01 | **P1 / architecture** | Payment events | `rustok-payment` publishes no outbox events and has no payment/refund event contract; lifecycle is not observable transactively. | needs owner decision |
 | ECOM-EVT-02 | P2 / observability | Checkout events | The checkout journal changed `checkout_operations.status` without publishing any event, so a parked or closed operation was invisible to consumers; the park metric label (`manual`) had drifted from the documented contract label (`manual_reconciliation`). | fixed (typed `checkout.operation.parked` / `checkout.operation.reconciled` family published in the writer's transaction, one shared bounded vocabulary, `scripts/verify/verify-checkout-operation-event-contract.mjs`) |
 | ECOM-ADM-01 | P2 / money | Provider execution guard | `payment_provider_operations_checkout_guard` (`m20260713_000016`) blocks provider execution for `compensation_required`, `compensating`, `reconciliation_required`, `compensated` and `failed` — but not for `completed`, so a provider operation may still enter `executing` after the checkout succeeded, the one terminal status in which no new provider execution can be legitimate. | fixed in the Rust admission contract (level `closed` covers `completed`); the trigger is dropped by `m20261007_000013` and the payment claim gate is the only guard left |
@@ -118,7 +118,8 @@ with its precise location, impact, and required owner decision.
   is wrong for any tenant whose catalog is not EUR/USD-like.
 
 **Fix applied:** conversion is now currency-aware and failure is an error instead of a silent zero
-(see remediation log). A canonical owner for the currency table is still required (ECOM-MONEY-02).
+(see remediation log). The canonical owner for the currency table now exists (`rustok_core::money`,
+ECOM-MONEY-02, row 62).
 
 ### ECOM-MONEY-02 — no canonical owner for currency exponents
 
@@ -131,23 +132,29 @@ with its precise location, impact, and required owner decision.
 | `rustok-order/src/services/order.rs:1158` `decimal_to_minor_units` | — | — | always 2 decimals, ×100 |
 | `rustok-pricing/src/services/pricing.rs:1648` `decimal_to_cents` | — | — | always 2 decimals, `round_dp(0)` |
 
-Divergences between the cart table and the Stripe table: **ISK, VUV, MGA, IQD, LYD**. For any of
-those currencies the amount that reaches the PSP is off by a factor of 100 (or loses a decimal)
-relative to the platform's own internal accounting. Because there is no canonical money type or
-module (`rustok-core` has no money helper; `rustok-commerce-foundation` is the declared shared
-e-commerce foundation but is not a dependency of `rustok-order`/`rustok-payment`), each crate keeps
-its own copy and nothing detects drift.
+Divergences between the cart table and the Stripe table: **ISK, MGA, IQD, LYD** (this first pass
+also listed `VUV`, which both tables record with exponent 0 — the corrected list is what the adapter
+tests assert, row 62). For the divergent currencies the amount that reaches the PSP is off by a
+factor of 100 (or loses a decimal) relative to the platform's own internal accounting. Because there
+was no canonical money type or module (`rustok-core` had no money helper;
+`rustok-commerce-foundation` is the declared shared e-commerce foundation but is not a dependency of
+`rustok-order`/`rustok-payment`), each crate kept its own copy and nothing detected drift.
 
 **Impact:** customer charged 100× (or 1/100×) the intended amount for affected currencies; hard to
 notice in tests that use USD-like fixtures.
 
-**Fix applied:** the order and pricing event conversions were made currency-aware using the
-platform table (values copied from `rustok-cart`, values documented at the call site). **Not fixed:**
-the provider table divergence — a PSP adapter legitimately follows the PSP's own minor-unit
-contract, so the correct remediation is an ADR that declares the canonical owner
-(recommended: `rustok-commerce-foundation::money` with `currency_exponent`, `to_minor_units`,
-`from_minor_units`, `round_to_currency`) and rewires `rustok-cart`, `rustok-order`, `rustok-pricing`
-plus a Stripe-specific mapping with an explicit test per currency.
+**Fix applied:** the order and pricing event conversions were first made currency-aware against the
+platform table, and the canonical owner has now landed (row 62): `rustok-core::money` holds the
+exponent table, normalization, currency-aware rounding and the exact/rounding minor-unit conversions
+with typed failures, and every private copy — cart, order, pricing, pricing-persistence, the cart
+marketplace snapshot validator and the commerce reversal adapter — was deleted in the same change.
+The provider divergence is handled as the PSP contract it is: `rustok-payment` keeps an explicit,
+tested divergence list (MGA = 0, ISK = 2, IQD = 2, LYD = 2 per Stripe's published amount contract)
+and rejects fractional ISK amounts, which Stripe documents as unchargeable. ADR
+`DECISIONS/2026-10-07-canonical-money-owner.md` records the decision and supersedes this section's
+provisional `rustok-commerce-foundation::money` recommendation (`AGENTS.md` §5 requires platform
+kernel primitives in `crates/libs/*`; the foundation crate is a module crate and
+`rustok-order`/`rustok-payment` would have needed a new module edge).
 
 ### ECOM-MONEY-03 — `PriceUpdated` amounts are silently zeroed
 
@@ -702,8 +709,10 @@ currency. For 3-decimal currencies this truncates a discount/promo to the wrong 
 *order* then carries an amount the provider cannot represent (`stripe.to_minor_units` rejects excess
 precision, `stripe_provider.rs:740-744`, failing the checkout). **Cart-side call sites are fixed**
 via `round_to_currency(amount, currency_code)` (`helpers.rs:1377`, all five promotion sites and the
-persisted adjustment); the pricing price-list rule sites are reported (they need the same treatment
-when ECOM-MONEY-02's canonical owner lands). Note the pricing percentage helper at `pricing.rs:2390`
+persisted adjustment); the pricing price-list rule sites are fixed too (row 63) —
+`preview_scoped_percentage_discount` and `apply_price_list_rule_to_resolved_price` now round through
+`rustok_core::money::round_to_currency` and propagate a typed error. Note the pricing percentage
+helper at `pricing.rs:2390`
 uses `round_dp(2)` for a *percentage*, which is a deliberate presentation choice and is not a money
 rounding defect.
 
@@ -833,13 +842,15 @@ rounding defect.
 | 59 | `crates/modules/rustok-payment/src/{services/payment.rs,checkout_compensation.rs}` + `crates/modules/rustok-commerce/src/services/checkout_compensation_owner_ports.rs` + `crates/utils/rustok-migrations/tests/checkout_reconciliation_smoke.rs` | the null-binding window left by the binding-guard removal is closed instead of only documented: `PaymentService::find_collection_by_cart_checkout_operation` (`pub(crate)`) resolves an attempt's collection from `metadata.checkout.operation_id` for a tenant and a cart with no status filter, `compensate_checkout_payment` uses it when the request carries no collection id and answers `Ok(None)` only when the cart holds no collection of that operation, the request carries `cart_id` (as the order compensation request always has), and the commerce wrapper compares the snapshot with the binding only when the journal recorded one. The smoke test `compensation_resolves_the_collection_before_the_binding_is_written` covers the cancel and the foreign-checkout refusal. The already-failing `verify-payment-checkout-compensation-local-context` gate pins the replaced owner shape and joins the ECOM-VERIFY-01 re-pin batch; every other verifier over the touched files reports the same findings as the pristine base. |
 | 60 | `crates/modules/rustok-commerce/src/services/{checkout_inventory_order_adoption.rs,fulfillment_orchestration.rs,collection_owner.rs,collection_translation.rs}` | ECOM-PANIC-01 remainder: the two reachable money-path panics are gone — the adoption lookup answers a typed `Conflict` naming the reservation and the cart line (with the earlier-validation invariant stated at the branch), and the fulfillment canonical-group lookup returns the typed `Validation` error instead of `.expect("requested items already validated as non-empty")` — and the two `digest_json` helpers carry `// INVARIANT:` notes explaining why serializing an already-parsed `serde_json::Value` cannot produce a partial hash. The third site, `marketplace_financial_runtime::financial_port`, is left as a composition-time fail-fast and recorded as an owner decision: turning it into a typed error travels through four service constructors and their callers. All five verifiers that read the four touched files report the same findings on this tree and on `origin/main`. |
 | 61 | `crates/modules/rustok-cart/storefront/src/ui/leptos.rs` | ECOM-UI-01: the cart drawer's non-empty branch read `cart.unwrap()`. The value was derived from `cart` one line above (`items`), so the panic was unreachable, but it stayed a latent money-path-adjacent panic for any future second source of `items`. The branch now borrows `cart.as_ref()` and returns an empty view on the impossible `None`, with the derivation invariant stated at the branch — no panic, no duplicated empty state. `verify-cart-storefront-boundary` and `verify-ui-client-dependency-boundary` are green on this tree and on `origin/main`. |
+| 62 | `crates/libs/rustok-core/src/money.rs` + `crates/libs/rustok-core/{Cargo.toml,src/lib.rs}` + `crates/modules/rustok-{cart,order,pricing,pricing-persistence,commerce,payment}/…` | ECOM-MONEY-02: `rustok-core::money` is now the canonical owner — ISO 4217 exponent tables (zero/three/four decimals, undefined minor units), currency-code normalization, currency-aware rounding (`MidpointAwayFromZero`) and exact/rounding major↔minor conversions, all answering the typed `MoneyError` instead of a silent two-decimal guess. Every duplicate was deleted in the same change: cart `currency_exponent`/`decimal_to_minor_units`, order `currency_exponent`/`decimal_to_minor_units`, pricing `currency_exponent`/`decimal_to_minor_units`/`decimal_to_cents`, pricing-persistence `decimal_to_cents` (now `legacy_amount_units`, documented as the derived two-decimal mirror), cart `marketplace_snapshot::validate_decimal_unit_price` and commerce `marketplace_provider_reversal_event_adapter::decimal_to_minor_exact` (exponent-explicit, through the owner). Failures are no longer masked: `.unwrap_or_default()`/`.unwrap_or(snapshot.unit_amount)` on the cart marketplace snapshot path became typed errors and the subtotal uses a checked multiply. `rustok-payment` keeps Stripe's contract as an explicit tested divergence table (MGA = 0, ISK = 2, IQD = 2, LYD = 2) and rejects fractional ISK amounts; the first pass's `VUV` entry was corrected (both tables record 0). ADR `DECISIONS/2026-10-07-canonical-money-owner.md`; money unit tests added; the 213-verifier sweep reports the same verdicts as before the change (98 PASS / 115 FAIL). |
+| 63 | `crates/modules/rustok-pricing/src/services/pricing.rs` | ECOM-MONEY-04 (pricing half): the price-list preview and rule application rounded every discounted amount with `round_dp(2)`, which loses the third decimal of KWD/BHD and leaves invalid fractions on JPY/ISK. Both sites now round through `rustok_core::money::round_to_currency` at the currency's precision; `apply_price_list_rule_to_resolved_price` returns `CommerceResult<ResolvedPrice>` and the resolver propagates the typed error instead of substituting a value. |
 
 **Not applied (owner decision required):** ECOM-PANIC-01 remainder (the host-composition panic in
 `marketplace_financial_runtime::financial_port` — fail-fast on a missing port; a typed error has to
 travel through four service constructors and their callers), ECOM-EVT-01 (payment events — ADR + composition roots),
 ECOM-DUP-01 (legacy checkout removal — intentional deletion), ECOM-COMP-02 (auto-refund policy for
 captured-then-failed checkouts — the manual path, the bounded retry loop and the alerting counters
-now exist, the automatic refund and the outbox events do not), ECOM-ZERO-01 (zero-total checkout), ECOM-MONEY-02 (canonical money owner — ADR),
+now exist, the automatic refund and the outbox events do not), ECOM-ZERO-01 (zero-total checkout),
 ECOM-DUP-02/ANALYTICS-01 (metric ownership + currency dimension), ECOM-REFUND-01 (refund owner).
 The verification pass added one more, and the binding-guard pass resolved it: the
 payment-collection binding trigger (`m20260713_000015_bind_checkout_payment_collections`) was a *second*
