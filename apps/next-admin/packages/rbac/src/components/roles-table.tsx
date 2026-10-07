@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from '@rustok/next-fluent';
 import {
   Table,
   TableBody,
@@ -24,13 +25,20 @@ import {
   IconShieldLock,
   IconUserCheck,
   IconUsers,
-  IconKey
+  IconKey,
+  IconPlus,
+  IconEdit,
+  IconTrash,
+  IconLock
 } from '@tabler/icons-react';
 import type { RoleInfo } from '../api/roles';
 
 interface RolesTableProps {
   roles: RoleInfo[];
   onAssignRole?: (roleSlug: string) => void;
+  onEditRole?: (role: RoleInfo) => void;
+  onDeleteRole?: (role: RoleInfo) => void;
+  onCreateRole?: () => void;
 }
 
 const ROLE_BADGE_VARIANT: Record<
@@ -43,14 +51,21 @@ const ROLE_BADGE_VARIANT: Record<
   customer: 'outline'
 };
 
-const ROLE_DESCRIPTION: Record<string, string> = {
+const DEFAULT_ROLE_DESCRIPTION: Record<string, string> = {
   super_admin: 'Full unrestricted platform and tenant governance privileges',
   admin: 'Operational administrative control across modules and settings',
   manager: 'Catalog, content, orders, and fulfillment operations',
   customer: 'Standard storefront identity with read-only public access'
 };
 
-export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
+export function RolesTable({
+  roles,
+  onAssignRole,
+  onEditRole,
+  onDeleteRole,
+  onCreateRole
+}: RolesTableProps) {
+  const t = useTranslations('rbac');
   const [search, setSearch] = React.useState('');
   const [expandedRole, setExpandedRole] = React.useState<string | null>(null);
 
@@ -65,6 +80,14 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
     return set.size;
   }, [roles]);
 
+  const customRolesCount = React.useMemo(() => {
+    return roles.filter(
+      (r) =>
+        !r.isSystem &&
+        !['super_admin', 'admin', 'manager', 'customer'].includes(r.slug)
+    ).length;
+  }, [roles]);
+
   const filteredRoles = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return roles;
@@ -72,6 +95,7 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
       (role) =>
         role.displayName.toLowerCase().includes(q) ||
         role.slug.toLowerCase().includes(q) ||
+        (role.description && role.description.toLowerCase().includes(q)) ||
         role.permissions.some((p) => p.toLowerCase().includes(q))
     );
   }, [roles, search]);
@@ -83,14 +107,14 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
         <Card className='shadow-none border'>
           <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
             <CardTitle className='text-xs font-medium text-muted-foreground'>
-              Platform Roles
+              {t('metrics-total-roles')}
             </CardTitle>
             <IconShieldLock className='h-4 w-4 text-primary' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>{roles.length}</div>
             <p className='text-xs text-muted-foreground mt-1'>
-              Active security archetypes
+              {t('metrics-total-roles-desc')}
             </p>
           </CardContent>
         </Card>
@@ -98,14 +122,14 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
         <Card className='shadow-none border'>
           <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
             <CardTitle className='text-xs font-medium text-muted-foreground'>
-              Unique Permissions
+              {t('metrics-permissions')}
             </CardTitle>
             <IconKey className='h-4 w-4 text-emerald-600' />
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>{totalUniquePermissions}</div>
             <p className='text-xs text-muted-foreground mt-1'>
-              Catalogued across all modules
+              {t('metrics-permissions-desc')}
             </p>
           </CardContent>
         </Card>
@@ -113,7 +137,7 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
         <Card className='shadow-none border'>
           <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
             <CardTitle className='text-xs font-medium text-muted-foreground'>
-              Administrative Roles
+              {t('metrics-admin-roles')}
             </CardTitle>
             <IconUserCheck className='h-4 w-4 text-amber-600' />
           </CardHeader>
@@ -126,7 +150,7 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
               }
             </div>
             <p className='text-xs text-muted-foreground mt-1'>
-              Super Admin & Admin tiers
+              {t('metrics-admin-roles-desc')}
             </p>
           </CardContent>
         </Card>
@@ -134,36 +158,41 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
         <Card className='shadow-none border'>
           <CardHeader className='flex flex-row items-center justify-between pb-2 space-y-0'>
             <CardTitle className='text-xs font-medium text-muted-foreground'>
-              Standard Roles
+              {t('metrics-custom-roles')}
             </CardTitle>
             <IconUsers className='h-4 w-4 text-sky-600' />
           </CardHeader>
           <CardContent>
-            <div className='text-2xl font-bold'>
-              {
-                roles.filter(
-                  (r) => r.slug !== 'super_admin' && r.slug !== 'admin'
-                ).length
-              }
-            </div>
+            <div className='text-2xl font-bold'>{customRolesCount}</div>
             <p className='text-xs text-muted-foreground mt-1'>
-              Staff & Customer tiers
+              {t('metrics-custom-roles-desc')}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search Bar */}
+      {/* Search & Actions Bar */}
       <div className='flex items-center justify-between gap-4'>
         <div className='relative flex-1 max-w-sm'>
           <IconSearch className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
           <Input
-            placeholder='Search roles or permissions...'
+            placeholder={t('search-placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className='pl-9'
           />
         </div>
+
+        {onCreateRole && (
+          <Button
+            size='sm'
+            onClick={onCreateRole}
+            className='flex items-center gap-1.5'
+          >
+            <IconPlus className='h-4 w-4' />
+            <span>{t('btn-create-role')}</span>
+          </Button>
+        )}
       </div>
 
       {/* Main Table */}
@@ -171,18 +200,24 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
         <Table>
           <TableHeader>
             <TableRow className='bg-muted/50'>
-              <TableHead className='w-[220px]'>Role</TableHead>
-              <TableHead className='w-[130px]'>Slug</TableHead>
-              <TableHead className='w-[120px]'>Permissions</TableHead>
-              <TableHead className='min-w-[300px]'>Description & Preview</TableHead>
-              <TableHead className='w-[150px] text-right'>Actions</TableHead>
+              <TableHead className='w-[200px]'>{t('table-role')}</TableHead>
+              <TableHead className='w-[130px]'>{t('table-slug')}</TableHead>
+              <TableHead className='w-[100px]'>{t('table-type')}</TableHead>
+              <TableHead className='w-[110px]'>{t('table-permissions')}</TableHead>
+              <TableHead className='min-w-[260px]'>{t('table-description')}</TableHead>
+              <TableHead className='w-[220px] text-right'>{t('table-actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredRoles.map((role) => {
               const isExpanded = expandedRole === role.slug;
+              const isSystem =
+                Boolean(role.isSystem) ||
+                ['super_admin', 'admin', 'manager', 'customer'].includes(role.slug);
               const description =
-                ROLE_DESCRIPTION[role.slug] || 'Custom platform role';
+                role.description ||
+                DEFAULT_ROLE_DESCRIPTION[role.slug] ||
+                'Custom platform role';
 
               return (
                 <React.Fragment key={role.slug}>
@@ -200,13 +235,21 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
                       </span>
                     </TableCell>
                     <TableCell>
+                      <Badge
+                        variant={isSystem ? 'secondary' : 'outline'}
+                        className='text-[10px] font-medium'
+                      >
+                        {isSystem ? t('badge-system') : t('badge-custom')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant='secondary' className='font-mono text-xs'>
                         {role.permissions.length} perms
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className='space-y-1.5'>
-                        <p className='text-xs text-muted-foreground'>
+                        <p className='text-xs text-muted-foreground line-clamp-1'>
                           {description}
                         </p>
                         <button
@@ -217,8 +260,8 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
                           className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs cursor-pointer font-medium transition-colors'
                         >
                           {isExpanded
-                            ? 'Hide permissions'
-                            : `View ${role.permissions.length} permissions`}
+                            ? t('action-hide-perms')
+                            : t('action-view-perms', { count: role.permissions.length })}
                           <IconChevronDown
                             className={`h-3 w-3 transition-transform ${
                               isExpanded ? 'rotate-180' : ''
@@ -228,25 +271,61 @@ export function RolesTable({ roles, onAssignRole }: RolesTableProps) {
                       </div>
                     </TableCell>
                     <TableCell className='text-right'>
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={() => onAssignRole?.(role.slug)}
-                        className='text-xs'
-                      >
-                        Assign to User
-                      </Button>
+                      <div className='flex items-center justify-end gap-1.5'>
+                        {onEditRole && (
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => onEditRole(role)}
+                            className='h-8 px-2 text-xs'
+                            title={t('action-edit')}
+                          >
+                            <IconEdit className='h-3.5 w-3.5 mr-1' />
+                            <span>{t('action-edit')}</span>
+                          </Button>
+                        )}
+                        {onAssignRole && (
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            onClick={() => onAssignRole(role.slug)}
+                            className='h-8 px-2 text-xs'
+                          >
+                            {t('action-assign')}
+                          </Button>
+                        )}
+                        {onDeleteRole && (
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            onClick={() => onDeleteRole(role)}
+                            disabled={isSystem}
+                            title={isSystem ? t('system-protected-tooltip') : t('action-delete')}
+                            className='h-8 w-8 p-0 text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:hover:bg-transparent'
+                          >
+                            {isSystem ? (
+                              <IconLock className='h-3.5 w-3.5 text-muted-foreground' />
+                            ) : (
+                              <IconTrash className='h-3.5 w-3.5' />
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
 
                   {/* Expanded permissions drawer */}
                   {isExpanded && (
                     <TableRow className='bg-muted/20'>
-                      <TableCell colSpan={5} className='p-4'>
+                      <TableCell colSpan={6} className='p-4'>
                         <div className='space-y-2'>
                           <div className='flex items-center justify-between text-xs text-muted-foreground font-medium'>
-                            <span>Granted Permissions for {role.displayName}:</span>
-                            <span>{role.permissions.length} total</span>
+                            <span>
+                              {t('perms-granted-for', { name: role.displayName })}
+                            </span>
+                            <span>
+                              {t('perms-total', { count: role.permissions.length })}
+                            </span>
                           </div>
                           <div className='flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-2 bg-background rounded-lg border'>
                             {role.permissions.map((perm) => (

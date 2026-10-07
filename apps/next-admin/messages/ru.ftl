@@ -661,3 +661,78 @@ modules-depends_on = Зависит от
 modules-toast-enabled = Модуль успешно включён
 modules-toast-disabled = Модуль успешно отключён
 modules-error-load = Не удалось загрузить модули
+
+# RBAC Management
+rbac-title = Роли и разрешения
+rbac-subtitle = Управление контролем доступа, системными и пользовательскими ролями, а также детальными разрешениями всех модулей платформы.
+rbac-tab-roles = Роли ({ $count })
+rbac-tab-permissions = Каталог разрешений
+rbac-btn-create-role = Создать роль
+rbac-btn-assign-role = Назначить роль пользователю
+rbac-metrics-total-roles = Роли платформы
+rbac-metrics-total-roles-desc = Активные архетипы безопасности
+rbac-metrics-permissions = Уникальных разрешений
+rbac-metrics-permissions-desc = Каталогизировано по всем модулям
+rbac-metrics-admin-roles = Административные роли
+rbac-metrics-admin-roles-desc = Уровни Super Admin и Admin
+rbac-metrics-custom-roles = Пользовательские роли
+rbac-metrics-custom-roles-desc = Динамические роли тенанта
+rbac-search-placeholder = Поиск ролей или разрешений...
+rbac-table-role = Роль
+rbac-table-slug = Слаг
+rbac-table-type = Тип
+rbac-table-permissions = Разрешения
+rbac-table-description = Описание и просмотр
+rbac-table-actions = Действия
+rbac-badge-system = Системная
+rbac-badge-custom = Пользовательская
+rbac-action-edit = Редактировать права
+rbac-action-assign = Назначить пользователю
+rbac-action-delete = Удалить роль
+rbac-action-hide-perms = Скрыть разрешения
+rbac-action-view-perms = Показать { $count } разрешений
+rbac-perms-granted-for = Выданные разрешения для { $name }:
+rbac-perms-total = всего { $count }
+rbac-system-protected-tooltip = Системные роли нельзя удалить
+rbac-superadmin-locked-notice = Суперадминистратор обладает полным неизменяемым авторитетом на платформе. Все разрешения выданы и не могут быть ограничены.
+
+# Permission Matrix
+rbac-matrix-title = Матрица разрешений
+rbac-matrix-search-placeholder = Фильтр по модулям или разрешениям...
+rbac-matrix-select-all = Выбрать все
+rbac-matrix-clear-all = Снять все
+rbac-matrix-selected-count = Выбрано { $selected } из { $total } разрешений
+rbac-matrix-module-all = Выбрать все в модуле
+rbac-matrix-module-none = Снять все в модуле
+
+# Create Role Dialog
+rbac-create-dialog-title = Создание пользовательской роли
+rbac-create-dialog-desc = Задайте новую роль и определите точные разрешения для сервисов платформы.
+rbac-field-name = Название роли
+rbac-field-name-placeholder = например, Редактор контента
+rbac-field-slug = Слаг (идентификатор)
+rbac-field-slug-placeholder = например, content_editor
+rbac-field-slug-help = Уникальный идентификатор из строчных латинских букв, цифр, дефисов или подчеркиваний.
+rbac-field-description = Описание
+rbac-field-description-placeholder = Опишите обязанности и уровень доступа этой роли...
+rbac-btn-cancel = Отмена
+rbac-btn-create = Создать роль
+rbac-btn-saving = Сохранение...
+
+# Edit Role Dialog
+rbac-edit-dialog-title = Редактирование роли: { $name }
+rbac-edit-dialog-desc = Измените параметры роли и настройте разрешения в матрице доступа.
+rbac-btn-save = Сохранить изменения
+
+# Delete Role Dialog
+rbac-delete-dialog-title = Удаление роли: { $name }
+rbac-delete-dialog-desc = Вы уверены, что хотите удалить эту роль? Это действие необратимо.
+rbac-delete-dialog-warning = Системные роли удалить нельзя. Роли, назначенные активным пользователям, сначала необходимо переназначить.
+rbac-btn-delete = Удалить роль
+rbac-btn-deleting = Удаление...
+
+# Toasts
+rbac-toast-create-success = Роль успешно создана
+rbac-toast-update-success = Роль успешно обновлена
+rbac-toast-delete-success = Роль успешно удалена
+rbac-toast-error = Произошла ошибка

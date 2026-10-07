@@ -10,6 +10,7 @@ const FALLBACK_SYSTEM_ROLES: RoleInfo[] = [
   {
     slug: 'super_admin',
     displayName: 'Super Admin',
+    isSystem: true,
     permissions: [
       'users:manage',
       'tenants:manage',
@@ -26,6 +27,7 @@ const FALLBACK_SYSTEM_ROLES: RoleInfo[] = [
   {
     slug: 'admin',
     displayName: 'Admin',
+    isSystem: true,
     permissions: [
       'users:manage',
       'settings:manage',
@@ -41,6 +43,7 @@ const FALLBACK_SYSTEM_ROLES: RoleInfo[] = [
   {
     slug: 'manager',
     displayName: 'Manager',
+    isSystem: true,
     permissions: [
       'products:read',
       'products:create',
@@ -55,6 +58,7 @@ const FALLBACK_SYSTEM_ROLES: RoleInfo[] = [
   {
     slug: 'customer',
     displayName: 'Customer',
+    isSystem: true,
     permissions: [
       'products:read',
       'categories:read',

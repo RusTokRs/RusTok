@@ -158,6 +158,23 @@ fn RbacRolesGridSection(roles: Vec<RbacRoleInfo>, locale: Option<String>) -> imp
                 <span class="font-mono text-xs text-muted-foreground">{item.slug}</span>
             }
             .into_any(),
+            "type" => {
+                let is_system = item.is_system;
+                view! {
+                    <span class=if is_system {
+                        "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                    } else {
+                        "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/20"
+                    }>
+                        {if is_system {
+                            if is_ru { "Системная" } else { "System" }
+                        } else {
+                            if is_ru { "Пользовательская" } else { "Custom" }
+                        }}
+                    </span>
+                }
+                .into_any()
+            }
             "permissions_count" => {
                 let count = item.permissions.len();
                 view! {

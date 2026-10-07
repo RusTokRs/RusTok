@@ -41,6 +41,9 @@ pub fn rbac_role_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
         GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
             .width(160)
             .align(ColumnAlign::Left),
+        GridColumnDef::new("type", if is_ru { "Тип" } else { "Type" })
+            .width(130)
+            .align(ColumnAlign::Center),
         GridColumnDef::new(
             "permissions_count",
             if is_ru { "Разрешения" } else { "Permissions" },
@@ -213,8 +216,11 @@ mod tests {
                     permissions: vec!["catalog.read".to_string()],
                 }],
                 roles: vec![RbacRoleInfo {
+                    id: None,
                     slug: "admin".to_string(),
                     display_name: "Admin".to_string(),
+                    description: None,
+                    is_system: true,
                     permissions: vec!["settings:read".to_string()],
                 }],
             },
@@ -275,13 +281,19 @@ mod tests {
     fn filter_rbac_roles_by_name_and_permission() {
         let roles = vec![
             RbacRoleInfo {
+                id: None,
                 slug: "admin".to_string(),
                 display_name: "Admin".to_string(),
+                description: None,
+                is_system: true,
                 permissions: vec!["settings:read".to_string(), "users:create".to_string()],
             },
             RbacRoleInfo {
+                id: None,
                 slug: "customer".to_string(),
                 display_name: "Customer".to_string(),
+                description: None,
+                is_system: true,
                 permissions: vec!["catalog:read".to_string()],
             },
         ];
@@ -306,8 +318,11 @@ mod tests {
         ];
         let roles = vec![
             RbacRoleInfo {
+                id: None,
                 slug: "admin".to_string(),
                 display_name: "Admin".to_string(),
+                description: None,
+                is_system: true,
                 permissions: vec!["users:create".to_string(), "catalog:read".to_string()],
             },
         ];
