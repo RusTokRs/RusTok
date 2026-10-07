@@ -23,6 +23,7 @@ import {
   deleteProductImage,
   reorderProductImages,
   saveProductAttributeValues,
+  setVariantAxes,
   getCategoryEffectiveForm,
   fetchProductRelations,
   addProductRelation,
@@ -53,7 +54,9 @@ import {
   type CreateBundleInput,
   type UpdateBundleInput,
   type AddBundleItemInput,
-  type ProductBundle
+  type ProductBundle,
+  type VariantAxisConfig,
+  type SetVariantAxesInput
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -278,6 +281,16 @@ export async function updateVariantAction(
 export async function deleteVariantAction(id: string): Promise<boolean> {
   const opts = await getAuthOpts();
   return deleteVariant(opts, id);
+}
+
+export async function setVariantAxesAction(
+  productId: string,
+  input: SetVariantAxesInput
+): Promise<VariantAxisConfig[]> {
+  const opts = await getAuthOpts();
+  const axes = await setVariantAxes(opts, productId, input);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return axes;
 }
 
 export async function addImageAction(

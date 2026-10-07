@@ -12,7 +12,7 @@ Leptos admin UI package for the `rustok-product` module.
 - Exposes the product catalog admin root view used by `apps/admin`.
 - Keeps product list/create/edit/publish/archive workflow inside the product-owned package.
 - Keeps admin shell copy, profile-panel state, list/status/filter, list-card view-model, editor shell view-model, shipping-profile, selected-summary, pricing-preview and pricing deep-link presentation helpers in framework-agnostic `src/core.rs`, leaving Leptos as the render/effect adapter.
-- Isolates Leptos rendering in `src/ui/leptos.rs`, with crate root re-exporting `ProductAdmin`.
+- Isolates Leptos rendering in `src/ui/*`: `src/ui/root.rs` owns the mounted router shell, `src/ui/product_grid.rs`, `src/ui/product_editor.rs`, `src/ui/attributes.rs` and `src/ui/categories.rs` own the routed pages, and `src/ui/leptos.rs` owns the shared sections those pages mount (typed attribute values, variant axes, category-schema authoring). The crate root re-exports the mounted `ui::root::ProductAdmin`.
 - Routes admin data operations through `src/transport.rs`, with GraphQL operations in `src/transport/graphql_adapter.rs` and native server functions in `src/transport/native_server_adapter.rs`.
 - Builds native catalog schema services from `HostRuntimeContext` DB and typed `TransactionalEventBus` host handles without a package-local framework runtime or framework-specific outbox adapter.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
@@ -22,9 +22,15 @@ Leptos admin UI package for the `rustok-product` module.
 
 ## Entry Points
 
-- `ProductAdmin` - root admin view re-exported from `ui::leptos` and rendered from the host admin registry.
+- `ProductAdmin` - mounted root admin view re-exported from `ui::root` and rendered from the host admin registry.
+- `ProductGridPage`, `ProductEditorPage`, `AttributesPage`, `CategoriesPage` - routed pages of the mounted surface.
 - `core::*` helpers for product admin shell copy, profile-panel state, product list/status/filter labels, list-card view-models, editor shell view-models, selected-summary view-models, pricing previews and pricing deep links.
 - `transport::*` facade functions for product admin native and GraphQL operations.
+
+### Non-mounted reference compositions
+
+`ui::leptos::ProductAdmin` (single-screen composition) and `ui::catalog_admin::ProductAdmin` (the same screen behind the catalog-controls query shell, 113 lines) are **not mounted**: the host code generator mounts `ui::root::ProductAdmin`. They are kept as the canonical catalog-controls reference pinned by the catalog verification suite, and they are not advertised as entry points.
+Every capability they expose is reachable on the mounted surface: list controls and search in `ui/product_grid.rs` + `ui/catalog_admin.rs`, editor shell and media in `ui/product_editor.rs`, typed attribute values through `ProductAttributeValuesSection`, variant axes through `ProductVariantAxesSection`, attribute/schema authoring in `ui/attributes.rs`, and category work in `ui/categories.rs`. New feature work belongs on the mounted pages and the shared sections; the reference compositions must not grow.
 
 ## Interactions
 

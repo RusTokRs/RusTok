@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use rustok_graphql::GraphqlHttpError;
 
-use super::lifecycle_retry_identity::{
+use crate::lifecycle_retry_identity::{
     ProductAdminLifecycleOperation, ProductAdminLifecycleRetryIdentity,
 };
 use super::product_lifecycle_graphql;
@@ -84,6 +84,30 @@ fn draft_intent(
     format!(
         "operation={};tenant={tenant_id:?};actor={actor_id:?};product={product_id:?};draft={draft:?}",
         lifecycle_operation_segment(operation),
+    )
+}
+
+fn variant_axes_intent(
+    tenant_id: &str,
+    actor_id: &str,
+    product_id: &str,
+    draft: &crate::model::SetVariantAxesDraft,
+) -> String {
+    let axes = draft
+        .axes
+        .iter()
+        .map(|axis| {
+            format!(
+                "{}@{}:{:?}",
+                axis.attribute_id,
+                axis.position.unwrap_or_default(),
+                axis.allowed_option_ids,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(
+        "operation=set-variant-axes;tenant={tenant_id:?};actor={actor_id:?};product={product_id:?};axes={axes}"
     )
 }
 
@@ -199,6 +223,34 @@ pub(crate) async fn delete_product(
         user_id,
         id,
         idempotency_key,
+    )
+    .await;
+    if result.is_ok() {
+        mark_lifecycle_succeeded(&slot);
+    }
+    result
+}
+
+pub(crate) async fn set_variant_axes(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    product_id: String,
+    draft: crate::model::SetVariantAxesDraft,
+) -> Result<Vec<crate::model::VariantAxisConfig>, GraphqlHttpError> {
+    let operation = ProductAdminLifecycleOperation::SetVariantAxes;
+    let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&product_id));
+    let intent = variant_axes_intent(&tenant_id, &user_id, &product_id, &draft);
+    let idempotency_key = retained_caller_key(&slot, operation, intent);
+    let result = product_lifecycle_graphql::set_variant_axes(
+        token,
+        tenant_slug,
+        tenant_id,
+        user_id,
+        product_id,
+        idempotency_key,
+        draft,
     )
     .await;
     if result.is_ok() {

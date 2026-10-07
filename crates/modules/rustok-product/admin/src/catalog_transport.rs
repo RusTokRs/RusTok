@@ -644,5 +644,5 @@ pub(crate) async fn clear_detached_product_attribute_values(
 /// Image and variant writes keep their retry identity in the private gateway.
 pub(crate) use legacy::{
     add_product_image, create_product_variant, delete_product_image, delete_product_variant,
-    reorder_product_images, update_product_image, update_product_variant,
+    reorder_product_images, set_variant_axes, update_product_image, update_product_variant,
 };

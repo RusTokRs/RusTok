@@ -9,6 +9,7 @@ use crate::model::{
     ProductAttributeDraft, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary,
 };
+use super::leptos::ProductSchemaAuthoringCard;
 use crate::catalog_transport;
 
 #[component]
@@ -579,6 +580,7 @@ pub fn AttributesPage() -> impl IntoView {
                                 </button>
                             </div>
                         </div>
+                        <ProductSchemaAuthoringCard locale=locale_store.get_value() />
                     }.into_any()
                 } else {
                     // Attributes Tab View

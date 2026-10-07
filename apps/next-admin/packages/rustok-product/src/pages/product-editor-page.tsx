@@ -16,6 +16,7 @@ import { ProductHeaderBar } from '../components/products/product-header-bar';
 import { ProductGeneralCard } from '../components/products/product-general-card';
 import { ProductCategoryCard } from '../components/products/product-category-card';
 import { ProductVariantsCard } from '../components/products/product-variants-card';
+import { ProductVariantAxesCard } from '../components/products/product-variant-axes-card';
 import { ProductMediaCard } from '../components/products/product-media-card';
 import { ProductRelationsCard } from '../components/products/product-relations-card';
 import { ProductBundleCard } from '../components/products/product-bundle-card';
@@ -23,6 +24,8 @@ import { ProductSeoCard } from '../components/products/product-seo-card';
 import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type {
+  SetVariantAxesInput,
+  VariantAxisConfig,
   ProductListItem,
   ProductDetail,
   ProductTranslation,
@@ -84,6 +87,10 @@ export interface ProductEditorPageProps {
     variant: Partial<ProductVariant>
   ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
+  onSetVariantAxes?: (
+    productId: string,
+    input: SetVariantAxesInput
+  ) => Promise<VariantAxisConfig[] | void>;
   onAddImage?: (
     productId: string,
     input: { mediaId: string; altText?: string }
@@ -123,6 +130,7 @@ export function ProductEditorPage({
   onAddVariant,
   onUpdateVariant,
   onDeleteVariant,
+  onSetVariantAxes,
   onAddImage,
   onDeleteImage,
   onReorderImages,
@@ -487,6 +495,20 @@ export function ProductEditorPage({
             onAttributeValueChange={handleAttributeValueChange}
             disabled={isSaving}
           />
+
+          {/* Variant axes (ADR identity model) */}
+          {initialProduct?.id ? (
+            <ProductVariantAxesCard
+              axes={initialProduct.variantAxes ?? []}
+              effectiveForm={initialEffectiveForm}
+              disabled={isSaving}
+              onSaveAxes={
+                onSetVariantAxes
+                  ? (input) => onSetVariantAxes(initialProduct.id, input)
+                  : undefined
+              }
+            />
+          ) : null}
 
           {/* Pricing & Variants Matrix */}
           <ProductVariantsCard

@@ -5,6 +5,10 @@ pub mod catalog_controls;
 pub mod catalog_transport;
 pub mod core;
 mod i18n;
+// The retry-identity contract is crate-level: it is the caller identity that
+// the admin package owns for every lifecycle command, independent of the
+// transport module that consumes it.
+pub(crate) mod lifecycle_retry_identity;
 pub mod model;
 pub mod transport;
 pub mod ui;

@@ -33,9 +33,12 @@ use crate::core::{
     build_product_attribute_values_section_copy,
 };
 use crate::model::{
-    ProductAdminBootstrap, ProductAttributeValueItem, ProductDetail, ProductEffectiveForm,
-    ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
-    UpdateProductImageDraft, VariantDraft, VariantPriceDraft,
+    BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategorySummary,
+    CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
+    ProductAttributeSchemaSummary, ProductAttributeSummary, ProductAttributeValueItem,
+    ProductDetail, ProductEffectiveForm, ProductEffectiveFormAttribute, ProductImageDraft,
+    ProductPricingDetail, SetCategorySchemaModeDraft, SetVariantAxesDraft,
+    UpdateProductImageDraft, VariantAxisDraft, VariantDraft, VariantPriceDraft,
 };
 use crate::catalog_transport;
 use crate::transport;
@@ -60,9 +63,28 @@ fn TypedProductAttributeField(
     empty_option_label: String,
     boolean_true_label: String,
     boolean_false_label: String,
+    saved_option_ids: Vec<String>,
+    missing_option_suffix: String,
 ) -> impl IntoView {
     let attribute_id = attribute.attribute_id.clone();
     let value_type = attribute.value_type.clone();
+    // Dictionary options are resolved from the schema, but a stored value can
+    // reference an option that is no longer reachable from it (removed or
+    // deactivated). Such references are surfaced explicitly so that an operator
+    // still sees the current value and, for multi-selects, can clear it.
+    let options = attribute.options.clone();
+    let dangling_options = saved_option_ids
+        .iter()
+        .filter(|option_id| {
+            !option_id.is_empty() && !options.iter().any(|option| &option.id == *option_id)
+        })
+        .map(|option_id| {
+            (
+                option_id.clone(),
+                format!("{option_id} {missing_option_suffix}"),
+            )
+        })
+        .collect::<Vec<(String, String)>>();
     let input = match value_type.as_str() {
         "text" => {
             let read_id = attribute_id.clone();
@@ -113,29 +135,39 @@ fn TypedProductAttributeField(
         "select" => {
             let read_id = attribute_id.clone();
             let write_id = attribute_id.clone();
+            let options = options.clone();
+            let dangling_options = dangling_options.clone();
             view! {
                 <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().selected_option(&read_id) on:change=move |event| editor_state.update(|state| state.set_select(write_id.clone(), event_target_value(&event)))>
                     <option value="">{empty_option_label}</option>
-                    {attribute.options.into_iter().map(|option| view! { <option value=option.id>{option.label}</option> }).collect_view()}
+                    {options.into_iter().map(|option| view! { <option value=option.id>{option.label}</option> }).collect_view()}
+                    {dangling_options.into_iter().map(|(option_id, label)| view! { <option value=option_id>{label}</option> }).collect_view()}
                 </select>
             }.into_any()
         }
-        "multiselect" => view! {
-            <div class="grid gap-2">
-                {attribute.options.into_iter().map(|option| {
-                    let read_id = attribute_id.clone();
-                    let write_id = attribute_id.clone();
-                    let read_option_id = option.id.clone();
-                    let write_option_id = option.id.clone();
-                    view! {
-                        <label class="flex items-center gap-2 text-sm text-foreground">
-                            <input type="checkbox" prop:checked=move || editor_state.get().option_selected(&read_id, &read_option_id) on:change=move |event| editor_state.update(|state| state.set_multiselect_option(write_id.clone(), write_option_id.clone(), event_target_checked(&event))) />
-                            <span>{option.label}</span>
-                        </label>
-                    }
-                }).collect_view()}
-            </div>
-        }.into_any(),
+        "multiselect" => {
+            let rows = options
+                .into_iter()
+                .map(|option| (option.id.clone(), option.label.clone()))
+                .chain(dangling_options.into_iter())
+                .collect::<Vec<(String, String)>>();
+            view! {
+                <div class="grid gap-2">
+                    {rows.into_iter().map(|(option_id, label)| {
+                        let read_id = attribute_id.clone();
+                        let write_id = attribute_id.clone();
+                        let read_option_id = option_id.clone();
+                        let write_option_id = option_id.clone();
+                        view! {
+                            <label class="flex items-center gap-2 text-sm text-foreground">
+                                <input type="checkbox" prop:checked=move || editor_state.get().option_selected(&read_id, &read_option_id) on:change=move |event| editor_state.update(|state| state.set_multiselect_option(write_id.clone(), write_option_id.clone(), event_target_checked(&event))) />
+                                <span>{label}</span>
+                            </label>
+                        }
+                    }).collect_view()}
+                </div>
+            }.into_any()
+        }
         "json" => {
             let read_id = attribute_id.clone();
             let write_id = attribute_id.clone();
@@ -159,6 +191,13 @@ fn TypedProductAttributeField(
     }
 }
 
+/// Non-mounted single-screen reference composition.
+///
+/// The host mounts `ui::root::ProductAdmin` (routed pages), not this component.
+/// It stays in the tree because it is the canonical catalog-controls reference
+/// pinned by the product catalog verification suite, and because the shared
+/// sections below it are mounted by the routed pages. Feature work belongs on
+/// the routed pages and the shared sections; do not grow this composition.
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -2606,6 +2645,7 @@ pub fn ProductAttributeValuesSection(
     let section_saving_label = section_copy.saving.clone();
     let section_saved_label = section_copy.saved.clone();
     let section_nothing_dirty = section_copy.nothing_dirty.clone();
+    let section_missing_option = section_copy.missing_option.clone();
     let error_copy = build_product_admin_error_copy(locale.as_deref());
 
     let (busy, set_busy) = signal(false);
@@ -2833,7 +2873,7 @@ pub fn ProductAttributeValuesSection(
                     let load_failure = form_copy_for_failure.load_failure(detail);
                     view! { <p class="text-xs text-destructive">{load_failure}</p> }.into_any()
                 }
-                Some(Ok((form, _))) => match form {
+                Some(Ok((form, values))) => match form {
                     None => {
                         let select_category = form_select_category.clone();
                         view! { <p class="text-xs text-muted-foreground">{select_category}</p> }.into_any()
@@ -2867,14 +2907,39 @@ pub fn ProductAttributeValuesSection(
                                         <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</h4>
                                         <div class="grid gap-4 md:grid-cols-2">
                                             {attributes.into_iter().map(|attribute| view! {
-                                                <TypedProductAttributeField
-                                                    attribute=attribute
-                                                    editor_state=editor_state
-                                                    required_label=required_label.clone()
-                                                    empty_option_label=empty_option_label.clone()
-                                                    boolean_true_label=boolean_true_label.clone()
-                                                    boolean_false_label=boolean_false_label.clone()
-                                                />
+                                                {
+                                                    let saved_option_ids = values
+                                                        .iter()
+                                                        .filter(|value| {
+                                                            value.attribute_id == attribute.attribute_id
+                                                                && !value.detached
+                                                        })
+                                                        .flat_map(|value| {
+                                                            value
+                                                                .option_ids
+                                                                .clone()
+                                                                .unwrap_or_else(|| {
+                                                                    value
+                                                                        .option_id
+                                                                        .clone()
+                                                                        .into_iter()
+                                                                        .collect()
+                                                                })
+                                                        })
+                                                        .collect::<Vec<String>>();
+                                                    view! {
+                                                        <TypedProductAttributeField
+                                                            attribute=attribute
+                                                            editor_state=editor_state
+                                                            required_label=required_label.clone()
+                                                            empty_option_label=empty_option_label.clone()
+                                                            boolean_true_label=boolean_true_label.clone()
+                                                            boolean_false_label=boolean_false_label.clone()
+                                                            saved_option_ids=saved_option_ids
+                                                            missing_option_suffix=section_missing_option.clone()
+                                                        />
+                                                    }
+                                                }
                                             }).collect_view()}
                                         </div>
                                     </section>
@@ -2932,6 +2997,1349 @@ pub fn ProductAttributeValuesSection(
                     </div>
                 </div>
             </Show>
+        </section>
+    }.into_any()
+}
+
+
+/// One editable variant axis row of the mounted editor.
+#[derive(Clone, Debug, PartialEq)]
+struct VariantAxisRow {
+    attribute_id: String,
+    code: String,
+    label: String,
+    allowed_option_ids: Vec<String>,
+    options: Vec<VariantAxisOption>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct VariantAxisOption {
+    id: String,
+    label: String,
+}
+
+/// Mounted editor section for the ADR variant-axis model.
+///
+/// The section seeds itself from the product's saved axes plus the effective
+/// category schema. Only attributes whose `variant_axis_policy` is not
+/// `forbidden` and that carry options are offered, because the owner rejects an
+/// axis configuration the schema does not admit. The operator orders the axes,
+/// chooses the allowed option subset per axis, and persists the whole
+/// configuration through the idempotent `set_variant_axes` command. Saving an
+/// empty configuration clears the axes, which the owner accepts.
+#[component]
+pub fn ProductVariantAxesSection(
+    product_id: String,
+    locale: Option<String>,
+    on_saved: Callback<()>,
+) -> impl IntoView {
+    let token = use_token();
+    let tenant = use_tenant();
+    let is_ru = locale.as_deref() == Some("ru");
+    let error_copy = build_product_admin_error_copy(locale.as_deref());
+    let save_error_copy = error_copy.clone();
+
+    let (busy, set_busy) = signal(false);
+    let (error, set_error) = signal(Option::<String>::None);
+    let (notice, set_notice) = signal(Option::<String>::None);
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (rows, set_rows) = signal(Vec::<VariantAxisRow>::new());
+    let (add_selection, set_add_selection) = signal(String::new());
+    let seeded = RwSignal::new(false);
+
+    let title = if is_ru { "Оси вариантов" } else { "Variant axes" }.to_string();
+    let subtitle = if is_ru {
+        "Оси задают идентичность комбинаций. Доступны атрибуты схемы категории, для которых политика оси не запрещена."
+    } else {
+        "Axes define the combination identity. Only category-schema attributes whose axis policy is not forbidden are offered."
+    }
+    .to_string();
+    let save_label = if is_ru { "Сохранить оси" } else { "Save axes" }.to_string();
+    let saving_label = if is_ru { "Сохранение..." } else { "Saving..." }.to_string();
+    let saved_label = if is_ru { "Оси вариантов сохранены" } else { "Variant axes saved" }.to_string();
+    let cleared_label = if is_ru { "Оси очищены" } else { "Variant axes cleared" }.to_string();
+    let empty_label = if is_ru {
+        "Оси не заданы. Добавьте атрибут, чтобы включить комбинации вариантов."
+    } else {
+        "No axes configured. Add an attribute to enable variant combinations."
+    }
+    .to_string();
+    let no_candidates_label = if is_ru {
+        "В схеме категории нет атрибутов с опциями, допускающих использование в осях. Настройте схему категории."
+    } else {
+        "The category schema has no option-backed attribute that allows axis use. Configure the category schema."
+    }
+    .to_string();
+    let add_label = if is_ru { "Добавить ось" } else { "Add axis" }.to_string();
+    let select_attribute_label = if is_ru { "Атрибут" } else { "Attribute" }.to_string();
+    let allowed_values_label = if is_ru { "Допустимые значения" } else { "Allowed values" }.to_string();
+
+    let loaded_product_id = product_id.clone();
+    let loaded_locale = locale.clone();
+    let data_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let pid = loaded_product_id.clone();
+        let loc = loaded_locale.clone();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            let detail = catalog_transport::fetch_product(
+                tok.clone(),
+                ten.clone(),
+                bootstrap.current_tenant.id.clone(),
+                pid.clone(),
+                loc.clone(),
+            )
+            .await
+            .map_err(|failure| failure.to_string())?;
+            let form = catalog_transport::fetch_effective_product_form(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                Some(pid),
+                None,
+                loc.unwrap_or_default(),
+            )
+            .await
+            .map_err(|failure| failure.to_string())?;
+            Ok::<(Option<ProductDetail>, Option<ProductEffectiveForm>), String>((detail, form))
+        }
+    });
+
+    let seed_rows = move |detail: Option<ProductDetail>,
+                          form: Option<ProductEffectiveForm>|
+          -> Vec<VariantAxisRow> {
+        let options_by_attribute = form
+            .as_ref()
+            .map(|form| {
+                form.attributes
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            attribute.attribute_id.clone(),
+                            attribute
+                                .options
+                                .iter()
+                                .map(|option| VariantAxisOption {
+                                    id: option.id.clone(),
+                                    label: option.label.clone(),
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+
+        let mut next_rows = detail
+            .as_ref()
+            .map(|detail| {
+                detail
+                    .variant_axes
+                    .iter()
+                    .map(|axis| {
+                        let saved_options = axis
+                            .allowed_values
+                            .iter()
+                            .map(|value| VariantAxisOption {
+                                id: value.option_id.clone(),
+                                label: if value.value.is_empty() {
+                                    value.option_id.clone()
+                                } else {
+                                    value.value.clone()
+                                },
+                            })
+                            .collect::<Vec<_>>();
+                        let options = options_by_attribute
+                            .get(&axis.attribute_id)
+                            .cloned()
+                            .unwrap_or(saved_options);
+                        VariantAxisRow {
+                            attribute_id: axis.attribute_id.clone(),
+                            code: axis.code.clone(),
+                            label: axis.name.clone(),
+                            allowed_option_ids: axis
+                                .allowed_values
+                                .iter()
+                                .map(|value| value.option_id.clone())
+                                .collect(),
+                            options,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        if next_rows.is_empty() {
+            if let Some(form) = form.as_ref() {
+                next_rows = form
+                    .attributes
+                    .iter()
+                    .filter(|attribute| {
+                        attribute.default_variant_axis
+                            && attribute.variant_axis_policy != "forbidden"
+                            && !attribute.options.is_empty()
+                    })
+                    .map(|attribute| VariantAxisRow {
+                        attribute_id: attribute.attribute_id.clone(),
+                        code: attribute.code.clone(),
+                        label: attribute.label.clone(),
+                        allowed_option_ids: attribute
+                            .options
+                            .iter()
+                            .map(|option| option.id.clone())
+                            .collect(),
+                        options: attribute
+                            .options
+                            .iter()
+                            .map(|option| VariantAxisOption {
+                                id: option.id.clone(),
+                                label: option.label.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect();
+            }
+        }
+
+        next_rows
+    };
+
+    Effect::new(move |_| {
+        if seeded.get() {
+            return;
+        }
+        let Some(Ok((detail, form))) = data_resource.get() else {
+            return;
+        };
+        set_rows.set(seed_rows(detail, form));
+        seeded.set(true);
+    });
+
+    let available_candidates = move || -> Vec<(String, String)> {
+        let used = rows
+            .get()
+            .into_iter()
+            .map(|row| row.attribute_id)
+            .collect::<Vec<_>>();
+        data_resource
+            .get()
+            .and_then(Result::ok)
+            .and_then(|(_, form)| form)
+            .map(|form| {
+                form.attributes
+                    .into_iter()
+                    .filter(|attribute| {
+                        attribute.variant_axis_policy != "forbidden"
+                            && !attribute.options.is_empty()
+                            && !used.contains(&attribute.attribute_id)
+                    })
+                    .map(|attribute| (attribute.attribute_id, attribute.label))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let move_axis = move |attribute_id: &str, delta: i32| {
+        set_rows.update(|rows| {
+            let Some(index) = rows
+                .iter()
+                .position(|row| row.attribute_id == attribute_id)
+            else {
+                return;
+            };
+            let target = index as i32 + delta;
+            if target < 0 || target as usize >= rows.len() {
+                return;
+            }
+            rows.swap(index, target as usize);
+        });
+    };
+
+    let remove_axis = move |attribute_id: &str| {
+        set_rows.update(|rows| rows.retain(|row| row.attribute_id != attribute_id));
+    };
+
+    let toggle_option = move |attribute_id: &str, option_id: &str| {
+        set_rows.update(|rows| {
+            let Some(row) = rows
+                .iter_mut()
+                .find(|row| row.attribute_id == attribute_id)
+            else {
+                return;
+            };
+            match row
+                .allowed_option_ids
+                .iter()
+                .position(|value| value == option_id)
+            {
+                Some(position) => {
+                    row.allowed_option_ids.remove(position);
+                }
+                None => row.allowed_option_ids.push(option_id.to_string()),
+            }
+        });
+    };
+
+    let add_axis = move |_| {
+        let attribute_id = add_selection.get_untracked();
+        if attribute_id.is_empty() {
+            return;
+        }
+        let attribute = data_resource
+            .get_untracked()
+            .and_then(Result::ok)
+            .and_then(|(_, form)| form)
+            .and_then(|form| {
+                form.attributes
+                    .into_iter()
+                    .find(|attribute| attribute.attribute_id == attribute_id)
+            });
+        let Some(attribute) = attribute else {
+            return;
+        };
+        let row = VariantAxisRow {
+            attribute_id: attribute.attribute_id,
+            code: attribute.code,
+            label: attribute.label,
+            allowed_option_ids: attribute
+                .options
+                .iter()
+                .map(|option| option.id.clone())
+                .collect(),
+            options: attribute
+                .options
+                .into_iter()
+                .map(|option| VariantAxisOption {
+                    id: option.id,
+                    label: option.label,
+                })
+                .collect(),
+        };
+        set_rows.update(move |rows| {
+            if rows.iter().any(|existing| existing.attribute_id == row.attribute_id) {
+                return;
+            }
+            rows.push(row);
+        });
+        set_add_selection.set(String::new());
+    };
+
+    let save_product_id = product_id.clone();
+    let on_save = move |_| {
+        let axes = rows
+            .get_untracked()
+            .into_iter()
+            .enumerate()
+            .map(|(index, row)| VariantAxisDraft {
+                attribute_id: row.attribute_id,
+                position: Some(index as i32),
+                allowed_option_ids: row.allowed_option_ids,
+            })
+            .collect::<Vec<_>>();
+        let cleared = axes.is_empty();
+
+        set_busy.set(true);
+        set_error.set(None);
+        set_notice.set(None);
+
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let pid = save_product_id.clone();
+        let saved = saved_label.clone();
+        let cleared_label = cleared_label.clone();
+        let save_error = save_error_copy.clone();
+        spawn_local(async move {
+            let result = async {
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+                catalog_transport::set_variant_axes(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    pid,
+                    SetVariantAxesDraft { axes },
+                )
+                .await
+            }
+            .await;
+
+            set_busy.set(false);
+            match result {
+                Ok(_) => {
+                    set_notice.set(Some(if cleared { cleared_label } else { saved }));
+                    seeded.set(false);
+                    set_refresh_nonce.update(|value| *value += 1);
+                    on_saved.run(());
+                }
+                Err(failure) => set_error.set(Some(save_error.save_product_failure(failure))),
+            }
+        });
+    };
+
+    let candidates_for_add = available_candidates;
+
+    view! {
+        <section class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="space-y-1">
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title.clone()}</h4>
+                    <p class="text-[11px] text-muted-foreground">{subtitle.clone()}</p>
+                </div>
+                <button
+                    type="button"
+                    class="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    disabled=move || busy.get()
+                    on:click=on_save
+                >
+                    {move || if busy.get() { saving_label.clone() } else { save_label.clone() }}
+                </button>
+            </div>
+
+            <Show when=move || error.get().is_some()>
+                <div class="rounded-lg border border-rose-200 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-600 dark:border-rose-900 dark:text-rose-400">
+                    {move || error.get().unwrap_or_default()}
+                </div>
+            </Show>
+            <Show when=move || notice.get().is_some()>
+                <div class="rounded-lg border border-emerald-200 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
+                    {move || notice.get().unwrap_or_default()}
+                </div>
+            </Show>
+
+            <Show when=move || rows.get().is_empty()>
+                <p class="text-[11px] text-muted-foreground">{empty_label.clone()}</p>
+            </Show>
+
+            {move || {
+                let row_count = rows.get().len();
+                rows.get()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, row)| {
+                        let up_id = row.attribute_id.clone();
+                        let down_id = row.attribute_id.clone();
+                        let remove_id = row.attribute_id.clone();
+                        let toggle_attribute = row.attribute_id.clone();
+                        let selected = row.allowed_option_ids.clone();
+                        let options = row.options.clone();
+                        let can_move_up = index > 0;
+                        let can_move_down = index + 1 < row_count;
+                        view! {
+                            <div class="space-y-2 rounded-lg border border-border/80 bg-background p-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2 text-xs font-semibold text-foreground">
+                                        <span>"#" {index + 1}</span>
+                                        <span>{row.label.clone()}</span>
+                                        <span class="font-mono text-[10px] text-muted-foreground">{row.code.clone()}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            class="h-6 w-6 rounded border border-border text-[11px] text-foreground transition hover:bg-accent disabled:opacity-40"
+                                            disabled=!can_move_up
+                                            title=if is_ru { "Выше" } else { "Move up" }
+                                            on:click=move |_| move_axis(&up_id, -1)
+                                        >"↑"</button>
+                                        <button
+                                            type="button"
+                                            class="h-6 w-6 rounded border border-border text-[11px] text-foreground transition hover:bg-accent disabled:opacity-40"
+                                            disabled=!can_move_down
+                                            title=if is_ru { "Ниже" } else { "Move down" }
+                                            on:click=move |_| move_axis(&down_id, 1)
+                                        >"↓"</button>
+                                        <button
+                                            type="button"
+                                            class="h-6 w-6 rounded border border-rose-200 text-[11px] text-rose-600 transition hover:bg-rose-500/10 dark:border-rose-900 dark:text-rose-400"
+                                            title=if is_ru { "Удалить ось" } else { "Remove axis" }
+                                            on:click=move |_| remove_axis(&remove_id)
+                                        >"✕"</button>
+                                    </div>
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-[10px] uppercase tracking-wide text-muted-foreground">{allowed_values_label.clone()}</p>
+                                    <div class="flex flex-wrap gap-2">
+                                        {options
+                                            .into_iter()
+                                            .map(|option| {
+                                                let option_id = option.id.clone();
+                                                let toggle_attribute = toggle_attribute.clone();
+                                                let is_selected = selected.contains(&option.id);
+                                                let toggle_option = toggle_option;
+                                                view! {
+                                                    <label class="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/20 px-2 py-1 text-[11px] text-foreground">
+                                                        <input
+                                                            type="checkbox"
+                                                            prop:checked=is_selected
+                                                            on:change=move |_| toggle_option(&toggle_attribute, &option_id)
+                                                        />
+                                                        <span>{option.label}</span>
+                                                    </label>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    })
+                    .collect_view()
+            }}
+
+            <div class="flex flex-wrap items-end gap-2">
+                <label class="grid gap-1 text-[11px] text-foreground">
+                    <span class="font-medium">{select_attribute_label.clone()}</span>
+                    <select
+                        class="min-w-[220px] rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground outline-none transition focus:border-primary"
+                        prop:value=move || add_selection.get()
+                        on:change=move |ev| set_add_selection.set(event_target_value(&ev))
+                    >
+                        <option value="">{if is_ru { "— выберите атрибут —" } else { "— select attribute —" }}</option>
+                        {move || candidates_for_add()
+                            .into_iter()
+                            .map(|(attribute_id, label)| view! {
+                                <option value=attribute_id>{label}</option>
+                            })
+                            .collect_view()}
+                    </select>
+                </label>
+                <button
+                    type="button"
+                    class="h-9 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                    disabled=move || add_selection.get().is_empty()
+                    on:click=add_axis
+                >
+                    {add_label.clone()}
+                </button>
+                <Show when=move || candidates_for_add().is_empty() && rows.get().is_empty()>
+                    <span class="text-[11px] text-muted-foreground">{no_candidates_label.clone()}</span>
+                </Show>
+            </div>
+        </section>
+    }.into_any()
+}
+
+
+/// Applies the shared result handling of the mounted schema-authoring commands.
+///
+/// Every authoring command resolves to `Result<bool, String>` at the facade
+/// boundary, so the card keeps exactly one place that turns an accepted, a
+/// rejected, and a failed command into operator-visible state.
+fn apply_schema_authoring_result(
+    busy: WriteSignal<bool>,
+    error: WriteSignal<Option<String>>,
+    notice: WriteSignal<Option<String>>,
+    refresh_nonce: WriteSignal<u64>,
+    error_copy: ProductAdminErrorCopy,
+    is_ru: bool,
+    run: std::pin::Pin<Box<dyn std::future::Future<Output = Result<bool, String>> + 'static>>,
+) {
+    busy.set(true);
+    error.set(None);
+    notice.set(None);
+    spawn_local(async move {
+        let result = run.await;
+        busy.set(false);
+        match result {
+            Ok(accepted) => {
+                if accepted {
+                    notice.set(Some(
+                        if is_ru {
+                            "Схема обновлена"
+                        } else {
+                            "Schema authoring updated"
+                        }
+                        .to_string(),
+                    ));
+                } else {
+                    error.set(Some(
+                        if is_ru {
+                            "Владелец отклонил изменение схемы"
+                        } else {
+                            "The owner rejected the schema change"
+                        }
+                        .to_string(),
+                    ));
+                }
+                refresh_nonce.update(|value| *value += 1);
+            }
+            Err(detail) => error.set(Some(error_copy.save_product_failure(detail))),
+        }
+    });
+}
+
+/// Mounted authoring card for the category-schema layer.
+///
+/// Category schemas used to be configurable only through raw GraphQL/REST. The
+/// card drives the five owner commands that were unreachable from the UI:
+/// schema mode, schema-scoped groups, category-scoped groups, schema attribute
+/// bindings, and category attribute bindings. Every section resolves its own
+/// owner reads through the canonical transport facade and surfaces the command
+/// result instead of discarding it.
+#[component]
+pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
+    let token = use_token();
+    let tenant = use_tenant();
+    let locale_store = StoredValue::new(locale);
+    let is_ru = locale_store.get_value().as_deref() == Some("ru");
+    let error_copy_store = StoredValue::new(build_product_admin_error_copy(
+        locale_store.get_value().as_deref(),
+    ));
+
+    let (busy, set_busy) = signal(false);
+    let (error, set_error) = signal(Option::<String>::None);
+    let (notice, set_notice) = signal(Option::<String>::None);
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+
+    // Schema mode
+    let (mode_category, set_mode_category) = signal(String::new());
+    let (mode_value, set_mode_value) = signal("inherit".to_string());
+    let (mode_schema, set_mode_schema) = signal(String::new());
+    let (mode_clone_category, set_clone_category) = signal(String::new());
+
+    // Schema-scoped groups and bindings
+    let (schema_target, set_schema_target) = signal(String::new());
+    let (schema_group_code, set_schema_group_code) = signal(String::new());
+    let (schema_group_label, set_schema_group_label) = signal(String::new());
+    let (schema_group_position, set_schema_group_position) = signal("0".to_string());
+    let (schema_attribute, set_schema_attribute) = signal(String::new());
+    let (schema_binding_group, set_schema_binding_group) = signal(String::new());
+    let (schema_binding_required, set_schema_binding_required) = signal(false);
+    let (schema_binding_disabled, set_schema_binding_disabled) = signal(false);
+    let (schema_binding_position, set_schema_binding_position) = signal("0".to_string());
+
+    // Category-scoped groups and bindings
+    let (category_target, set_category_target) = signal(String::new());
+    let (category_group_code, set_category_group_code) = signal(String::new());
+    let (category_group_label, set_category_group_label) = signal(String::new());
+    let (category_group_position, set_category_group_position) = signal("0".to_string());
+    let (category_attribute, set_category_attribute) = signal(String::new());
+    let (category_binding_group, set_category_binding_group) = signal(String::new());
+    let (category_binding_kind, set_category_binding_kind) = signal("addition".to_string());
+    let (category_binding_disabled, set_category_binding_disabled) = signal(false);
+    let (category_binding_position, set_category_binding_position) = signal("0".to_string());
+
+    let categories_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = locale_store.get_value().unwrap_or_default();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::fetch_catalog_categories(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                loc,
+            )
+            .await
+            .map(|list| list.items)
+            .map_err(|failure| failure.to_string())
+        }
+    });
+
+    let schemas_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = locale_store.get_value().unwrap_or_default();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::fetch_attribute_schemas(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                loc,
+            )
+            .await
+            .map(|list| list.items)
+            .map_err(|failure| failure.to_string())
+        }
+    });
+
+    let attributes_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = locale_store.get_value().unwrap_or_default();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::fetch_product_attributes(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                loc,
+            )
+            .await
+            .map(|list| list.items)
+            .map_err(|failure| failure.to_string())
+        }
+    });
+
+    let categories = move || -> Vec<CatalogCategorySummary> {
+        categories_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+    };
+    let schemas = move || -> Vec<ProductAttributeSchemaSummary> {
+        schemas_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+    };
+    let attributes = move || -> Vec<ProductAttributeSummary> {
+        attributes_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+    };
+
+    let apply_mode = move |_| {
+        let category_id = mode_category.get_untracked();
+        if category_id.is_empty() {
+            set_error.set(Some(
+                if is_ru {
+                    "Выберите категорию"
+                } else {
+                    "Select a category"
+                }
+                .to_string(),
+            ));
+            return;
+        }
+        let mode = mode_value.get_untracked();
+        let schema_id = mode_schema.get_untracked();
+        let clone_from_category_id = mode_clone_category.get_untracked();
+        let draft = SetCategorySchemaModeDraft {
+            category_id,
+            mode: mode.clone(),
+            schema_id: if mode == "use_schema" && !schema_id.is_empty() {
+                Some(schema_id)
+            } else {
+                None
+            },
+            clone_from_category_id: if mode == "clone_from_category"
+                && !clone_from_category_id.is_empty()
+            {
+                Some(clone_from_category_id)
+            } else {
+                None
+            },
+        };
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        apply_schema_authoring_result(
+            set_busy,
+            set_error,
+            set_notice,
+            set_refresh_nonce,
+            error_copy_store.get_value(),
+            is_ru,
+            Box::pin(async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::set_category_schema_mode(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                draft,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+            }),
+        );
+    };
+
+    let create_schema_group = move |_| {
+        let schema_id = schema_target.get_untracked();
+        let code = schema_group_code.get_untracked();
+        if schema_id.is_empty() || code.trim().is_empty() {
+            set_error.set(Some(
+                if is_ru {
+                    "Выберите схему и укажите код группы"
+                } else {
+                    "Select a schema and provide the group code"
+                }
+                .to_string(),
+            ));
+            return;
+        }
+        let draft = ProductAttributeSchemaGroupDraft {
+            schema_id,
+            code: code.trim().to_string(),
+            label: {
+                let label = schema_group_label.get_untracked();
+                if label.trim().is_empty() {
+                    code.trim().to_string()
+                } else {
+                    label.trim().to_string()
+                }
+            },
+            position: schema_group_position
+                .get_untracked()
+                .trim()
+                .parse::<i32>()
+                .unwrap_or(0),
+        };
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let loc = locale_store.get_value().unwrap_or_default();
+        apply_schema_authoring_result(
+            set_busy,
+            set_error,
+            set_notice,
+            set_refresh_nonce,
+            error_copy_store.get_value(),
+            is_ru,
+            Box::pin(async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::create_product_attribute_schema_group(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                loc,
+                draft,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+            }),
+        );
+    };
+
+    let bind_schema = move |_| {
+        let schema_id = schema_target.get_untracked();
+        let attribute_id = schema_attribute.get_untracked();
+        if schema_id.is_empty() || attribute_id.is_empty() {
+            set_error.set(Some(
+                if is_ru {
+                    "Выберите схему и атрибут"
+                } else {
+                    "Select a schema and an attribute"
+                }
+                .to_string(),
+            ));
+            return;
+        }
+        let group_code = schema_binding_group.get_untracked();
+        let draft = BindSchemaAttributeDraft {
+            schema_id,
+            attribute_id,
+            group_code: if group_code.trim().is_empty() {
+                None
+            } else {
+                Some(group_code.trim().to_string())
+            },
+            is_required: schema_binding_required.get_untracked(),
+            is_disabled: schema_binding_disabled.get_untracked(),
+            position: schema_binding_position
+                .get_untracked()
+                .trim()
+                .parse::<i32>()
+                .unwrap_or(0),
+        };
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        apply_schema_authoring_result(
+            set_busy,
+            set_error,
+            set_notice,
+            set_refresh_nonce,
+            error_copy_store.get_value(),
+            is_ru,
+            Box::pin(async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::bind_schema_attribute(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                draft,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+            }),
+        );
+    };
+
+    let create_category_group = move |_| {
+        let category_id = category_target.get_untracked();
+        let code = category_group_code.get_untracked();
+        if category_id.is_empty() || code.trim().is_empty() {
+            set_error.set(Some(
+                if is_ru {
+                    "Выберите категорию и укажите код группы"
+                } else {
+                    "Select a category and provide the group code"
+                }
+                .to_string(),
+            ));
+            return;
+        }
+        let draft = CategoryAttributeGroupDraft {
+            category_id,
+            code: code.trim().to_string(),
+            label: {
+                let label = category_group_label.get_untracked();
+                if label.trim().is_empty() {
+                    code.trim().to_string()
+                } else {
+                    label.trim().to_string()
+                }
+            },
+            position: category_group_position
+                .get_untracked()
+                .trim()
+                .parse::<i32>()
+                .unwrap_or(0),
+        };
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let loc = locale_store.get_value().unwrap_or_default();
+        apply_schema_authoring_result(
+            set_busy,
+            set_error,
+            set_notice,
+            set_refresh_nonce,
+            error_copy_store.get_value(),
+            is_ru,
+            Box::pin(async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::create_category_attribute_group(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                loc,
+                draft,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+            }),
+        );
+    };
+
+    let bind_category = move |_| {
+        let category_id = category_target.get_untracked();
+        let attribute_id = category_attribute.get_untracked();
+        if category_id.is_empty() || attribute_id.is_empty() {
+            set_error.set(Some(
+                if is_ru {
+                    "Выберите категорию и атрибут"
+                } else {
+                    "Select a category and an attribute"
+                }
+                .to_string(),
+            ));
+            return;
+        }
+        let group_code = category_binding_group.get_untracked();
+        let draft = BindCategoryAttributeDraft {
+            category_id,
+            attribute_id,
+            group_code: if group_code.trim().is_empty() {
+                None
+            } else {
+                Some(group_code.trim().to_string())
+            },
+            binding_kind: category_binding_kind.get_untracked(),
+            is_required: None,
+            is_disabled: category_binding_disabled.get_untracked(),
+            position: Some(
+                category_binding_position
+                    .get_untracked()
+                    .trim()
+                    .parse::<i32>()
+                    .unwrap_or(0),
+            ),
+        };
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        apply_schema_authoring_result(
+            set_busy,
+            set_error,
+            set_notice,
+            set_refresh_nonce,
+            error_copy_store.get_value(),
+            is_ru,
+            Box::pin(async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::bind_category_attribute(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                draft,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+            }),
+        );
+    };
+
+    let select_class = "w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary";
+    let input_class = "w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary";
+    let label_class = "grid gap-1.5 text-xs font-medium text-foreground";
+    let button_class = "inline-flex h-9 items-center justify-center rounded-xl bg-primary px-3 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50";
+
+    view! {
+        <section class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div class="space-y-1">
+                <h2 class="text-sm font-semibold text-foreground">
+                    {if is_ru { "Схема категории: режим, группы, привязки" } else { "Category schema: mode, groups, bindings" }}
+                </h2>
+                <p class="text-xs text-muted-foreground">
+                    {if is_ru {
+                        "Команды владельца, которые раньше были достижимы только через GraphQL/REST."
+                    } else {
+                        "Owner commands that used to be reachable only through GraphQL/REST."
+                    }}
+                </p>
+            </div>
+
+            <Show when=move || error.get().is_some()>
+                <div class="rounded-xl border border-rose-200 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:border-rose-900 dark:text-rose-400">
+                    {move || error.get().unwrap_or_default()}
+                </div>
+            </Show>
+            <Show when=move || notice.get().is_some()>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
+                    {move || notice.get().unwrap_or_default()}
+                </div>
+            </Show>
+
+            // 1. Category schema mode
+            <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {if is_ru { "Режим схемы категории" } else { "Category schema mode" }}
+                </h3>
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label class=label_class>
+                        <span>{if is_ru { "Категория" } else { "Category" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || mode_category.get()
+                            on:change=move |ev| set_mode_category.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
+                            {move || categories().into_iter().map(|category| view! {
+                                <option value=category.id.clone()>{category.name.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Режим" } else { "Mode" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || mode_value.get()
+                            on:change=move |ev| set_mode_value.set(event_target_value(&ev))
+                        >
+                            <option value="inherit">"inherit"</option>
+                            <option value="use_schema">"use_schema"</option>
+                            <option value="clone_from_category">"clone_from_category"</option>
+                            <option value="custom">"custom"</option>
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Схема (для use_schema)" } else { "Schema (for use_schema)" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || mode_schema.get()
+                            on:change=move |ev| set_mode_schema.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
+                            {move || schemas().into_iter().map(|schema| view! {
+                                <option value=schema.id.clone()>{schema.name.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Копировать из категории" } else { "Clone from category" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || mode_clone_category.get()
+                            on:change=move |ev| set_clone_category.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
+                            {move || categories().into_iter().map(|category| view! {
+                                <option value=category.id.clone()>{category.name.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                </div>
+                <button
+                    type="button"
+                    class=button_class
+                    disabled=move || busy.get()
+                    on:click=apply_mode
+                >
+                    {if is_ru { "Применить режим" } else { "Apply mode" }}
+                </button>
+            </div>
+
+            // 2. Schema-scoped groups and attribute bindings
+            <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {if is_ru { "Схема: группы и привязки атрибутов" } else { "Schema: groups and attribute bindings" }}
+                </h3>
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label class=label_class>
+                        <span>{if is_ru { "Схема" } else { "Schema" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || schema_target.get()
+                            on:change=move |ev| set_schema_target.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
+                            {move || schemas().into_iter().map(|schema| view! {
+                                <option value=schema.id.clone()>{schema.name.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Код группы" } else { "Group code" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="specs"
+                            prop:value=move || schema_group_code.get()
+                            on:input=move |ev| set_schema_group_code.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Название группы" } else { "Group label" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="Specs"
+                            prop:value=move || schema_group_label.get()
+                            on:input=move |ev| set_schema_group_label.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
+                        <input
+                            type="number"
+                            class=input_class
+                            prop:value=move || schema_group_position.get()
+                            on:input=move |ev| set_schema_group_position.set(event_target_value(&ev))
+                        />
+                    </label>
+                </div>
+                <button
+                    type="button"
+                    class=button_class
+                    disabled=move || busy.get()
+                    on:click=create_schema_group
+                >
+                    {if is_ru { "Создать группу схемы" } else { "Create schema group" }}
+                </button>
+
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label class=label_class>
+                        <span>{if is_ru { "Атрибут" } else { "Attribute" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || schema_attribute.get()
+                            on:change=move |ev| set_schema_attribute.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
+                            {move || attributes().into_iter().map(|attribute| view! {
+                                <option value=attribute.id.clone()>{attribute.label.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Группа (код)" } else { "Group (code)" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="specs"
+                            prop:value=move || schema_binding_group.get()
+                            on:input=move |ev| set_schema_binding_group.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
+                        <input
+                            type="number"
+                            class=input_class
+                            prop:value=move || schema_binding_position.get()
+                            on:input=move |ev| set_schema_binding_position.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <div class="flex items-end gap-4 text-xs text-foreground">
+                        <label class="inline-flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || schema_binding_required.get()
+                                on:change=move |ev| set_schema_binding_required.set(event_target_checked(&ev))
+                            />
+                            <span>{if is_ru { "Обязательный" } else { "Required" }}</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || schema_binding_disabled.get()
+                                on:change=move |ev| set_schema_binding_disabled.set(event_target_checked(&ev))
+                            />
+                            <span>{if is_ru { "Отключён" } else { "Disabled" }}</span>
+                        </label>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    class=button_class
+                    disabled=move || busy.get()
+                    on:click=bind_schema
+                >
+                    {if is_ru { "Привязать атрибут к схеме" } else { "Bind attribute to schema" }}
+                </button>
+            </div>
+
+            // 3. Category-scoped groups and attribute bindings
+            <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {if is_ru { "Категория: группы и привязки атрибутов" } else { "Category: groups and attribute bindings" }}
+                </h3>
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label class=label_class>
+                        <span>{if is_ru { "Категория" } else { "Category" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || category_target.get()
+                            on:change=move |ev| set_category_target.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
+                            {move || categories().into_iter().map(|category| view! {
+                                <option value=category.id.clone()>{category.name.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Код группы" } else { "Group code" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="details"
+                            prop:value=move || category_group_code.get()
+                            on:input=move |ev| set_category_group_code.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Название группы" } else { "Group label" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="Details"
+                            prop:value=move || category_group_label.get()
+                            on:input=move |ev| set_category_group_label.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
+                        <input
+                            type="number"
+                            class=input_class
+                            prop:value=move || category_group_position.get()
+                            on:input=move |ev| set_category_group_position.set(event_target_value(&ev))
+                        />
+                    </label>
+                </div>
+                <button
+                    type="button"
+                    class=button_class
+                    disabled=move || busy.get()
+                    on:click=create_category_group
+                >
+                    {if is_ru { "Создать группу категории" } else { "Create category group" }}
+                </button>
+
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <label class=label_class>
+                        <span>{if is_ru { "Атрибут" } else { "Attribute" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || category_attribute.get()
+                            on:change=move |ev| set_category_attribute.set(event_target_value(&ev))
+                        >
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
+                            {move || attributes().into_iter().map(|attribute| view! {
+                                <option value=attribute.id.clone()>{attribute.label.clone()}</option>
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Группа (код)" } else { "Group (code)" }}</span>
+                        <input
+                            type="text"
+                            class=input_class
+                            placeholder="details"
+                            prop:value=move || category_binding_group.get()
+                            on:input=move |ev| set_category_binding_group.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class=label_class>
+                        <span>{if is_ru { "Вид привязки" } else { "Binding kind" }}</span>
+                        <select
+                            class=select_class
+                            prop:value=move || category_binding_kind.get()
+                            on:change=move |ev| set_category_binding_kind.set(event_target_value(&ev))
+                        >
+                            <option value="addition">"addition"</option>
+                            <option value="override">"override"</option>
+                            <option value="removal">"removal"</option>
+                        </select>
+                    </label>
+                    <div class="grid gap-3">
+                        <label class=label_class>
+                            <span>{if is_ru { "Позиция" } else { "Position" }}</span>
+                            <input
+                                type="number"
+                                class=input_class
+                                prop:value=move || category_binding_position.get()
+                                on:input=move |ev| set_category_binding_position.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-xs text-foreground">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || category_binding_disabled.get()
+                                on:change=move |ev| set_category_binding_disabled.set(event_target_checked(&ev))
+                            />
+                            <span>{if is_ru { "Отключён" } else { "Disabled" }}</span>
+                        </label>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    class=button_class
+                    disabled=move || busy.get()
+                    on:click=bind_category
+                >
+                    {if is_ru { "Привязать атрибут к категории" } else { "Bind attribute to category" }}
+                </button>
+            </div>
         </section>
     }.into_any()
 }

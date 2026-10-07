@@ -21,6 +21,12 @@ fn resolve_product_edit_id(subpath: Option<&str>) -> Option<String> {
     None
 }
 
+/// Mounted product admin surface.
+///
+/// The host code generator mounts exactly this component; every subpath below it
+/// resolves to a routed page in this package, and each page mounts the shared
+/// sections from `super::leptos`. Nothing else in this package is advertised as
+/// an entry point (see the package README, "Non-mounted reference compositions").
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();

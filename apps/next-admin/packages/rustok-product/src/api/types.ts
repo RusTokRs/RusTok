@@ -226,6 +226,31 @@ export interface ProductTranslation {
   metaDescription: string | null;
 }
 
+export interface AxisAllowedValue {
+  optionId: string;
+  value: string;
+  position: number;
+}
+
+export interface VariantAxisConfig {
+  id: string;
+  attributeId: string;
+  code: string;
+  name: string;
+  position: number;
+  allowedValues: AxisAllowedValue[];
+}
+
+export interface VariantAxisDraftInput {
+  attributeId: string;
+  position?: number | null;
+  allowedOptionIds?: string[] | null;
+}
+
+export interface SetVariantAxesInput {
+  axes: VariantAxisDraftInput[];
+}
+
 export interface ProductDetail {
   id: string;
   status: string;
@@ -239,6 +264,7 @@ export interface ProductDetail {
   updatedAt: string | null;
   publishedAt: string | null;
   translations: ProductTranslation[];
+  variantAxes: VariantAxisConfig[];
   variants: ProductVariant[];
   images: ProductImage[];
 }

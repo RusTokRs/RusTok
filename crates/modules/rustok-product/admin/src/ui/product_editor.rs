@@ -8,7 +8,7 @@ use crate::core::{
     build_product_image_view_models, build_variant_row_view_models, slugify,
     ProductKind,
 };
-use super::leptos::ProductAttributeValuesSection;
+use super::leptos::{ProductAttributeValuesSection, ProductVariantAxesSection};
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm,
     ProductImageDraft,
@@ -66,7 +66,6 @@ pub fn ProductEditorPage(
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
 
     // Variable Product Specific
-    let (variant_axes_str, set_variant_axes_str) = signal("Size, Color".to_string());
 
     // Digital Product Specific
     let (digital_file_url, set_digital_file_url) = signal(String::new());
@@ -837,25 +836,17 @@ pub fn ProductEditorPage(
 
                             ProductKind::Variable => view! {
                                 <div class="space-y-4">
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Оси вариаций (атрибуты)" } else { "Variation Axes" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Color, Size, Material"
-                                            prop:value=move || variant_axes_str.get()
-                                            on:input=move |ev| set_variant_axes_str.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                        />
-                                        <p class="text-[11px] text-muted-foreground">
-                                            {if is_ru {
-                                                "Укажите оси через запятую для генерации комбинаций вариантов"
-                                            } else {
-                                                "Comma-separated attribute axes for generating variant combinations"
-                                            }}
-                                        </p>
-                                    </div>
+                                    {current_edit_id.clone().map(|pid| {
+                                        let axes_locale = locale.clone();
+                                        let refresh_after_axes = set_refresh_nonce;
+                                        view! {
+                                            <ProductVariantAxesSection
+                                                product_id=pid
+                                                locale=axes_locale
+                                                on_saved=Callback::new(move |_| refresh_after_axes.update(|n| *n += 1))
+                                            />
+                                        }
+                                    })}
 
                                     <div class="rounded-xl border border-border/80 overflow-hidden">
                                         <div class="bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground flex items-center justify-between">

@@ -520,6 +520,7 @@ pub(crate) struct ProductAttributeValuesSectionCopy {
     pub saving: String,
     pub saved: String,
     pub nothing_dirty: String,
+    pub missing_option: String,
 }
 
 /// Copy for the mounted editor's typed attribute-value section.
@@ -540,6 +541,11 @@ pub(crate) fn build_product_attribute_values_section_copy(
             locale,
             "product.attributes.valuesNothingDirty",
             "Nothing changed: typed values already match the saved state.",
+        ),
+        missing_option: t(
+            locale,
+            "product.attributes.valuesMissingOption",
+            "(not in dictionary)",
         ),
     }
 }

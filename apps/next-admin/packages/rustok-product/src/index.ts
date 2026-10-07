@@ -46,6 +46,7 @@ export * from './components/products/product-header-bar';
 export * from './components/products/product-general-card';
 export * from './components/products/product-category-card';
 export * from './components/products/product-variants-card';
+export * from './components/products/product-variant-axes-card';
 export * from './components/products/product-media-card';
 export * from './components/products/product-relations-card';
 export * from './components/products/product-relation-add-dialog';
