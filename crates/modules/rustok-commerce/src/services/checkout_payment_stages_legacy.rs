@@ -538,13 +538,6 @@ fn log_checkout_payment_boundary_failure(
 ) {
     // The facade logs redacted boundary facts before this retained implementation
     // receives the error. Keep the original context out of duplicate raw logs.
-    let _ = (
-        context,
-        owner_operation,
-        stage,
-        CHECKOUT_PAYMENT_STAGE_BOUNDARY,
-    );
-
     match &boundary_error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(

@@ -850,7 +850,7 @@ rounding defect.
 | 66 | `crates/modules/rustok-{cart,order,fulfillment}/src/services/{cart.rs,order.rs,fulfillment.rs}` | the leftover silent `ActiveValue` defaults on write paths: `update_line_item_quantity` read the line item's stored `unit_price` back through `ActiveModel::take().unwrap_or(Decimal::ZERO)`, so a `NotSet` field would have repriced the line at zero; the order deliver/cancel/transition paths and the fulfillment ship/deliver audit writers read the status back the same way, and `String::default()` would have put an empty status into the emitted `order.status_changed` event or the fulfillment audit entry. All six sites now use the value the surrounding code already validated (`existing.status`, `line_item.unit_price`) or a local `status_after` binding. Behaviour is unchanged — the `ActiveValue` always carried that value — and the ten verifiers over the three files report the same findings as before the change. |
 | 67 | `crates/modules/rustok-{payment,commerce}/src/services/{provider_operation.rs,marketplace_reversal_adaptation_failure.rs}` | the four payment journal writers (`mark_provider_succeeded`, `mark_provider_error`, `mark_reconciliation_required`, `mark_committed`) and the commerce reversal-failure `update_failure` narrow their `update_many()` by primary key and status only, although both tables carry `tenant_id`: every sibling writer in the fulfillment journal, and the tenant-scoped reads directly above these writes, do filter the tenant, so the write scope had drifted from the module's own convention. The row is already tenant-verified by the preceding `get`, which is why this was hygiene rather than reachable cross-tenant leakage; each write now carries `.filter(Column::TenantId.eq(...))` and nothing else changes. |
 | 68 | `crates/modules/rustok-fulfillment/src/services/provider_operation.rs` | `mark_execution_reconciliation_required` discarded the validated provider reference. `validate_provider_result_for_operation` returns `Ok(supplied_reference.or(result_reference))` and `mark_provider_succeeded` persists that value, but the reconciliation path threw it away (`let _ =`) and wrote the raw argument instead, so an adapter error after a successful call — or a failed success-persist — left the reconciliation row without the `external_reference` the provider payload carried, exactly the row an operator has to reconcile by hand. The recovered reference is now persisted, and the failure side (typed validation error before the write) is unchanged. |
-| 69 | `crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs` | the bundle admin draft parsed `discount_value` with a silent default: `Decimal::from_str(...).unwrap_or_default()` wrote a zero-value discount for any typo in the create form, and `.and_then(|value| Decimal::from_str(value.trim()).ok())` turned a malformed update value into "no change", so the edit silently dropped the administrator's input. Both paths now go through a `parse_decimal` sibling of the existing `parse_uuid` helper and return a typed `ServerFnError` naming the field; an empty create field keeps the zero default. |
+| 69 | `crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs` | the bundle admin draft parsed `discount_value` with a silent default: `Decimal::from_str(...).unwrap_or_default()` wrote a zero-value discount for any typo in the create form, and `.and_then(|value| Decimal::from_str(value.trim()).ok())` turned a malformed update value into "no change", so the edit silently dropped the administrator's input. Both paths now go through a `parse_decimal` sibling of the existing `parse_uuid` helper and return a typed `ServerFnError` naming the field; an empty create field keeps the zero default. The columns themselves are inert in this tree: no pricing path reads `discount_type`/`discount_value`, so the parse is the only place a draft value crosses into storage. |
 
 **Not applied (owner decision required):** ECOM-PANIC-01 remainder (the host-composition panic in
 `marketplace_financial_runtime::financial_port` — fail-fast on a missing port; a typed error has to
@@ -1739,6 +1739,11 @@ caller-less; the constants are pinned by
 either the two modules or the cluster without re-pinning turns a green verifier red — the reason
 this pass left both in place.
 
+A full name-resolution scan of the four transport modules — every `pub fn`, `pub(crate) fn` and
+`#[server]` function enumerated and each name matched against the whole workspace — puts the dead
+set at exactly that enumeration, so no further unreferenced item hides behind the four file-level
+allowances.
+
 The gate tail also says what the missing facade is supposed to be, which is the useful half of the
 owner decision: `catalog_transport.rs` exposes the read operations with `admin_catalog_native::…`
 first, an `Err(_) =>` fallback into `GraphqlReadContext::for_…` before `admin_catalog_graphql::…`, a
@@ -1782,6 +1787,22 @@ collections, inventory stock locations and marketplace seller translations, each
 page lookaheads, and the one host-composition fail-fast already recorded as the ECOM-PANIC-01 owner
 decision. This closes the survey-side reading of ECOM-ERR-01's `unwrap/expect` count; the
 swallowed-result half stays with ECOM-ERR-01.
+
+The swallowed-result half no longer does, and the same pass covered the write side of the tenant
+sweep. The seven production `let _ =` sites across the seven money roots resolve into one defect,
+three deliberate discards whose `?` still propagates the error, two task-local no-ops and one
+test-only exercise: the defect was `mark_execution_reconciliation_required` in
+`rustok-fulfillment/src/services/provider_operation.rs`, which threw away the provider reference the
+validator recovered from the provider payload and wrote the raw argument instead — the
+reconciliation row an operator works from lost the `external_reference` (row 68). There are no
+`.await.ok()` chains in these crates, so no database error is silently turned into "no row", and the
+redundant `let _ = (context, owner_operation, stage, …)` tuple in the checkout payment stage helper
+is gone. For writes, all 79 `update_many()`/`delete_many()` blocks in the seven money roots were
+classified: 59 carry a literal tenant filter, 3 guard the parent through a `tenant_exists` subquery,
+17 write tenant-less child or leaf tables (cart adjustments, tax lines, translations, inventory
+levels and reservations keyed by item, location or variant), and the five that narrowed a
+tenant-scoped table by primary key alone — the four payment journal writers and the commerce
+reversal-failure `update_failure` — are fixed (row 67).
 
 ## Appendix B — prior art: Medusa v2 (comparison, 2026-10-07)
 
