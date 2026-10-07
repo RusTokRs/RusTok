@@ -84,6 +84,13 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                     definition.code
                 ))
             })?;
+        if !value_type.is_attribute_filterable() {
+            return Err(CommerceError::Validation(format!(
+                "attribute {} uses {} and cannot be used in attribute_filters",
+                definition.code,
+                value_type.as_str()
+            )));
+        }
         conditions.push(build_attribute_filter_condition(
             backend,
             tenant_id,

@@ -192,6 +192,15 @@ impl AttributeValueType {
             }),
         }
     }
+
+    /// True when a `code=value` attribute filter can be executed against this value type.
+    ///
+    /// `json` attributes are opaque payloads: they have no typed value column, no option dictionary
+    /// and no localized projection, so every filter boundary refuses them up front instead of
+    /// silently matching nothing.
+    pub fn is_attribute_filterable(self) -> bool {
+        !matches!(self, Self::Json)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -770,6 +779,30 @@ mod tests {
             form.attributes[1].source,
             EffectiveAttributeSource::CategoryLocal
         );
+    }
+
+    #[test]
+    fn only_typed_value_types_can_back_attribute_filters() {
+        for value_type in [
+            AttributeValueType::Text,
+            AttributeValueType::Textarea,
+            AttributeValueType::Richtext,
+            AttributeValueType::Integer,
+            AttributeValueType::Decimal,
+            AttributeValueType::Boolean,
+            AttributeValueType::Date,
+            AttributeValueType::Datetime,
+            AttributeValueType::Select,
+            AttributeValueType::Multiselect,
+        ] {
+            assert!(
+                value_type.is_attribute_filterable(),
+                "{} must be filterable",
+                value_type.as_str()
+            );
+        }
+
+        assert!(!AttributeValueType::Json.is_attribute_filterable());
     }
 
     #[test]

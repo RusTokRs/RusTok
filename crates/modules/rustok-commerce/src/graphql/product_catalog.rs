@@ -90,7 +90,9 @@ pub struct StorefrontProductCatalogFilter {
     pub category_id: Option<Uuid>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
-    pub attribute_filters: Option<Vec<String>>,
+    /// Typed EAV filters, `code=value` entries; omitted means "no attribute filter".
+    #[graphql(default)]
+    pub attribute_filters: Vec<String>,
     /// Display currency of the catalog-card price snapshot (ISO 4217).
     pub currency_code: Option<String>,
     pub page: Option<u64>,
@@ -104,7 +106,9 @@ pub struct AdminProductCatalogFilter {
     pub category_id: Option<Uuid>,
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
-    pub attribute_filters: Option<Vec<String>>,
+    /// Typed EAV filters, `code=value` entries; omitted means "no attribute filter".
+    #[graphql(default)]
+    pub attribute_filters: Vec<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 }
@@ -170,7 +174,7 @@ impl ProductCatalogQuery {
             filter.category_id,
             filter.sort_by,
             filter.sort_direction,
-            filter.attribute_filters.unwrap_or_default(),
+            filter.attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?
         .with_pagination(page, per_page)
@@ -277,7 +281,7 @@ impl ProductCatalogQuery {
             filter.category_id.map(|value| value.to_string()),
             filter.sort_by,
             filter.sort_direction,
-            filter.attribute_filters.unwrap_or_default(),
+            filter.attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "admin_product_catalog_input"))?;
 
