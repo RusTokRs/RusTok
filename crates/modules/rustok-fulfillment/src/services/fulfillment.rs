@@ -1182,11 +1182,15 @@ impl FulfillmentService {
             .all(|item| item.delivered_quantity >= item.quantity);
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let metadata = active.metadata.clone().take().unwrap_or_default();
-        active.status = Set(if all_items_delivered {
-            STATUS_DELIVERED.to_string()
+        // The audit entry records the status this write produces; binding it here
+        // keeps the value off the ActiveModel round-trip (and off its silent
+        // `String::default()` fallback).
+        let status_after = if all_items_delivered {
+            STATUS_DELIVERED
         } else {
-            STATUS_SHIPPED.to_string()
-        });
+            STATUS_SHIPPED
+        };
+        active.status = Set(status_after.to_string());
         active.carrier = Set(Some(input.carrier.clone()));
         active.tracking_number = Set(Some(input.tracking_number.clone()));
         active.metadata = Set(append_audit_event(
@@ -1197,7 +1201,7 @@ impl FulfillmentService {
                 &adjusted_entries,
                 Some(input.carrier),
                 Some(input.tracking_number),
-                active.status.clone().take().unwrap_or_default().as_str(),
+                status_after,
             ),
         )?);
         if active.shipped_at.clone().take().is_none() {
@@ -1294,11 +1298,12 @@ impl FulfillmentService {
             .all(|item| item.delivered_quantity >= item.quantity);
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let metadata = active.metadata.clone().take().unwrap_or_default();
-        active.status = Set(if all_items_delivered {
-            STATUS_DELIVERED.to_string()
+        let status_after = if all_items_delivered {
+            STATUS_DELIVERED
         } else {
-            STATUS_SHIPPED.to_string()
-        });
+            STATUS_SHIPPED
+        };
+        active.status = Set(status_after.to_string());
         active.delivered_note = Set(input.delivered_note.clone());
         active.metadata = Set(append_audit_event(
             merge_fulfillment_metadata(metadata, input.metadata)?,
@@ -1308,7 +1313,7 @@ impl FulfillmentService {
                 &adjusted_entries,
                 None,
                 None,
-                active.status.clone().take().unwrap_or_default().as_str(),
+                status_after,
             ),
         )?);
         if all_items_delivered {

@@ -666,8 +666,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         active.status = Set(STATUS_DELIVERED.to_string());
         active.delivered_signature = Set(delivered_signature);
@@ -716,8 +716,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         let cancel_reason = reason.filter(|value| !value.trim().is_empty());
         active.status = Set(STATUS_CANCELLED.to_string());
@@ -775,8 +775,8 @@ impl OrderService {
             });
         }
 
+        let old_status = existing.status.clone();
         let mut active: entities::order::ActiveModel = existing.into();
-        let old_status = active.status.clone().take().unwrap_or_default();
         let now = Utc::now();
         active.status = Set(next_status.to_string());
         active.updated_at = Set(now.into());

@@ -443,9 +443,11 @@ impl CartService {
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
 
+        // The stored unit price is the money value this write scales; a silent
+        // `Decimal::ZERO` fallback would reprice the line item at zero instead.
+        let unit_price = line_item.unit_price;
         let mut active: entities::cart_line_item::ActiveModel = line_item.into();
         let now = Utc::now();
-        let unit_price = active.unit_price.clone().take().unwrap_or(Decimal::ZERO);
         active.quantity = Set(quantity);
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());
