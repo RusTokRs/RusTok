@@ -148,6 +148,24 @@ pub struct GqlProductImageTranslation {
     pub alt_text: Option<String>,
 }
 
+/// Storefront catalog-card image summary owned by the Product module.
+#[derive(SimpleObject)]
+pub struct GqlProductListImage {
+    pub media_id: Uuid,
+    pub url: String,
+    pub alt_text: Option<String>,
+    pub position: i32,
+}
+
+/// Storefront catalog-card "from" price snapshot owned by the Product module.
+#[derive(SimpleObject)]
+pub struct GqlProductListPrice {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: Option<String>,
+    pub on_sale: bool,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlProductList {
     pub items: Vec<GqlProductListItem>,
@@ -168,6 +186,10 @@ pub struct GqlProductListItem {
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
+    /// Lowest-position image of the product; `null` when the product has none.
+    pub primary_image: Option<GqlProductListImage>,
+    /// Cheapest base variant price in the requested or derived currency.
+    pub price_from: Option<GqlProductListPrice>,
     pub created_at: String,
     pub published_at: Option<String>,
 }
@@ -1917,6 +1939,28 @@ impl From<dto::VariantResponse> for GqlVariant {
 
 impl From<dto::PriceResponse> for GqlPrice {
     fn from(price: dto::PriceResponse) -> Self {
+        Self {
+            currency_code: price.currency_code,
+            amount: price.amount.to_string(),
+            compare_at_amount: price.compare_at_amount.map(|value| value.to_string()),
+            on_sale: price.on_sale,
+        }
+    }
+}
+
+impl From<rustok_product::StorefrontProductListImage> for GqlProductListImage {
+    fn from(image: rustok_product::StorefrontProductListImage) -> Self {
+        Self {
+            media_id: image.media_id,
+            url: image.url,
+            alt_text: image.alt_text,
+            position: image.position,
+        }
+    }
+}
+
+impl From<rustok_product::StorefrontProductListPrice> for GqlProductListPrice {
+    fn from(price: rustok_product::StorefrontProductListPrice) -> Self {
         Self {
             currency_code: price.currency_code,
             amount: price.amount.to_string(),

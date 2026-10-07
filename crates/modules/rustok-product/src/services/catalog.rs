@@ -40,8 +40,9 @@ pub use translation_changes::{
 pub use types::{
     AdminProductList, AdminProductListItem, AdminProductListQuery,
     MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductTagState,
-    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection,
+    StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
+    StorefrontProductListPrice, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 pub use variant_translation::{
     ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,

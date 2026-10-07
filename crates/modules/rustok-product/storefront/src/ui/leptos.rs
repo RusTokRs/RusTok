@@ -34,7 +34,8 @@ pub fn ProductView() -> impl IntoView {
         read_route_query_value(&route_context, "sort_by"),
         read_route_query_value(&route_context, "sort_direction"),
         read_route_query_value(&route_context, "attribute_filters"),
-    );
+    )
+    .with_currency_code(read_route_query_value(&route_context, "currency"));
     let control_labels = build_catalog_search_labels(route_input.locale.as_deref());
     let current_search = catalog_input.search.clone().unwrap_or_default();
     let current_category_id = catalog_input.category_id.clone().unwrap_or_default();
@@ -317,7 +318,27 @@ fn SelectedProductCard(
             } else {
                 view! { <span class="hidden" /> }.into_any()
             }}
-            <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            {if view_model.gallery.is_empty() {
+                view! { <span class="hidden" /> }.into_any()
+            } else {
+                let primary = view_model.gallery[0].clone();
+                let thumbs = view_model.gallery.iter().skip(1).cloned().collect::<Vec<_>>();
+                view! {
+                    <div class="mt-5 grid gap-3 md:grid-cols-[2fr_1fr]">
+                        <div class="flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/30">
+                            <img class="h-full w-full object-cover" src=primary.url alt=primary.alt_text />
+                        </div>
+                        <div class="grid grid-cols-3 gap-3 md:grid-cols-2">
+                            {thumbs.into_iter().map(|image| view! {
+                                <div class="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/30">
+                                    <img class="h-full w-full object-cover" src=image.url alt=image.alt_text loading="lazy" />
+                                </div>
+                            }).collect_view()}
+                        </div>
+                    </div>
+                }.into_any()
+            }}
+            <div class="mt-5 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 {view_model.metadata_items.into_iter().map(|item| view! {
                     <span>{item}</span>
                 }).collect_view()}
@@ -372,6 +393,7 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
     }
 
     let open_label = view_model.open_label.clone();
+    let price_missing_label = view_model.price_missing_label.clone();
     let is_ru = locale.as_deref() == Some("ru");
 
     view! {
@@ -386,8 +408,21 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
                 {view_model.items.into_iter().map(|product| {
                     let open_label = open_label.clone();
                     let is_item_bundle = product.product_type.eq_ignore_ascii_case("bundle");
+                    let image_block = match product.image_url.as_deref() {
+                        Some(image_url) => {
+                            let image_alt = product.image_alt.clone();
+                            let image_url = image_url.to_string();
+                            view! {
+                                <div class="mb-3 flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-xl bg-muted/40">
+                                    <img class="h-full w-full object-cover" src=image_url alt=image_alt loading="lazy" />
+                                </div>
+                            }.into_any()
+                        }
+                        None => view! { <span class="hidden" /> }.into_any(),
+                    };
                     view! {
                         <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
+                            {image_block}
                             <div class="flex items-center justify-between gap-2">
                                 <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type}</div>
                                 {if is_item_bundle {
@@ -403,6 +438,25 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
                             <h4 class="mt-2 text-base font-semibold text-card-foreground">{product.title}</h4>
                             <p class="mt-2 text-sm text-muted-foreground">{product.vendor}</p>
                             <p class="mt-1 text-xs text-muted-foreground">{product.seller_boundary}</p>
+                            <div class="mt-3 flex items-center gap-2">
+                                {match product.price_label {
+                                    Some(price_label) => view! {
+                                        <span class="text-base font-semibold text-card-foreground">{price_label}</span>
+                                    }.into_any(),
+                                    None => view! {
+                                        <span class="text-xs text-muted-foreground">{price_missing_label.clone()}</span>
+                                    }.into_any(),
+                                }}
+                                {if product.on_sale {
+                                    view! {
+                                        <span class="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+                                            {if is_ru { "Скидка" } else { "Sale" }}
+                                        </span>
+                                    }.into_any()
+                                } else {
+                                    view! { <span class="hidden" /> }.into_any()
+                                }}
+                            </div>
                             <div class="mt-4 flex items-center justify-between gap-3">
                                 <span class="text-xs text-muted-foreground">{product.published_at}</span>
                                 <a class="inline-flex text-sm font-medium text-primary hover:underline" href=product.href>{open_label}</a>

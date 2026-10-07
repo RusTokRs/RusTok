@@ -167,7 +167,7 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     Ok(result)
 }
 
-fn resolve_image_alt_text(
+pub(crate) fn resolve_image_alt_text(
     translations: &[entities::product_image_translation::Model],
     locale: &str,
     fallback_locale: Option<&str>,

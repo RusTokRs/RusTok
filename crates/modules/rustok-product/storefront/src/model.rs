@@ -44,10 +44,37 @@ pub struct ProductListItem {
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
     pub tags: Vec<String>,
+    #[serde(rename = "primaryImage", default)]
+    pub primary_image: Option<ProductImage>,
+    #[serde(rename = "priceFrom", default)]
+    pub price_from: Option<ProductListPrice>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
+}
+
+/// Catalog-card media summary resolved by the Product owner.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductImage {
+    #[serde(rename = "mediaId")]
+    pub media_id: String,
+    pub url: String,
+    #[serde(rename = "altText", default)]
+    pub alt_text: Option<String>,
+    pub position: i32,
+}
+
+/// Catalog-card "from" price snapshot resolved by the Product owner.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductListPrice {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount", default)]
+    pub compare_at_amount: Option<String>,
+    #[serde(rename = "onSale", default)]
+    pub on_sale: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -62,6 +89,9 @@ pub struct ProductDetail {
     pub tags: Vec<String>,
     #[serde(rename = "publishedAt")]
     pub published_at: Option<String>,
+    /// Locale-resolved product gallery; empty until the product has media.
+    #[serde(default)]
+    pub images: Vec<ProductImage>,
     pub translations: Vec<ProductTranslation>,
     pub variants: Vec<ProductVariant>,
 }

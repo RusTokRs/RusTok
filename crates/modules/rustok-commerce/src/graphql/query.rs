@@ -1725,6 +1725,11 @@ impl CommerceQuery {
                         .unwrap_or_else(|| "default".to_string()),
                 ),
                 tags: item.tags,
+                // Legacy REST-catalog projection: the storefront price/image
+                // snapshot belongs to `storefrontProductCatalog`, which carries
+                // the owner-provided `primaryImage` and `priceFrom` fields.
+                primary_image: None,
+                price_from: None,
                 created_at: item.created_at.to_rfc3339(),
                 published_at: item.published_at.map(|value| value.to_rfc3339()),
             })
@@ -2265,6 +2270,11 @@ impl CommerceQuery {
                 product_type: item.product_type,
                 shipping_profile_slug: Some(item.shipping_profile_slug),
                 tags: item.tags,
+                // Legacy REST-catalog projection: the storefront price/image
+                // snapshot belongs to `storefrontProductCatalog`, which carries
+                // the owner-provided `primaryImage` and `priceFrom` fields.
+                primary_image: None,
+                price_from: None,
                 created_at: item.created_at.to_rfc3339(),
                 published_at: item.published_at.map(|value| value.to_rfc3339()),
             })

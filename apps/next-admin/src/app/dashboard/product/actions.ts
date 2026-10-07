@@ -123,7 +123,10 @@ export async function saveProductAction(payload: {
       publish: payload.status === 'ACTIVE'
     });
 
-    // If there were attribute values specified, save them
+    // Attribute values need the created product id, so they are written after
+    // creation. Attribute failure must not be swallowed: a draft product is
+    // rolled back so the operator can retry the form safely, while a published
+    // product is kept and reported as a partial success.
     if (payload.attributePatches.length > 0 && created.id) {
       try {
         await saveProductAttributeValues(
@@ -133,7 +136,34 @@ export async function saveProductAction(payload: {
           payload.attributePatches
         );
       } catch (err) {
-        console.error('Failed to save attributes for new product:', err);
+        const reason =
+          err instanceof Error ? err.message : 'unknown attribute error';
+
+        let rollbackSucceeded = false;
+        if (payload.status !== 'ACTIVE') {
+          try {
+            await deleteProductDetail(opts, created.id);
+            rollbackSucceeded = true;
+          } catch (rollbackError) {
+            console.error(
+              'Failed to roll back product after attribute error:',
+              rollbackError
+            );
+          }
+        }
+
+        revalidatePath('/dashboard/product');
+        revalidatePath(`/dashboard/product/${created.id}`);
+
+        if (rollbackSucceeded) {
+          throw new Error(
+            `Product creation was rolled back because attribute values could not be saved: ${reason}. Nothing was saved — fix the values and save again.`
+          );
+        }
+
+        throw new Error(
+          `Product was created, but attribute values could not be saved: ${reason}. Open /dashboard/product/${created.id} to review the product and retry the attributes.`
+        );
       }
     }
 
@@ -164,14 +194,28 @@ export async function saveProductAction(payload: {
 
     const updated = await updateProductDetail(opts, payload.id, updateInput);
 
-    // Save attribute patches if any
+    // Product details are already persisted at this point: attribute values are
+    // saved afterwards because their effective schema depends on the category
+    // assigned above. Surface a partial-success error instead of claiming the
+    // whole save failed, and keep the paths revalidated so the saved product is
+    // visible for a retry.
     if (payload.attributePatches.length > 0) {
-      await saveProductAttributeValues(
-        opts,
-        payload.id,
-        payload.activeLocale,
-        payload.attributePatches
-      );
+      try {
+        await saveProductAttributeValues(
+          opts,
+          payload.id,
+          payload.activeLocale,
+          payload.attributePatches
+        );
+      } catch (err) {
+        revalidatePath('/dashboard/product');
+        revalidatePath(`/dashboard/product/${payload.id}`);
+        const reason =
+          err instanceof Error ? err.message : 'unknown attribute error';
+        throw new Error(
+          `Product details were saved, but attribute values could not be saved: ${reason}. Fix the issue and save again to retry the attributes.`
+        );
+      }
     }
 
     revalidatePath('/dashboard/product');

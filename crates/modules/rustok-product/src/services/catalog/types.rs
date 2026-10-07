@@ -1,5 +1,6 @@
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -123,6 +124,23 @@ pub(crate) fn validate_product_attribute_filters(
     Ok(())
 }
 
+/// Normalizes the optional storefront display currency to `AAA` upper case.
+pub(crate) fn normalize_storefront_currency_code(
+    currency_code: Option<String>,
+) -> CommerceResult<Option<String>> {
+    let Some(currency_code) = normalize_optional_text(currency_code) else {
+        return Ok(None);
+    };
+    let normalized = currency_code.to_ascii_uppercase();
+    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic())
+    {
+        return Err(CommerceError::Validation(
+            "currency_code must be a three-letter ISO 4217 code".to_string(),
+        ));
+    }
+    Ok(Some(normalized))
+}
+
 fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
     let filters = values
         .into_iter()
@@ -139,6 +157,12 @@ pub struct StorefrontProductListQuery {
     pub sort_by: StorefrontProductSortBy,
     pub sort_direction: StorefrontProductSortDirection,
     pub attribute_filters: Vec<ProductAttributeFilter>,
+    /// Optional display currency for the storefront price snapshot.
+    ///
+    /// When omitted the owner derives one currency from the cheapest base price
+    /// of each product and reports it back in the list item, so the storefront
+    /// never renders an amount without knowing which currency it is in.
+    pub currency_code: Option<String>,
     pub page: u64,
     pub per_page: u64,
 }
@@ -151,6 +175,7 @@ impl Default for StorefrontProductListQuery {
             sort_by: StorefrontProductSortBy::default(),
             sort_direction: StorefrontProductSortDirection::default(),
             attribute_filters: Vec::new(),
+            currency_code: None,
             page: 1,
             per_page: 12,
         }
@@ -162,6 +187,16 @@ impl StorefrontProductListQuery {
         self.page = page;
         self.per_page = per_page;
         self
+    }
+
+    /// Restricts the storefront price snapshot to one display currency.
+    ///
+    /// The value is normalized to an upper-case three-letter code; an empty or
+    /// malformed value is rejected so the storefront cannot render an amount
+    /// whose currency the owner silently guessed.
+    pub fn with_currency_code(mut self, currency_code: Option<String>) -> CommerceResult<Self> {
+        self.currency_code = normalize_storefront_currency_code(currency_code)?;
+        Ok(self)
     }
 
     pub fn try_new(
@@ -304,9 +339,32 @@ pub struct StorefrontProductListItem {
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub tags: Vec<String>,
+    /// Lowest-position product image, resolved with the requested locale and
+    /// fallback locale. `None` when the product has no image yet.
+    pub primary_image: Option<StorefrontProductListImage>,
+    /// Cheapest base (non price-list, non tier) variant price for the requested
+    /// or derived currency. `None` when the product has no base price yet.
+    pub price_from: Option<StorefrontProductListPrice>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub published_at: Option<chrono::DateTime<chrono::Utc>>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorefrontProductListImage {
+    pub media_id: Uuid,
+    pub url: String,
+    pub alt_text: Option<String>,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StorefrontProductListPrice {
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub compare_at_amount: Option<Decimal>,
+    pub on_sale: bool,
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminProductList {

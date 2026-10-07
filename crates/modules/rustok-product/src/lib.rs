@@ -22,6 +22,7 @@ pub mod entities;
 pub mod error;
 mod image_translation_progress_target;
 mod image_translation_target;
+mod media_asset_read_port;
 pub mod migrations;
 pub mod ports;
 mod public_error;
@@ -46,6 +47,11 @@ pub use catalog_schema_read_port::{
 pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
 pub use error::{CommerceError, CommerceResult};
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;
+pub use media_asset_read_port::{
+    ENSURE_PRODUCT_IMAGE_MEDIA_ASSET_OPERATION, PRODUCT_MEDIA_ASSET_VALIDATION_DEADLINE,
+    ProductMediaAssetReadPort, ProductMediaReferencePolicy, ProductMediaValidatedCommandPort,
+    product_media_asset_validation_context,
+};
 pub use ports::*;
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{
@@ -85,7 +91,8 @@ pub use services::{
     ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
     ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
-    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
+    StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
+    StorefrontProductListPrice, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection, product_attribute_boolean_term,
     product_attribute_date_term, product_attribute_datetime_term, product_attribute_decimal_term,
     product_attribute_integer_term, product_attribute_localized_presence_term,

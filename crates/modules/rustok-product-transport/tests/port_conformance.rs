@@ -111,6 +111,8 @@ impl ProductCatalogReadPort for MockProductCatalogReadPort {
                 vendor: product.vendor,
                 product_type: product.product_type,
                 tags: product.tags,
+                primary_image: None,
+                price_from: None,
                 created_at: product.created_at,
                 published_at: product.published_at,
             }],

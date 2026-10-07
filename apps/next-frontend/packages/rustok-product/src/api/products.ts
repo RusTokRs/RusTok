@@ -35,6 +35,18 @@ const STOREFRONT_PRODUCTS_QUERY = `
         vendor
         productType
         tags
+        primaryImage {
+          mediaId
+          url
+          altText
+          position
+        }
+        priceFrom {
+          currencyCode
+          amount
+          compareAtAmount
+          onSale
+        }
         createdAt
         publishedAt
       }
@@ -52,6 +64,12 @@ const STOREFRONT_PRODUCT_QUERY = `
       productType
       tags
       publishedAt
+      images {
+        mediaId
+        url
+        altText
+        position
+      }
       translations {
         locale
         title
@@ -191,6 +209,7 @@ export async function fetchStorefrontProducts(
       sortBy?: string;
       sortDirection?: string;
       attributeFilters?: string[];
+      currencyCode?: string;
       page?: number;
       perPage?: number;
     };
@@ -207,6 +226,7 @@ export async function fetchStorefrontProducts(
             attributeFilters: filter.attributeFilters?.length
               ? filter.attributeFilters
               : undefined,
+            currencyCode: filter.currencyCode?.trim().toUpperCase() || undefined,
             page: filter.page ?? 1,
             perPage: filter.perPage ?? 12,
           }

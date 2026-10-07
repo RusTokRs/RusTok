@@ -91,6 +91,8 @@ pub struct StorefrontProductCatalogFilter {
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
     pub attribute_filters: Option<Vec<String>>,
+    /// Display currency of the catalog-card price snapshot (ISO 4217).
+    pub currency_code: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 }
@@ -171,7 +173,9 @@ impl ProductCatalogQuery {
             filter.attribute_filters.unwrap_or_default(),
         )
         .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?
-        .with_pagination(page, per_page);
+        .with_pagination(page, per_page)
+        .with_currency_code(filter.currency_code)
+        .map_err(|error| map_product_service_error(error, "storefront_product_catalog_input"))?;
 
         let port_context = PortContext::new(
             tenant.id.to_string(),
@@ -223,6 +227,8 @@ impl ProductCatalogQuery {
                     product_type: item.product_type,
                     shipping_profile_slug: None,
                     tags: item.tags,
+                    primary_image: item.primary_image.map(Into::into),
+                    price_from: item.price_from.map(Into::into),
                     created_at: item.created_at.to_rfc3339(),
                     published_at: item.published_at.map(|value| value.to_rfc3339()),
                 })

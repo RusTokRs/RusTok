@@ -293,6 +293,8 @@ mod tests {
                 vendor: None,
                 product_type: None,
                 tags: Vec::new(),
+                primary_image: None,
+                price_from: None,
                 created_at: chrono::Utc::now(),
                 published_at: None,
             }],

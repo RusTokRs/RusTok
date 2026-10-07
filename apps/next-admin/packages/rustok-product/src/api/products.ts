@@ -211,8 +211,8 @@ mutation ProductAdminReorderImages($idempotencyKey: String!, $productId: UUID!, 
 }`;
 
 export const SAVE_ATTRIBUTE_VALUES_MUTATION = `
-mutation ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) {
-  saveProductAttributeValues(productId: $productId, locale: $locale, patches: $patches) {
+mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) {
+  saveProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, patches: $patches) {
     attributeId
     kind
     text
@@ -531,9 +531,11 @@ export async function saveProductAttributeValues(
     throw new Error('Sign in again to save attribute values.');
   }
 
+  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {
+      idempotencyKey: string;
       productId: string;
       locale: string;
       patches: ProductAttributeValuePatch[];
@@ -541,7 +543,7 @@ export async function saveProductAttributeValues(
     { saveProductAttributeValues: ProductAttributeValueItem[] }
   >(
     SAVE_ATTRIBUTE_VALUES_MUTATION,
-    { productId, locale, patches },
+    { idempotencyKey, productId, locale, patches },
     opts.token,
     opts.tenantSlug
   );

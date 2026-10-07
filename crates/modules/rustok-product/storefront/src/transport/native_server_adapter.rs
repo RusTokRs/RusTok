@@ -12,7 +12,7 @@ use crate::core::{resolve_requested_locale, sanitize_channel_slug, sanitize_uuid
 #[allow(unused_imports)]
 use crate::model::{
     ProductCatalogSearchOption, ProductCatalogSearchOptions, ProductDetail, ProductEffectivePrice,
-    ProductList, ProductListItem, ProductPricingContext, ProductPricingDetail,
+    ProductImage, ProductList, ProductListItem, ProductPricingContext, ProductPricingDetail,
     ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
 };
 #[cfg(feature = "ssr")]
@@ -193,6 +193,12 @@ fn map_product_list_item(value: rustok_product::StorefrontProductListItem) -> Pr
         vendor: value.vendor,
         product_type: value.product_type,
         tags: value.tags,
+        primary_image: value
+            .primary_image
+            .map(super::catalog_list_native::map_owner_product_image),
+        price_from: value
+            .price_from
+            .map(super::catalog_list_native::map_owner_product_list_price),
         created_at: value.created_at.to_rfc3339(),
         published_at: value.published_at.map(|value| value.to_rfc3339()),
     }
@@ -208,6 +214,16 @@ fn map_product_detail(value: rustok_product::dto::ProductResponse) -> ProductDet
         product_type: value.product_type,
         tags: value.tags,
         published_at: value.published_at.map(|item| item.to_rfc3339()),
+        images: value
+            .images
+            .into_iter()
+            .map(|image| ProductImage {
+                media_id: image.media_id.to_string(),
+                url: image.url,
+                alt_text: image.alt_text,
+                position: image.position,
+            })
+            .collect(),
         translations: value
             .translations
             .into_iter()

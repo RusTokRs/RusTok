@@ -14,6 +14,26 @@ pub struct CatalogListInput {
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
     pub attribute_filters: Vec<String>,
+    /// Optional display currency of the catalog-card price snapshot.
+    pub currency_code: Option<String>,
+}
+
+impl CatalogListInput {
+    /// Applies the optional catalog-card display currency read from the route.
+    pub fn with_currency_code(mut self, currency_code: Option<String>) -> Self {
+        self.currency_code = normalize_currency_code(currency_code);
+        self
+    }
+}
+
+fn normalize_currency_code(currency_code: Option<String>) -> Option<String> {
+    let currency_code = normalize_optional_ui_text(currency_code)?;
+    let normalized = currency_code.to_ascii_uppercase();
+    if normalized.len() == 3 && normalized.chars().all(|character| character.is_ascii_alphabetic()) {
+        Some(normalized)
+    } else {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

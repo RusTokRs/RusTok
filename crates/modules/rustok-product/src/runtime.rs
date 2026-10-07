@@ -6,6 +6,7 @@ use sea_orm::DatabaseConnection;
 use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort,
     ProductCatalogSchemaReadPort, ProductCatalogSchemaService, ProductCatalogSchemaWritePort,
+    ProductMediaAssetReadPort, ProductMediaReferencePolicy, ProductMediaValidatedCommandPort,
     ProductStorefrontHttpReadPort, ProductStorefrontTagReadPort,
 };
 
@@ -134,6 +135,7 @@ impl ProductCatalogCommandProfile {
 pub struct ProductCatalogCommandRuntime {
     command_port: Arc<dyn ProductCatalogCommandPort>,
     schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>,
+    media_asset_read_port: Option<Arc<dyn ProductMediaAssetReadPort>>,
     profile: ProductCatalogCommandProfile,
 }
 
@@ -145,6 +147,7 @@ impl ProductCatalogCommandRuntime {
         Self {
             command_port,
             schema_write_port: None,
+            media_asset_read_port: None,
             profile,
         }
     }
@@ -175,6 +178,36 @@ impl ProductCatalogCommandRuntime {
 
     pub fn schema_write_port(&self) -> Option<Arc<dyn ProductCatalogSchemaWritePort>> {
         self.schema_write_port.clone()
+    }
+
+    /// Composes the Product-owned Media asset validation boundary over the current command port.
+    ///
+    /// Image writes validate the canonical Media UUID before the owner transaction runs, so an
+    /// unknown or cross-tenant asset can never reach `product_images`. Hosts call this after a
+    /// Media provider is available; without it Product keeps
+    /// [`ProductMediaReferencePolicy::OpaqueReferences`].
+    pub fn with_media_asset_read_port(
+        mut self,
+        media_asset_read_port: Arc<dyn ProductMediaAssetReadPort>,
+    ) -> Self {
+        self.command_port = Arc::new(ProductMediaValidatedCommandPort::new(
+            self.command_port.clone(),
+            media_asset_read_port.clone(),
+        ));
+        self.media_asset_read_port = Some(media_asset_read_port);
+        self
+    }
+
+    pub fn media_asset_read_port(&self) -> Option<Arc<dyn ProductMediaAssetReadPort>> {
+        self.media_asset_read_port.clone()
+    }
+
+    pub const fn media_reference_policy(&self) -> ProductMediaReferencePolicy {
+        if self.media_asset_read_port.is_some() {
+            ProductMediaReferencePolicy::ValidatedByMediaOwner
+        } else {
+            ProductMediaReferencePolicy::OpaqueReferences
+        }
     }
 
     pub const fn profile(&self) -> ProductCatalogCommandProfile {
