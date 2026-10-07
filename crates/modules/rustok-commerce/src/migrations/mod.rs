@@ -102,6 +102,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     ));
     migrations.push(Box::new(
         m20261007_000012_add_checkout_operation_admission::Migration,
+    ));
+    migrations.push(Box::new(
         m20261007_000013_drop_provider_execution_checkout_guard::Migration,
     ));
     migrations.push(Box::new(

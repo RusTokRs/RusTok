@@ -30,6 +30,10 @@ jobs:
           node-version: 22
       - name: Verify canonical native module source layout
         run: npm run verify:module-source-layout
+      - name: Verify single-argument Rust constructors
+        run: npm run verify:rust-constructor-arity
+      - name: Run single-argument Rust constructor negative fixtures
+        run: npm run test:verify:rust-constructor-arity
       - name: Verify canonical module reference contract
         run: npm run verify:module-reference-contract
       - name: Verify module manifest documentation parity

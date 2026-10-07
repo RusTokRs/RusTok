@@ -4,6 +4,8 @@
     "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
     "verify:adrs": "node scripts/verify/verify-adrs.mjs",
     "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs",
+    "verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.mjs",
+    "test:verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.test.mjs",
     "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",
     "audit:deps": "cargo machete",
     "audit:deadcode": "npx knip --directory apps/next-admin",
