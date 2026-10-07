@@ -80,7 +80,7 @@ with its precise location, impact, and required owner decision.
 | ECOM-ZERO-01 | P2 / money | Zero-total carts | 100 %-discount carts compute `total_amount = 0`, but `create_collection` rejects `amount <= 0`, so checkout can never complete; `net_total` also silently clamps over-discounts to zero. | needs owner decision |
 | ECOM-DUP-02 | P2 / contract | Analytics | `load_order_stats_snapshot` is duplicated verbatim in `apps/admin`; one metric, two owners. | needs owner decision |
 | ECOM-ANALYTICS-01 | P2 / correctness | Analytics | "Revenue" counts `order.placed` (not paid), ignores cancellations/refunds, and sums all currencies into one figure. | needs owner decision |
-| ECOM-TENANT-01 | P2 / tenancy | Pricing, inventory | Money-domain queries that are not tenant-filtered (relying on a previously validated parent row). | fixed (remediation row 58: `PricingService::get_price`/`get_variant_prices` take `tenant_id` and resolve the variant through the shared `ensure_variant_tenant` loader; the `price`/`inventory_item`/`region_country_tax_policy` reads that lean on a tenant-checked parent carry `// INVARIANT:` notes naming that parent) |
+| ECOM-TENANT-01 | P2 / tenancy | Pricing, inventory | Money-domain queries that are not tenant-filtered (relying on a previously validated parent row). | fixed (whole-surface sweep 2026-10-07: the 25 remaining id-keyed reads in channel/product/bundles/relations/inventory are classified — tenant-verified parent or tenant-less-by-schema, 0 defects, see §"Survey pass"; remediation row 58: `PricingService::get_price`/`get_variant_prices` take `tenant_id` and resolve the variant through the shared `ensure_variant_tenant` loader; the `price`/`inventory_item`/`region_country_tax_policy` reads that lean on a tenant-checked parent carry `// INVARIANT:` notes naming that parent) |
 | ECOM-PANIC-01 | P2 / robustness | Money paths | `expect`/`unwrap` on the money path without a documented invariant (`marketplace_financial_runtime`, `checkout_inventory_order_adoption`, `payment`, UI). | partially fixed (row 60: both reachable money-path panics are typed errors and the digest helpers carry `// INVARIANT:` notes; the host-composition panic remains an owner decision) |
 | ECOM-LOG-01 | P2 / hygiene | Cart | `eprintln!("DEBUG MAP ...")` raw debug prints inside money error mapping. | fixed |
 | ECOM-REFUND-01 | P2 / correctness | Refunds | Two refund tables (`refund`, `refund_creation`) with two independent services; cross-table reconciliation is unproven. | needs owner decision |
@@ -882,6 +882,17 @@ The survey pass added the rest of the same bucket: the product admin transport f
 keeps four file-level `#![allow(dead_code)]` because its seven verifiers read a facade
 (`catalog_transport.rs`) that does not exist in the tree, and the glob-reexport allowance on
 `layered_order_helpers.rs` belongs to the storefront shims above — see §"Survey pass".
+
+A later continuation pass (same day) established two things about that bucket. The suppressions are not
+the whole story: the transport behind three of them is caller-less — `transport/admin_catalog_native.rs`
+and `transport/admin_catalog_graphql.rs` (233 lines) are referenced only by verifiers, and five fallback
+wrappers with their ten adapter counterparts, five `*_MUTATION` constants and five `product_admin_*_native`
+server functions have no production caller — so removing them, and the allowances with them, is the same
+gate re-pin the row above describes, not a cleanup this pass may perform (the verdict test is that
+`verify-product-admin-boundary` is green on both trees and requires the file). And the tenant hunt is
+closed: the 25 remaining id-keyed reads of the non-money ecommerce roots are all classified as
+tenant-verified-parent or tenant-less-by-schema, with zero defects, so ECOM-TENANT-01 no longer has an
+open surface beyond the money crates.
 
 ## Binding-guard pass (the last database business rule on the money path)
 
@@ -1690,9 +1701,12 @@ three sweeps over the 21 reviewed module roots, tests and migrations excluded.
 **§14 lint suppressions.** 17 sites found, 11 removed or replaced (row 64). The 6 that remain are not
 left because they are harmless: each one silences code that a repository verifier pins *as* the
 implementation. Two are the commerce GraphQL shim allowances recorded by the re-verification pass
-(`graphql/mutations/mod.rs:8,17`), one is the glob-reexport allowance on the same shim cluster
-(`layered_order_helpers.rs:1`), and four are the file-level `#![allow(dead_code)]` of the product admin
+(`graphql/mutations/mod.rs:8,17`) and four are the file-level `#![allow(dead_code)]` of the product admin
 transport family (`transport.rs`, `transport/{graphql_adapter,native_server_adapter,product_lifecycle_graphql}.rs`).
+One adjacent allowance sits on the same shim cluster without being a §14 item — the glob-re-export
+allowance at `layered_order_helpers.rs:1` (`ambiguous_glob_reexports`, `hidden_glob_reexports`); two
+verifiers require the glob line itself (`verify-commerce-graphql-cart-helper-error-safety.mjs:84`,
+`verify-commerce-graphql-order-helper-error-safety.mjs:87`), so it is part of the same re-pin.
 That family carries its own evidence trail: its seven verifiers
 (`verify-product-admin-{graphql-read-diagnostic-safety,category-sort,fallback-mutation-error-safety,primary-mutation-error-safety,catalog-options-error-safety,lifecycle-retry-consumer}` and
 `verify-commerce-product-schema-write-consumer-cutover`) are red on this tree and on `origin/main`
@@ -1700,6 +1714,24 @@ alike, because the facade file they read (`crates/modules/rustok-product/admin/s
 does not exist in the tree; the diagnostics they pin (`GraphqlReadContext` with its five constructors in
 `transport/graphql_error_safety.rs`) have no caller anywhere in the workspace. Repairing that contour is
 the same owner decision as ECOM-VERIFY-01, not a review fix.
+
+**Caller-less product-admin transport (found while locating the allowances).** The same family is dead
+wherever a verifier does not pin it. `transport/admin_catalog_native.rs` and
+`transport/admin_catalog_graphql.rs` (233 lines) have no caller in the workspace — the admin product
+list resolves through `transport.rs` → `graphql_adapter::fetch_products`, not through them — yet
+`verify-product-admin-boundary` (green on this tree *and* on `origin/main`) asserts the native file
+exists, and the evidence review
+`crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source-review.json:41`
+still claims "The Product Admin list remains native-first through admin_catalog_native". The claim and
+the code disagree. Five fallback wrappers of `transport.rs` (`set_category_schema_mode`,
+`create_product_attribute_schema_group`, `create_category_attribute_group`, `bind_schema_attribute`,
+`bind_category_attribute`), their ten `pub(super)` counterparts in
+`transport/{graphql_adapter,native_server_adapter}.rs`, the five `*_MUTATION` constants and the five
+`product_admin_*_native` server functions they call are equally caller-less; the constants are pinned
+by `verify-product-admin-fallback-mutation-error-safety.mjs` and the server functions by
+`verify-product-admin-boundary` (green), so deleting the cluster is a re-pin as well. Deleting either
+the two modules or the cluster without re-pinning turns a green verifier red — the reason this pass
+left both in place.
 
 **Raw SQL without a tenant predicate.** 20 non-migration `Statement::from_string` /
 `from_sql_and_values` sites keep no `tenant_id` inside a 25-line window. All 20 were read individually
@@ -1712,6 +1744,18 @@ dimension to filter on; and the five product attribute/variant `*_translations` 
 (`catalog_schema_service.rs:932,1313`, `catalog_schema_service/{attributes/translation.rs:398,schemas/translation.rs:391,values/variant.rs:672}`)
 target tables whose schema has no `tenant_id` column — the tenant is enforced one statement above, on
 the tenant-scoped parent row (`SELECT id FROM product_attribute_options WHERE tenant_id = $1 … FOR UPDATE`).
+
+**Tenant-scope re-sweep (channel, product, bundles, relations, inventory).** 25
+id-keyed reads in those roots carry no local `tenant_id` predicate. All were read and classified: the
+key is a row id reached through a tenant-verified parent, or the table has no tenant column at all
+(`inventory_items` is keyed by `variant_id` and `reservation_items` by `inventory_item_id`; both are
+tenant-less by schema), and every caller either passes a tenant-scoped model or re-checks the parent in
+the same transaction (`load_tenant_variant`, `lock_bundle_for_update`,
+`find_product_for_update_in_tx`, `load_inventory_item_by_id_for_update`). The channel service is
+id-keyed by design and gated at each boundary — HTTP controller, admin native adapter and
+`ChannelReadPort`; `rustok-navigation/src/services/menu_binding.rs:127` (`ensure_channel_scope`)
+re-checks `channel.tenant_id` and `is_active` before a menu binding is accepted. Zero defects, so the
+ECOM-TENANT-01 row covers the whole reviewed surface rather than the money crates alone.
 
 **Panics and forbidden macros.** Production code (tests and migrations excluded) of the same 21 roots
 contains 0 `panic!`, 0 `todo!`, 0 `unimplemented!` and a single `.unwrap()` — the product-relations admin
