@@ -34,6 +34,7 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
     createdAt
     updatedAt
     publishedAt
+    revision
     translations {
       locale
       title
@@ -111,6 +112,7 @@ mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input:
     createdAt
     updatedAt
     publishedAt
+    revision
     translations {
       locale
       title
@@ -258,6 +260,7 @@ export type UpdateProductInput = {
   primaryCategoryId?: string | null;
   tags?: string[];
   status?: string | null;
+  revision?: number | null;
 };
 
 export type CreateVariantInput = {

@@ -182,9 +182,10 @@ for (const required of [
 }
 for (const required of [
   "validate_product_shipping_profile_input(",
-  "input.shipping_profile_slug.as_deref()",
-  "metadata: None",
+  "MaybeUndefined::Value(slug) => Some(slug.as_str())",
+  "metadata: input.custom_fields.map(|cf| cf.0)",
   "status: input.status.map(Into::into)",
+  "expected_revision: input.revision",
 ]) {
   requireText(update, required, "update Product compatibility semantics");
 }

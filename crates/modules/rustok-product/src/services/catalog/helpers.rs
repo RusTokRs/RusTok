@@ -195,6 +195,19 @@ pub fn apply_shipping_profile_to_metadata(
     metadata
 }
 
+/// Removes the legacy metadata shadow of the typed shipping-profile binding.
+///
+/// Used when an operator clears `shipping_profile_slug`: the typed column and the compatibility
+/// shadow must not disagree, otherwise the projection resurrects a removed profile.
+pub fn clear_shipping_profile_metadata_shadow(mut metadata: Value) -> Value {
+    if let Some(object) = metadata.as_object_mut() {
+        object.remove("shipping_profile_slug");
+        object.remove("shipping_profile");
+    }
+
+    metadata
+}
+
 pub fn normalize_create_product_metadata(
     input_tags: Vec<String>,
     shipping_profile_slug: Option<String>,

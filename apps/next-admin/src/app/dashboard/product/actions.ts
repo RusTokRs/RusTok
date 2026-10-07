@@ -90,6 +90,7 @@ export async function saveProductAction(payload: {
   primaryCategoryId?: string | null;
   tags: string[];
   status?: string;
+  revision?: number | null;
   initialVariant?: {
     sku: string;
     barcode: string;
@@ -101,7 +102,7 @@ export async function saveProductAction(payload: {
   };
   attributePatches: ProductAttributeValuePatch[];
   activeLocale: string;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; revision: number | null }> {
   const opts = await getAuthOpts();
 
   if (payload.isNew) {
@@ -171,7 +172,7 @@ export async function saveProductAction(payload: {
     }
 
     revalidatePath('/dashboard/product');
-    return { id: created.id };
+    return { id: created.id, revision: null };
   } else {
     if (!payload.id) {
       throw new Error('Product ID is required for update.');
@@ -192,7 +193,10 @@ export async function saveProductAction(payload: {
       shippingProfileSlug: payload.shippingProfileSlug || null,
       primaryCategoryId: payload.primaryCategoryId,
       tags: payload.tags,
-      status: payload.status || null
+      status: payload.status || null,
+      // The document revision the editor loaded; the owner refuses a save that would
+      // overwrite a concurrent edit instead of silently losing it.
+      revision: payload.revision ?? null
     };
 
     const updated = await updateProductDetail(opts, payload.id, updateInput);
@@ -223,7 +227,7 @@ export async function saveProductAction(payload: {
 
     revalidatePath('/dashboard/product');
     revalidatePath(`/dashboard/product/${payload.id}`);
-    return { id: updated.id };
+    return { id: updated.id, revision: updated.revision ?? null };
   }
 }
 

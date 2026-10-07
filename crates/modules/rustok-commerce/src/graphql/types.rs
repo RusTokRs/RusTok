@@ -59,6 +59,8 @@ pub struct GqlProduct {
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
+    /// Editorial revision; echo it back as `revision` in `updateProduct`.
+    pub revision: i32,
     pub translations: Vec<GqlProductTranslation>,
     pub variant_axes: Vec<GqlVariantAxisConfig>,
     pub variants: Vec<GqlVariant>,
@@ -1169,15 +1171,33 @@ pub struct PriceInput {
 #[derive(InputObject)]
 pub struct UpdateProductInput {
     pub translations: Option<Vec<ProductTranslationInput>>,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub shipping_profile_slug: Option<String>,
-    pub primary_category_id: Option<Uuid>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub seller_id: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub vendor: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub product_type: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub shipping_profile_slug: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub primary_category_id: MaybeUndefined<Uuid>,
     pub tags: Option<Vec<String>>,
     /// Optional custom fields patch — merged into existing metadata.
     pub custom_fields: Option<Json<serde_json::Value>>,
     pub status: Option<GqlProductStatus>,
+    /// Predecessor revision of the document that was read.
+    ///
+    /// Required whenever the input changes document fields; lifecycle-only writes (`status` only)
+    /// may omit it.
+    pub revision: Option<i32>,
+}
+
+pub(crate) fn graphql_patch<T>(value: MaybeUndefined<T>) -> rustok_api::Patch<T> {
+    match value {
+        MaybeUndefined::Undefined => rustok_api::Patch::Keep,
+        MaybeUndefined::Null => rustok_api::Patch::Clear,
+        MaybeUndefined::Value(value) => rustok_api::Patch::Set(value),
+    }
 }
 
 #[derive(InputObject)]
@@ -1750,6 +1770,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
             published_at: product.published_at.map(|value| value.to_rfc3339()),
+            revision: product.revision,
             translations: product
                 .translations
                 .into_iter()
@@ -3100,4 +3121,54 @@ pub struct BundleItemInputGql {
     pub is_optional: Option<bool>,
     pub discount_rate: Option<Decimal>,
     pub position: Option<i32>,
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::{UpdateProductInput, graphql_patch};
+    use async_graphql::MaybeUndefined;
+    use rustok_api::Patch;
+    use uuid::Uuid;
+
+    #[test]
+    fn graphql_patch_keeps_clears_and_sets() {
+        assert_eq!(
+            graphql_patch(MaybeUndefined::<String>::Undefined),
+            Patch::Keep
+        );
+        assert_eq!(graphql_patch(MaybeUndefined::<String>::Null), Patch::Clear);
+        assert_eq!(
+            graphql_patch(MaybeUndefined::Value("acme".to_string())),
+            Patch::Set("acme".to_string())
+        );
+    }
+
+    #[test]
+    fn category_patch_preserves_the_uuid_scope() {
+        let category_id = Uuid::from_u128(7);
+        assert_eq!(
+            graphql_patch(MaybeUndefined::Value(category_id)),
+            Patch::Set(category_id)
+        );
+    }
+
+    #[test]
+    fn update_input_carries_the_predecessor_revision() {
+        let input = UpdateProductInput {
+            translations: None,
+            seller_id: MaybeUndefined::Undefined,
+            vendor: MaybeUndefined::Null,
+            product_type: MaybeUndefined::Undefined,
+            shipping_profile_slug: MaybeUndefined::Undefined,
+            primary_category_id: MaybeUndefined::Undefined,
+            tags: None,
+            custom_fields: None,
+            status: None,
+            revision: Some(4),
+        };
+
+        assert_eq!(input.revision, Some(4));
+        assert_eq!(graphql_patch(input.vendor), Patch::Clear);
+        assert_eq!(graphql_patch(input.seller_id), Patch::Keep);
+    }
 }

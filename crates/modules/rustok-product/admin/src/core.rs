@@ -1016,6 +1016,8 @@ pub(crate) struct DraftForm {
     pub compare_at_amount: String,
     pub inventory_quantity: i32,
     pub publish_now: bool,
+    /// Revision of the loaded document, when the form edits an existing product.
+    pub revision: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1403,6 +1405,7 @@ pub(crate) fn build_save_command(
             meta_title: None,
             meta_description: None,
             tags: Vec::new(),
+            revision: form.revision,
         },
     })
 }
@@ -2880,6 +2883,7 @@ mod tests {
             compare_at_amount: String::new(),
             inventory_quantity: 7,
             publish_now: true,
+            revision: None,
         }
     }
 
@@ -2900,6 +2904,7 @@ mod tests {
     fn product_detail() -> ProductDetail {
         ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: Some("seller-1".to_string()),
             vendor: Some("Acme".to_string()),
@@ -3237,6 +3242,7 @@ mod tests {
     fn editor_form_state_maps_product_detail() {
         let product = ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: Some("seller-1".to_string()),
             vendor: Some("Acme".to_string()),
@@ -3670,6 +3676,7 @@ mod tests {
     fn selected_summary_view_model_formats_ready_product() {
         let product = ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: None,
             vendor: Some("Acme".to_string()),

@@ -426,6 +426,7 @@ impl CatalogService {
             created_at: product.created_at.into(),
             updated_at: product.updated_at.into(),
             published_at: product.published_at.map(Into::into),
+            revision: product.revision,
             translations: translations
                 .into_iter()
                 .map(|translation| ProductTranslationResponse {

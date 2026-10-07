@@ -58,6 +58,7 @@ pub use runtime::{
     ProductCatalogCommandProfile, ProductCatalogCommandRuntime, ProductCatalogReadProfile,
     ProductCatalogReadRuntime,
 };
+pub use services::catalog::concurrency::next_revision as next_product_revision;
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
     MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,

@@ -46,6 +46,13 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     pub published_at: Option<DateTimeWithTimeZone>,
+    /// Editorial revision of the product aggregate.
+    ///
+    /// Clients send the revision they read as `expected_revision`; the owner refuses an update
+    /// whose predecessor no longer matches, so two operators editing one product cannot silently
+    /// overwrite each other. The column is distinct from the Index watermark
+    /// `products.index_revision`, which the Index relay owns.
+    pub revision: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

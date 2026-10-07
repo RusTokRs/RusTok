@@ -2,12 +2,12 @@
 
 use std::{error::Error, sync::Arc, time::Duration};
 
-use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
+use rustok_api::{Patch, PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
-    CatalogService, ProductModule,
+    CatalogService, CommerceError, ProductModule,
     dto::{CreateProductInput, CreateVariantInput, ProductTranslationInput, UpdateProductInput},
 };
 use rustok_server::{
@@ -72,6 +72,26 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .create_product(tenant_id, actor_id, initial_product())
         .await?;
     let product_id = product.id;
+
+    // A stale predecessor revision is refused before any row changes; the row lock the owner takes
+    // keeps the check and the write atomic on Postgres.
+    let stale = owner
+        .update_product(
+            tenant_id,
+            actor_id,
+            product_id,
+            UpdateProductInput {
+                vendor: Patch::Set("Stale Product Evidence Vendor".into()),
+                expected_revision: Some(product.revision + 1),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("a stale predecessor revision must be refused");
+    assert!(matches!(stale, CommerceError::Validation(_)));
+    assert!(stale.to_string().contains("product revision conflict"));
+    let refused = owner.get_product(tenant_id, product_id).await?;
+    assert_eq!(refused.revision, product.revision);
 
     let provider = registered_provider(seed_connection.clone());
     let list_request = ListTranslationResourcesRequest {
@@ -247,17 +267,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
-                vendor: Some("Vendor changed outside translation revision".into()),
+                vendor: Patch::Set("Vendor changed outside translation revision".into()),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
     let progress_after_noop = provider
         .read_progress(
             read_context(tenant_id, "progress-after-noop"),
@@ -286,17 +309,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .expect("source owner translation");
     source.title = "Autumn Product Revised".into();
     source.description = Some("Revised seasonal product".into());
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
                 translations: Some(owner_update),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
     let after_owner_update = provider
         .read_resource(
             read_context(tenant_id, "after-owner-update"),

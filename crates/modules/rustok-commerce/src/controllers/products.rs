@@ -274,6 +274,12 @@ pub(crate) fn map_admin_product_port_error(
     error: PortError,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation if error.code == "product.revision_required" => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "commerce_admin_product_revision_required",
+            "Product update requires the revision of the document that was read",
+            "revision_required",
+        ),
         PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_product_invalid",
@@ -297,6 +303,12 @@ pub(crate) fn map_admin_product_port_error(
             "commerce_admin_product_sku_conflict",
             "A product variant with this SKU already exists",
             "duplicate_sku",
+        ),
+        PortErrorKind::Conflict if error.code == "product.revision_conflict" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_revision_conflict",
+            "Product was modified by another editor",
+            "revision_conflict",
         ),
         PortErrorKind::Conflict => (
             StatusCode::CONFLICT,

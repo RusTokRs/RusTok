@@ -79,6 +79,7 @@ async fn setup_pricing_port_service() -> (DatabaseConnection, PricingService, Uu
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
         published_at: Set(None),
+        revision: Set(1),
     }
     .insert(&db)
     .await

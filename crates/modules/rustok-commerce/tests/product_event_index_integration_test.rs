@@ -2,6 +2,7 @@
 // This test verifies the complete workflow from product creation to indexing
 
 use rust_decimal::Decimal;
+use rustok_api::Patch;
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_product::CatalogService;
 use rustok_product::dto::{
@@ -119,14 +120,15 @@ async fn test_product_update_triggers_event() {
             meta_title: None,
             meta_description: None,
         }]),
-        seller_id: None,
-        vendor: Some("Updated Vendor".to_string()),
-        product_type: Some("Digital".to_string()),
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Set("Updated Vendor".to_string()),
+        product_type: Patch::Set("Digital".to_string()),
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
+        expected_revision: None,
     };
 
     service

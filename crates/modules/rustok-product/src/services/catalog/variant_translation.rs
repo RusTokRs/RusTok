@@ -593,6 +593,7 @@ mod tests {
             created_at: Utc::now().into(),
             updated_at: Utc::now().into(),
             published_at: None,
+            revision: 1,
         }
     }
 

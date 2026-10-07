@@ -270,6 +270,7 @@ export interface ProductDetail {
   createdAt: string | null;
   updatedAt: string | null;
   publishedAt: string | null;
+  revision: number;
   translations: ProductTranslation[];
   variantAxes: VariantAxisConfig[];
   variants: ProductVariant[];

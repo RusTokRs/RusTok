@@ -64,6 +64,8 @@ export interface ProductEditorPageProps {
     primaryCategoryId?: string | null;
     tags: string[];
     status?: string;
+    // Predecessor document revision; required for every edit of an existing product.
+    revision?: number | null;
     // New product initial variant
     initialVariant?: {
       sku: string;
@@ -76,7 +78,7 @@ export interface ProductEditorPageProps {
     };
     attributePatches: ProductAttributeValuePatch[];
     activeLocale: string;
-  }) => Promise<{ id: string } | void>;
+  }) => Promise<{ id: string; revision?: number | null } | void>;
   onDeleteProduct?: (id: string) => Promise<void>;
   onAddVariant?: (
     productId: string,
@@ -145,6 +147,14 @@ export function ProductEditorPage({
   onRemoveBundleItem
 }: ProductEditorPageProps) {
   const router = useRouter();
+  // Document revision the editor may safely send back; advanced after every write that
+  // bumps the aggregate, and refreshed whenever the server component re-renders the page.
+  const [documentRevision, setDocumentRevision] = React.useState<number | null>(
+    initialProduct?.revision ?? null
+  );
+  React.useEffect(() => {
+    setDocumentRevision(initialProduct?.revision ?? null);
+  }, [initialProduct?.id, initialProduct?.revision]);
   const [activeLocale, setActiveLocale] = React.useState('en');
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -362,10 +372,15 @@ export function ProductEditorPage({
         primaryCategoryId: selectedCategoryId || null,
         tags,
         status,
+        revision: documentRevision,
         initialVariant: isNew ? newVariantDraft : undefined,
         attributePatches: patches,
         activeLocale
       });
+
+      if (res && typeof res.revision === 'number') {
+        setDocumentRevision(res.revision);
+      }
 
       setDirtyAttributeIds(new Set());
       setSuccessMessage(
@@ -391,7 +406,7 @@ export function ProductEditorPage({
     if (!isNew && initialProduct?.id) {
       setIsSaving(true);
       try {
-        await onSaveProduct({
+        const statusResult = await onSaveProduct({
           id: initialProduct.id,
           isNew: false,
           translations: Object.values(translations).filter(
@@ -400,9 +415,13 @@ export function ProductEditorPage({
           primaryCategoryId: selectedCategoryId || null,
           tags,
           status: newStatus,
+          revision: documentRevision,
           attributePatches: [],
           activeLocale
         });
+        if (statusResult && typeof statusResult.revision === 'number') {
+          setDocumentRevision(statusResult.revision);
+        }
         setSuccessMessage(`Product status updated to ${newStatus}.`);
       } catch (err) {
         setErrorMessage(

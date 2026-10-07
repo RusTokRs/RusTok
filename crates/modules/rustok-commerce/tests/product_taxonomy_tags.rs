@@ -1,4 +1,5 @@
 use rust_decimal::Decimal;
+use rustok_api::Patch;
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
@@ -210,11 +211,11 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
             product.id,
             UpdateProductInput {
                 translations: None,
-                seller_id: None,
-                vendor: None,
-                product_type: None,
-                shipping_profile_slug: None,
-                primary_category_id: None,
+                seller_id: Patch::Keep,
+                vendor: Patch::Keep,
+                product_type: Patch::Keep,
+                shipping_profile_slug: Patch::Keep,
+                primary_category_id: Patch::Keep,
                 tags: Some(vec![
                     "featured".to_string(),
                     "sale".to_string(),
@@ -224,6 +225,7 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
                     "featured": false,
                 })),
                 status: None,
+                expected_revision: None,
             },
         )
         .await
@@ -289,14 +291,15 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
             product.id,
             UpdateProductInput {
                 translations: None,
-                seller_id: None,
-                vendor: None,
-                product_type: None,
-                shipping_profile_slug: None,
-                primary_category_id: None,
+                seller_id: Patch::Keep,
+                vendor: Patch::Keep,
+                product_type: Patch::Keep,
+                shipping_profile_slug: Patch::Keep,
+                primary_category_id: Patch::Keep,
                 tags: Some(vec!["featured".to_string()]),
                 metadata: None,
                 status: None,
+                expected_revision: None,
             },
         )
         .await
@@ -345,17 +348,18 @@ async fn metadata_tags_are_rejected_on_update_without_mutating_canonical_tags() 
             product.id,
             UpdateProductInput {
                 translations: None,
-                seller_id: None,
-                vendor: None,
-                product_type: None,
-                shipping_profile_slug: None,
-                primary_category_id: None,
+                seller_id: Patch::Keep,
+                vendor: Patch::Keep,
+                product_type: Patch::Keep,
+                shipping_profile_slug: Patch::Keep,
+                primary_category_id: Patch::Keep,
                 tags: None,
                 metadata: Some(serde_json::json!({
                     "featured": false,
                     "tags": ["legacy", "new"]
                 })),
                 status: None,
+                expected_revision: None,
             },
         )
         .await

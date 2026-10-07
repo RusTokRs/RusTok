@@ -472,7 +472,10 @@ pub async fn update_product(
             Some(id),
             "update_product_shipping_profile_validation",
         ),
-        input.shipping_profile_slug.as_deref(),
+        match &input.shipping_profile_slug {
+            rustok_api::Patch::Set(slug) => Some(slug.as_str()),
+            rustok_api::Patch::Keep | rustok_api::Patch::Clear => None,
+        },
     )
     .await?;
 

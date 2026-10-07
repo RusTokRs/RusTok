@@ -160,20 +160,18 @@ impl FlexAttachedValuesService {
             #[cfg(feature = "mod-product")]
             PRODUCT_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
-                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
+                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
                     .map_err(map_flex_host_error)?;
                 if let Some(flex_meta) = prepared.metadata.as_ref() {
                     let new_metadata =
                         merge_donor_flex_metadata(&schema, &product.metadata, flex_meta);
+                    let current_revision = product.revision;
                     let mut active: rustok_product::entities::product::ActiveModel = product.into();
                     active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                     active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                    bump_product_compat_revision(&mut active, current_revision)?;
                     active.update(&txn).await?;
                 }
                 if let (Some(loc), Some(values)) = (
@@ -359,11 +357,7 @@ impl FlexAttachedValuesService {
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
                     .map_err(map_flex_host_error)?;
-                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
-                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
+                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
                 let entity = attached_ref(tenant_id, entity_type, entity_id);
                 let prepared = prepare_attached_values_update(
                     &txn,
@@ -383,9 +377,11 @@ impl FlexAttachedValuesService {
                     None => product.metadata.clone(),
                 };
 
+                let current_revision = product.revision;
                 let mut active: rustok_product::entities::product::ActiveModel = product.into();
                 active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                bump_product_compat_revision(&mut active, current_revision)?;
                 active.update(&txn).await?;
 
                 if let (Some(loc), Some(values)) = (
@@ -680,18 +676,16 @@ impl FlexAttachedValuesService {
             #[cfg(feature = "mod-product")]
             PRODUCT_ENTITY_TYPE => {
                 let txn = db.begin().await?;
-                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
-                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
+                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
                 let schema = load_schema(db, tenant_id, entity_type)
                     .await
                     .map_err(map_flex_host_error)?;
                 let (reserved, _) = split_donor_metadata(&schema, &product.metadata);
+                let current_revision = product.revision;
                 let mut active: rustok_product::entities::product::ActiveModel = product.into();
                 active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+                bump_product_compat_revision(&mut active, current_revision)?;
                 active.update(&txn).await?;
 
                 delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
@@ -970,6 +964,41 @@ fn normalized_object(value: Option<&Value>) -> Value {
             .cloned()
             .unwrap_or_default(),
     )
+}
+
+/// Loads the product aggregate row under an exclusive lock on backends that support it.
+///
+/// The Flex host compatibility path mutates document fields of the Product aggregate, so it must
+/// serialize with the Product owner exactly like the owner's own write methods do.
+#[cfg(feature = "mod-product")]
+async fn load_product_for_compat_write(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    entity_id: Uuid,
+) -> ServerResult<rustok_product::entities::product::Model> {
+    let query = rustok_product::entities::product::Entity::find_by_id(entity_id)
+        .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id));
+    let product = match sea_orm::ConnectionTrait::get_database_backend(txn) {
+        sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+            use sea_orm::QuerySelect;
+            query.lock_exclusive().one(txn).await?
+        }
+        _ => query.one(txn).await?,
+    };
+
+    product.ok_or(Error::NotFound)
+}
+
+/// Bumps the Product aggregate revision for one host-side compatibility write.
+#[cfg(feature = "mod-product")]
+fn bump_product_compat_revision(
+    active: &mut rustok_product::entities::product::ActiveModel,
+    current_revision: i32,
+) -> ServerResult<()> {
+    let next = rustok_product::next_product_revision(current_revision)
+        .map_err(|error| Error::Message(format!("Product revision bump failed: {error}")))?;
+    active.revision = sea_orm::ActiveValue::Set(next);
+    Ok(())
 }
 
 async fn ensure_registered_owner_exists<C>(

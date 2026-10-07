@@ -4,7 +4,14 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use super::PriceResponse;
+/// Scoped price projection shared by variant-level reads.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PriceResponse {
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub compare_at_amount: Option<Decimal>,
+    pub on_sale: bool,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct CreateVariantInput {

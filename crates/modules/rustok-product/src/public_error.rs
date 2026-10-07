@@ -1,5 +1,6 @@
 use uuid::Uuid;
 
+use crate::services::catalog::revision_conflict_of;
 use crate::services::catalog_schema_service::attribute_validation::{
     attribute_validation_public_message, attribute_validation_rule_of,
 };
@@ -73,6 +74,8 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
         CommerceError::Validation(message) => (
             if attribute_validation_rule_of(message).is_some() {
                 "attribute_validation"
+            } else if revision_conflict_of(message).is_some() {
+                "revision_conflict"
             } else {
                 "validation"
             },
@@ -158,6 +161,11 @@ pub fn map_product_public_error(
         CommerceError::DuplicateSku(_) => (
             "Product SKU conflicts with an existing product",
             "DUPLICATE_SKU",
+            false,
+        ),
+        CommerceError::Validation(message) if revision_conflict_of(message).is_some() => (
+            "Product was modified by another editor; reload the product and apply your changes again",
+            "PRODUCT_REVISION_CONFLICT",
             false,
         ),
         CommerceError::Validation(message) if attribute_validation_rule_of(message).is_some() => {

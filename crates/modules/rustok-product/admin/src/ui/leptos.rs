@@ -552,6 +552,7 @@ pub fn ProductAdmin() -> impl IntoView {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
         let submit_locale = submit_ui_locale.clone();
+        let submit_revision = selected.get_untracked().map(|product| product.revision);
         let command = build_save_command(
             DraftForm {
                 locale: submit_locale.clone(),
@@ -570,6 +571,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 compare_at_amount: compare_at_amount.get_untracked(),
                 inventory_quantity: inventory_quantity.get_untracked(),
                 publish_now: publish_now.get_untracked(),
+                revision: submit_revision,
             },
             editing_id.get_untracked(),
             bootstrap.get_untracked().and_then(Result::ok).as_ref(),

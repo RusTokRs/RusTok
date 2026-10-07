@@ -53,6 +53,7 @@ impl MockProductCatalogReadPort {
             created_at: now,
             updated_at: now,
             published_at: Some(now),
+            revision: 1,
             translations: Vec::new(),
             variant_axes: Vec::new(),
             variants: Vec::new(),

@@ -1,4 +1,4 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result};
+use async_graphql::{Context, ErrorExtensions, MaybeUndefined, Object, Result};
 use rustok_api::graphql::require_module_enabled;
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -152,6 +152,14 @@ fn product_command_port_error(
         (PortErrorKind::Conflict, "product.lifecycle_conflict") => (
             "Published products must be archived before removal",
             "CANNOT_DELETE_PUBLISHED",
+        ),
+        (PortErrorKind::Conflict, "product.revision_conflict") => (
+            "Product was modified by another editor; reload it and apply your changes again",
+            "PRODUCT_REVISION_CONFLICT",
+        ),
+        (PortErrorKind::Validation, "product.revision_required") => (
+            "Product update requires the revision of the document that was read",
+            "PRODUCT_REVISION_REQUIRED",
         ),
         (PortErrorKind::Validation, "product.no_variants") => {
             ("Product requires at least one variant", "NO_VARIANTS")
@@ -422,12 +430,11 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        validate_product_shipping_profile_input(
-            db,
-            tenant_id,
-            input.shipping_profile_slug.as_deref(),
-        )
-        .await?;
+        let shipping_profile_slug = match &input.shipping_profile_slug {
+            MaybeUndefined::Value(slug) => Some(slug.as_str()),
+            MaybeUndefined::Undefined | MaybeUndefined::Null => None,
+        };
+        validate_product_shipping_profile_input(db, tenant_id, shipping_profile_slug).await?;
         let domain_input = crate::dto::UpdateProductInput {
             translations: input.translations.map(|translations| {
                 translations
@@ -442,14 +449,15 @@ impl CommerceCatalogMutation {
                     })
                     .collect()
             }),
-            seller_id: input.seller_id,
-            vendor: input.vendor,
-            product_type: input.product_type,
-            shipping_profile_slug: input.shipping_profile_slug,
-            primary_category_id: input.primary_category_id,
+            seller_id: graphql_patch(input.seller_id),
+            vendor: graphql_patch(input.vendor),
+            product_type: graphql_patch(input.product_type),
+            shipping_profile_slug: graphql_patch(input.shipping_profile_slug),
+            primary_category_id: graphql_patch(input.primary_category_id),
             tags: input.tags,
             metadata: input.custom_fields.map(|cf| cf.0),
             status: input.status.map(Into::into),
+            expected_revision: input.revision,
         };
 
         let port_context = product_command_context(

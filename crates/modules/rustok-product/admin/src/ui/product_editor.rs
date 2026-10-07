@@ -433,6 +433,9 @@ pub fn ProductEditorPage(
             meta_title: if mt.is_empty() { None } else { Some(mt) },
             meta_description: if md.is_empty() { None } else { Some(md) },
             tags: tg,
+            revision: loaded_product
+                .get_untracked()
+                .map(|product| product.revision),
         };
 
         spawn_local(async move {

@@ -82,6 +82,11 @@ pub struct ProductDetail {
     pub images: Vec<ProductImage>,
     #[serde(rename = "effectiveForm", default)]
     pub effective_form: Option<ProductEffectiveForm>,
+    /// Editorial revision of the product aggregate at read time.
+    ///
+    /// Sent back as `revision` on the next `updateProduct`, so a save that would overwrite another
+    /// operator's change is refused instead of silently winning.
+    pub revision: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -300,6 +305,8 @@ pub struct ProductDraft {
     pub meta_title: Option<String>,
     pub meta_description: Option<String>,
     pub tags: Vec<String>,
+    /// Revision this draft was loaded from; `None` keeps the create path unconditional.
+    pub revision: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
