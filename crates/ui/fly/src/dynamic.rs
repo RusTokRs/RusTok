@@ -2,8 +2,7 @@ use crate::id_reference::remap_value_ids;
 use crate::{
     ComponentChildren, ComponentNode, ComponentObject, FLY_COMPONENT_RULE_FIELD, FLY_RULE_ID_FIELD,
     FlyError, FlyResult, ProjectDocument, StyleRuleDescriptor, StyleRuleIdentity,
-    ValidationDiagnostic,
-    ValidationSeverity, is_valid_runtime_context_path, resolve_context_path,
+    ValidationDiagnostic, ValidationSeverity, is_valid_runtime_context_path, resolve_context_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -527,8 +526,7 @@ impl RuntimeExpander<'_> {
                 &repeater.index_alias,
                 index,
             );
-            let child_suffix =
-                format!("{suffix}--{}-{index}", sanitize_identifier(&repeater.id));
+            let child_suffix = format!("{suffix}--{}-{index}", sanitize_identifier(&repeater.id));
 
             let mut clone = template.clone();
 
@@ -549,7 +547,13 @@ impl RuntimeExpander<'_> {
             clone.remap_ids(&id_mapping);
 
             // Nested repeaters expand against this item's context, not the outer one.
-            self.expand_node(&mut clone, &local_context, depth + 1, &child_suffix, &child_origin);
+            self.expand_node(
+                &mut clone,
+                &local_context,
+                depth + 1,
+                &child_suffix,
+                &child_origin,
+            );
 
             interpolate_node(&mut clone, &local_context);
             self.generated_styles.extend(remap_styles(
@@ -894,7 +898,10 @@ fn component_subtree_ids(document: &ProjectDocument, component_id: &str) -> BTre
     ids.into_iter().collect()
 }
 
-fn remove_style_rules_for_component_ids(document: &mut ProjectDocument, component_ids: &BTreeSet<String>) {
+fn remove_style_rules_for_component_ids(
+    document: &mut ProjectDocument,
+    component_ids: &BTreeSet<String>,
+) {
     if component_ids.is_empty() {
         return;
     }
@@ -913,11 +920,7 @@ fn remove_style_rules_for_component_ids(document: &mut ProjectDocument, componen
 /// they appear in the authored document, even when the node being generated is itself nested
 /// inside another repeater's clone. `suffix` is the accumulated `--<repeater>-<index>` chain, so
 /// rule ids stay unique across nesting levels rather than colliding on the innermost index.
-fn remap_styles(
-    styles: &[Value],
-    mapping: &BTreeMap<String, String>,
-    suffix: &str,
-) -> Vec<Value> {
+fn remap_styles(styles: &[Value], mapping: &BTreeMap<String, String>, suffix: &str) -> Vec<Value> {
     styles
         .iter()
         .filter_map(|raw| {
@@ -1250,9 +1253,12 @@ mod tests {
         let materialized = materialize_runtime(&source, &json!({ "items": [{ "title": "One" }] }));
         assert_eq!(materialized.repeated_nodes, 0);
         assert!(materialized.document.contains_component("card"));
-        assert!(materialized.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == "runtime_repeater_alias_empty"
-        }));
+        assert!(
+            materialized
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "runtime_repeater_alias_empty" })
+        );
     }
 
     fn nested_document() -> ProjectDocument {

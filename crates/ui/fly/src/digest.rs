@@ -55,7 +55,8 @@ impl ContentDigest {
     /// `serde_json` orders object keys deterministically, so the encoding is stable across runs
     /// and processes for the same logical value.
     pub fn from_json(value: &impl Serialize) -> FlyResult<Self> {
-        let bytes = serde_json::to_vec(value).map_err(|error| FlyError::Encode(error.to_string()))?;
+        let bytes =
+            serde_json::to_vec(value).map_err(|error| FlyError::Encode(error.to_string()))?;
         Ok(Self::from_bytes(&bytes))
     }
 
@@ -81,7 +82,9 @@ impl ContentDigest {
 
     /// Algorithm label without the digest body.
     pub fn algorithm(&self) -> &str {
-        self.0.split_once(':').map_or("", |(algorithm, _)| algorithm)
+        self.0
+            .split_once(':')
+            .map_or("", |(algorithm, _)| algorithm)
     }
 
     /// Hex digest body without the algorithm label.

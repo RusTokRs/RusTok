@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use fly::ProjectHash;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
-use rustok_page_builder::{PageBuilderReviewedPublishRuntime, project_requires_runtime_baseline};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder::{PageBuilderReviewedPublishRuntime, project_requires_runtime_baseline};
 use rustok_page_builder_admin::{load_publish_scenario_selection, resolve_publish_scenario};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -214,7 +214,6 @@ struct PageBuilderScenarioBaselineVariables {
     #[serde(rename = "pageId")]
     page_id: String,
 }
-
 
 async fn request<V, T>(
     query: &str,

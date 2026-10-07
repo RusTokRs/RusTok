@@ -2,12 +2,12 @@ use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ConsumerPropertiesPanel, ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel,
     ContributionPreviewPanel, ContributionPropertiesPanel, DynamicRuntimePanel,
-    EditorPersistenceGuard, IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
-    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
-    ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
-    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
-    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    EditorPersistenceGuard, IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel,
+    PropertiesAssetsPanel, PublishScenarioSelectorPanel, ResponsiveStylePanel,
+    RuntimePublishGatePanel, RuntimeScenarioMatrixPanel, RuntimeScenarioPanel,
+    RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel,
+    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
+    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;

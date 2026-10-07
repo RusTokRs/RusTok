@@ -132,10 +132,19 @@ mod tests {
 
     #[test]
     fn slug_keeps_letters_of_any_script() {
-        assert_eq!(normalize_page_slug("Hello, Current Pages!"), "hello-current-pages");
+        assert_eq!(
+            normalize_page_slug("Hello, Current Pages!"),
+            "hello-current-pages"
+        );
         assert_eq!(normalize_page_slug("  О компании  "), "о-компании");
-        assert_eq!(normalize_page_slug("Доставка и оплата — 2026"), "доставка-и-оплата-2026");
-        assert_eq!(normalize_page_slug("Ärger über Straße"), "ärger-über-straße");
+        assert_eq!(
+            normalize_page_slug("Доставка и оплата — 2026"),
+            "доставка-и-оплата-2026"
+        );
+        assert_eq!(
+            normalize_page_slug("Ärger über Straße"),
+            "ärger-über-straße"
+        );
         assert_eq!(normalize_page_slug("--a__b--"), "a-b");
     }
 
@@ -156,7 +165,10 @@ mod tests {
 
     #[test]
     fn strict_slug_rejects_instead_of_truncating() {
-        assert_eq!(normalize_page_slug_strict(" !! "), Err(PageSlugError::Empty));
+        assert_eq!(
+            normalize_page_slug_strict(" !! "),
+            Err(PageSlugError::Empty)
+        );
         assert_eq!(
             normalize_page_slug_strict(&"a".repeat(PAGE_SLUG_MAX_CHARS + 1)),
             Err(PageSlugError::TooLong)
@@ -169,7 +181,13 @@ mod tests {
 
     #[test]
     fn lenient_and_strict_slugs_agree_within_the_limit() {
-        for input in ["О компании", "Hello, World", "a--b", "Ärger über Straße", "x"] {
+        for input in [
+            "О компании",
+            "Hello, World",
+            "a--b",
+            "Ärger über Straße",
+            "x",
+        ] {
             assert_eq!(
                 normalize_page_slug_strict(input).expect("valid"),
                 normalize_page_slug(input)

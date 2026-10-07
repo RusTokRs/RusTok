@@ -72,11 +72,7 @@ pub const PAGE_LIST_PAGE_SIZE: u64 = 25;
 pub const PAGE_LIST_MAX_SEARCH_CHARS: usize = 200;
 
 /// Builds a normalized list request: 1-based page, trimmed bounded search, optional status.
-pub fn page_list_query(
-    page: u64,
-    search: &str,
-    status: Option<PageStatusFilter>,
-) -> PageListQuery {
+pub fn page_list_query(page: u64, search: &str, status: Option<PageStatusFilter>) -> PageListQuery {
     let search = search.trim();
     PageListQuery {
         page: page.max(1),
@@ -261,7 +257,10 @@ mod tests {
             serde_json::to_value(PageStatusFilter::Published).unwrap(),
             serde_json::json!("PUBLISHED")
         );
-        assert_eq!(PageStatusFilter::parse(" Draft "), Some(PageStatusFilter::Draft));
+        assert_eq!(
+            PageStatusFilter::parse(" Draft "),
+            Some(PageStatusFilter::Draft)
+        );
         assert_eq!(PageStatusFilter::parse("deleted"), None);
     }
 

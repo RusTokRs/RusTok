@@ -49,10 +49,7 @@ mod tests {
     #[test]
     fn accepts_the_sandboxed_iframe_origin() {
         // A sandboxed `srcdoc` iframe reports exactly this; rejecting it breaks the preview.
-        assert_eq!(
-            normalize_expected_origin("null").as_deref(),
-            Some("null")
-        );
+        assert_eq!(normalize_expected_origin("null").as_deref(), Some("null"));
     }
 
     #[test]

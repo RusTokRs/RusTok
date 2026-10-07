@@ -10,8 +10,8 @@ use crate::{
     materialize_component_actions, materialize_context, materialize_internal_page_links,
     materialize_localized_page_metadata, materialize_project_locale_context,
     materialize_project_translations, materialize_project_with_runtime_context,
-    materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
-    validate_component_public_urls, validate_project,
+    materialize_runtime_locale_context, validate_component_actions, validate_component_public_urls,
+    validate_internal_page_links, validate_project,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};

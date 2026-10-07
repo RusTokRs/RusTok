@@ -1,6 +1,5 @@
 use crate::safe_url::{
-    absolute_url_has_authority, relative_url_allowed, safe_data_image,
-    scheme_target_is_not_empty,
+    absolute_url_has_authority, relative_url_allowed, safe_data_image, scheme_target_is_not_empty,
 };
 use crate::{ComponentObject, ComponentPatch, FlyError, FlyResult};
 use serde::{Deserialize, Serialize};

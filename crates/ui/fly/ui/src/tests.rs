@@ -317,4 +317,3 @@ fn selection_remains_possible_without_edit_capability() {
         }))
         .expect("selection must stay available in a read-only session");
 }
-

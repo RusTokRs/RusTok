@@ -6,8 +6,8 @@ use fly::{
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderPreviewRuntime,
-    PreviewPageBuilderInput, PreviewPageBuilderResult,
+    PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
+    PreviewPageBuilderResult,
 };
 use serde_json::{Map, Value};
 use std::sync::Arc;
@@ -147,7 +147,16 @@ impl EditorSessionState {
 
     pub fn prepare_server_preview_request(
         &mut self,
-    ) -> Result<(PageBuilderCapabilityRequest, ProjectHash, usize, Value, Option<String>), String> {
+    ) -> Result<
+        (
+            PageBuilderCapabilityRequest,
+            ProjectHash,
+            usize,
+            Value,
+            Option<String>,
+        ),
+        String,
+    > {
         if self.preview_in_progress {
             return Err("Preview already in progress".to_string());
         }
@@ -169,11 +178,12 @@ impl EditorSessionState {
         let project_data = GrapesJsCodec::encode_value(&document).map_err(|e| e.to_string())?;
         let project_hash = self.controller.editor().revision().project_hash;
         let request = PageBuilderCapabilityRequest::Preview(
-            PreviewPageBuilderInput::new(self.controller.page_id(), project_data)
-                .with_runtime(PageBuilderPreviewRuntime::new(
+            PreviewPageBuilderInput::new(self.controller.page_id(), project_data).with_runtime(
+                PageBuilderPreviewRuntime::new(
                     runtime_context.clone(),
                     runtime_scenario_id.clone(),
-                )),
+                ),
+            ),
         );
         self.preview_request = Some((
             project_hash,
@@ -216,7 +226,9 @@ impl EditorSessionState {
             return Err(msg);
         }
         if response.runtime_scenario_id != current_runtime_scenario {
-            let msg = "Page Builder preview returned a different runtime scenario; refresh the preview".to_string();
+            let msg =
+                "Page Builder preview returned a different runtime scenario; refresh the preview"
+                    .to_string();
             self.fail(&msg);
             return Err(msg);
         }
@@ -256,7 +268,10 @@ impl EditorSessionState {
             return Err(msg);
         }
         let hash = expected_hash.unwrap_or(self.controller.editor().revision().project_hash);
-        match self.controller.acknowledge_save_for_hash(hash, revision_id.to_string()) {
+        match self
+            .controller
+            .acknowledge_save_for_hash(hash, revision_id.to_string())
+        {
             Ok(()) => {
                 self.last_error = None;
                 self.announce(self.save_succeeded.clone());
@@ -310,7 +325,9 @@ impl EditorSessionState {
     }
 
     pub fn mark_save_started(&mut self) -> Result<(), String> {
-        self.controller.mark_save_started().map_err(|e| e.to_string())
+        self.controller
+            .mark_save_started()
+            .map_err(|e| e.to_string())
     }
 
     pub fn mark_save_failed(&mut self) {
@@ -332,26 +349,28 @@ impl EditorSessionState {
     pub fn dispatch(&mut self, action: EditorSessionAction) -> Vec<EditorSessionEffect> {
         let mut effects = Vec::new();
         match action {
-            EditorSessionAction::DispatchIntent(intent) => {
-                match self.dispatch_intent(intent) {
-                    Ok(canvas_effects) => {
-                        for effect in canvas_effects {
-                            match effect {
-                                AdminCanvasEffect::Announce(msg) => {
-                                    effects.push(EditorSessionEffect::Announce(msg));
-                                }
-                                AdminCanvasEffect::Request { request, expected_hash, .. } => {
-                                    effects.push(EditorSessionEffect::ExecuteRequest {
-                                        request,
-                                        expected_hash,
-                                    });
-                                }
+            EditorSessionAction::DispatchIntent(intent) => match self.dispatch_intent(intent) {
+                Ok(canvas_effects) => {
+                    for effect in canvas_effects {
+                        match effect {
+                            AdminCanvasEffect::Announce(msg) => {
+                                effects.push(EditorSessionEffect::Announce(msg));
+                            }
+                            AdminCanvasEffect::Request {
+                                request,
+                                expected_hash,
+                                ..
+                            } => {
+                                effects.push(EditorSessionEffect::ExecuteRequest {
+                                    request,
+                                    expected_hash,
+                                });
                             }
                         }
                     }
-                    Err(_) => {}
                 }
-            }
+                Err(_) => {}
+            },
             EditorSessionAction::ApplyRuntimeScenario(scenario_id) => {
                 self.apply_runtime_scenario(&scenario_id);
             }
@@ -374,7 +393,11 @@ impl EditorSessionState {
             EditorSessionAction::SaveStarted => {
                 let _ = self.mark_save_started();
             }
-            EditorSessionAction::SaveAcknowledged { page_id, revision_id, expected_hash } => {
+            EditorSessionAction::SaveAcknowledged {
+                page_id,
+                revision_id,
+                expected_hash,
+            } => {
                 let _ = self.handle_publish_response(&page_id, &revision_id, expected_hash);
             }
             EditorSessionAction::SaveFailed(err) => {
@@ -503,8 +526,13 @@ mod tests {
         let controller = sample_controller();
         let mut session = EditorSessionState::new(controller, "Missing", "Saved");
 
-        session.dispatch(EditorSessionAction::Announce("Draft auto-saved".to_string()));
-        assert_eq!(session.last_announcement.as_deref(), Some("Draft auto-saved"));
+        session.dispatch(EditorSessionAction::Announce(
+            "Draft auto-saved".to_string(),
+        ));
+        assert_eq!(
+            session.last_announcement.as_deref(),
+            Some("Draft auto-saved")
+        );
 
         session.dispatch(EditorSessionAction::Fail("Save rejected".to_string()));
         assert_eq!(session.last_error.as_deref(), Some("Save rejected"));
@@ -523,8 +551,10 @@ mod tests {
         assert!(session.preview_in_progress);
         assert!(matches!(
             &effects[0],
-            EditorSessionEffect::ExecuteRequest { request: PageBuilderCapabilityRequest::Preview(_), .. }
+            EditorSessionEffect::ExecuteRequest {
+                request: PageBuilderCapabilityRequest::Preview(_),
+                ..
+            }
         ));
     }
 }
-

@@ -7,8 +7,7 @@ mod scenario_release_adapter;
 
 use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageListQuery,
-    PageMetadataPatch,
-    PageMutationResult, PagePublicationResult,
+    PageMetadataPatch, PageMutationResult, PagePublicationResult,
 };
 use rustok_page_builder::health::ProviderHealthSnapshot;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;

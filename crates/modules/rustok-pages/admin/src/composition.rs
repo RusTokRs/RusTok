@@ -474,9 +474,15 @@ fn PagesNavigator(
 
     if pages.items.is_empty() {
         let (message, action) = if current_page > 1 && total > 0 {
-            ("This list page is empty.", Some(("Go to first page", false)))
+            (
+                "This list page is empty.",
+                Some(("Go to first page", false)),
+            )
         } else if core::page_list_is_filtered(&query) {
-            ("No pages match the current search or filter.", Some(("Clear filters", true)))
+            (
+                "No pages match the current search or filter.",
+                Some(("Clear filters", true)),
+            )
         } else {
             ("No pages yet. Create the first page above.", None)
         };

@@ -233,9 +233,24 @@ mod tests {
     fn autosaves_only_clean_dirty_documents() {
         let policy = PageBuilderAutosavePolicy::default();
         assert!(should_autosave(policy, inputs()));
-        assert!(!should_autosave(PageBuilderAutosavePolicy::disabled(), inputs()));
-        assert!(!should_autosave(policy, AutosaveInputs { dirty: false, ..inputs() }));
-        assert!(!should_autosave(policy, AutosaveInputs { can_save: false, ..inputs() }));
+        assert!(!should_autosave(
+            PageBuilderAutosavePolicy::disabled(),
+            inputs()
+        ));
+        assert!(!should_autosave(
+            policy,
+            AutosaveInputs {
+                dirty: false,
+                ..inputs()
+            }
+        ));
+        assert!(!should_autosave(
+            policy,
+            AutosaveInputs {
+                can_save: false,
+                ..inputs()
+            }
+        ));
         assert!(!should_autosave(
             policy,
             AutosaveInputs {
@@ -244,7 +259,13 @@ mod tests {
             }
         ));
         // A failed save (for example a revision conflict) must not be retried in a loop.
-        assert!(!should_autosave(policy, AutosaveInputs { save_failed: true, ..inputs() }));
+        assert!(!should_autosave(
+            policy,
+            AutosaveInputs {
+                save_failed: true,
+                ..inputs()
+            }
+        ));
         assert!(!should_autosave(
             policy,
             AutosaveInputs {
@@ -268,11 +289,13 @@ mod tests {
 
     #[test]
     fn unsaved_changes_include_in_flight_saves() {
-        assert!(PageBuilderEditorStatus {
-            save_in_progress: true,
-            ..PageBuilderEditorStatus::default()
-        }
-        .has_unsaved_changes());
+        assert!(
+            PageBuilderEditorStatus {
+                save_in_progress: true,
+                ..PageBuilderEditorStatus::default()
+            }
+            .has_unsaved_changes()
+        );
         assert!(!PageBuilderEditorStatus::default().has_unsaved_changes());
     }
 }

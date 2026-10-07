@@ -132,7 +132,6 @@ fn is_definitive_rejection(error: &GraphqlHttpError) -> bool {
     }
 }
 
-
 fn retry_storage() -> Result<web_sys::Storage, GraphqlHttpError> {
     web_sys::window()
         .ok_or_else(|| {

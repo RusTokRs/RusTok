@@ -809,8 +809,9 @@ mod tests {
 
     #[test]
     fn draft_persistence_authorizer_requires_update_for_saving() {
-        let authorizer =
-            PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions::draft_persistence());
+        let authorizer = PageBuilderCapabilityAuthorizer::new(
+            PageBuilderCapabilityPermissions::draft_persistence(),
+        );
         assert_eq!(
             authorizer.required_permission(BuilderCapabilityKind::Publish),
             Permission::new(Resource::Pages, Action::Update)

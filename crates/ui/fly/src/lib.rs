@@ -15,7 +15,6 @@ mod codec;
 mod command;
 mod component_index;
 mod component_visit;
-mod id_reference;
 mod context_contract;
 mod context_dependency;
 mod context_json_schema;
@@ -25,6 +24,7 @@ mod digest;
 mod dynamic;
 mod error;
 mod fragment;
+mod id_reference;
 mod ids;
 mod interaction_capability;
 mod interaction_capability_gate;
@@ -34,8 +34,8 @@ mod landing_contract;
 mod landing_property;
 mod landing_readiness;
 mod locale_coverage;
-mod locale_resolver;
 mod locale_policy;
+mod locale_resolver;
 mod localized_route;
 mod model;
 mod page;
@@ -85,11 +85,11 @@ pub use landing_property::*;
 pub use landing_readiness::*;
 pub use locale_coverage::*;
 pub use locale_policy::*;
+#[cfg(feature = "platform-i18n")]
+pub use locale_resolver::PlatformLocaleResolver;
 pub use locale_resolver::{
     BasicLocaleResolver, DefaultLocaleResolver, LocaleResolver, default_locale_resolver,
 };
-#[cfg(feature = "platform-i18n")]
-pub use locale_resolver::PlatformLocaleResolver;
 pub use localized_route::*;
 pub use model::*;
 pub use page::*;

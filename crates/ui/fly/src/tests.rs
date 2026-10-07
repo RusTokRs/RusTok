@@ -286,12 +286,8 @@ fn hostile_text() -> impl Strategy<Value = String> {
 
 /// A component subtree of bounded size, with author-controlled ids, text and attributes.
 fn component_tree() -> impl Strategy<Value = Value> {
-    let leaf = (
-        "[a-z][a-z0-9-]{0,8}",
-        hostile_text(),
-        hostile_text(),
-    )
-        .prop_map(|(id, content, attribute)| {
+    let leaf = ("[a-z][a-z0-9-]{0,8}", hostile_text(), hostile_text()).prop_map(
+        |(id, content, attribute)| {
             json!({
                 "id": id,
                 "type": "text",
@@ -299,7 +295,8 @@ fn component_tree() -> impl Strategy<Value = Value> {
                 "components": [],
                 "attributes": { "title": attribute, "data-x": "static" }
             })
-        });
+        },
+    );
 
     leaf.prop_recursive(4, 24, 3, |inner| {
         ("[a-z][a-z0-9-]{0,8}", prop::collection::vec(inner, 0..3)).prop_map(|(id, children)| {
@@ -454,4 +451,3 @@ fn count_components(value: &Value) -> usize {
     }
     total
 }
-

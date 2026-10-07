@@ -60,7 +60,10 @@ impl PageBuilderReviewedPublishRuntime {
 
     pub fn is_static_default(&self) -> bool {
         self.scenario_id == PAGE_BUILDER_STATIC_DEFAULT_SCENARIO_ID
-            && self.context.as_object().is_some_and(serde_json::Map::is_empty)
+            && self
+                .context
+                .as_object()
+                .is_some_and(serde_json::Map::is_empty)
     }
 
     pub fn validate(&self) -> Result<(), PageBuilderPublishRuntimeReviewError> {
