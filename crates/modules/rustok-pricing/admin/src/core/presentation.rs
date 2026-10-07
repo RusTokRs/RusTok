@@ -80,7 +80,7 @@ pub(crate) fn localized_product_status(locale: Option<&str>, status: &str) -> St
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn format_product_meta(
     locale: Option<&str>,
     product: &PricingProductListItem,
@@ -103,7 +103,7 @@ pub(crate) fn format_product_meta(
     )
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PricingProductListItemViewModel {
     pub(crate) id: String,
@@ -114,7 +114,7 @@ pub(crate) struct PricingProductListItemViewModel {
     pub(crate) meta_line: String,
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn build_product_list_item_view_model(
     locale: Option<&str>,
     product: &PricingProductListItem,
@@ -132,7 +132,7 @@ pub(crate) fn build_product_list_item_view_model(
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn pricing_product_list_item_class(is_selected: bool) -> &'static str {
     if is_selected {
         "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm"

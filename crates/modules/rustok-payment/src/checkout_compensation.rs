@@ -82,6 +82,9 @@ pub trait CheckoutPaymentCompensationPort: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CheckoutPaymentCompensationRequest {
     pub checkout_operation_id: Uuid,
+    /// The checkout cart, which scopes the lookup below when the journal has not
+    /// recorded the collection binding yet.
+    pub cart_id: Uuid,
     pub collection_id: Option<Uuid>,
     pub reason: Option<String>,
     pub metadata: Value,
@@ -104,6 +107,9 @@ impl InProcessCheckoutPaymentCompensationPort {
     ) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
+            // Cancellation claims are unwinding effects and never consult the
+            // checkout admission; the missing reader is deliberate and fails
+            // closed for any other effect kind.
             operation_journal: PaymentProviderOperationJournal::new(db),
             provider_registry,
         }
@@ -291,6 +297,9 @@ impl InProcessCheckoutPaymentCompensationPort {
                     operation_id: current.id,
                     metadata: result.metadata,
                 });
+            }
+            if let Some(refusal) = crate::execution_admission_refusal_error(&current) {
+                return Err(refusal);
             }
             return Err(manual_reconciliation(
                 context,
@@ -497,13 +506,42 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         require_operation_context(&context, owner_operation, request.checkout_operation_id)?;
-        let Some(collection_id) = request.collection_id else {
-            return Ok(None);
+        // A park can land between the collection being created and `checkpoint`
+        // writing the binding into the checkout journal, and then the request
+        // carries no collection id while the collection is already open. The
+        // collection's metadata carries the checkout link from the moment the
+        // payment stage created it, so resolve it here and take the ordinary
+        // compensation path instead of reporting "nothing recorded" and leaving a
+        // pending collection behind. The lookup is tenant- and cart-scoped and
+        // accepts every status, because a collection this checkout already
+        // cancelled is exactly one of the states the path below has to confirm.
+        let collection_id = match request.collection_id {
+            Some(collection_id) => collection_id,
+            None => {
+                let resolved = self
+                    .payment_service
+                    .find_collection_by_cart_checkout_operation(
+                        tenant_id,
+                        request.cart_id,
+                        request.checkout_operation_id,
+                    )
+                    .await
+                    .map_err(|error| {
+                        payment_error_to_port_error(&context, owner_operation, error)
+                    })?;
+                let Some(resolved) = resolved else {
+                    return Ok(None);
+                };
+                resolved.id
+            }
         };
-        if request.checkout_operation_id.is_nil() || collection_id.is_nil() {
+        if request.checkout_operation_id.is_nil()
+            || request.cart_id.is_nil()
+            || collection_id.is_nil()
+        {
             return Err(PortError::validation(
                 "payment.checkout_compensation_identity_invalid",
-                "checkout operation and payment collection identity must be non-nil UUIDs",
+                "checkout operation, checkout cart and collection identity must be non-nil UUIDs",
             ));
         }
 

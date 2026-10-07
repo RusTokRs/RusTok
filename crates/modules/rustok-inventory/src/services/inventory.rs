@@ -423,6 +423,8 @@ impl InventoryService {
             return Ok(true);
         }
 
+        // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
+        // the variant loaded tenant-scoped above (`load_variant`).
         let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
             .one(&self.db)
@@ -449,6 +451,8 @@ impl InventoryService {
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
 
         if quantity == 0 {
+            // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
+            // is the variant loaded tenant-scoped above (`load_variant`).
             let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
                 .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
                 .one(&txn)
@@ -543,6 +547,8 @@ impl InventoryService {
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
 
         if quantity == 0 {
+            // INVARIANT: `inventory_item` has no tenant column; the tenant boundary
+            // is the variant loaded tenant-scoped above (`load_variant`).
             let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
                 .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
                 .one(&txn)
@@ -560,6 +566,8 @@ impl InventoryService {
             ));
         }
 
+        // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
+        // the variant loaded tenant-scoped above (`load_variant`).
         let Some(inventory_item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
             .one(&txn)
@@ -666,6 +674,8 @@ impl InventoryService {
     where
         C: sea_orm::ConnectionTrait,
     {
+        // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
+        // the caller-provided variant, which is loaded tenant-scoped.
         if let Some(item) = entities::inventory_item::Entity::find()
             .filter(entities::inventory_item::Column::VariantId.eq(variant.id))
             .one(conn)

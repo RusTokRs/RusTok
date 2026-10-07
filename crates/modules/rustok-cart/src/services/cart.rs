@@ -22,7 +22,7 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_core::{generate_id, money};
 use rustok_fulfillment::{
     ShippingOptionReadPort, in_process_shipping_option_read_port,
 };
@@ -229,14 +229,33 @@ impl CartService {
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok());
             if let Some(seller_id) = seller_id {
-                let exponent = currency_exponent(&cart.currency_code);
-                let unit_amount = decimal_to_minor_units(input.unit_price, exponent).unwrap_or_default();
-                let subtotal_amount = unit_amount * i64::from(input.quantity);
-                let discount_amount = pricing_adjustment
-                    .as_ref()
-                    .and_then(|adj| decimal_to_minor_units(adj.amount, exponent))
-                    .unwrap_or(0)
-                    .min(subtotal_amount);
+                let exponent = money::currency_exponent(&cart.currency_code)
+                    .map_err(|error| CartError::Validation(error.to_string()))?;
+                let unit_amount = money::to_fixed_point_units(input.unit_price, exponent)
+                    .map_err(|error| {
+                        CartError::Validation(format!(
+                            "marketplace unit price {} is not convertible to minor units: {error}",
+                            input.unit_price
+                        ))
+                    })?;
+                let subtotal_amount = unit_amount
+                    .checked_mul(i64::from(input.quantity))
+                    .ok_or_else(|| {
+                        CartError::Validation("marketplace subtotal overflow".to_string())
+                    })?;
+                let discount_amount = match pricing_adjustment.as_ref() {
+                    Some(adjustment) => {
+                        money::to_fixed_point_units(adjustment.amount, exponent)
+                            .map_err(|error| {
+                                CartError::Validation(format!(
+                                    "marketplace discount {} is not convertible to minors: {error}",
+                                    adjustment.amount
+                                ))
+                            })?
+                            .min(subtotal_amount)
+                    }
+                    None => 0,
+                };
                 let total_amount = subtotal_amount.saturating_sub(discount_amount);
                 entities::cart_line_item_marketplace_snapshot::ActiveModel {
                     cart_line_item_id: Set(line_item_id),
@@ -424,9 +443,11 @@ impl CartService {
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
 
+        // The stored unit price is the money value this write scales; a silent
+        // `Decimal::ZERO` fallback would reprice the line item at zero instead.
+        let unit_price = line_item.unit_price;
         let mut active: entities::cart_line_item::ActiveModel = line_item.into();
         let now = Utc::now();
-        let unit_price = active.unit_price.clone().take().unwrap_or(Decimal::ZERO);
         active.quantity = Set(quantity);
         active.total_price = Set(unit_price * Decimal::from(quantity));
         active.updated_at = Set(now.into());

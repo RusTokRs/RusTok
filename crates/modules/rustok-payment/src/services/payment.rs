@@ -19,6 +19,7 @@ use crate::dto::{
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
+use crate::services::checkout_admission::checkout_operation_id_from_metadata;
 
 const STATUS_PENDING: &str = "pending";
 const STATUS_AUTHORIZED: &str = "authorized";
@@ -101,10 +102,14 @@ impl PaymentService {
 
         match insert {
             Ok(_) => self.get_collection(tenant_id, collection_id).await,
-            Err(error) if cart_id.is_some() && is_unique_constraint(&error) => {
+            Err(error) if is_unique_constraint(&error) => {
+                let Some(cart_id) = cart_id else {
+                    // The unique constraint can only be violated by a cart-scoped collection.
+                    return Err(error.into());
+                };
                 self.recover_active_cart_collection(CartCollectionRecovery {
                     tenant_id,
-                    cart_id: cart_id.expect("cart_id was checked before race recovery"),
+                    cart_id,
                     order_id,
                     customer_id,
                     currency_code,
@@ -194,6 +199,44 @@ impl PaymentService {
             .order_by_desc(entities::payment_collection::Column::CreatedAt)
             .one(&self.db)
             .await?;
+
+        match collection {
+            Some(collection) => self.build_response(collection).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Resolves the collection a checkout attempt owns when the journal has not
+    /// recorded the binding yet.
+    ///
+    /// The payment stage stamps `checkout.operation_id` into the collection's
+    /// metadata before any authorization runs, while `checkpoint` copies the
+    /// collection id into the checkout journal only once the stage reaches
+    /// `payment_authorized` — so this metadata link is what exists in the window
+    /// in between, and `checkout_admission::resolve_checkout_operation_id` reads
+    /// the same link for the claim gate. Unlike
+    /// [`Self::find_reusable_collection_by_cart`] the lookup does not filter by
+    /// status: a compensation that already cancelled the collection has to see
+    /// it, and `canceled` is exactly the status the reusable filter hides.
+    ///
+    /// `pub(crate)`: this is the payment owner's own lookup, not part of the
+    /// cross-module surface — callers outside the crate go through the ports.
+    pub(crate) async fn find_collection_by_cart_checkout_operation(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        checkout_operation_id: Uuid,
+    ) -> PaymentResult<Option<PaymentCollectionResponse>> {
+        let collections = entities::payment_collection::Entity::find()
+            .filter(entities::payment_collection::Column::TenantId.eq(tenant_id))
+            .filter(entities::payment_collection::Column::CartId.eq(cart_id))
+            .order_by_desc(entities::payment_collection::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        let collection = collections.into_iter().find(|collection| {
+            checkout_operation_id_from_metadata(&collection.metadata) == Some(checkout_operation_id)
+        });
 
         match collection {
             Some(collection) => self.build_response(collection).await.map(Some),

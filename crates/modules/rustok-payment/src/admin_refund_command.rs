@@ -76,6 +76,11 @@ impl InProcessPaymentAdminRefundCommandPort {
         Self {
             payment_service: PaymentService::new(db.clone()),
             refund_creation_service: PaymentRefundCreationService::new(db.clone()),
+            // Refund claims are unwinding effects: they are never fenced by the
+            // checkout admission and never read it. The journal is left without
+            // an admission reader on purpose; if an extending effect were ever
+            // claimed through this runtime, the gate refuses it
+            // (`checkout_admission_unavailable`) instead of executing it.
             operation_journal: PaymentProviderOperationJournal::new(db),
             provider_registry,
         }
@@ -169,7 +174,7 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
                 }),
             ),
         };
-        let journaled = self
+        let provider_operation_id = self
             .execute_refund_provider_operation(
                 &context,
                 OPERATION,
@@ -178,8 +183,14 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
                 provider_request,
             )
             .await?;
-        self.mark_refund_journal_committed(&context, OPERATION, tenant_id, refund.id, journaled.operation_id)
-            .await?;
+        self.mark_refund_journal_committed(
+            &context,
+            OPERATION,
+            tenant_id,
+            refund.id,
+            provider_operation_id,
+        )
+        .await?;
         Ok(refund)
     }
 
@@ -212,12 +223,6 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
     }
 }
 
-struct JournaledRefundProviderResult {
-    operation_id: Uuid,
-    #[allow(dead_code)]
-    result: PaymentProviderOperationResult,
-}
-
 impl InProcessPaymentAdminRefundCommandPort {
     async fn execute_refund_provider_operation(
         &self,
@@ -226,7 +231,7 @@ impl InProcessPaymentAdminRefundCommandPort {
         refund_id: Uuid,
         provider_id: &str,
         request: PaymentProviderOperationRequest,
-    ) -> Result<JournaledRefundProviderResult, PortError> {
+    ) -> Result<Uuid, PortError> {
         let request = self
             .enrich_refund_provider_request(
                 context,
@@ -269,13 +274,10 @@ impl InProcessPaymentAdminRefundCommandPort {
             .await
             .map_err(|error| map_payment_error(context, owner_operation, error))?;
 
-        if let Some(result) = persisted_provider_result(&journal_operation)
-            .map_err(|error| map_payment_error(context, owner_operation, error))?
-        {
-            return Ok(JournaledRefundProviderResult {
-                operation_id: journal_operation.id,
-                result,
-            });
+        let persisted = persisted_provider_result(&journal_operation)
+            .map_err(|error| map_payment_error(context, owner_operation, error))?;
+        if persisted.is_some() {
+            return Ok(journal_operation.id);
         }
 
         let claimed = self
@@ -289,13 +291,13 @@ impl InProcessPaymentAdminRefundCommandPort {
                 .get(tenant_id, journal_operation.id)
                 .await
                 .map_err(|error| map_payment_error(context, owner_operation, error))?;
-            if let Some(result) = persisted_provider_result(&current)
-                .map_err(|error| map_payment_error(context, owner_operation, error))?
-            {
-                return Ok(JournaledRefundProviderResult {
-                    operation_id: current.id,
-                    result,
-                });
+            let persisted = persisted_provider_result(&current)
+                .map_err(|error| map_payment_error(context, owner_operation, error))?;
+            if persisted.is_some() {
+                return Ok(current.id);
+            }
+            if let Some(refusal) = crate::execution_admission_refusal_error(&current) {
+                return Err(refusal);
             }
             return Err(PortError::validation(
                 "payment.provider_operation_in_progress",
@@ -341,14 +343,22 @@ impl InProcessPaymentAdminRefundCommandPort {
         let result_payload = match serde_json::to_value(&provider_result) {
             Ok(payload) => payload,
             Err(_) => {
-                let _ = self
+                if let Err(mark_error) = self
                     .operation_journal
                     .mark_reconciliation_required(
                         tenant_id,
                         journal_operation.id,
                         "payment.refund_provider_result_serialization_failed",
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        tenant_id = %tenant_id,
+                        operation_id = %journal_operation.id,
+                        error = %mark_error,
+                        "failed to mark payment provider operation as reconciliation required"
+                    );
+                }
                 return Err(map_reserved_refund_error(
                     context,
                     owner_operation,
@@ -367,14 +377,22 @@ impl InProcessPaymentAdminRefundCommandPort {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     journal_operation.id,
                     "payment.refund_provider_success_checkpoint_failed",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %journal_operation.id,
+                    error = %mark_error,
+                    "failed to mark payment provider operation as reconciliation required"
+                );
+            }
             return Err(map_reserved_refund_error(
                 context,
                 owner_operation,
@@ -382,10 +400,7 @@ impl InProcessPaymentAdminRefundCommandPort {
             ));
         }
 
-        Ok(JournaledRefundProviderResult {
-            operation_id: journal_operation.id,
-            result: provider_result,
-        })
+        Ok(journal_operation.id)
     }
 
     async fn enrich_refund_provider_request(
@@ -480,14 +495,22 @@ impl InProcessPaymentAdminRefundCommandPort {
             .await
             .is_err()
         {
-            let _ = self
+            if let Err(mark_error) = self
                 .operation_journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation_id,
                     "payment.refund_local_commit_checkpoint_failed",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %operation_id,
+                    error = %mark_error,
+                    "failed to mark payment provider operation as reconciliation required"
+                );
+            }
             tracing::error!(
                 owner = "rustok_payment",
                 operation = owner_operation,

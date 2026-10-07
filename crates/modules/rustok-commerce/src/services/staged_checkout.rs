@@ -2,6 +2,7 @@ use rustok_api::PortError;
 #[cfg(test)]
 use rustok_api::PortErrorKind;
 use rustok_cart::AtomicCartCheckoutHandle;
+use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -59,12 +60,13 @@ impl StagedCheckoutService {
         pipeline: CheckoutStagePipeline,
         atomic_cart_checkout: AtomicCartCheckoutHandle,
         db: sea_orm::DatabaseConnection,
+        event_bus: TransactionalEventBus,
     ) -> Self {
         Self {
             plan_builder,
             pipeline,
             atomic_cart_checkout,
-            journal: CheckoutOperationJournal::new(db),
+            journal: CheckoutOperationJournal::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
         }
     }

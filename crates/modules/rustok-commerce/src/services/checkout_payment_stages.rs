@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rustok_order::OrderResponse;
+use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{
     CheckoutPaymentExecutionPort as CanonicalCheckoutPaymentExecutionPort, PaymentProviderRegistry,
 };
@@ -9,7 +10,7 @@ use uuid::Uuid;
 use super::{
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanRecord,
-    DEFAULT_CHECKOUT_LEASE_SECONDS,
+    DEFAULT_CHECKOUT_LEASE_SECONDS, checkout_execution_admission_port,
 };
 
 mod payment_execution_boundary {
@@ -316,11 +317,14 @@ mod rustok_payment_shim {
             db: sea_orm::DatabaseConnection,
             payment_provider_registry: PaymentProviderRegistry,
         ) -> Self {
+            let checkout_admission =
+                checkout_execution_admission_port(db.clone());
             Self {
                 inner: wrap_checkout_payment_execution_port(Arc::new(
                     ::rustok_payment::InProcessCheckoutPaymentExecutionPort::with_provider_registry(
                         db,
                         payment_provider_registry,
+                        checkout_admission,
                     ),
                 )),
             }
@@ -371,8 +375,9 @@ mod rustok_payment_shim {
     pub fn in_process_checkout_payment_execution_port(
         db: sea_orm::DatabaseConnection,
     ) -> Arc<dyn CheckoutPaymentExecutionPort> {
+        let checkout_admission = checkout_execution_admission_port(db.clone());
         wrap_checkout_payment_execution_port(
-            ::rustok_payment::in_process_checkout_payment_execution_port(db),
+            ::rustok_payment::in_process_checkout_payment_execution_port(db, checkout_admission),
         )
     }
 
@@ -412,9 +417,9 @@ pub struct CheckoutPaymentStageExecutor {
 }
 
 impl CheckoutPaymentStageExecutor {
-    pub fn new(db: sea_orm::DatabaseConnection) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            inner: legacy::CheckoutPaymentStageExecutor::new(db),
+            inner: legacy::CheckoutPaymentStageExecutor::new(db, event_bus),
         }
     }
 

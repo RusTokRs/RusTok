@@ -1,5 +1,6 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::PreparedCartCheckoutSnapshot;
+use rustok_outbox::TransactionalEventBus;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
     InventoryReservationIdentityPort,
@@ -66,11 +67,12 @@ pub struct CheckoutInventoryReservationExecutor {
 impl CheckoutInventoryReservationExecutor {
     pub fn new(
         db: sea_orm::DatabaseConnection,
+        event_bus: TransactionalEventBus,
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
     ) -> Self {
         Self {
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db),
+            operation_journal: CheckoutOperationJournal::new(db, event_bus),
             reservation_port,
             port_deadline: Duration::from_secs(DEFAULT_INVENTORY_PORT_DEADLINE_SECONDS),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,

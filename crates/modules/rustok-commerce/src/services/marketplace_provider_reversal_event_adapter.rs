@@ -4,7 +4,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 use rustok_marketplace_ledger::{
     MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
 };
@@ -497,31 +496,15 @@ fn decimal_to_minor_exact(
             "normalized provider amount must be positive".to_string(),
         ));
     }
-    let factor = 10_i64
-        .checked_pow(u32::try_from(exponent).map_err(|_| {
-            MarketplaceProviderReversalEventAdapterError::Validation(
-                "currency exponent is invalid".to_string(),
-            )
-        })?)
-        .ok_or_else(|| {
-            MarketplaceProviderReversalEventAdapterError::Validation(
-                "currency exponent overflows minor-unit conversion".to_string(),
-            )
-        })?;
-    let scaled = amount.checked_mul(Decimal::from(factor)).ok_or_else(|| {
+    let exponent = u8::try_from(exponent).map_err(|_| {
         MarketplaceProviderReversalEventAdapterError::Validation(
-            "provider amount overflows minor-unit conversion".to_string(),
+            "currency exponent is invalid".to_string(),
         )
     })?;
-    if scaled.fract() != Decimal::ZERO {
-        return Err(MarketplaceProviderReversalEventAdapterError::Validation(
-            "provider amount cannot be represented exactly in currency minor units".to_string(),
-        ));
-    }
-    scaled.to_i64().ok_or_else(|| {
-        MarketplaceProviderReversalEventAdapterError::Validation(
-            "provider amount exceeds supported minor-unit range".to_string(),
-        )
+    // The conversion itself belongs to the canonical money owner (ECOM-MONEY-02); the inbox and the
+    // persistence guards already restrict the stored exponent to 0..=9.
+    rustok_core::money::to_fixed_point_units_exact(amount, exponent).map_err(|error| {
+        MarketplaceProviderReversalEventAdapterError::Validation(error.to_string())
     })
 }
 

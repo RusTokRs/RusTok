@@ -98,7 +98,7 @@ impl CheckoutCompensationService {
         Self {
             owner_db: db.clone(),
             event_bus: event_bus.clone(),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             reservation_port,
             cart_port,
@@ -264,6 +264,7 @@ impl CheckoutCompensationService {
                 payment_context.clone(),
                 CheckoutPaymentCompensationRequest {
                     checkout_operation_id: operation.id,
+                    cart_id: operation.cart_id,
                     collection_id: operation.payment_collection_id,
                     reason: Some("checkout_compensation".to_string()),
                     metadata: json!({
@@ -285,12 +286,24 @@ impl CheckoutCompensationService {
                 )
             })?;
         if let Some(snapshot) = snapshot {
-            if operation.payment_collection_id != Some(snapshot.collection_id)
-                || snapshot.status_kind() != PaymentCollectionStatusKind::Cancelled
+            // The binding is checked only when the journal recorded one: a park
+            // between the collection being created and `checkpoint` leaves the
+            // column null, and the payment owner resolves that attempt's
+            // collection from its own metadata link, so there is no binding here
+            // to compare against. The status check is the same in both cases —
+            // the compensation is done only once the collection is cancelled.
+            if operation.payment_collection_id.is_some()
+                && operation.payment_collection_id != Some(snapshot.collection_id)
             {
                 return Err(CheckoutCompensationError::Conflict(format!(
                     "payment compensation result does not match checkout operation {}",
                     operation.id
+                )));
+            }
+            if snapshot.status_kind() != PaymentCollectionStatusKind::Cancelled {
+                return Err(CheckoutCompensationError::Conflict(format!(
+                    "payment collection {} is not cancelled after checkout compensation",
+                    snapshot.collection_id
                 )));
             }
         } else if operation.payment_collection_id.is_some() {

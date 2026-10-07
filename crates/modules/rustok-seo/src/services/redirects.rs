@@ -301,6 +301,11 @@ impl SeoService {
             settings.allowed_redirect_hosts.as_slice(),
             "target_url",
         )?;
+        if source_pattern == target_url {
+            return Err(SeoError::validation(
+                "source_pattern and target_url must not be identical (would cause a redirect loop)",
+            ));
+        }
         let status_code = normalize_redirect_status(input.status_code)?;
         let now = Utc::now().fixed_offset();
         let transition_id = Uuid::new_v4();
@@ -324,20 +329,37 @@ impl SeoService {
             active.updated_at = Set(now);
             active.update(&txn).await?
         } else {
-            seo_redirect::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant.id),
-                match_type: Set(input.match_type.as_str().to_string()),
-                source_pattern: Set(source_pattern),
-                target_url: Set(target_url),
-                status_code: Set(status_code),
-                expires_at: Set(input.expires_at.map(|value| value.into())),
-                is_active: Set(input.is_active),
-                created_at: Set(now),
-                updated_at: Set(now),
+            let existing = seo_redirect::Entity::find()
+                .filter(seo_redirect::Column::TenantId.eq(tenant.id))
+                .filter(seo_redirect::Column::MatchType.eq(input.match_type.as_str()))
+                .filter(seo_redirect::Column::SourcePattern.eq(source_pattern.as_str()))
+                .one(&txn)
+                .await?;
+
+            if let Some(existing) = existing {
+                let mut active: seo_redirect::ActiveModel = existing.into();
+                active.target_url = Set(target_url.clone());
+                active.status_code = Set(status_code);
+                active.expires_at = Set(input.expires_at.map(|value| value.into()));
+                active.is_active = Set(input.is_active);
+                active.updated_at = Set(now);
+                active.update(&txn).await?
+            } else {
+                seo_redirect::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant.id),
+                    match_type: Set(input.match_type.as_str().to_string()),
+                    source_pattern: Set(source_pattern),
+                    target_url: Set(target_url),
+                    status_code: Set(status_code),
+                    expires_at: Set(input.expires_at.map(|value| value.into())),
+                    is_active: Set(input.is_active),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                }
+                .insert(&txn)
+                .await?
             }
-            .insert(&txn)
-            .await?
         };
 
         let record = map_redirect_record(model);
@@ -347,6 +369,115 @@ impl SeoService {
 
         super::invalidate_redirect_cache(tenant.id).await;
         Ok(record)
+    }
+
+    pub async fn auto_redirect_on_canonical_url_changed(
+        &self,
+        tenant_id: Uuid,
+        new_canonical_url: &str,
+        old_urls: &[String],
+    ) -> SeoResult<()> {
+        let settings = self.load_settings(tenant_id).await?;
+        if !settings.submodule_redirects_enabled || !settings.auto_redirect_on_slug_change {
+            return Ok(());
+        }
+
+        let new_url = new_canonical_url.trim();
+        if new_url.is_empty() {
+            return Ok(());
+        }
+
+        let normalized_new_url = match normalize_target_url(
+            new_url,
+            settings.allowed_redirect_hosts.as_slice(),
+            "new_canonical_url",
+        ) {
+            Ok(url) => url,
+            Err(err) => {
+                tracing::warn!(tenant_id = %tenant_id, new_url, error = %err, "Invalid new canonical URL for auto-redirect");
+                return Ok(());
+            }
+        };
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: String::new(),
+            slug: String::new(),
+            domain: None,
+            settings: serde_json::Value::Null,
+            default_locale: settings
+                .x_default_locale
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| "en".to_string()),
+            is_active: true,
+        };
+
+        let now = Utc::now().fixed_offset();
+
+        // 1. Deactivate any existing redirect whose source_pattern is our new canonical destination.
+        // (Prevents immediate bounce or loop: the new URL is now live, not a redirect source).
+        let existing_as_source = seo_redirect::Entity::find()
+            .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+            .filter(seo_redirect::Column::MatchType.eq(SeoRedirectMatchType::Exact.as_str()))
+            .filter(seo_redirect::Column::SourcePattern.eq(normalized_new_url.as_str()))
+            .filter(seo_redirect::Column::IsActive.eq(true))
+            .all(&self.db)
+            .await?;
+
+        for item in existing_as_source {
+            let mut active: seo_redirect::ActiveModel = item.into();
+            active.is_active = Set(false);
+            active.updated_at = Set(now);
+            let _ = active.update(&self.db).await;
+        }
+
+        // 2. Create/update 301 redirects for each old URL and flatten multi-hop chains
+        for old_url in old_urls {
+            let old_url = old_url.trim();
+            if old_url.is_empty() || old_url == normalized_new_url {
+                continue;
+            }
+
+            let input = SeoRedirectInput {
+                id: None,
+                match_type: SeoRedirectMatchType::Exact,
+                source_pattern: old_url.to_string(),
+                target_url: normalized_new_url.clone(),
+                status_code: 301,
+                expires_at: None,
+                is_active: true,
+            };
+
+            if let Err(err) = self.upsert_redirect(&tenant, input).await {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    source = old_url,
+                    target = %normalized_new_url,
+                    error = %err,
+                    "Failed to auto-create 301 redirect on canonical URL change"
+                );
+            }
+
+            // 3. Flatten redirect chains: if any other redirect was pointing to old_url,
+            // update it to point directly to normalized_new_url (A -> B, B -> C becomes A -> C).
+            let pointing_to_old = seo_redirect::Entity::find()
+                .filter(seo_redirect::Column::TenantId.eq(tenant_id))
+                .filter(seo_redirect::Column::TargetUrl.eq(old_url))
+                .filter(seo_redirect::Column::SourcePattern.ne(normalized_new_url.as_str()))
+                .all(&self.db)
+                .await?;
+
+            for item in pointing_to_old {
+                let mut active: seo_redirect::ActiveModel = item.into();
+                active.target_url = Set(normalized_new_url.clone());
+                active.updated_at = Set(now);
+                let _ = active.update(&self.db).await;
+            }
+        }
+
+        super::invalidate_redirect_cache(tenant_id).await;
+        Ok(())
     }
 
     async fn publish_redirect_transition_in_tx(

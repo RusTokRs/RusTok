@@ -13,12 +13,27 @@ export interface RoleInfo {
   permissions: string[];
 }
 
-interface AssignUserRoleInput {
-  userId: string;
-  role: string;
+export type UserRoleEnum = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'CUSTOMER';
+
+export function roleSlugToUserRoleEnum(slug: string): UserRoleEnum {
+  const normalized = slug.trim().toUpperCase();
+  if (
+    normalized === 'SUPER_ADMIN' ||
+    normalized === 'ADMIN' ||
+    normalized === 'MANAGER' ||
+    normalized === 'CUSTOMER'
+  ) {
+    return normalized as UserRoleEnum;
+  }
+  return 'CUSTOMER';
 }
 
-interface AssignUserRolePayload {
+export interface AssignUserRoleInput {
+  userId: string;
+  role: UserRoleEnum | string;
+}
+
+export interface AssignUserRolePayload {
   success: boolean;
   userId: string;
   role: string;
@@ -70,9 +85,13 @@ export async function assignUserRole(
   input: AssignUserRoleInput,
   opts: GqlOpts = {}
 ): Promise<AssignUserRolePayload> {
+  const payload = {
+    userId: input.userId,
+    role: roleSlugToUserRoleEnum(input.role)
+  };
   const data = await graphqlRequest<
-    { input: AssignUserRoleInput },
+    { input: { userId: string; role: UserRoleEnum } },
     AssignUserRoleResponse
-  >(ASSIGN_USER_ROLE_MUTATION, { input }, opts.token, opts.tenantSlug);
+  >(ASSIGN_USER_ROLE_MUTATION, { input: payload }, opts.token, opts.tenantSlug);
   return data.assignUserRole;
 }

@@ -3,96 +3,29 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
+/// Orders the outbox-owned `sys_events` schema on the platform timeline.
+///
+/// `sys_events` is owned by `rustok-outbox`: the table shape lives once in
+/// [`rustok_outbox::migration::create_sys_events_schema`], module and test
+/// schemas reach it through `SysEventsMigration`, and this append-only wrapper
+/// only decides when a platform deployment receives it. The alternative — a
+/// second copy of the DDL here — is what the receipts wrapper
+/// (`m20260803_000001_create_owner_operation_receipts`) already avoids, and it
+/// would have made every outbox column change a two-file edit with silent drift
+/// when one of the two was missed.
+///
+/// The indexes are deliberately not part of the schema helper: each access path
+/// carries its own append-only migration
+/// (`m20261007_000014_add_sys_events_claim_index`,
+/// `m20261007_000015_add_sys_events_retention_index`), so a delivered-event
+/// index can be added to a deployment that is already running.
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_table(
-                Table::create()
-                    .table(SysEvents::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(SysEvents::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(SysEvents::EventType)
-                            .string_len(255)
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(SysEvents::SchemaVersion)
-                            .small_integer()
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(SysEvents::Payload).json_binary().not_null())
-                    .col(ColumnDef::new(SysEvents::Status).string_len(32).not_null())
-                    .col(
-                        ColumnDef::new(SysEvents::RetryCount)
-                            .integer()
-                            .not_null()
-                            .default(0),
-                    )
-                    .col(ColumnDef::new(SysEvents::NextAttemptAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(SysEvents::LastError).string_len(2048))
-                    .col(ColumnDef::new(SysEvents::ClaimedBy).string_len(128))
-                    .col(ColumnDef::new(SysEvents::ClaimedAt).timestamp_with_time_zone())
-                    .col(
-                        ColumnDef::new(SysEvents::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(SysEvents::DispatchedAt).timestamp_with_time_zone())
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_sys_events_pending_next_attempt")
-                    .table(SysEvents::Table)
-                    .col(SysEvents::Status)
-                    .col(SysEvents::NextAttemptAt)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx_sys_events_claimed_at")
-                    .table(SysEvents::Table)
-                    .col(SysEvents::ClaimedAt)
-                    .to_owned(),
-            )
-            .await
+        rustok_outbox::migration::create_sys_events_schema(manager).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(SysEvents::Table).to_owned())
-            .await
+        rustok_outbox::migration::drop_sys_events_schema(manager).await
     }
-}
-
-#[derive(DeriveIden)]
-enum SysEvents {
-    Table,
-    Id,
-    EventType,
-    SchemaVersion,
-    Payload,
-    Status,
-    RetryCount,
-    NextAttemptAt,
-    LastError,
-    ClaimedBy,
-    ClaimedAt,
-    CreatedAt,
-    DispatchedAt,
 }

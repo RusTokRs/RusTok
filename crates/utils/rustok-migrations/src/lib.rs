@@ -47,6 +47,9 @@ mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
+mod m20261007_000014_add_sys_events_claim_index;
+mod m20261007_000015_add_sys_events_retention_index;
+mod m20261007_000016_drop_sys_events_superseded_indexes;
 mod m20260808_000099_create_module_operation_override_states;
 mod m20260928_000001_create_install_http_jobs;
 
@@ -528,6 +531,15 @@ impl MigratorTrait for Migrator {
         ));
         all.push(Box::new(
             m20260718_000002_add_registry_publication_idempotency::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000014_add_sys_events_claim_index::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000015_add_sys_events_retention_index::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000016_drop_sys_events_superseded_indexes::Migration,
         ));
         let dependencies = collect_migration_descriptors();
 

@@ -194,7 +194,6 @@ fn map_cart_error(
     owner_operation: &'static str,
     error: CartError,
 ) -> PortError {
-    eprintln!("DEBUG MAP MARKETPLACE CART ERROR: {error:?}");
     let code = cart_error_code(&error);
     tracing::error!(
         error = ?error,

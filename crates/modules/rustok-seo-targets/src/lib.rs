@@ -371,6 +371,7 @@ pub mod builtin_slug {
     pub const BLOG_POST: &str = "blog_post";
     pub const FORUM_CATEGORY: &str = "forum_category";
     pub const FORUM_TOPIC: &str = "forum_topic";
+    pub const CATEGORY: &str = "category";
 }
 
 pub fn default_schema_type_for_slug(slug: &SeoTargetSlug) -> Option<&'static str> {
@@ -379,6 +380,7 @@ pub fn default_schema_type_for_slug(slug: &SeoTargetSlug) -> Option<&'static str
         builtin_slug::PRODUCT => Some("Product"),
         builtin_slug::BLOG_POST => Some("BlogPosting"),
         builtin_slug::FORUM_TOPIC => Some("DiscussionForumPosting"),
+        builtin_slug::CATEGORY | builtin_slug::FORUM_CATEGORY => Some("CollectionPage"),
         _ => None,
     }
 }
@@ -820,6 +822,70 @@ pub struct SeoSitemapCandidateRecord {
     pub alternates: Vec<SeoTargetAlternateRoute>,
 }
 
+// ════════════════════════════════════════════════════════════════
+// AI SEO VERTICAL CONTRACTS
+// ════════════════════════════════════════════════════════════════
+
+pub const SEO_METADATA_TASK_SLUG: &str = "seo_metadata";
+pub const SEO_METADATA_TOOL_NAME: &str = "direct.seo.generate_metadata";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeoAiVerticalDescriptor {
+    pub task_slug: &'static str,
+    pub tool_name: &'static str,
+    pub sensitive: bool,
+}
+
+pub const SEO_AI_VERTICALS: &[SeoAiVerticalDescriptor] = &[
+    SeoAiVerticalDescriptor {
+        task_slug: SEO_METADATA_TASK_SLUG,
+        tool_name: SEO_METADATA_TOOL_NAME,
+        sensitive: false,
+    },
+];
+
+pub fn seo_ai_verticals() -> &'static [SeoAiVerticalDescriptor] {
+    SEO_AI_VERTICALS
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema, SimpleObject)]
+pub struct GeneratedSeoMetadata {
+    pub meta_title: Option<String>,
+    pub meta_description: Option<String>,
+    pub meta_keywords: Option<String>,
+    pub og_title: Option<String>,
+    pub og_description: Option<String>,
+    pub canonical_url: Option<String>,
+    pub robots: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct GenerateSeoMetadataInput {
+    pub target_kind: String,
+    pub target_id: Option<String>,
+    pub name: String,
+    pub description_sample: Option<String>,
+    pub locale: String,
+    pub keywords_hint: Option<String>,
+    pub brand: Option<String>,
+    pub category_path: Option<String>,
+    pub current_route: Option<String>,
+}
+
+pub fn validate_seo_metadata_payload(payload: &GeneratedSeoMetadata) -> Result<(), String> {
+    if let Some(title) = payload.meta_title.as_deref() {
+        if title.trim().is_empty() {
+            return Err("meta_title must not be blank when provided".to_string());
+        }
+    }
+    if let Some(desc) = payload.meta_description.as_deref() {
+        if desc.trim().is_empty() {
+            return Err("meta_description must not be blank when provided".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "server")]
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum SeoTargetRegistryError {
@@ -1032,8 +1098,14 @@ mod tests {
 
         assert_eq!(product["@context"], json!("https://schema.org"));
         assert_eq!(product["@type"], json!("Product"));
-        assert_eq!(product["name"], json!("Demo"));
-        assert_eq!(product["image"], json!("https://cdn.test/demo.png"));
+        assert_eq!(
+            product["image"],
+            json!({
+                "@type": "ImageObject",
+                "encodingFormat": "image/png",
+                "url": "https://cdn.test/demo.png"
+            })
+        );
         assert!(product.get("description").is_none());
 
         let discussion = schema::discussion_forum_posting(
@@ -1257,5 +1329,36 @@ mod tests {
             .expect("SEO target registry should be stored in runtime extensions");
 
         assert!(registry.get_by_str(builtin_slug::BLOG_POST).is_some());
+    }
+
+    #[test]
+    fn ai_seo_verticals_and_validation_work() {
+        use super::{
+            GeneratedSeoMetadata, SEO_METADATA_TASK_SLUG, SEO_METADATA_TOOL_NAME, seo_ai_verticals,
+            validate_seo_metadata_payload,
+        };
+
+        let verticals = seo_ai_verticals();
+        assert_eq!(verticals.len(), 1);
+        assert_eq!(verticals[0].task_slug, SEO_METADATA_TASK_SLUG);
+        assert_eq!(verticals[0].tool_name, SEO_METADATA_TOOL_NAME);
+        assert_eq!(verticals[0].sensitive, false);
+
+        let valid = GeneratedSeoMetadata {
+            meta_title: Some("Best Running Shoes 2026".to_string()),
+            meta_description: Some("Discover top running shoes for marathons.".to_string()),
+            meta_keywords: Some("running, shoes, marathon".to_string()),
+            og_title: Some("Best Running Shoes 2026".to_string()),
+            og_description: None,
+            canonical_url: Some("/shoes".to_string()),
+            robots: Some("index, follow".to_string()),
+        };
+        assert!(validate_seo_metadata_payload(&valid).is_ok());
+
+        let invalid = GeneratedSeoMetadata {
+            meta_title: Some("   ".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_seo_metadata_payload(&invalid).is_err());
     }
 }

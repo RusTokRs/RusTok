@@ -1,5 +1,7 @@
+mod ai_seo;
 mod applications;
 mod bulk;
+mod canonical_redirect_handler;
 mod cross_links;
 mod diagnostics;
 mod events;
@@ -11,6 +13,8 @@ mod schema_validation;
 mod sitemaps;
 mod targets;
 mod templates;
+
+pub(crate) use canonical_redirect_handler::SeoCanonicalUrlRedirectHandler;
 
 use std::sync::Arc;
 use std::time::Instant;

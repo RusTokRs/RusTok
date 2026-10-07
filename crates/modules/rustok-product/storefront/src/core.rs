@@ -128,7 +128,7 @@ pub(crate) fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<Stri
         .filter(|value| !value.is_empty())
 }
 
-#[cfg_attr(not(feature = "ssr"), allow(dead_code))]
+#[cfg(feature = "ssr")]
 pub fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,

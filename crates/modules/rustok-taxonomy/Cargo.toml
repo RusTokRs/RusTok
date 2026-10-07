@@ -7,12 +7,14 @@ description = "Scope-aware taxonomy dictionary for shared and module-local terms
 
 [dependencies]
 rustok-api.workspace = true
+anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-seo-targets.workspace = true
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

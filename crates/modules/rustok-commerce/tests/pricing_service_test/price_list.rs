@@ -193,7 +193,7 @@ async fn test_set_price_list_tier_with_channel_inherits_price_list_scope() {
         .unwrap();
 
     let override_row = service
-        .get_variant_prices(variant_id)
+        .get_variant_prices(tenant_id, variant_id)
         .await
         .unwrap()
         .into_iter()
@@ -311,7 +311,7 @@ async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
     assert_eq!(updated_scope.channel_slug.as_deref(), Some("web-store"));
 
     let override_row = service
-        .get_variant_prices(variant_id)
+        .get_variant_prices(tenant_id, variant_id)
         .await
         .unwrap()
         .into_iter()

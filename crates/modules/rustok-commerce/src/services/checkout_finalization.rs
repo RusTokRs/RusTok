@@ -4,6 +4,7 @@ use rustok_cart::{
     CartStatus,
 };
 use rustok_order::OrderStatusKind;
+use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentCollectionStatusKind;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
@@ -51,11 +52,12 @@ pub struct CheckoutFinalizationExecutor {
 impl CheckoutFinalizationExecutor {
     pub fn new(
         db: sea_orm::DatabaseConnection,
+        event_bus: TransactionalEventBus,
         cart_checkout_port: Arc<dyn CartCheckoutPort>,
     ) -> Self {
         Self {
             cart_checkout_port,
-            operation_journal: CheckoutOperationJournal::new(db),
+            operation_journal: CheckoutOperationJournal::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(CART_PORT_DEADLINE_SECONDS),
         }

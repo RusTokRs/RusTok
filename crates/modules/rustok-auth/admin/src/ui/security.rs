@@ -83,9 +83,30 @@ pub fn Security() -> impl IntoView {
         });
     });
 
+    let (refresh_trigger, set_refresh_trigger) = signal(0usize);
+    let sessions = LocalResource::new(move || {
+        let _ = refresh_trigger.get();
+        let tok = token.get();
+        let ten = tenant.get();
+        async move { crate::transport::list_sessions(tok, ten, Some(50)).await }
+    });
+
+    let on_revoke_session = Callback::new(move |session_id: String| {
+        let tok = token.get();
+        let ten = tenant.get();
+        spawn_local(async move {
+            if let Ok(true) = crate::transport::revoke_session(tok, ten, session_id).await {
+                set_refresh_trigger.update(|n| *n += 1);
+            }
+        });
+    });
+
     let on_sign_out_all = Callback::new(move |_| {
+        let tok = token.get();
+        let ten = tenant.get();
         let auth = auth.clone();
         spawn_local(async move {
+            let _ = crate::transport::revoke_all_sessions(tok, ten).await;
             let _ = auth.sign_out().await;
         });
     });
@@ -148,15 +169,92 @@ pub fn Security() -> impl IntoView {
                 </div>
 
                 <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
-                    <h3 class="text-lg font-semibold text-card-foreground">
-                        {t_local("security.sessionsTitle", "Active sessions")}
-                    </h3>
-                    <p class="text-sm text-muted-foreground">
-                        {t_local("security.sessionsSubtitle", "Review devices that are currently signed in.")}
-                    </p>
-                    <div class="rounded-lg bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
-                        "Session management via GraphQL — coming soon"
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-card-foreground">
+                                {t_local("security.sessionsTitle", "Active sessions")}
+                            </h3>
+                            <p class="text-sm text-muted-foreground">
+                                {t_local("security.sessionsSubtitle", "Review devices that are currently signed in.")}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            on:click=move |_| set_refresh_trigger.update(|n| *n += 1)
+                            class="text-xs px-2.5 py-1 rounded border border-border bg-background hover:bg-muted text-foreground transition-colors cursor-pointer"
+                        >
+                            "Refresh"
+                        </button>
                     </div>
+
+                    <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-lg bg-muted" /> }>
+                        {move || {
+                            sessions.get().map(|res| match res {
+                                Ok(items) if items.is_empty() => view! {
+                                    <div class="rounded-lg bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
+                                        "No active sessions found."
+                                    </div>
+                                }.into_any(),
+                                Ok(items) => view! {
+                                    <div class="divide-y divide-border/40 overflow-hidden rounded-lg border border-border">
+                                        {items.into_iter().map(|s| {
+                                            let s_id = s.id.clone();
+                                            let is_curr = s.current;
+                                            let ua = s.user_agent.unwrap_or_else(|| "Unknown device / agent".to_string());
+                                            let ip = s.ip_address.unwrap_or_else(|| "Unknown IP".to_string());
+                                            let on_revoke = on_revoke_session;
+                                            view! {
+                                                <div class="flex items-center justify-between p-3 bg-background hover:bg-muted/30 transition-colors">
+                                                    <div class="space-y-1 min-w-0 pr-3">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="text-xs font-semibold truncate text-foreground">{ua}</span>
+                                                            {if is_curr {
+                                                                view! {
+                                                                    <span class="rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-medium">
+                                                                        "Current"
+                                                                    </span>
+                                                                }.into_any()
+                                                            } else {
+                                                                ().into_any()
+                                                            }}
+                                                        </div>
+                                                        <div class="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                                                            <span>{ip}</span>
+                                                            <span>"•"</span>
+                                                            <span>{s.created_at}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        {if !is_curr {
+                                                            let id_clone = s_id.clone();
+                                                            view! {
+                                                                <button
+                                                                    type="button"
+                                                                    class="text-xs text-destructive hover:underline cursor-pointer font-medium px-2 py-1"
+                                                                    on:click=move |_| on_revoke.run(id_clone.clone())
+                                                                >
+                                                                    "Revoke"
+                                                                </button>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! {
+                                                                <span class="text-xs text-muted-foreground italic px-2">"Active"</span>
+                                                            }.into_any()
+                                                        }}
+                                                    </div>
+                                                </div>
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any(),
+                                Err(err) => view! {
+                                    <div class="rounded-lg bg-destructive/10 border border-destructive/20 p-4 text-xs text-destructive">
+                                        {format!("Failed to load sessions: {err}")}
+                                    </div>
+                                }.into_any(),
+                            })
+                        }}
+                    </Suspense>
                 </div>
             </div>
         </section>

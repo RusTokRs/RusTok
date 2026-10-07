@@ -465,13 +465,21 @@ impl JournaledFulfillmentOrchestrationService {
         operation: &'static str,
         source: &FulfillmentError,
     ) {
-        let _ = FulfillmentProviderOperationJournal::new(self.db.clone())
+        if let Err(mark_error) = FulfillmentProviderOperationJournal::new(self.db.clone())
             .mark_reconciliation_required(
                 tenant_id,
                 operation_id,
                 format!("local {operation} persistence failed: {source}"),
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                operation_id = %operation_id,
+                error = %mark_error,
+                "failed to mark provider operation as reconciliation required"
+            );
+        }
     }
 
     async fn ensure_committed(
@@ -486,13 +494,21 @@ impl JournaledFulfillmentOrchestrationService {
             return Ok(());
         }
         if let Err(source) = journal.mark_committed(tenant_id, operation_id).await {
-            let _ = journal
+            if let Err(mark_error) = journal
                 .mark_reconciliation_required(
                     tenant_id,
                     operation_id,
                     format!("local {operation} succeeded, but journal commit failed: {source}"),
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %tenant_id,
+                    operation_id = %operation_id,
+                    error = %mark_error,
+                    "failed to mark provider operation as reconciliation required"
+                );
+            }
             return Err(FulfillmentOrchestrationError::Validation(format!(
                 "fulfillment {operation} succeeded locally, but operation {operation_id} could not be committed: {source}"
             )));

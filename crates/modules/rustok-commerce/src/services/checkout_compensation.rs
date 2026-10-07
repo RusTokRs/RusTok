@@ -90,14 +90,17 @@ impl CheckoutCompensationService {
         cart_port: Arc<dyn CartCheckoutPort>,
     ) -> Self {
         Self {
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             reservation_port,
             cart_port,
             order_identity_port: in_process_checkout_order_identity_port(db.clone()),
             payment_service: PaymentService::new(db.clone()),
             payment_orchestration: PaymentOrchestrationService::new(db.clone()),
-            payment_operation_journal: PaymentProviderOperationJournal::new(db.clone()),
+            payment_operation_journal: PaymentProviderOperationJournal::new(db.clone())
+                .with_checkout_execution_admission_port(
+                    super::checkout_execution_admission_port(db.clone()),
+                ),
             order_service: OrderService::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(COMPENSATION_PORT_DEADLINE_SECONDS),

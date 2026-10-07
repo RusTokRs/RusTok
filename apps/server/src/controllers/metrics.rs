@@ -8,10 +8,14 @@ use axum::{
 use crate::common::settings::EmailProvider;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
+    OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
+    RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRelaySupervisorMetricsSnapshot, outbox_relay_supervisor_metrics_snapshot,
+};
+use crate::services::outbox_retention_worker::{
+    OutboxRetentionSupervisorMetricsSnapshot, outbox_retention_supervisor_metrics_snapshot,
 };
 use chrono::Utc;
 use rustok_outbox::RelayMetricsSnapshot;
@@ -355,6 +359,14 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         warn!("failed to collect one or more outbox metrics");
     }
 
+    // The queue depth of the durable bus, measured at scrape time like the rest
+    // of this block: the rendered `rustok_outbox_backlog_size` line and the
+    // exported `rustok_event_bus_queue_depth{transport="outbox"}` gauge are the
+    // same reading, so a dashboard can use either name without them diverging.
+    if let Some(backlog) = backlog_size {
+        update_queue_depth("outbox", i64::try_from(backlog).unwrap_or(i64::MAX));
+    }
+
     let mut payload = format_outbox_metrics_optional(
         backlog_size,
         dlq_total,
@@ -441,9 +453,14 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
 
 fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
-    let relay_required = ctx
-        .shared_get::<Arc<EventRuntime>>()
+    let event_runtime = ctx.shared_get::<Arc<EventRuntime>>();
+    let relay_required = event_runtime
+        .as_ref()
         .and_then(|runtime| runtime.relay_config.clone())
+        .is_some();
+    let retention_required = event_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.outbox_retention.clone())
         .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
@@ -457,6 +474,14 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
+        "outbox_retention",
+        retention_required,
+        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
+            OutboxRetentionWorkerHandle::is_finished,
+        ),
+        stop_requested,
+    ));
+    payload.push_str(&format_runtime_worker_state(
         "remote_executor_reaper",
         settings.registry.remote_executor.enabled,
         ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
@@ -464,6 +489,9 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     ));
     payload.push_str(&format_runtime_worker_restart_metrics(
         outbox_relay_supervisor_metrics_snapshot(),
+    ));
+    payload.push_str(&format_outbox_retention_failure_metrics(
+        outbox_retention_supervisor_metrics_snapshot(),
     ));
 
     #[cfg(feature = "mod-seo")]
@@ -523,6 +551,19 @@ fn format_runtime_worker_restart_metrics(snapshot: OutboxRelaySupervisorMetricsS
     format!(
         "rustok_runtime_worker_restarts_total{{worker=\"outbox_relay\"}} {restart_total}\n",
         restart_total = snapshot.restart_total,
+    )
+}
+
+/// Failed retention prune runs.
+///
+/// A failed run is retried on the next interval, so the counter distinguishes a
+/// pruner that is held back by the database from one that is simply idle.
+fn format_outbox_retention_failure_metrics(
+    snapshot: OutboxRetentionSupervisorMetricsSnapshot,
+) -> String {
+    format!(
+        "rustok_runtime_worker_failures_total{{worker=\"outbox_retention\"}} {failure_total}\n",
+        failure_total = snapshot.failure_total,
     )
 }
 
@@ -799,7 +840,8 @@ fn format_rbac_metrics(
 #[cfg(test)]
 mod tests {
     use super::{
-        format_email_backend_state, format_email_delivery_metrics, format_outbox_metrics,
+        format_email_backend_state, format_email_delivery_metrics,
+        format_outbox_retention_failure_metrics, format_outbox_metrics,
         format_outbox_relay_runtime_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
         format_runtime_worker_restart_metrics, format_runtime_worker_state,
         format_tenant_activity_metrics, format_tenant_cache_metrics,
@@ -811,6 +853,7 @@ mod tests {
     use crate::services::auth_lifecycle::AuthLifecycleService;
     use crate::services::email::EmailDeliveryMetricsSnapshot;
     use crate::services::event_transport_factory::OutboxRelaySupervisorMetricsSnapshot;
+    use crate::services::outbox_retention_worker::OutboxRetentionSupervisorMetricsSnapshot;
     use crate::services::rbac_service::RbacService;
     use crate::services::runtime_guardrails::{
         EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,
@@ -989,6 +1032,22 @@ mod tests {
         let stopping = format_runtime_worker_state("outbox_relay", true, Some(false), true);
         assert!(stopping.contains(
             "rustok_runtime_worker_lifecycle_state{worker=\"outbox_relay\",state=\"stopping\"} 4\n"
+        ));
+    }
+
+    #[test]
+    fn runtime_worker_failure_metrics_include_outbox_retention_counter() {
+        let payload = format_outbox_retention_failure_metrics(
+            OutboxRetentionSupervisorMetricsSnapshot { failure_total: 3 },
+        );
+
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_worker_failures_total",
+            "{worker=\"outbox_retention\"}",
+        );
+        assert!(payload.contains(
+            "rustok_runtime_worker_failures_total{worker=\"outbox_retention\"} 3"
         ));
     }
 

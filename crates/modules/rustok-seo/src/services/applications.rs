@@ -8,7 +8,8 @@ use rustok_core::ModuleRuntimeExtensions;
 use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{
-    SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
+    GeneratedSeoMetadata, SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry,
+    SeoTargetSlug,
 };
 
 use crate::dto::{
@@ -139,6 +140,19 @@ impl SeoMetadataService {
         input: SeoMetaInput,
     ) -> SeoResult<SeoMetaRecord> {
         self.runtime.upsert_meta(tenant, input).await
+    }
+
+    pub async fn generate_seo_metadata(
+        &self,
+        tenant: &TenantContext,
+        target_kind: SeoTargetSlug,
+        target_id: Uuid,
+        locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> SeoResult<GeneratedSeoMetadata> {
+        self.runtime
+            .generate_seo_metadata(tenant, target_kind, target_id, locale, channel_slug)
+            .await
     }
 
     pub async fn publish_revision(

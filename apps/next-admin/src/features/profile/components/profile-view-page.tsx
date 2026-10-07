@@ -14,6 +14,7 @@ import { graphqlRequest } from '@/shared/api/graphql';
 import { useSession } from 'next-auth/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { SessionsCard } from './sessions-card';
 
 const UPDATE_PROFILE_MUTATION = `
 mutation UpdateProfile($input: UpdateProfileInput!) {
@@ -181,6 +182,8 @@ export default function ProfileViewPage() {
               </form>
             </CardContent>
           </Card>
+
+          <SessionsCard token={token} tenantSlug={tenantSlug} />
         </div>
       ) : (
         <p className='text-muted-foreground text-sm'>Loading profile...</p>

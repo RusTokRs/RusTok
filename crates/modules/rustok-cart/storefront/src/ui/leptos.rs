@@ -1025,7 +1025,15 @@ pub fn CartDrawer() -> impl IntoView {
                                                                 </div>
                                                             }.into_any()
                                                         } else {
-                                                            let cart_ref = cart.unwrap();
+                                                            let Some(cart_ref) = cart.as_ref() else {
+                                                                // ECOM-UI-01: `items` is derived from
+                                                                // `cart` above, so this branch is
+                                                                // unreachable today; answering an empty
+                                                                // view keeps the drawer from panicking
+                                                                // if a second source of `items` ever
+                                                                // appears.
+                                                                return ().into_any();
+                                                            };
                                                             let cart_id = cart_ref.id.clone();
                                                             let subtotal = cart_ref.subtotal_amount.clone();
                                                             let total = cart_ref.total_amount.clone();

@@ -20,7 +20,7 @@ async fn test_apply_discount_10_percent() {
     let new_amount = result.unwrap();
     assert_eq!(new_amount, dec!(90.00));
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(90.00)));
 }
 
@@ -147,7 +147,7 @@ async fn test_price_precision() {
         .await
         .unwrap();
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(19.99)));
 }
 
@@ -170,7 +170,7 @@ async fn test_price_with_many_decimal_places() {
         .await
         .unwrap();
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert!(price.is_some());
 }
 
@@ -195,8 +195,8 @@ async fn test_multiple_currencies_independence() {
         .await
         .unwrap();
 
-    let usd_price = service.get_price(variant_id, "USD").await.unwrap();
-    let eur_price = service.get_price(variant_id, "EUR").await.unwrap();
+    let usd_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    let eur_price = service.get_price(tenant_id, variant_id, "EUR").await.unwrap();
 
     assert_eq!(usd_price, Some(dec!(90.00)));
     assert_eq!(eur_price, Some(dec!(90.00)));
@@ -214,8 +214,8 @@ async fn test_currency_code_case_sensitive() {
         .await
         .unwrap();
 
-    let usd_upper = service.get_price(variant_id, "USD").await.unwrap();
-    let usd_lower = service.get_price(variant_id, "usd").await.unwrap();
+    let usd_upper = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
+    let usd_lower = service.get_price(tenant_id, variant_id, "usd").await.unwrap();
 
     assert_eq!(usd_upper, Some(dec!(100.00)));
     assert_eq!(usd_lower, None);
@@ -233,7 +233,7 @@ async fn test_price_workflow() {
         .await
         .unwrap();
 
-    let prices = service.get_variant_prices(variant_id).await.unwrap();
+    let prices = service.get_variant_prices(tenant_id, variant_id).await.unwrap();
     assert_eq!(prices.len(), 1);
 
     service
@@ -253,7 +253,7 @@ async fn test_price_workflow() {
         .await
         .unwrap();
 
-    let final_price = service.get_price(variant_id, "USD").await.unwrap();
+    let final_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(final_price, Some(dec!(75.00)));
 }
 
@@ -277,7 +277,7 @@ async fn test_very_large_price() {
 
     assert!(result.is_ok());
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(999999999.99)));
 }
 
@@ -294,7 +294,7 @@ async fn test_very_small_price() {
 
     assert!(result.is_ok());
 
-    let price = service.get_price(variant_id, "USD").await.unwrap();
+    let price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(price, Some(dec!(0.01)));
 }
 
@@ -320,7 +320,7 @@ async fn test_discount_chain() {
         .await
         .unwrap();
 
-    let final_price = service.get_price(variant_id, "USD").await.unwrap();
+    let final_price = service.get_price(tenant_id, variant_id, "USD").await.unwrap();
     assert_eq!(final_price, Some(dec!(90.00)));
 }
 

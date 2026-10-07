@@ -983,3 +983,99 @@ pub async fn revoke_oauth_app(
         UiTransportPath::Graphql => revoke_oauth_app_graphql(token, tenant, id).await,
     }
 }
+
+pub const SESSIONS_QUERY: &str = r#"
+query Sessions($limit: Int) {
+    sessions(limit: $limit) {
+        sessions {
+            id
+            ipAddress
+            userAgent
+            lastUsedAt
+            expiresAt
+            createdAt
+            current
+        }
+    }
+}
+"#;
+
+pub const REVOKE_SESSION_MUTATION: &str = r#"
+mutation RevokeSession($sessionId: String!) {
+    revokeSession(sessionId: $sessionId) {
+        success
+        revoked
+    }
+}
+"#;
+
+pub const REVOKE_ALL_SESSIONS_MUTATION: &str = r#"
+mutation RevokeAllSessions {
+    revokeAllSessions {
+        success
+        revokedCount
+    }
+}
+"#;
+
+#[derive(Serialize)]
+struct SessionsVariables {
+    limit: Option<i32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RevokeSessionVariables {
+    session_id: String,
+}
+
+pub async fn list_sessions(
+    token: Option<String>,
+    tenant: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<crate::model::AuthSessionItem>, ApiError> {
+    let response = request::<SessionsVariables, crate::model::SessionsQueryData>(
+        SESSIONS_QUERY,
+        SessionsVariables { limit },
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.sessions.sessions)
+}
+
+pub async fn revoke_session(
+    token: Option<String>,
+    tenant: Option<String>,
+    session_id: String,
+) -> Result<bool, ApiError> {
+    let response = request::<RevokeSessionVariables, crate::model::RevokeSessionResponse>(
+        REVOKE_SESSION_MUTATION,
+        RevokeSessionVariables { session_id },
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.revoke_session.success)
+}
+
+pub async fn revoke_all_sessions(
+    token: Option<String>,
+    tenant: Option<String>,
+) -> Result<i32, ApiError> {
+    let response = request::<serde_json::Value, crate::model::RevokeAllSessionsResponse>(
+        REVOKE_ALL_SESSIONS_MUTATION,
+        serde_json::json!({}),
+        token,
+        tenant,
+    )
+    .await
+    .map_err(|err| ApiError::Graphql(err.to_string()))?;
+
+    Ok(response.revoke_all_sessions.revoked_count)
+}
+

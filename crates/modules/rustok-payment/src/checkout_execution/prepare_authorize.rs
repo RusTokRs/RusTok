@@ -1,17 +1,31 @@
 use super::*;
 
 impl InProcessCheckoutPaymentExecutionPort {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self::with_provider_registry(db, PaymentProviderRegistry::with_manual_provider())
+    pub fn new(
+        db: DatabaseConnection,
+        checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
+    ) -> Self {
+        Self::with_provider_registry(
+            db,
+            PaymentProviderRegistry::with_manual_provider(),
+            checkout_admission,
+        )
     }
 
+    /// Builds the port with the checkout journal's admission reader wired in.
+    ///
+    /// The claim gate fences extending provider execution on that reader; a port
+    /// built without one refuses those claims instead of guessing, so every
+    /// production construction site passes it.
     pub fn with_provider_registry(
         db: DatabaseConnection,
         provider_registry: PaymentProviderRegistry,
+        checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
     ) -> Self {
         Self {
             payment_service: PaymentService::new(db.clone()),
-            operation_journal: PaymentProviderOperationJournal::new(db),
+            operation_journal: PaymentProviderOperationJournal::new(db)
+                .with_checkout_execution_admission_port(checkout_admission),
             provider_registry,
         }
     }

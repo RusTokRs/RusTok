@@ -53,7 +53,7 @@ impl SeoService {
         .await
     }
 
-    async fn load_target_state_with_scope(
+    pub(super) async fn load_target_state_with_scope(
         &self,
         tenant: &TenantContext,
         target_kind: SeoTargetSlug,

@@ -3,6 +3,7 @@ pub mod checkout;
 #[path = "checkout_compensation_error_safe.rs"]
 mod checkout_compensation;
 mod checkout_compensation_sweep;
+mod checkout_execution_admission;
 mod checkout_finalization;
 mod checkout_fulfillment_stages;
 mod checkout_inventory_order_adoption;
@@ -27,6 +28,7 @@ mod checkout_order_plan;
 mod checkout_order_stages;
 mod checkout_payment_stages;
 mod checkout_plan_builder;
+mod checkout_reconciliation;
 #[path = "checkout_stage_pipeline_owner_ports.rs"]
 mod checkout_stage_pipeline;
 mod collection_owner;
@@ -78,6 +80,8 @@ pub mod storefront_staged_checkout_runtime;
 
 pub(crate) use admin_manual_fulfillment_orchestration::AdminManualFulfillmentOrchestrationService;
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
+pub use checkout_execution_admission::checkout_execution_admission_port;
+
 pub use checkout_compensation::{
     CheckoutCompensationError, CheckoutCompensationResult, CheckoutCompensationService,
 };
@@ -137,7 +141,16 @@ pub use checkout_marketplace_financial_legacy::{
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
     CheckoutOperationJournal, CheckoutOperationResult, CheckoutOperationStage,
-    CheckoutOperationStatus, DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStatus, CheckoutReconciliationDecision, CheckoutReconciliationOutcome,
+    ReconciliationResolution, CHECKOUT_COMPENSATION_ATTEMPTS_EXHAUSTED_CODE,
+    DEFAULT_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_COMPENSATION_ATTEMPTS,
+    MAX_CHECKOUT_LEASE_SECONDS, MAX_CHECKOUT_OPERATION_LIST_LIMIT,
+};
+pub use checkout_reconciliation::{
+    CheckoutReconciliationAction, CheckoutReconciliationActionRequest, CheckoutReconciliationError,
+    CheckoutReconciliationResult, CheckoutReconciliationService,
+    MAX_RECONCILIATION_ACTION_LIST_LIMIT, MAX_RECONCILIATION_EVIDENCE_LENGTH,
+    MAX_RECONCILIATION_IDEMPOTENCY_KEY_LENGTH, MAX_RECONCILIATION_REASON_LENGTH,
 };
 pub use checkout_order_confirmation::{
     CheckoutOrderConfirmationError, CheckoutOrderConfirmationExecutor,

@@ -167,6 +167,31 @@ impl SeoEntityForm {
         self.nofollow = false;
     }
 
+    pub fn apply_generated(&mut self, generated: &crate::transport::GeneratedSeoMetaView) {
+        if let Some(ref title) = generated.meta_title {
+            self.title = title.clone();
+        }
+        if let Some(ref desc) = generated.meta_description {
+            self.description = desc.clone();
+        }
+        if let Some(ref kw) = generated.meta_keywords {
+            self.keywords = kw.clone();
+        }
+        if let Some(ref canonical) = generated.canonical_url {
+            self.canonical_url = canonical.clone();
+        }
+        if let Some(ref og_title) = generated.og_title {
+            self.og_title = og_title.clone();
+        }
+        if let Some(ref og_desc) = generated.og_description {
+            self.og_description = og_desc.clone();
+        }
+        if let Some(ref robots) = generated.robots {
+            self.noindex = robots.contains("noindex");
+            self.nofollow = robots.contains("nofollow");
+        }
+    }
+
     pub fn build_input(
         &self,
         target_kind: SeoTargetSlug,

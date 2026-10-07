@@ -93,6 +93,7 @@ pub fn attach_commerce_provider_registries(
                     server
                         .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
                         .unwrap_or_else(rustok_payment::providers::PaymentProviderRegistry::with_manual_provider),
+                    rustok_commerce::checkout_execution_admission_port(server.db_clone()),
                 )
             });
         server.shared_insert(runtime.clone());

@@ -2,8 +2,12 @@ use super::*;
 
 pub fn in_process_checkout_payment_execution_port(
     db: DatabaseConnection,
+    checkout_admission: Arc<dyn CheckoutExecutionAdmissionPort>,
 ) -> Arc<dyn CheckoutPaymentExecutionPort> {
-    Arc::new(InProcessCheckoutPaymentExecutionPort::new(db))
+    Arc::new(InProcessCheckoutPaymentExecutionPort::new(
+        db,
+        checkout_admission,
+    ))
 }
 
 #[async_trait]

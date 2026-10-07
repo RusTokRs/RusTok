@@ -117,13 +117,21 @@ pub(crate) async fn execute_journaled_provider_operation(
     let result_payload = match serde_json::to_value(&provider_result) {
         Ok(payload) => payload,
         Err(_) => {
-            let _ = journal
+            if let Err(mark_error) = journal
                 .mark_reconciliation_required(
                     journal_operation.tenant_id,
                     journal_operation.id,
                     "provider result serialization failed after external success",
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    tenant_id = %journal_operation.tenant_id,
+                    operation_id = %journal_operation.id,
+                    error = %mark_error,
+                    "failed to mark provider operation as reconciliation required"
+                );
+            }
             return wrap_provider_failure(
                 refund_id,
                 PaymentError::provider_outcome_unknown(provider_id, operation),
@@ -140,13 +148,21 @@ pub(crate) async fn execute_journaled_provider_operation(
         .await
         .is_err()
     {
-        let _ = journal
+        if let Err(mark_error) = journal
             .mark_reconciliation_required(
                 journal_operation.tenant_id,
                 journal_operation.id,
                 "provider success could not be durably checkpointed",
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %journal_operation.tenant_id,
+                operation_id = %journal_operation.id,
+                error = %mark_error,
+                "failed to mark provider operation as reconciliation required"
+            );
+        }
         return wrap_provider_failure(
             refund_id,
             PaymentError::provider_outcome_unknown(provider_id, operation),
@@ -310,13 +326,21 @@ pub(crate) async fn mark_journal_committed(
     operation: &'static str,
 ) -> PaymentOrchestrationResult<()> {
     if journal.mark_committed(tenant_id, operation_id).await.is_err() {
-        let _ = journal
+        if let Err(mark_error) = journal
             .mark_reconciliation_required(
                 tenant_id,
                 operation_id,
                 format!("local {operation} commit could not be checkpointed"),
             )
-            .await;
+            .await
+        {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                operation_id = %operation_id,
+                error = %mark_error,
+                "failed to mark provider operation as reconciliation required"
+            );
+        }
         return Err(PaymentOrchestrationError::Provider(
             PaymentError::provider_outcome_unknown(UNKNOWN_PROVIDER_ID, operation),
         ));
@@ -331,13 +355,21 @@ pub(crate) async fn mark_local_persistence_failed(
     operation: &'static str,
     source: &PaymentError,
 ) {
-    let _ = journal
+    if let Err(mark_error) = journal
         .mark_reconciliation_required(
             tenant_id,
             operation_id,
             format!("local {operation} persistence failed: {source}"),
         )
-        .await;
+        .await
+    {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            operation_id = %operation_id,
+            error = %mark_error,
+            "failed to mark provider operation as reconciliation required"
+        );
+    }
 }
 
 pub(crate) fn local_persistence_after_provider_error(

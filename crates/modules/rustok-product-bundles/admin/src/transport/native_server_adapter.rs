@@ -210,7 +210,6 @@ async fn bundle_command_native(
             dto::BundleItemInput,
         };
         use rust_decimal::Decimal;
-        use std::str::FromStr;
 
         let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -229,7 +228,7 @@ async fn bundle_command_native(
                 let discount_val = if draft.discount_value.trim().is_empty() {
                     Decimal::default()
                 } else {
-                    Decimal::from_str(draft.discount_value.trim()).unwrap_or_default()
+                    parse_decimal(draft.discount_value.as_str(), "discount_value")?
                 };
 
                 let created = service
@@ -288,9 +287,10 @@ async fn bundle_command_native(
                         description: draft.description.clone(),
                     }]
                 });
-                let discount_value = draft
-                    .discount_value
-                    .and_then(|val| Decimal::from_str(val.trim()).ok());
+                let discount_value = match draft.discount_value.as_deref().map(str::trim) {
+                    None | Some("") => None,
+                    Some(value) => Some(parse_decimal(value, "discount_value")?),
+                };
 
                 let updated = service
                     .update_bundle(
@@ -511,4 +511,12 @@ fn ensure_tenant(
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+}
+
+#[cfg(feature = "ssr")]
+fn parse_decimal(value: &str, field: &str) -> Result<rust_decimal::Decimal, ServerFnError> {
+    use rust_decimal::Decimal;
+    use std::str::FromStr;
+
+    Decimal::from_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }

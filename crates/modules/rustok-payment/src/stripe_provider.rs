@@ -7,7 +7,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sha2::Sha256;
-use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use crate::{
@@ -720,13 +720,49 @@ fn stripe_event_amount_minor(event_type: &str, object: &Value) -> PaymentResult<
         .ok_or_else(webhook_invalid_response)
 }
 
-fn currency_exponent(currency: &str) -> u32 {
-    match currency.to_ascii_uppercase().as_str() {
-        "BIF" | "CLP" | "DJF" | "GNF" | "JPY" | "KMF" | "KRW" | "MGA" | "PYG" | "RWF" | "UGX"
-        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
-        "BHD" | "JOD" | "KWD" | "OMR" | "TND" => 3,
-        _ => 2,
+/// Stripe's own minor-unit contract, expressed as divergences from the canonical platform table
+/// (`rustok_core::money`).
+///
+/// Stripe documents its amount contract at <https://docs.stripe.com/currencies>: every currency is
+/// two-decimal unless it appears in Stripe's zero-decimal list or in its special-case notes. That
+/// contract is what determines the amount the customer is charged, so it belongs to this adapter —
+/// but it must not be a private copy of the platform table. Only the documented divergences are
+/// listed here, each one covered by a test.
+const STRIPE_EXPONENT_DIVERGENCES: &[(&str, u8)] = &[
+    // Stripe's zero-decimal list contains MGA, which ISO 4217 records with exponent 2.
+    ("MGA", 0),
+    // Stripe represents ISK as a two-decimal value with a fixed `00` fraction (documented
+    // backward compatibility); the platform table uses the ISO exponent 0.
+    ("ISK", 2),
+    // Stripe's presentment list does not contain IQD or LYD; keeping the previous adapter exponent
+    // leaves a rejection at the PSP instead of a silently mis-scaled charge.
+    ("IQD", 2),
+    ("LYD", 2),
+];
+
+/// Currencies whose Stripe amount must be a whole major unit.
+///
+/// Stripe charges ISK as a two-decimal value, "where the decimal amount is always `00`" and
+/// "You can't charge fractions of ISK". A fractional amount from the platform would otherwise be
+/// sent as a valid-looking two-decimal value and undercharge by a factor of 100.
+const STRIPE_WHOLE_MAJOR_UNIT_CURRENCIES: &[&str] = &["ISK"];
+
+/// Returns the exponent of `currency` under Stripe's contract.
+///
+/// The platform table is the default; only [`STRIPE_EXPONENT_DIVERGENCES`] overrides it. Unknown,
+/// malformed or non-decimal codes (metals, SDR, testing codes) are typed errors — never a silent
+/// two-decimal guess.
+fn currency_exponent(currency: &str) -> PaymentResult<u8> {
+    let normalized = rustok_core::money::normalize_currency_code(currency)
+        .map_err(|error| PaymentError::Validation(error.to_string()))?;
+    if let Some((_, exponent)) = STRIPE_EXPONENT_DIVERGENCES
+        .iter()
+        .find(|(code, _)| *code == normalized.as_str())
+    {
+        return Ok(*exponent);
     }
+    rustok_core::money::currency_exponent(&normalized)
+        .map_err(|error| PaymentError::Validation(error.to_string()))
 }
 
 fn to_minor_units(amount: Decimal, currency: &str) -> PaymentResult<i64> {
@@ -735,15 +771,17 @@ fn to_minor_units(amount: Decimal, currency: &str) -> PaymentResult<i64> {
             "stripe amount must be positive".to_string(),
         ));
     }
-    let factor = Decimal::from(10u64.pow(currency_exponent(currency)));
-    let scaled = amount * factor;
-    if scaled.fract() != Decimal::ZERO {
-        return Err(PaymentError::Validation(
-            "stripe amount has unsupported fractional precision".to_string(),
-        ));
+    let normalized = rustok_core::money::normalize_currency_code(currency)
+        .map_err(|error| PaymentError::Validation(error.to_string()))?;
+    if STRIPE_WHOLE_MAJOR_UNIT_CURRENCIES.contains(&normalized.as_str())
+        && !amount.fract().is_zero()
+    {
+        return Err(PaymentError::Validation(format!(
+            "stripe cannot charge fractions of {normalized}"
+        )));
     }
-    i64::from_str(scaled.normalize().to_string().as_str())
-        .map_err(|_| PaymentError::Validation("stripe amount exceeds supported range".to_string()))
+    rustok_core::money::to_fixed_point_units_exact(amount, currency_exponent(&normalized)?)
+        .map_err(|error| PaymentError::Validation(error.to_string()))
 }
 
 fn from_minor_units(amount: i64, currency: &str) -> PaymentResult<Decimal> {
@@ -752,8 +790,8 @@ fn from_minor_units(amount: i64, currency: &str) -> PaymentResult<Decimal> {
             "stripe returned a negative amount".to_string(),
         ));
     }
-    let factor = Decimal::from(10u64.pow(currency_exponent(currency)));
-    Ok(Decimal::from(amount) / factor)
+    rustok_core::money::from_fixed_point_units(amount, currency_exponent(currency)?)
+        .map_err(|error| PaymentError::Validation(error.to_string()))
 }
 
 #[cfg(test)]
@@ -765,6 +803,42 @@ mod tests {
         assert_eq!(to_minor_units(Decimal::new(2500, 2), "USD").unwrap(), 2500);
         assert!(to_minor_units(Decimal::new(251, 3), "USD").is_err());
         assert_eq!(to_minor_units(Decimal::new(2500, 2), "JPY").unwrap(), 25);
+        assert!(to_minor_units(Decimal::from(5), "XAU").is_err());
+        assert!(to_minor_units(Decimal::from(5), "US").is_err());
+    }
+
+    #[test]
+    fn stripe_exponents_diverge_from_the_platform_table_explicitly() {
+        // Documented divergences: Stripe's own contract wins for these currencies.
+        assert_eq!(currency_exponent("mga").unwrap(), 0);
+        assert_eq!(currency_exponent("ISK").unwrap(), 2);
+        assert_eq!(currency_exponent("IQD").unwrap(), 2);
+        assert_eq!(currency_exponent("LYD").unwrap(), 2);
+
+        // Everywhere else the adapter must follow the canonical platform table.
+        for code in [
+            "USD", "EUR", "JPY", "CLP", "VND", "VUV", "UGX", "BHD", "KWD", "TND", "SGD",
+        ] {
+            assert_eq!(
+                currency_exponent(code).unwrap(),
+                rustok_core::money::currency_exponent(code).unwrap(),
+                "{code} must keep the platform exponent"
+            );
+        }
+
+        assert_eq!(to_minor_units(Decimal::from(5), "MGA").unwrap(), 5);
+        assert_eq!(to_minor_units(Decimal::new(15, 1), "KWD").unwrap(), 150);
+    }
+
+    #[test]
+    fn stripe_rejects_fractional_isk_amounts() {
+        // Stripe charges ISK as a two-decimal value whose fraction is always `00`.
+        assert_eq!(to_minor_units(Decimal::from(5), "ISK").unwrap(), 500);
+        assert_eq!(
+            from_minor_units(500, "ISK").unwrap(),
+            Decimal::from(5)
+        );
+        assert!(to_minor_units(Decimal::new(55, 1), "ISK").is_err());
     }
 
     #[test]

@@ -565,6 +565,13 @@ async fn validate_authorize_request(
         });
     }
 
+    if Url::parse(&redirect_uri).is_err() {
+        return Err(TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "redirect_uri is not a valid absolute URI".to_string(),
+        });
+    }
+
     if !app.redirect_uris_list().contains(&redirect_uri) {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
@@ -714,8 +721,22 @@ fn redirect_with_code(
     code: &str,
     state: Option<&str>,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
-    // INVARIANT: redirect_uri was validated against client's registered redirect_uris in validate_authorize_request
-    let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
+    let mut url = match Url::parse(redirect_uri) {
+        Ok(url) => url,
+        Err(err) => {
+            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_code");
+            return (
+                StatusCode::BAD_REQUEST,
+                [
+                    (LOCATION, String::new()),
+                    (
+                        SET_COOKIE,
+                        clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                    ),
+                ],
+            );
+        }
+    };
     {
         let mut query = url.query_pairs_mut();
         query.append_pair("code", code);
@@ -741,8 +762,22 @@ fn redirect_with_error(
     description: &str,
     state: Option<&str>,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
-    // INVARIANT: redirect_uri was validated against client's registered redirect_uris in validate_authorize_request
-    let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
+    let mut url = match Url::parse(redirect_uri) {
+        Ok(url) => url,
+        Err(err) => {
+            tracing::error!(%redirect_uri, %err, "Failed to parse redirect URI in redirect_with_error");
+            return (
+                StatusCode::BAD_REQUEST,
+                [
+                    (LOCATION, String::new()),
+                    (
+                        SET_COOKIE,
+                        clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                    ),
+                ],
+            );
+        }
+    };
     {
         let mut query = url.query_pairs_mut();
         query.append_pair("error", error);

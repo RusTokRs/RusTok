@@ -40,6 +40,8 @@ pub struct EventRuntime {
     /// This is deliberately separate from the outbound publisher bus to avoid relay-to-outbox loops.
     pub listener_bus: EventBus,
     pub relay_config: Option<RelayRuntimeConfig>,
+    /// Present when delivered-event retention is enabled for this deployment.
+    pub outbox_retention: Option<OutboxRetentionRuntimeConfig>,
     pub channel_capacity: usize,
     pub relay_fallback_active: bool,
 }
@@ -49,6 +51,19 @@ pub struct RelayRuntimeConfig {
     pub interval: Duration,
     pub relay: OutboxRelay,
 }
+
+/// Resolved retention configuration: absent when retention is disabled, so the
+/// readiness layer can distinguish "worker not required" from "worker stopped".
+pub type OutboxRetentionRuntimeConfig =
+    crate::services::outbox_retention_worker::OutboxRetentionRuntimeConfig;
+
+/// Upper bound of the configurable retention window.
+///
+/// A delivered-event window longer than ten years is not a retention policy but
+/// unbounded table growth, so the bound is rejected at boot instead of silently
+/// keeping every delivered row forever.
+const MAX_OUTBOX_RETENTION_DAYS: u64 = 3_650;
+const MAX_OUTBOX_RETENTION_BATCH_SIZE: u64 = 100_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OutboxRelaySupervisorMetricsSnapshot {
@@ -158,12 +173,15 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 }),
             };
 
+            let outbox_retention = resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+
             EventRuntime {
                 delivery_profile,
                 iggy_mode,
                 transport: outbox_transport,
                 listener_bus,
                 relay_config: Some(relay_config),
+                outbox_retention,
                 channel_capacity,
                 relay_fallback_active: false,
             }
@@ -175,6 +193,52 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
     // startup always resolves the exact delivery bus paired with the configured transport.
     ctx.shared_insert(Arc::new(runtime.clone()));
     Ok(runtime)
+}
+
+/// Turns the configured retention policy into the worker's runtime shape.
+///
+/// Returns `None` when retention is disabled: the outbox then keeps every
+/// delivered row and readiness does not report a missing retention worker.
+fn resolve_outbox_retention(
+    ctx: &ServerRuntimeContext,
+    settings: &crate::common::settings::OutboxRetentionSettings,
+) -> Result<Option<OutboxRetentionRuntimeConfig>> {
+    if !settings.enabled {
+        return Ok(None);
+    }
+
+    if settings.retention_days == 0 || settings.retention_days > MAX_OUTBOX_RETENTION_DAYS {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.retention_days must be between 1 and {MAX_OUTBOX_RETENTION_DAYS}"
+        )));
+    }
+    if settings.batch_size == 0 || settings.batch_size > MAX_OUTBOX_RETENTION_BATCH_SIZE {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.batch_size must be between 1 and {MAX_OUTBOX_RETENTION_BATCH_SIZE}"
+        )));
+    }
+    if settings.interval_seconds == 0 {
+        return Err(Error::BadRequest(
+            "events.outbox_retention.interval_seconds must be greater than zero".to_string(),
+        ));
+    }
+
+    let retention = rustok_outbox::OutboxRetentionConfig {
+        retention: chrono::Duration::days(
+            i64::try_from(settings.retention_days).map_err(|_| {
+                Error::BadRequest("outbox retention window is out of range".to_string())
+            })?,
+        ),
+        batch_size: settings.batch_size,
+    };
+    retention.validate().map_err(|error| {
+        Error::BadRequest(format!("outbox retention configuration is invalid: {error}"))
+    })?;
+
+    Ok(Some(OutboxRetentionRuntimeConfig {
+        interval: Duration::from_secs(settings.interval_seconds),
+        retention: rustok_outbox::OutboxRetention::new(ctx.db_clone()).with_config(retention),
+    }))
 }
 
 fn tenant_generation_transport(

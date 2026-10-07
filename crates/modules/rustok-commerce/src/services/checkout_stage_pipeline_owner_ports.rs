@@ -97,7 +97,7 @@ impl CheckoutStagePipeline {
         Self {
             #[cfg(feature = "marketplace-financial")]
             db: db.clone(),
-            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
             order_stage: CheckoutOrderStageExecutor::new(
                 db.clone(),
                 event_bus.clone(),
@@ -112,9 +112,9 @@ impl CheckoutStagePipeline {
                 CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
             #[cfg(feature = "marketplace-financial")]
             marketplace_financial_stage: None,
-            payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
-            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus),
-            finalization: CheckoutFinalizationExecutor::new(db, cart_checkout_port),
+            payment_stage: CheckoutPaymentStageExecutor::new(db.clone(), event_bus.clone()),
+            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
+            finalization: CheckoutFinalizationExecutor::new(db, event_bus, cart_checkout_port),
         }
     }
 

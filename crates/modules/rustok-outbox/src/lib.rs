@@ -7,6 +7,7 @@ pub mod idempotency;
 pub mod migration;
 pub mod ports;
 pub mod relay;
+pub mod retention;
 pub mod transactional;
 pub mod transport;
 
@@ -14,6 +15,9 @@ pub use entity::{Entity as SysEvents, Model as SysEvent};
 pub use migration::SysEventsMigration;
 pub use ports::*;
 pub use relay::{OutboxRelay, RelayConfig, RelayMetricsSnapshot};
+pub use retention::{
+    DEFAULT_OUTBOX_RETENTION_BATCH_SIZE, OutboxPruneReport, OutboxRetention, OutboxRetentionConfig,
+};
 pub use transactional::TransactionalEventBus;
 pub use transport::{ContractEventWriteOnceError, OutboxTransport};
 
@@ -37,7 +41,7 @@ impl RusToKModule for OutboxModule {
     }
 
     fn description(&self) -> &'static str {
-        "Transactional event persistence, relay, retry, and DLQ lifecycle."
+        "Transactional event persistence, relay, retry, DLQ, and delivered-event retention."
     }
 
     fn version(&self) -> &'static str {
