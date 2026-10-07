@@ -35,4 +35,3 @@ pub fn init_modules() {
     core::register_components();
     generated_ui_codegen::register_generated_components();
 }
-

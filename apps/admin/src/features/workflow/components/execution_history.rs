@@ -132,35 +132,36 @@ pub fn ExecutionHistory(executions: Vec<WorkflowExecution>) -> impl IntoView {
         pagination.update(|p| p.page = 1);
     });
 
-    let cell_renderer = Callback::new(
-        move |(item, col_id): (WorkflowExecution, String)| match col_id.as_str() {
-            "status" => view! {
-                <ExecutionBadge status=item.status />
-            }
-            .into_any(),
-            "started" => view! {
-                <span class="text-xs text-muted-foreground">{item.started_at}</span>
-            }
-            .into_any(),
-            "completed" => view! {
-                <span class="text-xs text-muted-foreground">
-                    {item.completed_at.unwrap_or_else(|| "—".into())}
-                </span>
-            }
-            .into_any(),
-            "steps" => view! {
-                <span class="text-muted-foreground">{item.step_executions.len()}</span>
-            }
-            .into_any(),
-            "error" => view! {
-                <span class="max-w-xs truncate text-xs text-destructive">
-                    {item.error.unwrap_or_else(|| "—".into())}
-                </span>
-            }
-            .into_any(),
-            _ => view! { <span /> }.into_any(),
-        },
-    );
+    let cell_renderer =
+        Callback::new(
+            move |(item, col_id): (WorkflowExecution, String)| match col_id.as_str() {
+                "status" => view! {
+                    <ExecutionBadge status=item.status />
+                }
+                .into_any(),
+                "started" => view! {
+                    <span class="text-xs text-muted-foreground">{item.started_at}</span>
+                }
+                .into_any(),
+                "completed" => view! {
+                    <span class="text-xs text-muted-foreground">
+                        {item.completed_at.unwrap_or_else(|| "—".into())}
+                    </span>
+                }
+                .into_any(),
+                "steps" => view! {
+                    <span class="text-muted-foreground">{item.step_executions.len()}</span>
+                }
+                .into_any(),
+                "error" => view! {
+                    <span class="max-w-xs truncate text-xs text-destructive">
+                        {item.error.unwrap_or_else(|| "—".into())}
+                    </span>
+                }
+                .into_any(),
+                _ => view! { <span /> }.into_any(),
+            },
+        );
 
     view! {
         <div class="space-y-3">
