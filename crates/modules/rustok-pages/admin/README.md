@@ -18,6 +18,26 @@
 - Keep write-path error handling consistent (`validation/sanitize/runtime`) for page-builder flows.
 - Host the owner-side page SEO panel through `rustok-seo-panel` instead of delegating page metadata editing to `rustok-seo-admin`.
 
+## Authoring behaviour
+
+- **Page list** is server-paginated (25 per page) with a title/slug search and a status filter
+  (`ListGqlPagesFilter.search/status/sort/page/perPage`). Search is case-insensitive on
+  PostgreSQL for every script; SQLite `lower()` folds ASCII only.
+- **Slugs** come from `rustok_page_builder::normalize_page_slug`, the same Unicode rules the server
+  enforces (`О компании` → `о-компании`).
+- **New pages** start from `rustok_page_builder::starter_page_document`, which passes the static
+  publish policy, so a fresh page can be published without manual repairs.
+- **Roles** (`pages_lifecycle_permissions_for_role`, mirroring `rustok-core` RBAC): managers create,
+  save and delete drafts; publishing and unpublishing require `admin`/`super_admin`. The builder
+  `Publish` capability persists the draft and is authorized with `pages:update`
+  (`PageBuilderCapabilityPermissions::draft_persistence()`).
+- **Persistence**: the editor autosaves 2.5 s after the last edit (never retrying a failed save),
+  warns before leaving with unsaved changes, and mirrors its status into the header, where Publish
+  stays disabled until the canvas is saved. Saving no longer remounts the editor.
+- **Destructive actions** (Unpublish, Delete) require an explicit second confirmation.
+- **Static pages** publish without a promoted runtime scenario baseline (static default runtime);
+  pages that read runtime context still require a promoted baseline, enforced on the server too.
+
 ## Interactions
 
 - Used by `apps/admin` through manifest-driven generated wiring.

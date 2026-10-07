@@ -110,6 +110,15 @@ jobs:
           cargo check -p fly --no-default-features --all-targets
           cargo test -p fly --no-default-features --lib
 
+      # Dioxus desktop links GTK/WebKitGTK through `*-sys` build scripts; without these system
+      # libraries `glib-sys` fails before any Fly code is compiled.
+      - name: Install Dioxus desktop system libraries
+        if: ${{ !cancelled() }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libxdo-dev
+
       - name: Check Fly adapter feature combinations
         if: ${{ !cancelled() }}
         run: |

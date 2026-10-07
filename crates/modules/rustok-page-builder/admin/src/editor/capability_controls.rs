@@ -69,14 +69,13 @@ pub fn matches_capability_policy_filter(
 ) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
-            ("capability", FilterValue::Text(q)) => {
+            ("capability", FilterValue::Text(q))
                 if !row
                     .capability_id
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             ("requested", FilterValue::Text(q)) => {
                 let term = q.trim().to_ascii_lowercase();
@@ -111,14 +110,13 @@ pub fn matches_capability_policy_filter(
                     _ => {}
                 }
             }
-            ("effective", FilterValue::Text(q)) => {
+            ("effective", FilterValue::Text(q))
                 if !row
                     .effective_label
                     .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
-                    return false;
-                }
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
             }
             _ => {}
         }

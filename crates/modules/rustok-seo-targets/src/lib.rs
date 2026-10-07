@@ -873,15 +873,15 @@ pub struct GenerateSeoMetadataInput {
 }
 
 pub fn validate_seo_metadata_payload(payload: &GeneratedSeoMetadata) -> Result<(), String> {
-    if let Some(title) = payload.meta_title.as_deref() {
-        if title.trim().is_empty() {
-            return Err("meta_title must not be blank when provided".to_string());
-        }
+    if let Some(title) = payload.meta_title.as_deref()
+        && title.trim().is_empty()
+    {
+        return Err("meta_title must not be blank when provided".to_string());
     }
-    if let Some(desc) = payload.meta_description.as_deref() {
-        if desc.trim().is_empty() {
-            return Err("meta_description must not be blank when provided".to_string());
-        }
+    if let Some(desc) = payload.meta_description.as_deref()
+        && desc.trim().is_empty()
+    {
+        return Err("meta_description must not be blank when provided".to_string());
     }
     Ok(())
 }

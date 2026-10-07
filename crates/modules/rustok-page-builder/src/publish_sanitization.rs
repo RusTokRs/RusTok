@@ -332,6 +332,6 @@ mod tests {
         else {
             panic!("expected compiler policy validation error");
         };
-        assert!(diagnostics.len() >= 3);
+        assert!(diagnostics.len() >= 3, "{diagnostics:#?}");
     }
 }

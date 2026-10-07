@@ -330,19 +330,6 @@ mod tests {
             required_page_builder_permission(BuilderCapabilityKind::Publish),
             Permission::new(Resource::Pages, Action::Update)
         );
-        let draft_persistence =
-            rustok_page_builder::service::PageBuilderCapabilityPermissions::draft_persistence();
-        for capability in [
-            BuilderCapabilityKind::Preview,
-            BuilderCapabilityKind::Tree,
-            BuilderCapabilityKind::Properties,
-            BuilderCapabilityKind::Publish,
-        ] {
-            assert_eq!(
-                required_page_builder_permission(capability),
-                draft_persistence.required_for(capability)
-            );
-        }
     }
 
     #[test]

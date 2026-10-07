@@ -131,6 +131,7 @@ impl PageService {
         filter: ListPagesFilter,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
         enforce_scope(&security, Resource::Pages, Action::List)?;
+        let search = filter.normalized_search();
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
@@ -152,7 +153,7 @@ impl PageService {
         if let Some(template) = filter.template.clone() {
             select = select.filter(page::Column::Template.eq(template));
         }
-        if let Some(search) = filter.normalized_search() {
+        if let Some(search) = search {
             select = apply_page_search_filter(select, tenant_id, &search);
         }
         self.page_list_from_select(
@@ -186,6 +187,7 @@ impl PageService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
+        let search = filter.normalized_search();
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
@@ -197,7 +199,7 @@ impl PageService {
         if let Some(template) = filter.template.clone() {
             select = select.filter(page::Column::Template.eq(template));
         }
-        if let Some(search) = filter.normalized_search() {
+        if let Some(search) = search {
             select = apply_page_search_filter(select, tenant_id, &search);
         }
         select = apply_public_page_channel_filter(select, tenant_id, channel_slug);

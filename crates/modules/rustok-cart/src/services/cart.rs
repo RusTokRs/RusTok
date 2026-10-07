@@ -265,7 +265,7 @@ impl CartService {
                     master_variant_id: Set(variant_id),
                     listing_terms_version: Set(1),
                     currency_code: Set(cart.currency_code.clone().to_uppercase()),
-                    currency_exponent: Set(exponent),
+                    currency_exponent: Set(i16::from(exponent)),
                     unit_amount: Set(unit_amount),
                     subtotal_amount: Set(subtotal_amount),
                     discount_amount: Set(discount_amount),
