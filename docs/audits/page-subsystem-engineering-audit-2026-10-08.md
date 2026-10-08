@@ -625,3 +625,13 @@ The baseline journal fix still requires maintainer confirmation with a Rust tool
 The provenance mismatch in the audit header must be resolved before treating historical CI claims as
 current-branch evidence. CI/workflow failures F-3/F-4/F-5 remain open until a provisioned toolchain
 and the relevant workflow logs are available; this source pass does not silently promote them.
+
+### 10.4 Route-history import lock boundary — fixed
+
+`PageRouteHistoryImportService` originally loaded a page by UUID with `lock_exclusive()` before
+checking `page.tenant_id`. An authenticated tenant-wide import caller could therefore cause a lock
+attempt against a known page UUID belonging to another tenant, even though the request was rejected
+afterward. The data mutation was tenant-filtered, but the lock boundary was not. The current code
+first performs an ownership-only read without a lock, rejects a foreign tenant immediately, and only
+then locks the matching current-tenant row with an explicit tenant predicate. This removes avoidable
+cross-tenant lock contention while retaining the fail-closed ownership check.
