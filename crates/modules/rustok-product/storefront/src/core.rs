@@ -5,8 +5,8 @@ use rustok_grid::facet_panel::{FacetPanel, count_label as grid_count_label};
 use rustok_grid::{FacetDomain, FacetValue, GridFacet};
 
 use crate::catalog_controls::{
-    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code,
-    serialize_attribute_filters, toggle_attribute_filter,
+    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code, serialize_attribute_filters,
+    toggle_attribute_filter,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -928,10 +928,9 @@ pub fn build_catalog_rail_view_model(
                         product.title.as_str()
                     )
                 }),
-            price_label: product
-                .price_from
-                .as_ref()
-                .map(|price| format_product_list_price_from(labels.price_from_template.as_str(), price)),
+            price_label: product.price_from.as_ref().map(|price| {
+                format_product_list_price_from(labels.price_from_template.as_str(), price)
+            }),
             on_sale: product
                 .price_from
                 .as_ref()
@@ -1345,7 +1344,10 @@ mod tests {
             Some("/api/v1/media/00000000-0000-0000-0000-000000000001")
         );
         assert_eq!(item.image_alt, "Trail boot side view");
-        assert_eq!(item.price_label.as_deref(), Some("from USD 129.00 (159.00)"));
+        assert_eq!(
+            item.price_label.as_deref(),
+            Some("from USD 129.00 (159.00)")
+        );
         assert!(item.on_sale);
     }
 
@@ -1583,14 +1585,8 @@ mod tests {
             variants: Vec::new(),
             attributes: Vec::new(),
         };
-        let view_model = build_selected_product_view_model(
-            &product,
-            None,
-            None,
-            None,
-            Some("ru"),
-            "/pricing",
-        );
+        let view_model =
+            build_selected_product_view_model(&product, None, None, None, Some("ru"), "/pricing");
         assert!(view_model.attributes.is_empty());
 
         // A hidden definition never reaches the contract, but a boolean the owner did send is
@@ -1609,14 +1605,8 @@ mod tests {
                 },
             ],
         }];
-        let view_model = build_selected_product_view_model(
-            &product,
-            None,
-            None,
-            None,
-            Some("ru"),
-            "/pricing",
-        );
+        let view_model =
+            build_selected_product_view_model(&product, None, None, None, Some("ru"), "/pricing");
         assert_eq!(view_model.attributes_label, "Характеристики");
         assert_eq!(
             view_model.attributes[0].values,

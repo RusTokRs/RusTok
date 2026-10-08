@@ -21,8 +21,8 @@ use rustok_grid::{FacetDomain, FacetValue, GridFacet};
 use rustok_ui_core::apply_ui_query_pairs;
 
 use crate::catalog_controls::{ProductAdminListInput, serialize_attribute_filters};
-use crate::model::{AdminCatalogFacet, AdminCatalogFacetValue};
 use crate::i18n::t;
+use crate::model::{AdminCatalogFacet, AdminCatalogFacetValue};
 
 /// Maps owner-counted admin facets into the shared grid facet contract.
 ///
@@ -47,10 +47,9 @@ pub fn admin_catalog_facets_to_grid(facets: &[AdminCatalogFacet]) -> Vec<GridFac
                 facet.label.as_str(),
                 domain,
                 facet.total_products,
-                facet
-                    .values
-                    .iter()
-                    .map(|value| FacetValue::new(value.value.clone(), value.label.clone(), value.count)),
+                facet.values.iter().map(|value| {
+                    FacetValue::new(value.value.clone(), value.label.clone(), value.count)
+                }),
             );
             // Truncation is either the owner cutting its own value limit or this mapping cutting
             // ours; both mean "there are more values than shown", and neither may be dropped.
@@ -211,10 +210,7 @@ pub fn build_product_admin_facet_panel(
                     .map(|value| ProductAdminFacetValueView {
                         value: value.value.clone(),
                         label: value.label.clone(),
-                        count_label: count_label(
-                            labels.count_template.as_str(),
-                            value.count,
-                        ),
+                        count_label: count_label(labels.count_template.as_str(), value.count),
                         selected: value.selected,
                         marker: value.marker.clone(),
                         href: build_facet_href(
@@ -319,10 +315,7 @@ mod tests {
     fn owner_rows_map_into_the_shared_grid_contract() {
         let mapped = admin_catalog_facets_to_grid(facets().as_slice());
         assert_eq!(mapped.len(), 2);
-        assert_eq!(
-            mapped[0].domain,
-            FacetDomain::Dictionary { multi: false }
-        );
+        assert_eq!(mapped[0].domain, FacetDomain::Dictionary { multi: false });
         assert!(mapped[0].is_enumerable());
         assert_eq!(mapped[0].values.len(), 2);
         assert_eq!(mapped[0].total, 6);
@@ -342,9 +335,10 @@ mod tests {
         assert!(!panel.show_empty_state);
         assert_eq!(panel.facets.len(), 2);
         let color = &panel.facets[0];
-        assert_eq!(color.clear_href.as_deref(), Some(
-            "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc"
-        ));
+        assert_eq!(
+            color.clear_href.as_deref(),
+            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc")
+        );
         assert!(color.values[0].selected);
         assert_eq!(color.values[0].marker, "[x]");
         assert_eq!(color.values[0].count_label, "(2)");
@@ -356,9 +350,7 @@ mod tests {
         assert_eq!(panel.facets[1].clear_href, None);
         assert_eq!(
             panel.clear_href.as_deref(),
-            Some(
-                "/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc"
-            )
+            Some("/modules/product?category_id=category-1&sort_by=created_at&sort_direction=asc")
         );
     }
 

@@ -182,7 +182,9 @@ impl super::CatalogService {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CatalogFacetScope<'a> {
     /// Published, channel-visible products: the storefront population.
-    Storefront { public_channel_slug: Option<&'a str> },
+    Storefront {
+        public_channel_slug: Option<&'a str>,
+    },
     /// Every product of the tenant, optionally narrowed to one lifecycle status: the admin grids.
     Admin { status: Option<&'a ProductStatus> },
 }

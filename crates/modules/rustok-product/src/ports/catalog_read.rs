@@ -12,13 +12,12 @@ use super::diagnostics::{
 };
 use super::types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
-    LegacyAdminProductsRequest,
-    LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
-    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
-    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest, validate_admin_products_request,
-    validate_legacy_admin_products_request, validate_legacy_storefront_products_request,
-    validate_published_products_request,
+    LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductsRequest,
+    ProductProjectionRequest, PublishedProductsRequest, StorefrontCatalogFacetsRequest,
+    StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    validate_admin_products_request, validate_legacy_admin_products_request,
+    validate_legacy_storefront_products_request, validate_published_products_request,
 };
 
 const READ_PRODUCT_PROJECTION_OPERATION: &str = "read_product_projection";

@@ -101,7 +101,7 @@ requireAll(
   [
     "pub async fn admin_catalog_facets(",
     "pub(super) enum CatalogFacetScope<'a>",
-    "Storefront { public_channel_slug: Option<&'a str> }",
+    "    Storefront {\n        public_channel_slug: Option<&'a str>,\n    },",
     "Admin { status: Option<&'a ProductStatus> }",
     "fn facet_status_literal(status: &ProductStatus) -> &'static str",
     "fn facet_scope_condition(",

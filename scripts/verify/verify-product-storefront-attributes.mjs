@@ -148,7 +148,10 @@ for (const [index, statement] of [
 requireAll(
   ownerDetailQuery,
   [
-    "product.storefront_attributes = super::storefront_attributes::load_storefront_product_attributes(",
+    // rustfmt wraps the assignment, so the marker is split into the assignment and the call: the
+    // rule is "the detail path loads the storefront projection", not one line of it.
+    "product.storefront_attributes =",
+    "super::storefront_attributes::load_storefront_product_attributes(",
   ],
   "published storefront detail",
 );

@@ -366,14 +366,20 @@ where
         .all(db)
         .await?;
         for row in rows {
-            let Some(rank) = candidates.iter().position(|candidate| candidate == &row.locale) else {
+            let Some(rank) = candidates
+                .iter()
+                .position(|candidate| candidate == &row.locale)
+            else {
                 continue;
             };
             let label = row.label;
             if label.trim().is_empty() {
                 continue;
             }
-            ranked.entry(row.attribute_id).or_default().insert(rank, label);
+            ranked
+                .entry(row.attribute_id)
+                .or_default()
+                .insert(rank, label);
         }
     }
 
@@ -436,7 +442,10 @@ where
     .all(db)
     .await?;
     for row in rows {
-        let Some(rank) = candidates.iter().position(|candidate| candidate == &row.locale) else {
+        let Some(rank) = candidates
+            .iter()
+            .position(|candidate| candidate == &row.locale)
+        else {
             continue;
         };
         let Some(text) = row.value_text.filter(|text| !text.trim().is_empty()) else {
@@ -475,10 +484,11 @@ where
         .collect::<Vec<_>>()
         .join(", ");
 
-    let rows = StorefrontAttributeValueOptionRow::find_by_statement(Statement::from_sql_and_values(
-        backend,
-        format!(
-            r#"
+    let rows =
+        StorefrontAttributeValueOptionRow::find_by_statement(Statement::from_sql_and_values(
+            backend,
+            format!(
+                r#"
             SELECT
                 pavo.value_id,
                 pavo.option_id,
@@ -489,11 +499,11 @@ where
             WHERE pavo.value_id IN ({ids})
             ORDER BY pavo.value_id, pao.position, pao.code
             "#
-        ),
-        values,
-    ))
-    .all(db)
-    .await?;
+            ),
+            values,
+        ))
+        .all(db)
+        .await?;
 
     let mut by_value = HashMap::<Uuid, Vec<StorefrontAttributeValueOptionRow>>::new();
     for row in rows {
@@ -543,8 +553,8 @@ where
 
     let mut ranked = HashMap::<Uuid, BTreeMap<usize, String>>::new();
     if !candidates.is_empty() {
-        let rows = StorefrontAttributeOptionLabelRow::find_by_statement(
-            Statement::from_sql_and_values(
+        let rows =
+            StorefrontAttributeOptionLabelRow::find_by_statement(Statement::from_sql_and_values(
                 backend,
                 format!(
                     r#"
@@ -555,15 +565,20 @@ where
                     "#
                 ),
                 label_values,
-            ),
-        )
-        .all(db)
-        .await?;
+            ))
+            .all(db)
+            .await?;
         for row in rows {
-            let Some(rank) = candidates.iter().position(|candidate| candidate == &row.locale) else {
+            let Some(rank) = candidates
+                .iter()
+                .position(|candidate| candidate == &row.locale)
+            else {
                 continue;
             };
-            ranked.entry(row.option_id).or_default().insert(rank, row.label);
+            ranked
+                .entry(row.option_id)
+                .or_default()
+                .insert(rank, row.label);
         }
     }
 
@@ -600,24 +615,25 @@ fn format_scalar_value(
     };
 
     match value_type {
-        AttributeValueType::Text
-        | AttributeValueType::Textarea
-        | AttributeValueType::Richtext
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext
             if row.is_localized =>
         {
             localized_texts
                 .get(&row.id)
                 .cloned()
-                .or_else(|| row.value_text.clone().filter(|text| !text.trim().is_empty()))
+                .or_else(|| {
+                    row.value_text
+                        .clone()
+                        .filter(|text| !text.trim().is_empty())
+                })
                 .or_else(|| missing("localized text"))
         }
-        AttributeValueType::Text
-        | AttributeValueType::Textarea
-        | AttributeValueType::Richtext => row
-            .value_text
-            .clone()
-            .filter(|text| !text.trim().is_empty())
-            .or_else(|| missing("text")),
+        AttributeValueType::Text | AttributeValueType::Textarea | AttributeValueType::Richtext => {
+            row.value_text
+                .clone()
+                .filter(|text| !text.trim().is_empty())
+                .or_else(|| missing("text"))
+        }
         AttributeValueType::Integer => row
             .value_integer
             .map(|value| value.to_string())
@@ -639,8 +655,8 @@ fn format_scalar_value(
             .map(|value| value.to_rfc3339())
             .or_else(|| missing("datetime")),
         // Dictionary types are resolved through the option dictionary; JSON never reaches here.
-        AttributeValueType::Select
-        | AttributeValueType::Multiselect
-        | AttributeValueType::Json => None,
+        AttributeValueType::Select | AttributeValueType::Multiselect | AttributeValueType::Json => {
+            None
+        }
     }
 }
