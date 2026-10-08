@@ -65,7 +65,8 @@ CREATE TABLE products (
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    published_at TEXT
+    published_at TEXT,
+    revision INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE product_variants (
@@ -106,6 +107,7 @@ async fn insert_test_product(db: &DatabaseConnection, tenant_id: Uuid, product_i
         metadata: Set(serde_json::json!({})),
         created_at: Set(chrono::Utc::now().into()),
         updated_at: Set(chrono::Utc::now().into()),
+        revision: Set(1),
         ..Default::default()
     };
     prod.insert(db).await.expect("Failed to insert test product");

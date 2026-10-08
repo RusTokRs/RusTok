@@ -195,6 +195,19 @@ pub fn apply_shipping_profile_to_metadata(
     metadata
 }
 
+/// Removes the legacy metadata shadow of the typed shipping-profile binding.
+///
+/// Used when an operator clears `shipping_profile_slug`: the typed column and the compatibility
+/// shadow must not disagree, otherwise the projection resurrects a removed profile.
+pub fn clear_shipping_profile_metadata_shadow(mut metadata: Value) -> Value {
+    if let Some(object) = metadata.as_object_mut() {
+        object.remove("shipping_profile_slug");
+        object.remove("shipping_profile");
+    }
+
+    metadata
+}
+
 pub fn normalize_create_product_metadata(
     input_tags: Vec<String>,
     shipping_profile_slug: Option<String>,
@@ -437,6 +450,18 @@ where
         &schema,
     )
     .await
+}
+
+/// Positional placeholder for one bound value in a hand-written SQL fragment.
+///
+/// SQLite uses anonymous `?` markers while PostgreSQL numbers them; every `custom_condition`-style
+/// fragment in the catalog service resolves its `{pN}` markers through this helper, and sea-query
+/// re-numbers the emitted placeholders as the surrounding statement is written.
+pub(crate) fn sql_placeholder(backend: DbBackend, index: usize) -> String {
+    match backend {
+        DbBackend::Sqlite => "?".to_string(),
+        _ => format!("${index}"),
+    }
 }
 
 pub fn product_channel_visibility_condition(

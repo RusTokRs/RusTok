@@ -10,17 +10,25 @@ import {
   listProductAttributes,
   listProductAttributeSchemas
 } from '../api/attributes';
+import { listCatalogCategories } from '../api/categories';
 import type {
   GqlOpts,
+  BindCategoryAttributePayload,
+  BindSchemaAttributePayload,
+  CatalogCategorySummary,
+  CreateCategoryAttributeGroupPayload,
   CreateProductAttributePayload,
   CreateProductAttributeOptionPayload,
+  CreateProductAttributeSchemaGroupPayload,
   CreateProductAttributeSchemaPayload,
   ProductAttributeSummary,
-  ProductAttributeSchemaSummary
+  ProductAttributeSchemaSummary,
+  SetCategorySchemaModePayload
 } from '../api/types';
 import { AttributesTable } from '../components/attributes/attributes-table';
 import { AttributeCreateDialog } from '../components/attributes/attribute-create-dialog';
 import { AttributeSchemasCard } from '../components/attributes/attribute-schemas-card';
+import { SchemaAuthoringCard } from '../components/attributes/schema-authoring-card';
 
 export interface AttributesPageProps {
   token: string | null;
@@ -34,6 +42,19 @@ export interface AttributesPageProps {
   onCreateSchema: (
     payload: CreateProductAttributeSchemaPayload
   ) => Promise<void>;
+  onSetSchemaMode: (payload: SetCategorySchemaModePayload) => Promise<void>;
+  onCreateSchemaGroup: (
+    payload: CreateProductAttributeSchemaGroupPayload
+  ) => Promise<void>;
+  onCreateCategoryGroup: (
+    payload: CreateCategoryAttributeGroupPayload
+  ) => Promise<void>;
+  onBindSchemaAttribute: (
+    payload: BindSchemaAttributePayload
+  ) => Promise<void>;
+  onBindCategoryAttribute: (
+    payload: BindCategoryAttributePayload
+  ) => Promise<void>;
 }
 
 export async function AttributesPage({
@@ -43,20 +64,28 @@ export async function AttributesPage({
   locale = 'en',
   onCreateAttribute,
   onCreateOption,
-  onCreateSchema
+  onCreateSchema,
+  onSetSchemaMode,
+  onCreateSchemaGroup,
+  onCreateCategoryGroup,
+  onBindSchemaAttribute,
+  onBindCategoryAttribute
 }: AttributesPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   let attributes: ProductAttributeSummary[] = [];
   let schemas: ProductAttributeSchemaSummary[] = [];
+  let categories: CatalogCategorySummary[] = [];
   let error: string | null = null;
 
   try {
-    const [attrsRes, schemasRes] = await Promise.all([
+    const [attrsRes, schemasRes, categoriesRes] = await Promise.all([
       listProductAttributes(opts, locale),
-      listProductAttributeSchemas(opts, locale)
+      listProductAttributeSchemas(opts, locale),
+      listCatalogCategories(opts, locale)
     ]);
     attributes = attrsRes;
     schemas = schemasRes;
+    categories = categoriesRes;
   } catch (err) {
     error =
       err instanceof Error ? err.message : 'Failed to load product attributes.';
@@ -104,6 +133,17 @@ export async function AttributesPage({
           <AttributeSchemasCard
             schemas={schemas}
             onCreateSchema={onCreateSchema}
+          />
+
+          <SchemaAuthoringCard
+            categories={categories}
+            schemas={schemas}
+            attributes={attributes}
+            onSetSchemaMode={onSetSchemaMode}
+            onCreateSchemaGroup={onCreateSchemaGroup}
+            onCreateCategoryGroup={onCreateCategoryGroup}
+            onBindSchemaAttribute={onBindSchemaAttribute}
+            onBindCategoryAttribute={onBindCategoryAttribute}
           />
         </div>
       )}

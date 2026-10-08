@@ -51,6 +51,12 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         product_id: Uuid,
     ) -> Result<ProductResponse, PortError>;
 
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError>;
+
     async fn create_variant(
         &self,
         context: PortContext,
@@ -133,6 +139,19 @@ impl ProductCatalogCommandPort for CatalogService {
     ) -> Result<ProductResponse, PortError> {
         let operation = "update_product";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        if input.missing_expected_revision() {
+            tracing::warn!(
+                operation,
+                tenant_id = %context.tenant_id,
+                product_id = %product_id,
+                code = "product.revision_required",
+                "Product document update without a predecessor revision was refused"
+            );
+            return Err(PortError::validation(
+                "product.revision_required",
+                "product document update requires the revision of the read document",
+            ));
+        }
         self.update_product(tenant_id, actor_id, product_id, input)
             .await
             .map_err(|error| product_command_error(&context, operation, error))
@@ -170,6 +189,18 @@ impl ProductCatalogCommandPort for CatalogService {
         let operation = "unpublish_product";
         let (tenant_id, actor_id) = command_scope(&context, operation)?;
         self.unpublish_product(tenant_id, actor_id, product_id)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
+    }
+
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        let operation = "archive_product";
+        let (tenant_id, actor_id) = command_scope(&context, operation)?;
+        self.archive_product(tenant_id, actor_id, product_id)
             .await
             .map_err(|error| product_command_error(&context, operation, error))
     }
@@ -358,6 +389,14 @@ fn product_command_error(
             "product.duplicate_sku",
             "product SKU conflicts with an existing variant",
         ),
+        CommerceError::Validation(ref message)
+            if crate::services::catalog::revision_conflict_of(message).is_some() =>
+        {
+            PortError::conflict(
+                "product.revision_conflict",
+                "product was modified by another editor",
+            )
+        }
         CommerceError::Validation(_) => {
             PortError::validation("product.validation", "product request is invalid")
         }
@@ -388,7 +427,13 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::ImageNotFound(_) => "image_not_found",
         CommerceError::DuplicateHandle { .. } => "duplicate_handle",
         CommerceError::DuplicateSku(_) => "duplicate_sku",
-        CommerceError::Validation(_) => "validation",
+        CommerceError::Validation(message) => {
+            if crate::services::catalog::revision_conflict_of(message).is_some() {
+                "revision_conflict"
+            } else {
+                "validation"
+            }
+        }
         CommerceError::NoVariants => "no_variants",
         CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
@@ -404,7 +449,13 @@ fn product_error_code(error: &CommerceError) -> &'static str {
         CommerceError::ImageNotFound(_) => "product.image_not_found",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
-        CommerceError::Validation(_) => "product.validation",
+        CommerceError::Validation(message) => {
+            if crate::services::catalog::revision_conflict_of(message).is_some() {
+                "product.revision_conflict"
+            } else {
+                "product.validation"
+            }
+        }
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",

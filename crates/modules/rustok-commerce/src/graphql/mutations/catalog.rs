@@ -1,4 +1,4 @@
-use async_graphql::{Context, ErrorExtensions, Object, Result};
+use async_graphql::{Context, ErrorExtensions, MaybeUndefined, Object, Result};
 use rustok_api::graphql::require_module_enabled;
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
@@ -153,6 +153,14 @@ fn product_command_port_error(
             "Published products must be archived before removal",
             "CANNOT_DELETE_PUBLISHED",
         ),
+        (PortErrorKind::Conflict, "product.revision_conflict") => (
+            "Product was modified by another editor; reload it and apply your changes again",
+            "PRODUCT_REVISION_CONFLICT",
+        ),
+        (PortErrorKind::Validation, "product.revision_required") => (
+            "Product update requires the revision of the document that was read",
+            "PRODUCT_REVISION_REQUIRED",
+        ),
         (PortErrorKind::Validation, "product.no_variants") => {
             ("Product requires at least one variant", "NO_VARIANTS")
         }
@@ -202,6 +210,168 @@ fn product_schema_write_port(
             },
         )
     })
+}
+
+/// Validates one GraphQL idempotency key for a scoped catalog write command.
+fn validate_scoped_idempotency_key<'a>(
+    idempotency_key: &'a str,
+    subject: &str,
+) -> Result<&'a str> {
+    let caller_key = idempotency_key.trim();
+    if caller_key.is_empty() {
+        return Err(invalid_product_idempotency_key(format!(
+            "{subject} mutation idempotency key must not be empty"
+        )));
+    }
+    if caller_key.len() > MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH {
+        return Err(invalid_product_idempotency_key(format!(
+            "{subject} mutation idempotency key must contain at most {MAX_PRODUCT_GRAPHQL_IDEMPOTENCY_KEY_LENGTH} bytes"
+        )));
+    }
+    Ok(caller_key)
+}
+
+/// Binds one caller idempotency key to the tenant, actor, operation and subject of this call.
+fn scoped_catalog_operation_key(
+    prefix: &str,
+    actor: (Uuid, Uuid),
+    operation: &'static str,
+    subject_id: Option<Uuid>,
+    caller_key: &str,
+) -> String {
+    let (tenant_id, user_id) = actor;
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(user_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(subject_id) = subject_id {
+        digest.update(subject_id.as_bytes());
+    }
+    digest.update(caller_key.as_bytes());
+    format!("{prefix}:{operation}:{}", hex::encode(digest.finalize()))
+}
+
+/// Owner family of a scoped catalog write command, used for bounded public error copy.
+#[derive(Clone, Copy)]
+enum CatalogWriteDomain {
+    Relation,
+    Bundle,
+}
+
+impl CatalogWriteDomain {
+    fn code_prefix(self) -> &'static str {
+        match self {
+            Self::Relation => "PRODUCT_RELATION",
+            Self::Bundle => "PRODUCT_BUNDLE",
+        }
+    }
+
+    fn conflict_message(self) -> &'static str {
+        match self {
+            Self::Relation => "Product relation already exists",
+            Self::Bundle => "Product bundle slug conflicts with an existing bundle",
+        }
+    }
+
+    fn not_found_message(self) -> &'static str {
+        match self {
+            Self::Relation => "Product relation or its target product was not found",
+            Self::Bundle => "Product bundle was not found",
+        }
+    }
+}
+
+fn catalog_write_command_error(
+    domain: CatalogWriteDomain,
+    operation: &'static str,
+    error: PortError,
+) -> async_graphql::Error {
+    let prefix = domain.code_prefix();
+    let (message, code) = match (&error.kind, error.code.as_str()) {
+        (PortErrorKind::Unavailable | PortErrorKind::Timeout, "outbox.operation_receipt_in_progress") => (
+            "The same catalog write is still being processed and can be retried".to_string(),
+            "CATALOG_OPERATION_IN_PROGRESS".to_string(),
+        ),
+        (PortErrorKind::Unavailable | PortErrorKind::Timeout, _) => (
+            "Catalog data is temporarily unavailable".to_string(),
+            format!("{prefix}_TEMPORARILY_UNAVAILABLE"),
+        ),
+        (PortErrorKind::Validation, "outbox.operation_receipt_identity_invalid") => (
+            "Idempotency key is invalid".to_string(),
+            "BAD_USER_INPUT".to_string(),
+        ),
+        (PortErrorKind::Validation, _) => (
+            "Catalog write request is invalid".to_string(),
+            format!("{prefix}_VALIDATION"),
+        ),
+        (PortErrorKind::Conflict, "outbox.operation_receipt_conflict") => (
+            "This idempotency key was already used with a different request".to_string(),
+            "IDEMPOTENCY_KEY_CONFLICT".to_string(),
+        ),
+        (PortErrorKind::Conflict, _) => (
+            domain.conflict_message().to_string(),
+            format!("{prefix}_CONFLICT"),
+        ),
+        (PortErrorKind::NotFound, _) => (
+            domain.not_found_message().to_string(),
+            format!("{prefix}_NOT_FOUND"),
+        ),
+        (PortErrorKind::Forbidden, _) => (
+            "Catalog write access is denied".to_string(),
+            format!("{prefix}_ACCESS_DENIED"),
+        ),
+        (PortErrorKind::InvariantViolation, _) => (
+            "Catalog write operation could not be completed safely".to_string(),
+            format!("{prefix}_OPERATION_FAILED"),
+        ),
+    };
+
+    tracing::error!(
+        operation,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        public_code = %code,
+        "Catalog GraphQL owner command failed"
+    );
+
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", error.retryable);
+    })
+}
+
+fn relation_command_graphql_error(
+    operation: &'static str,
+    error: rustok_product_relations::ProductRelationCommandError,
+) -> async_graphql::Error {
+    use rustok_product_relations::ProductRelationCommandError;
+    match error {
+        ProductRelationCommandError::Domain(error) => catalog_write_command_error(
+            CatalogWriteDomain::Relation,
+            operation,
+            rustok_product_relations::relation_command_error(&error),
+        ),
+        ProductRelationCommandError::Receipt(error) => {
+            catalog_write_command_error(CatalogWriteDomain::Relation, operation, error)
+        }
+    }
+}
+
+fn bundle_command_graphql_error(
+    operation: &'static str,
+    error: rustok_product_bundles::BundleCommandError,
+) -> async_graphql::Error {
+    use rustok_product_bundles::BundleCommandError;
+    match error {
+        BundleCommandError::Domain(error) => catalog_write_command_error(
+            CatalogWriteDomain::Bundle,
+            operation,
+            rustok_product_bundles::bundle_command_error(&error),
+        ),
+        BundleCommandError::Receipt(error) => {
+            catalog_write_command_error(CatalogWriteDomain::Bundle, operation, error)
+        }
+    }
 }
 
 #[Object]
@@ -260,12 +430,11 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        validate_product_shipping_profile_input(
-            db,
-            tenant_id,
-            input.shipping_profile_slug.as_deref(),
-        )
-        .await?;
+        let shipping_profile_slug = match &input.shipping_profile_slug {
+            MaybeUndefined::Value(slug) => Some(slug.as_str()),
+            MaybeUndefined::Undefined | MaybeUndefined::Null => None,
+        };
+        validate_product_shipping_profile_input(db, tenant_id, shipping_profile_slug).await?;
         let domain_input = crate::dto::UpdateProductInput {
             translations: input.translations.map(|translations| {
                 translations
@@ -280,14 +449,15 @@ impl CommerceCatalogMutation {
                     })
                     .collect()
             }),
-            seller_id: input.seller_id,
-            vendor: input.vendor,
-            product_type: input.product_type,
-            shipping_profile_slug: input.shipping_profile_slug,
-            primary_category_id: input.primary_category_id,
+            seller_id: graphql_patch(input.seller_id),
+            vendor: graphql_patch(input.vendor),
+            product_type: graphql_patch(input.product_type),
+            shipping_profile_slug: graphql_patch(input.shipping_profile_slug),
+            primary_category_id: graphql_patch(input.primary_category_id),
             tags: input.tags,
             metadata: input.custom_fields.map(|cf| cf.0),
             status: input.status.map(Into::into),
+            expected_revision: input.revision,
         };
 
         let port_context = product_command_context(
@@ -375,6 +545,68 @@ impl CommerceCatalogMutation {
             .publish_product(port_context.clone(), id)
             .await
             .map_err(|error| product_command_port_error(&port_context, error, "publish_product"))?;
+
+        Ok(product.into())
+    }
+
+    async fn unpublish_product(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+    ) -> Result<GqlProduct> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "unpublish_product",
+        )?;
+        let product = product_command_runtime(ctx)?
+            .command_port()
+            .unpublish_product(port_context.clone(), id)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "unpublish_product")
+            })?;
+
+        Ok(product.into())
+    }
+
+    async fn archive_product(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        id: Uuid,
+    ) -> Result<GqlProduct> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+
+        let port_context = product_command_context(
+            ctx,
+            (tenant_id, user_id),
+            Some(id),
+            idempotency_key,
+            "archive_product",
+        )?;
+        let product = product_command_runtime(ctx)?
+            .command_port()
+            .archive_product(port_context.clone(), id)
+            .await
+            .map_err(|error| product_command_port_error(&port_context, error, "archive_product"))?;
 
         Ok(product.into())
     }
@@ -659,6 +891,7 @@ impl CommerceCatalogMutation {
     async fn add_product_relation(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         input: AddProductRelationInput,
     ) -> Result<GqlProductRelation> {
         require_module_enabled(ctx, "product_relations").await?;
@@ -668,6 +901,15 @@ impl CommerceCatalogMutation {
             "Permission denied: products:update required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product relation")?;
+        let operation = "add_product_relation";
+        let scoped_key = scoped_catalog_operation_key(
+            "commerce-graphql-relation",
+            (tenant_id, user_id),
+            operation,
+            None,
+            caller_key,
+        );
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_relations::services::ProductRelationService::new(db.clone());
         let domain_input = rustok_product_relations::dto::CreateProductRelationInput {
@@ -678,9 +920,16 @@ impl CommerceCatalogMutation {
             metadata: input.metadata.map(|m| m.0),
         };
         let rel = service
-            .create_relation(tenant_id, Some(user_id), domain_input)
+            .create_relation_idempotent(
+                rustok_product_relations::ProductRelationCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
+                domain_input,
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| relation_command_graphql_error(operation, error))?;
         Ok(rel.into())
     }
 
@@ -876,6 +1125,7 @@ impl CommerceCatalogMutation {
     async fn create_bundle(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         input: CreateBundleInputGql,
         locale: Option<String>,
     ) -> Result<GqlBundle> {
@@ -885,13 +1135,25 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_MANAGE],
             "Permission denied: products:manage required",
         )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
+        let operation = "create_bundle";
+        let scoped_key = scoped_catalog_operation_key(
+            "commerce-graphql-bundle",
+            (tenant_id, user_id),
+            operation,
+            None,
+            caller_key,
+        );
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
         let bundle = service
-            .create_bundle(
-                tenant_id,
+            .create_bundle_idempotent(
+                rustok_product_bundles::BundleCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
                 rustok_product_bundles::dto::CreateBundleInput {
                     bundle_product_id: input.bundle_product_id,
                     slug: input.slug,
@@ -909,7 +1171,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_command_graphql_error(operation, error))?;
         Ok(bundle.into())
     }
 
@@ -978,6 +1240,7 @@ impl CommerceCatalogMutation {
     async fn add_bundle_item(
         &self,
         ctx: &Context<'_>,
+        idempotency_key: String,
         bundle_id: Uuid,
         item: BundleItemInputGql,
     ) -> Result<GqlBundleItem> {
@@ -987,13 +1250,25 @@ impl CommerceCatalogMutation {
             &[Permission::PRODUCTS_UPDATE],
             "Permission denied: products:update required",
         )?;
-        let (tenant_id, _) = product_mutation_actor(ctx)?;
+        let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let caller_key = validate_scoped_idempotency_key(&idempotency_key, "Product bundle")?;
+        let operation = "add_bundle_item";
+        let scoped_key = scoped_catalog_operation_key(
+            "commerce-graphql-bundle",
+            (tenant_id, user_id),
+            operation,
+            Some(bundle_id),
+            caller_key,
+        );
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let service = rustok_product_bundles::BundleService::new(db.clone());
-        use rustok_product_bundles::ports::BundlePort;
         let created_item = service
-            .add_bundle_item(
-                tenant_id,
+            .add_bundle_item_idempotent(
+                rustok_product_bundles::BundleCommandContext::new(
+                    tenant_id,
+                    Some(user_id),
+                    &scoped_key,
+                ),
                 bundle_id,
                 rustok_product_bundles::dto::BundleItemInput {
                     product_id: item.product_id,
@@ -1005,7 +1280,7 @@ impl CommerceCatalogMutation {
                 },
             )
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            .map_err(|error| bundle_command_graphql_error(operation, error))?;
         Ok(created_item.into())
     }
 
@@ -1046,6 +1321,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation = match input.validation {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::CreateProductAttributeInput {
             code: input.code,
             value_type: parse_attribute_value_type(&input.value_type)?,
@@ -1061,7 +1340,7 @@ impl CommerceCatalogMutation {
             filter_display: None,
             facet_mode: None,
             position: 0,
-            validation: serde_json::Value::Object(Default::default()),
+            validation,
             default_value: None,
             metadata: serde_json::Value::Object(Default::default()),
             translations: vec![rustok_product::services::AttributeTranslationInput {
@@ -1337,6 +1616,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation_overrides = match input.validation_overrides {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::BindSchemaAttributeInput {
             schema_id: input.schema_id,
             attribute_id: input.attribute_id,
@@ -1345,7 +1628,7 @@ impl CommerceCatalogMutation {
             is_disabled: input.is_disabled,
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
-            validation_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(
@@ -1377,6 +1660,10 @@ impl CommerceCatalogMutation {
             "Permission denied: products:manage required",
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
+        let validation_overrides = match input.validation_overrides {
+            Some(value) => value.0,
+            None => serde_json::Value::Object(Default::default()),
+        };
         let domain_input = rustok_product::services::BindCategoryAttributeInput {
             category_id: input.category_id,
             attribute_id: input.attribute_id,
@@ -1386,7 +1673,7 @@ impl CommerceCatalogMutation {
             is_disabled: input.is_disabled,
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
-            validation_overrides: serde_json::Value::Object(Default::default()),
+            validation_overrides,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(

@@ -23,6 +23,7 @@ import {
   deleteProductImage,
   reorderProductImages,
   saveProductAttributeValues,
+  setVariantAxes,
   getCategoryEffectiveForm,
   fetchProductRelations,
   addProductRelation,
@@ -53,7 +54,9 @@ import {
   type CreateBundleInput,
   type UpdateBundleInput,
   type AddBundleItemInput,
-  type ProductBundle
+  type ProductBundle,
+  type VariantAxisConfig,
+  type SetVariantAxesInput
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -87,6 +90,7 @@ export async function saveProductAction(payload: {
   primaryCategoryId?: string | null;
   tags: string[];
   status?: string;
+  revision?: number | null;
   initialVariant?: {
     sku: string;
     barcode: string;
@@ -98,7 +102,7 @@ export async function saveProductAction(payload: {
   };
   attributePatches: ProductAttributeValuePatch[];
   activeLocale: string;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; revision: number | null }> {
   const opts = await getAuthOpts();
 
   if (payload.isNew) {
@@ -123,7 +127,10 @@ export async function saveProductAction(payload: {
       publish: payload.status === 'ACTIVE'
     });
 
-    // If there were attribute values specified, save them
+    // Attribute values need the created product id, so they are written after
+    // creation. Attribute failure must not be swallowed: a draft product is
+    // rolled back so the operator can retry the form safely, while a published
+    // product is kept and reported as a partial success.
     if (payload.attributePatches.length > 0 && created.id) {
       try {
         await saveProductAttributeValues(
@@ -133,12 +140,39 @@ export async function saveProductAction(payload: {
           payload.attributePatches
         );
       } catch (err) {
-        console.error('Failed to save attributes for new product:', err);
+        const reason =
+          err instanceof Error ? err.message : 'unknown attribute error';
+
+        let rollbackSucceeded = false;
+        if (payload.status !== 'ACTIVE') {
+          try {
+            await deleteProductDetail(opts, created.id);
+            rollbackSucceeded = true;
+          } catch (rollbackError) {
+            console.error(
+              'Failed to roll back product after attribute error:',
+              rollbackError
+            );
+          }
+        }
+
+        revalidatePath('/dashboard/product');
+        revalidatePath(`/dashboard/product/${created.id}`);
+
+        if (rollbackSucceeded) {
+          throw new Error(
+            `Product creation was rolled back because attribute values could not be saved: ${reason}. Nothing was saved — fix the values and save again.`
+          );
+        }
+
+        throw new Error(
+          `Product was created, but attribute values could not be saved: ${reason}. Open /dashboard/product/${created.id} to review the product and retry the attributes.`
+        );
       }
     }
 
     revalidatePath('/dashboard/product');
-    return { id: created.id };
+    return { id: created.id, revision: null };
   } else {
     if (!payload.id) {
       throw new Error('Product ID is required for update.');
@@ -159,24 +193,41 @@ export async function saveProductAction(payload: {
       shippingProfileSlug: payload.shippingProfileSlug || null,
       primaryCategoryId: payload.primaryCategoryId,
       tags: payload.tags,
-      status: payload.status || null
+      status: payload.status || null,
+      // The document revision the editor loaded; the owner refuses a save that would
+      // overwrite a concurrent edit instead of silently losing it.
+      revision: payload.revision ?? null
     };
 
     const updated = await updateProductDetail(opts, payload.id, updateInput);
 
-    // Save attribute patches if any
+    // Product details are already persisted at this point: attribute values are
+    // saved afterwards because their effective schema depends on the category
+    // assigned above. Surface a partial-success error instead of claiming the
+    // whole save failed, and keep the paths revalidated so the saved product is
+    // visible for a retry.
     if (payload.attributePatches.length > 0) {
-      await saveProductAttributeValues(
-        opts,
-        payload.id,
-        payload.activeLocale,
-        payload.attributePatches
-      );
+      try {
+        await saveProductAttributeValues(
+          opts,
+          payload.id,
+          payload.activeLocale,
+          payload.attributePatches
+        );
+      } catch (err) {
+        revalidatePath('/dashboard/product');
+        revalidatePath(`/dashboard/product/${payload.id}`);
+        const reason =
+          err instanceof Error ? err.message : 'unknown attribute error';
+        throw new Error(
+          `Product details were saved, but attribute values could not be saved: ${reason}. Fix the issue and save again to retry the attributes.`
+        );
+      }
     }
 
     revalidatePath('/dashboard/product');
     revalidatePath(`/dashboard/product/${payload.id}`);
-    return { id: updated.id };
+    return { id: updated.id, revision: updated.revision ?? null };
   }
 }
 
@@ -234,6 +285,16 @@ export async function updateVariantAction(
 export async function deleteVariantAction(id: string): Promise<boolean> {
   const opts = await getAuthOpts();
   return deleteVariant(opts, id);
+}
+
+export async function setVariantAxesAction(
+  productId: string,
+  input: SetVariantAxesInput
+): Promise<VariantAxisConfig[]> {
+  const opts = await getAuthOpts();
+  const axes = await setVariantAxes(opts, productId, input);
+  revalidatePath(`/dashboard/product/${productId}`);
+  return axes;
 }
 
 export async function addImageAction(

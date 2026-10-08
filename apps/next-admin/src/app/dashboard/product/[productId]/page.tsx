@@ -28,6 +28,7 @@ import {
   addVariantAction,
   updateVariantAction,
   deleteVariantAction,
+  setVariantAxesAction,
   addImageAction,
   deleteImageAction,
   reorderImagesAction,
@@ -167,6 +168,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
         }}
         onUpdateVariant={async (id, v) => {
           await updateVariantAction(id, v);
+        }}
+        onSetVariantAxes={async (pid, input) => {
+          return setVariantAxesAction(pid, input);
         }}
         onDeleteVariant={async (id) => {
           await deleteVariantAction(id);

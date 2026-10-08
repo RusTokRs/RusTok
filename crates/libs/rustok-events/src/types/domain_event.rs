@@ -124,6 +124,12 @@ pub enum DomainEvent {
     ProductPublished {
         product_id: Uuid,
     },
+    ProductUnpublished {
+        product_id: Uuid,
+    },
+    ProductArchived {
+        product_id: Uuid,
+    },
     ProductDeleted {
         product_id: Uuid,
     },
@@ -979,6 +985,8 @@ impl DomainEvent {
             Self::ProductCreated { .. } => "product.created",
             Self::ProductUpdated { .. } => "product.updated",
             Self::ProductPublished { .. } => "product.published",
+            Self::ProductUnpublished { .. } => "product.unpublished",
+            Self::ProductArchived { .. } => "product.archived",
             Self::ProductDeleted { .. } => "product.deleted",
             Self::ProductAttributeCreated { .. } => "product.attribute.created",
             Self::ProductAttributeUpdated { .. } => "product.attribute.updated",
@@ -1217,6 +1225,8 @@ impl DomainEvent {
             Self::ProductCreated { .. } => 1,
             Self::ProductUpdated { .. } => 1,
             Self::ProductPublished { .. } => 1,
+            Self::ProductUnpublished { .. } => 1,
+            Self::ProductArchived { .. } => 1,
             Self::ProductDeleted { .. } => 1,
             Self::ProductAttributeCreated { .. } => 1,
             Self::ProductAttributeUpdated { .. } => 1,
@@ -1376,6 +1386,8 @@ impl DomainEvent {
                 | Self::ProductCreated { .. }
                 | Self::ProductUpdated { .. }
                 | Self::ProductPublished { .. }
+                | Self::ProductUnpublished { .. }
+                | Self::ProductArchived { .. }
                 | Self::ProductDeleted { .. }
                 | Self::ProductAttributeCreated { .. }
                 | Self::ProductAttributeUpdated { .. }

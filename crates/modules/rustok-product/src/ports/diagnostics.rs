@@ -127,7 +127,11 @@ pub(super) fn product_owner_error_facts(
             ProductOwnerErrorFacts::text("duplicate_sku", &[value.as_str()])
         }
         CommerceError::Validation(value) => {
-            ProductOwnerErrorFacts::text("validation", &[value.as_str()])
+            if crate::services::catalog::revision_conflict_of(value).is_some() {
+                ProductOwnerErrorFacts::empty("revision_conflict")
+            } else {
+                ProductOwnerErrorFacts::text("validation", &[value.as_str()])
+            }
         }
         CommerceError::NoVariants => ProductOwnerErrorFacts::empty("no_variants"),
         CommerceError::VariantNotFound(value) => {
@@ -338,7 +342,13 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::DuplicateHandle { .. } => "product.duplicate_handle",
         CommerceError::DuplicateSku(_) => "product.duplicate_sku",
-        CommerceError::Validation(_) => "product.validation",
+        CommerceError::Validation(message) => {
+            if crate::services::catalog::revision_conflict_of(message).is_some() {
+                "product.revision_conflict"
+            } else {
+                "product.validation"
+            }
+        }
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeletePublished => "product.cannot_delete_published",
         CommerceError::Core(_) => "product.invariant_violation",

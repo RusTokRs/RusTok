@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_api::TenantLocale;
+use rustok_api::{Patch, TenantLocale};
 use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -79,22 +79,52 @@ pub struct ProductTranslationInput {
 pub struct UpdateProductInput {
     #[validate(nested)]
     pub translations: Option<Vec<ProductTranslationInput>>,
-    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
-    pub seller_id: Option<String>,
-    #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
-    pub vendor: Option<String>,
-    #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
-    pub product_type: Option<String>,
-    #[validate(length(
-        min = 1,
-        max = 64,
-        message = "Shipping profile slug must be 1-64 characters"
-    ))]
-    pub shipping_profile_slug: Option<String>,
-    pub primary_category_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub seller_id: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub vendor: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub product_type: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<String>)]
+    pub shipping_profile_slug: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    #[schema(value_type = Option<Uuid>)]
+    pub primary_category_id: Patch<Uuid>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
     pub status: Option<ProductStatus>,
+    /// Predecessor revision of the product aggregate.
+    ///
+    /// A transport that edits the product document must send the revision it read. `None` is an
+    /// explicit unconditional write and is reserved for owner-internal callers; every external
+    /// transport requires the field.
+    pub expected_revision: Option<i32>,
+}
+
+impl UpdateProductInput {
+    /// True when the input changes the product document rather than only its lifecycle.
+    ///
+    /// Lifecycle-only writes (`status`) are repeatable state transitions; every other field is an
+    /// editorial change and therefore needs the predecessor revision of the document that was read.
+    pub fn changes_document(&self) -> bool {
+        self.translations.is_some()
+            || self.tags.is_some()
+            || self.metadata.is_some()
+            || self.seller_id.is_changed()
+            || self.vendor.is_changed()
+            || self.product_type.is_changed()
+            || self.shipping_profile_slug.is_changed()
+            || self.primary_category_id.is_changed()
+    }
+
+    /// Structured reason one externally reachable update is refused before it reaches the owner.
+    pub fn missing_expected_revision(&self) -> bool {
+        self.changes_document() && self.expected_revision.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -113,6 +143,8 @@ pub struct ProductResponse {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub published_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Current editorial revision; send it back as `expected_revision` on the next update.
+    pub revision: i32,
     pub translations: Vec<ProductTranslationResponse>,
     #[serde(default)]
     pub variant_axes: Vec<VariantAxisConfigResponse>,

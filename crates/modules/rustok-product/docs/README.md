@@ -198,4 +198,6 @@ Cargo checks remain a targeted/live evidence step before promoting product FBA t
 
 - [README crate](../README.md)
 - [README admin UI](../admin/README.md)
+- [Product write boundary](write-boundary.md)
+- [Product unpublish and archive lifecycle events](product-unpublish-archive-events.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)

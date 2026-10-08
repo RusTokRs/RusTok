@@ -8,11 +8,12 @@ use crate::core::{
     build_product_image_view_models, build_variant_row_view_models, slugify,
     ProductKind,
 };
+use super::leptos::{ProductAttributeValuesSection, ProductVariantAxesSection};
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm,
     ProductImageDraft,
 };
-use crate::transport;
+use crate::catalog_transport;
 
 #[component]
 pub fn ProductEditorPage(
@@ -65,7 +66,6 @@ pub fn ProductEditorPage(
     let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
 
     // Variable Product Specific
-    let (variant_axes_str, set_variant_axes_str) = signal("Size, Color".to_string());
 
     // Digital Product Specific
     let (digital_file_url, set_digital_file_url) = signal(String::new());
@@ -96,10 +96,10 @@ pub fn ProductEditorPage(
         let ten = tenant.get();
         let loc = cat_locale.clone().unwrap_or_default();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_catalog_categories(
+            let res = catalog_transport::fetch_catalog_categories(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -116,10 +116,10 @@ pub fn ProductEditorPage(
         let tok = token.get();
         let ten = tenant.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_shipping_profiles(
+            let res = catalog_transport::fetch_shipping_profiles(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -143,10 +143,10 @@ pub fn ProductEditorPage(
             if cat_id.is_empty() {
                 return Ok(None);
             }
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let form = transport::fetch_effective_product_form(
+            let form = catalog_transport::fetch_effective_product_form(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -173,10 +173,10 @@ pub fn ProductEditorPage(
         let loc = eff_locale.clone();
 
         spawn_local(async move {
-            let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                 return;
             };
-            if let Ok(Some(detail)) = transport::fetch_product(
+            if let Ok(Some(detail)) = catalog_transport::fetch_product(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -270,8 +270,13 @@ pub fn ProductEditorPage(
             let loc = base_locale.clone();
 
             spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
+                    set_error_msg.set(Some(if is_ru {
+                        "Не удалось получить данные сессии".to_string()
+                    } else {
+                        "Failed to authenticate bootstrap".to_string()
+                    }));
                     return;
                 };
 
@@ -288,7 +293,7 @@ pub fn ProductEditorPage(
                     locale: loc.clone(),
                 };
 
-                let _ = transport::add_product_image(
+                match catalog_transport::add_product_image(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
@@ -296,12 +301,23 @@ pub fn ProductEditorPage(
                     pid,
                     draft,
                 )
-                .await;
+                .await
+                {
+                    Ok(_) => {
+                        set_new_image_url.set(String::new());
+                        set_new_image_alt.set(String::new());
+                        set_refresh_nonce.update(|n| *n += 1);
+                    }
+                    Err(err) => {
+                        set_error_msg.set(Some(if is_ru {
+                            format!("Не удалось добавить изображение: {err}")
+                        } else {
+                            format!("Could not add the image: {err}")
+                        }));
+                    }
+                }
 
-                set_new_image_url.set(String::new());
-                set_new_image_alt.set(String::new());
                 set_is_busy.set(false);
-                set_refresh_nonce.update(|n| *n += 1);
             });
         }
     };
@@ -319,12 +335,17 @@ pub fn ProductEditorPage(
             let ten = base_tenant.get_untracked();
 
             spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
+                    set_error_msg.set(Some(if is_ru {
+                        "Не удалось получить данные сессии".to_string()
+                    } else {
+                        "Failed to authenticate bootstrap".to_string()
+                    }));
                     return;
                 };
 
-                let _ = transport::delete_product_image(
+                match catalog_transport::delete_product_image(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
@@ -332,10 +353,21 @@ pub fn ProductEditorPage(
                     pid,
                     image_id,
                 )
-                .await;
+                .await
+                {
+                    Ok(_) => {
+                        set_refresh_nonce.update(|n| *n += 1);
+                    }
+                    Err(err) => {
+                        set_error_msg.set(Some(if is_ru {
+                            format!("Не удалось удалить изображение: {err}")
+                        } else {
+                            format!("Could not delete the image: {err}")
+                        }));
+                    }
+                }
 
                 set_is_busy.set(false);
-                set_refresh_nonce.update(|n| *n += 1);
             });
         }
     };
@@ -401,10 +433,13 @@ pub fn ProductEditorPage(
             meta_title: if mt.is_empty() { None } else { Some(mt) },
             meta_description: if md.is_empty() { None } else { Some(md) },
             tags: tg,
+            revision: loaded_product
+                .get_untracked()
+                .map(|product| product.revision),
         };
 
         spawn_local(async move {
-            let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                 set_is_busy.set(false);
                 set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                 return;
@@ -412,7 +447,7 @@ pub fn ProductEditorPage(
 
             if let Some(pid) = edit_id_opt {
                 let status_to_change = target_status.clone();
-                let res = transport::update_product(
+                let res = catalog_transport::update_product(
                     tok.clone(),
                     ten.clone(),
                     bootstrap.current_tenant.id.clone(),
@@ -423,7 +458,7 @@ pub fn ProductEditorPage(
                 .await;
 
                 // Also update status to ensure state transition is persisted
-                let _ = transport::change_product_status(
+                let status_result = catalog_transport::change_product_status(
                     tok.clone(),
                     ten.clone(),
                     bootstrap.current_tenant.id.clone(),
@@ -434,6 +469,7 @@ pub fn ProductEditorPage(
                 .await;
 
                 // Update default variant pricing, stock, SKU, and barcode
+                let mut variant_result = None;
                 if let Some(detail) = loaded_product.get_untracked()
                     && let Some(variant) = detail.variants.first()
                 {
@@ -458,27 +494,59 @@ pub fn ProductEditorPage(
                         inventory_policy: Some(inventory_policy.get_untracked()),
                     };
 
-                    let _ = transport::update_product_variant(
-                        tok,
-                        ten,
-                        bootstrap.current_tenant.id,
-                        bootstrap.me.id,
-                        variant.id.clone(),
-                        v_draft,
-                    )
-                    .await;
+                    variant_result = Some(
+                        catalog_transport::update_product_variant(
+                            tok,
+                            ten,
+                            bootstrap.current_tenant.id,
+                            bootstrap.me.id,
+                            variant.id.clone(),
+                            v_draft,
+                        )
+                        .await,
+                    );
                 }
 
                 set_is_busy.set(false);
                 match res {
                     Ok(_) => {
-                        set_success_msg.set(Some(if is_ru { "Товар успешно сохранён" } else { "Product saved successfully" }.to_string()));
+                        let mut secondary_failures = Vec::new();
+                        if let Err(err) = &status_result {
+                            secondary_failures.push(if is_ru {
+                                format!("статус не изменён: {err}")
+                            } else {
+                                format!("the status was not changed: {err}")
+                            });
+                        }
+                        if let Some(Err(err)) = &variant_result {
+                            secondary_failures.push(if is_ru {
+                                format!("вариант не сохранён: {err}")
+                            } else {
+                                format!("the variant was not saved: {err}")
+                            });
+                        }
+
+                        if secondary_failures.is_empty() {
+                            set_success_msg.set(Some(if is_ru { "Товар успешно сохранён" } else { "Product saved successfully" }.to_string()));
+                        } else {
+                            set_error_msg.set(Some(if is_ru {
+                                format!(
+                                    "Товар сохранён, но не всё применилось — {}",
+                                    secondary_failures.join("; ")
+                                )
+                            } else {
+                                format!(
+                                    "The product was saved, but not everything was applied — {}",
+                                    secondary_failures.join("; ")
+                                )
+                            }));
+                        }
                         set_refresh_nonce.update(|n| *n += 1);
                     }
                     Err(err) => set_error_msg.set(Some(err.to_string())),
                 }
             } else {
-                let res = transport::create_product(
+                let res = catalog_transport::create_product(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
@@ -771,25 +839,17 @@ pub fn ProductEditorPage(
 
                             ProductKind::Variable => view! {
                                 <div class="space-y-4">
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-medium text-foreground">
-                                            {if is_ru { "Оси вариаций (атрибуты)" } else { "Variation Axes" }}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Color, Size, Material"
-                                            prop:value=move || variant_axes_str.get()
-                                            on:input=move |ev| set_variant_axes_str.set(event_target_value(&ev))
-                                            class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
-                                        />
-                                        <p class="text-[11px] text-muted-foreground">
-                                            {if is_ru {
-                                                "Укажите оси через запятую для генерации комбинаций вариантов"
-                                            } else {
-                                                "Comma-separated attribute axes for generating variant combinations"
-                                            }}
-                                        </p>
-                                    </div>
+                                    {current_edit_id.clone().map(|pid| {
+                                        let axes_locale = locale.clone();
+                                        let refresh_after_axes = set_refresh_nonce;
+                                        view! {
+                                            <ProductVariantAxesSection
+                                                product_id=pid
+                                                locale=axes_locale
+                                                on_saved=Callback::new(move |_| refresh_after_axes.update(|n| *n += 1))
+                                            />
+                                        }
+                                    })}
 
                                     <div class="rounded-xl border border-border/80 overflow-hidden">
                                         <div class="bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground flex items-center justify-between">
@@ -1215,6 +1275,20 @@ pub fn ProductEditorPage(
                                 }
                             }}
                         </div>
+
+                        {current_edit_id.clone().map(|pid| {
+                            let section_locale = locale.clone();
+                            let refresh_after_attributes = set_refresh_nonce;
+                            view! {
+                                <div class="md:col-span-2">
+                                    <ProductAttributeValuesSection
+                                        product_id=pid
+                                        locale=section_locale
+                                        on_saved=Callback::new(move |_| refresh_after_attributes.update(|n| *n += 1))
+                                    />
+                                </div>
+                            }
+                        })}
 
                         <div class="space-y-1.5">
                             <label class="text-xs font-medium text-foreground">

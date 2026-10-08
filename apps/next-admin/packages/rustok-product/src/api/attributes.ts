@@ -14,7 +14,8 @@ import type {
   CreateProductAttributeOptionPayload,
   ProductAttributeSchemaSummary,
   CreateProductAttributeSchemaPayload,
-  BindSchemaAttributePayload
+  BindSchemaAttributePayload,
+  CreateProductAttributeSchemaGroupPayload
 } from './types';
 
 const PRODUCT_ATTRIBUTES_QUERY = `
@@ -80,6 +81,19 @@ mutation ProductAdminCreateAttributeSchema(
   $input: CreateProductAttributeSchemaInput!
 ) {
   createProductAttributeSchema(
+    idempotencyKey: $idempotencyKey
+    locale: $locale
+    input: $input
+  )
+}`;
+
+const CREATE_PRODUCT_ATTRIBUTE_SCHEMA_GROUP_MUTATION = `
+mutation ProductAdminCreateAttributeSchemaGroup(
+  $idempotencyKey: String!
+  $locale: String!
+  $input: CreateProductAttributeSchemaGroupInput!
+) {
+  createProductAttributeSchemaGroup(
     idempotencyKey: $idempotencyKey
     locale: $locale
     input: $input
@@ -301,4 +315,40 @@ export async function bindSchemaAttribute(
   );
 
   return Boolean(data.bindProductAttributeSchemaAttribute);
+}
+
+export async function createProductAttributeSchemaGroup(
+  opts: GqlOpts,
+  payload: CreateProductAttributeSchemaGroupPayload,
+  locale = 'en'
+): Promise<boolean> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to create schema attribute group.');
+  }
+
+  const executor = opts.graphql ?? graphqlRequest;
+  const idempotencyKey = crypto.randomUUID();
+
+  const input = {
+    schemaId: payload.schemaId,
+    code: payload.code.trim(),
+    label: payload.label.trim(),
+    position: payload.position ?? 0
+  };
+
+  const data = await executor<
+    {
+      idempotencyKey: string;
+      locale: string;
+      input: typeof input;
+    },
+    { createProductAttributeSchemaGroup: boolean }
+  >(
+    CREATE_PRODUCT_ATTRIBUTE_SCHEMA_GROUP_MUTATION,
+    { idempotencyKey, locale, input },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return Boolean(data.createProductAttributeSchemaGroup);
 }

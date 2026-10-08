@@ -2,7 +2,7 @@
 
 use std::{error::Error, sync::Arc, time::Duration};
 
-use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
+use rustok_api::{Patch, PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -80,17 +80,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     // progress read, journal transition, and lifecycle change below goes through
     // production CatalogService / registered Translation provider paths.
     seed_image_source(&seed_connection, product_id, image_id).await?;
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
-                vendor: Some("Image Evidence Vendor".into()),
+                vendor: Patch::Set("Image Evidence Vendor".into()),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
 
     let provider = registered_provider(seed_connection.clone());
     let list_request = ListTranslationResourcesRequest {
@@ -280,17 +283,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
             },
         )
         .await?;
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
-                vendor: Some("Vendor outside Image translation revision".into()),
+                vendor: Patch::Set("Vendor outside Image translation revision".into()),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
     let progress_after_noop = provider
         .read_progress(
             read_context(tenant_id, "progress-after-noop"),
@@ -312,17 +318,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         after_noop.summary.resource_revision
     );
 
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
                 status: Some(ProductStatus::Archived),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
     let archived = provider
         .read_resource(read_context(tenant_id, "archived"), read_request.clone())
         .await?;
@@ -336,17 +345,20 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     );
     let archived_revision = archived.summary.resource_revision.clone();
 
-    owner
+    let predecessor = owner.get_product(tenant_id, product_id).await?.revision;
+    let updated = owner
         .update_product(
             tenant_id,
             actor_id,
             product_id,
             UpdateProductInput {
                 status: Some(ProductStatus::Draft),
+                expected_revision: Some(predecessor),
                 ..Default::default()
             },
         )
         .await?;
+    assert_eq!(updated.revision, predecessor + 1);
     let restored = provider
         .read_resource(read_context(tenant_id, "restored"), read_request.clone())
         .await?;

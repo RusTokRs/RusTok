@@ -68,6 +68,10 @@ export default async function ProductsCatalogPage({
   const page =
     typeof query.page === "string" ? Math.max(1, parseInt(query.page, 10) || 1) : 1;
   const perPage = 12;
+  const currencyCode =
+    typeof query.currency === "string"
+      ? query.currency.trim().toUpperCase()
+      : undefined;
 
   let productsResult;
   let searchOptions;
@@ -82,6 +86,7 @@ export default async function ProductsCatalogPage({
           categoryId,
           sortBy,
           sortDirection,
+          currencyCode,
           page,
           perPage,
         },

@@ -38,7 +38,7 @@ struct AdminProductCatalogFilter {
 }
 
 
-pub(super) async fn fetch_products(
+pub(crate) async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,

@@ -59,6 +59,8 @@ pub struct GqlProduct {
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
+    /// Editorial revision; echo it back as `revision` in `updateProduct`.
+    pub revision: i32,
     pub translations: Vec<GqlProductTranslation>,
     pub variant_axes: Vec<GqlVariantAxisConfig>,
     pub variants: Vec<GqlVariant>,
@@ -148,6 +150,24 @@ pub struct GqlProductImageTranslation {
     pub alt_text: Option<String>,
 }
 
+/// Storefront catalog-card image summary owned by the Product module.
+#[derive(SimpleObject)]
+pub struct GqlProductListImage {
+    pub media_id: Uuid,
+    pub url: String,
+    pub alt_text: Option<String>,
+    pub position: i32,
+}
+
+/// Storefront catalog-card "from" price snapshot owned by the Product module.
+#[derive(SimpleObject)]
+pub struct GqlProductListPrice {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: Option<String>,
+    pub on_sale: bool,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlProductList {
     pub items: Vec<GqlProductListItem>,
@@ -168,6 +188,10 @@ pub struct GqlProductListItem {
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
     pub tags: Vec<String>,
+    /// Lowest-position image of the product; `null` when the product has none.
+    pub primary_image: Option<GqlProductListImage>,
+    /// Cheapest base variant price in the requested or derived currency.
+    pub price_from: Option<GqlProductListPrice>,
     pub created_at: String,
     pub published_at: Option<String>,
 }
@@ -256,6 +280,9 @@ pub struct GqlProductEffectiveFormAttribute {
     pub source: String,
     pub variant_axis_policy: String,
     pub default_variant_axis: bool,
+    /// Effective validation rules: attribute-level `validation` merged with the schema and category
+    /// `validation_overrides` that apply to this binding.
+    pub validation: Json<serde_json::Value>,
 }
 
 #[derive(SimpleObject)]
@@ -996,6 +1023,8 @@ pub struct CreateProductAttributeInput {
     pub is_searchable: bool,
     pub is_sortable: bool,
     pub show_on_storefront: bool,
+    /// Declared validation rules of the attribute (see the Product rule engine schema).
+    pub validation: Option<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject)]
@@ -1055,6 +1084,8 @@ pub struct BindSchemaAttributeInput {
     pub is_required: bool,
     pub is_disabled: bool,
     pub position: i32,
+    /// Schema-level rule overrides applied on top of the attribute-level `validation`.
+    pub validation_overrides: Option<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject)]
@@ -1066,6 +1097,8 @@ pub struct BindCategoryAttributeInput {
     pub is_required: Option<bool>,
     pub is_disabled: bool,
     pub position: Option<i32>,
+    /// Category-level rule overrides applied on top of the schema binding rules.
+    pub validation_overrides: Option<Json<serde_json::Value>>,
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -1138,15 +1171,33 @@ pub struct PriceInput {
 #[derive(InputObject)]
 pub struct UpdateProductInput {
     pub translations: Option<Vec<ProductTranslationInput>>,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub shipping_profile_slug: Option<String>,
-    pub primary_category_id: Option<Uuid>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub seller_id: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub vendor: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub product_type: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub shipping_profile_slug: MaybeUndefined<String>,
+    /// Omitted keeps the stored value; explicit `null` clears it.
+    pub primary_category_id: MaybeUndefined<Uuid>,
     pub tags: Option<Vec<String>>,
     /// Optional custom fields patch — merged into existing metadata.
     pub custom_fields: Option<Json<serde_json::Value>>,
     pub status: Option<GqlProductStatus>,
+    /// Predecessor revision of the document that was read.
+    ///
+    /// Required whenever the input changes document fields; lifecycle-only writes (`status` only)
+    /// may omit it.
+    pub revision: Option<i32>,
+}
+
+pub(crate) fn graphql_patch<T>(value: MaybeUndefined<T>) -> rustok_api::Patch<T> {
+    match value {
+        MaybeUndefined::Undefined => rustok_api::Patch::Keep,
+        MaybeUndefined::Null => rustok_api::Patch::Clear,
+        MaybeUndefined::Value(value) => rustok_api::Patch::Set(value),
+    }
 }
 
 #[derive(InputObject)]
@@ -1719,6 +1770,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
             published_at: product.published_at.map(|value| value.to_rfc3339()),
+            revision: product.revision,
             translations: product
                 .translations
                 .into_iter()
@@ -1917,6 +1969,28 @@ impl From<dto::VariantResponse> for GqlVariant {
 
 impl From<dto::PriceResponse> for GqlPrice {
     fn from(price: dto::PriceResponse) -> Self {
+        Self {
+            currency_code: price.currency_code,
+            amount: price.amount.to_string(),
+            compare_at_amount: price.compare_at_amount.map(|value| value.to_string()),
+            on_sale: price.on_sale,
+        }
+    }
+}
+
+impl From<rustok_product::StorefrontProductListImage> for GqlProductListImage {
+    fn from(image: rustok_product::StorefrontProductListImage) -> Self {
+        Self {
+            media_id: image.media_id,
+            url: image.url,
+            alt_text: image.alt_text,
+            position: image.position,
+        }
+    }
+}
+
+impl From<rustok_product::StorefrontProductListPrice> for GqlProductListPrice {
+    fn from(price: rustok_product::StorefrontProductListPrice) -> Self {
         Self {
             currency_code: price.currency_code,
             amount: price.amount.to_string(),
@@ -3047,4 +3121,54 @@ pub struct BundleItemInputGql {
     pub is_optional: Option<bool>,
     pub discount_rate: Option<Decimal>,
     pub position: Option<i32>,
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::{UpdateProductInput, graphql_patch};
+    use async_graphql::MaybeUndefined;
+    use rustok_api::Patch;
+    use uuid::Uuid;
+
+    #[test]
+    fn graphql_patch_keeps_clears_and_sets() {
+        assert_eq!(
+            graphql_patch(MaybeUndefined::<String>::Undefined),
+            Patch::Keep
+        );
+        assert_eq!(graphql_patch(MaybeUndefined::<String>::Null), Patch::Clear);
+        assert_eq!(
+            graphql_patch(MaybeUndefined::Value("acme".to_string())),
+            Patch::Set("acme".to_string())
+        );
+    }
+
+    #[test]
+    fn category_patch_preserves_the_uuid_scope() {
+        let category_id = Uuid::from_u128(7);
+        assert_eq!(
+            graphql_patch(MaybeUndefined::Value(category_id)),
+            Patch::Set(category_id)
+        );
+    }
+
+    #[test]
+    fn update_input_carries_the_predecessor_revision() {
+        let input = UpdateProductInput {
+            translations: None,
+            seller_id: MaybeUndefined::Undefined,
+            vendor: MaybeUndefined::Null,
+            product_type: MaybeUndefined::Undefined,
+            shipping_profile_slug: MaybeUndefined::Undefined,
+            primary_category_id: MaybeUndefined::Undefined,
+            tags: None,
+            custom_fields: None,
+            status: None,
+            revision: Some(4),
+        };
+
+        assert_eq!(input.revision, Some(4));
+        assert_eq!(graphql_patch(input.vendor), Patch::Clear);
+        assert_eq!(graphql_patch(input.seller_id), Patch::Keep);
+    }
 }

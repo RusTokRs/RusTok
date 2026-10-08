@@ -890,6 +890,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         fields: PRODUCT_ID_FIELDS,
     },
     EventSchema {
+        event_type: "product.unpublished",
+        version: 1,
+        description: "A product was unpublished.",
+        fields: PRODUCT_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.archived",
+        version: 1,
+        description: "A product was archived.",
+        fields: PRODUCT_ID_FIELDS,
+    },
+    EventSchema {
         event_type: "product.deleted",
         version: 1,
         description: "A product was deleted.",

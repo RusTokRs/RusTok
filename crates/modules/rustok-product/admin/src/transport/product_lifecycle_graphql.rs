@@ -12,8 +12,9 @@ const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_gra
 const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
 const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
+const SET_VARIANT_AXES_MUTATION: &str = "mutation ProductAdminSetVariantAxes($idempotencyKey: String!, $productId: UUID!, $input: SetVariantAxesInput!) { setProductVariantAxes(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id attributeId code name position allowedValues { optionId value position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
 const CREATE_VARIANT_MUTATION: &str = "mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) { createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
 const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
@@ -33,6 +34,12 @@ struct CreateProductResponse {
 struct UpdateProductResponse {
     #[serde(rename = "updateProduct")]
     update_product: ProductDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetVariantAxesResponse {
+    #[serde(rename = "setProductVariantAxes")]
+    set_product_variant_axes: Vec<crate::model::VariantAxisConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +110,15 @@ struct DeleteProductVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
     id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SetVariantAxesVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "productId")]
+    product_id: String,
+    input: crate::model::SetVariantAxesDraft,
 }
 
 #[derive(Debug, Serialize)]
@@ -239,6 +255,9 @@ struct CreateProductInput {
 #[derive(Debug, Serialize)]
 struct UpdateProductInput {
     translations: Option<Vec<ProductTranslationInput>>,
+    /// Predecessor revision read with the document; omitted by unconditional lifecycle writes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    revision: Option<i32>,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
     vendor: Option<String>,
@@ -502,6 +521,7 @@ pub(crate) async fn update_product(
             id,
             input: UpdateProductInput {
                 translations: Some(vec![build_translation_input(&draft)]),
+                revision: draft.revision,
                 seller_id: optional_text(draft.seller_id.as_str()),
                 vendor: optional_text(draft.vendor.as_str()),
                 product_type: optional_text(draft.product_type.as_str()),
@@ -544,6 +564,7 @@ pub(crate) async fn change_product_status(
             id,
             input: UpdateProductInput {
                 translations: None,
+                revision: None,
                 seller_id: None,
                 vendor: None,
                 product_type: None,
@@ -559,6 +580,38 @@ pub(crate) async fn change_product_status(
     .await
     .map_err(|error| context.map_error(error))?;
     Ok(response.update_product)
+}
+
+pub(crate) async fn set_variant_axes(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    actor_id: String,
+    product_id: String,
+    idempotency_key: String,
+    draft: crate::model::SetVariantAxesDraft,
+) -> Result<Vec<crate::model::VariantAxisConfig>, GraphqlHttpError> {
+    let context = MutationErrorContext::new(
+        "set_variant_axes",
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        &tenant_id,
+        &actor_id,
+    )
+    .with_resource(&product_id);
+    let response: SetVariantAxesResponse = request(
+        SET_VARIANT_AXES_MUTATION,
+        SetVariantAxesVariables {
+            idempotency_key,
+            product_id,
+            input: draft,
+        },
+        token,
+        tenant_slug,
+    )
+    .await
+    .map_err(|error| context.map_error(error))?;
+    Ok(response.set_product_variant_axes)
 }
 
 pub(crate) async fn delete_product(

@@ -13,7 +13,10 @@ pub mod services;
 pub use dto::*;
 pub use error::{BundleError, BundleResult};
 pub use ports::BundlePort;
-pub use services::BundleService;
+pub use services::{
+    ADD_BUNDLE_ITEM_OPERATION, BundleCommandContext, BundleCommandError, BundleService,
+    CREATE_BUNDLE_OPERATION, PRODUCT_BUNDLE_OWNER_SLUG, bundle_command_error,
+};
 
 pub struct ProductBundlesModule;
 

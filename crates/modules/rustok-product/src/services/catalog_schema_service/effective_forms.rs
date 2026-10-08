@@ -11,6 +11,59 @@ struct ProductCategoryHierarchyRow {
     category_id: Uuid,
 }
 
+#[derive(FromQueryResult)]
+struct AttributeValidationRow {
+    id: Uuid,
+    validation: Value,
+}
+
+/// Merges every binding's declared `validation` object under its schema/category
+/// `validation_overrides`, so enforcement and the effective-form projection share one
+/// effective rule object per attribute.
+async fn load_effective_attribute_validation<C>(
+    db: &C,
+    tenant_id: Uuid,
+    form: &mut EffectiveProductForm,
+) -> CommerceResult<()>
+where
+    C: ConnectionTrait,
+{
+    let attribute_ids = form
+        .attributes
+        .iter()
+        .map(|binding| binding.attribute_id)
+        .collect::<Vec<_>>();
+    if attribute_ids.is_empty() {
+        return Ok(());
+    }
+
+    let (placeholders, values) = uuid_filter_values(tenant_id, &attribute_ids);
+    let declared = AttributeValidationRow::find_by_statement(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        format!(
+            "SELECT id, validation FROM product_attributes WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+        ),
+        values,
+    ))
+    .all(db)
+    .await?
+    .into_iter()
+    .map(|row| (row.id, row.validation))
+    .collect::<HashMap<_, _>>();
+
+    for binding in &mut form.attributes {
+        let base = declared
+            .get(&binding.attribute_id)
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        binding.validation = attribute_validation::merge_product_attribute_validation(
+            &base,
+            &binding.validation_overrides,
+        );
+    }
+    Ok(())
+}
+
 impl ProductCatalogSchemaService {
     pub async fn load_effective_form_for_product(
         &self,
@@ -87,13 +140,15 @@ impl ProductCatalogSchemaService {
     {
         let categories = Self::load_category_schema_map(db, tenant_id).await?;
         let schemas = Self::load_attribute_schema_map(db, tenant_id).await?;
-        resolve_effective_product_form(
+        let mut form = resolve_effective_product_form(
             category_id,
             &categories,
             &schemas,
             existing_value_attribute_ids,
         )
-        .map_err(map_schema_resolution_error)
+        .map_err(map_schema_resolution_error)?;
+        load_effective_attribute_validation(db, tenant_id, &mut form).await?;
+        Ok(form)
     }
 
     pub async fn load_effective_form_group_labels(
@@ -328,6 +383,7 @@ impl ProductCatalogSchemaService {
                     position: row.position,
                     visibility_overrides: parse_visibility_overrides(row.visibility_overrides)?,
                     validation_overrides: row.validation_overrides,
+                    validation: Value::Object(Default::default()),
                     source: EffectiveAttributeSource::Schema,
                     variant_axis_policy: row.variant_axis_policy.unwrap_or_else(|| "forbidden".to_string()),
                     default_variant_axis: row.default_variant_axis.unwrap_or(false),

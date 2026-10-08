@@ -34,6 +34,7 @@ uuid.workspace = true
 validator.workspace = true
 sha2.workspace = true
 hex.workspace = true
+regex = "1.12"
 
 [dev-dependencies]
 rustok-test-utils.workspace = true

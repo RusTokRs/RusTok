@@ -274,6 +274,12 @@ pub(crate) fn map_admin_product_port_error(
     error: PortError,
 ) -> HttpError {
     let (status, code, message, error_kind) = match &error.kind {
+        PortErrorKind::Validation if error.code == "product.revision_required" => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "commerce_admin_product_revision_required",
+            "Product update requires the revision of the document that was read",
+            "revision_required",
+        ),
         PortErrorKind::Validation => (
             StatusCode::BAD_REQUEST,
             "commerce_admin_product_invalid",
@@ -297,6 +303,12 @@ pub(crate) fn map_admin_product_port_error(
             "commerce_admin_product_sku_conflict",
             "A product variant with this SKU already exists",
             "duplicate_sku",
+        ),
+        PortErrorKind::Conflict if error.code == "product.revision_conflict" => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_revision_conflict",
+            "Product was modified by another editor",
+            "revision_conflict",
         ),
         PortErrorKind::Conflict => (
             StatusCode::CONFLICT,
@@ -706,6 +718,56 @@ pub async fn unpublish_product(
                     auth.user_id,
                     Some(id),
                     "unpublish_product",
+                ),
+                &port_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(product))
+}
+
+/// Shared admin product archive handler.
+pub async fn archive_product(
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<ProductResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::PRODUCTS_UPDATE],
+        "Permission denied: products:update required",
+    )?;
+
+    let idempotency_key = admin_product_lifecycle_idempotency_key(
+        &headers,
+        tenant.id,
+        auth.user_id,
+        id,
+        "archive_product",
+    )?;
+    let port_context = admin_product_command_context(
+        tenant.id,
+        &auth,
+        &request_context,
+        Some(id),
+        "archive_product",
+        idempotency_key,
+    );
+    let product = runtime
+        .product_catalog_command_port()
+        .archive_product(port_context.clone(), id)
+        .await
+        .map_err(|error| {
+            map_admin_product_port_error(
+                AdminProductErrorContext::new(
+                    tenant.id,
+                    auth.user_id,
+                    Some(id),
+                    "archive_product",
                 ),
                 &port_context,
                 error,

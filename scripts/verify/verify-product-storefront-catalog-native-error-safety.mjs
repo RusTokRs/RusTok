@@ -61,6 +61,8 @@ for (const [value, label] of [
   ['endpoint = "product/storefront/catalog-list"', "catalog endpoint"],
   ["StorefrontProductListQuery::try_from_transport_with_attribute_filters(", "catalog query builder"],
   [".with_pagination(1, 12)", "catalog pagination"],
+  ["currency_code: Option<String>", "catalog display-currency input"],
+  [".with_currency_code(currency_code)", "catalog display-currency filter"],
   ["crate::core::resolve_requested_locale(", "locale fallback"],
   ["normalize_public_channel_slug(context.channel_slug.as_deref())", "channel fallback"],
   ["rustok_product::map_product_public_error(", "Product public error mapper"],
@@ -83,8 +85,10 @@ for (const [value, label] of [
 if (countText(source, "request_context.as_ref()") !== 3) {
   failures.push("optional request context must remain in tenant, locale, and channel handling");
 }
-if (countText(source, "map_product_service_error(error,") !== 2) {
-  failures.push("Product public mapper must remain on input and catalog service failures");
+if (countText(source, "map_product_service_error(error,") !== 3) {
+  failures.push(
+    "Product public mapper must remain on input, display-currency, and catalog service failures",
+  );
 }
 if (countText(source, "ServerFnError::new(\"Product catalog is temporarily unavailable\")") !== 1) {
   failures.push("runtime composition must use exactly one stable catalog envelope");
@@ -111,11 +115,11 @@ for (const [key, expected] of Object.entries({
   optional_request_context_preserved: true,
   optional_request_context_failure_logged: true,
   product_public_error_mapper_preserved: true,
-  catalog_query_contract_changed: false,
+  catalog_query_contract_changed: true,
   pagination_changed: false,
   locale_fallback_changed: false,
   channel_fallback_changed: false,
-  request_response_dto_changed: false,
+  request_response_dto_changed: true,
   raw_context_error_public: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {

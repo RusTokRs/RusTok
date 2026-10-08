@@ -513,6 +513,44 @@ pub(crate) fn build_product_attribute_form_copy(locale: Option<&str>) -> Product
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAttributeValuesSectionCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub save: String,
+    pub saving: String,
+    pub saved: String,
+    pub nothing_dirty: String,
+    pub missing_option: String,
+}
+
+/// Copy for the mounted editor's typed attribute-value section.
+pub(crate) fn build_product_attribute_values_section_copy(
+    locale: Option<&str>,
+) -> ProductAttributeValuesSectionCopy {
+    ProductAttributeValuesSectionCopy {
+        title: t(locale, "product.attributes.valuesTitle", "Typed attributes"),
+        subtitle: t(
+            locale,
+            "product.attributes.valuesSubtitle",
+            "Values validated against the effective category schema.",
+        ),
+        save: t(locale, "product.attributes.valuesSave", "Save attribute values"),
+        saving: t(locale, "product.attributes.valuesSaving", "Saving..."),
+        saved: t(locale, "product.attributes.valuesSaved", "Attribute values saved"),
+        nothing_dirty: t(
+            locale,
+            "product.attributes.valuesNothingDirty",
+            "Nothing changed: typed values already match the saved state.",
+        ),
+        missing_option: t(
+            locale,
+            "product.attributes.valuesMissingOption",
+            "(not in dictionary)",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductVariantsPanelCopy {
     pub title: String,
     pub subtitle: String,
@@ -978,6 +1016,8 @@ pub(crate) struct DraftForm {
     pub compare_at_amount: String,
     pub inventory_quantity: i32,
     pub publish_now: bool,
+    /// Revision of the loaded document, when the form edits an existing product.
+    pub revision: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1365,6 +1405,7 @@ pub(crate) fn build_save_command(
             meta_title: None,
             meta_description: None,
             tags: Vec::new(),
+            revision: form.revision,
         },
     })
 }
@@ -2842,6 +2883,7 @@ mod tests {
             compare_at_amount: String::new(),
             inventory_quantity: 7,
             publish_now: true,
+            revision: None,
         }
     }
 
@@ -2862,6 +2904,7 @@ mod tests {
     fn product_detail() -> ProductDetail {
         ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: Some("seller-1".to_string()),
             vendor: Some("Acme".to_string()),
@@ -3199,6 +3242,7 @@ mod tests {
     fn editor_form_state_maps_product_detail() {
         let product = ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: Some("seller-1".to_string()),
             vendor: Some("Acme".to_string()),
@@ -3632,6 +3676,7 @@ mod tests {
     fn selected_summary_view_model_formats_ready_product() {
         let product = ProductDetail {
             id: "product-1".to_string(),
+            revision: 1,
             status: "ACTIVE".to_string(),
             seller_id: None,
             vendor: Some("Acme".to_string()),

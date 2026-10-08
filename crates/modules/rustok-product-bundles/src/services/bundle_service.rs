@@ -122,6 +122,10 @@ impl BundleService {
         Self { db }
     }
 
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     fn assemble_bundle_dto(
         model: crate::entities::bundle::Model,
         translations: Vec<crate::entities::bundle_translation::Model>,
@@ -189,6 +193,156 @@ impl BundleService {
             updated_at: model.updated_at.into(),
         }
     }
+}
+
+/// Creates one bundle inside the caller transaction.
+///
+/// The receipt-bound owner command and the plain owner port method share this body, so an
+/// idempotent retry can never diverge from the non-idempotent write path. Slug uniqueness is
+/// checked inside the transaction instead of a pre-transaction read.
+pub(crate) async fn create_bundle_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    input: CreateBundleInput,
+) -> BundleResult<BundleDto> {
+    let slug = input.slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(BundleError::InvalidInput("Slug cannot be empty".into()));
+    }
+
+    let existing = Bundle::find()
+        .filter(BundleColumn::TenantId.eq(tenant_id))
+        .filter(BundleColumn::Slug.eq(&slug))
+        .one(txn)
+        .await?;
+
+    if existing.is_some() {
+        return Err(BundleError::SlugAlreadyExists(slug));
+    }
+
+    validate_bundle_product_ref_in_tx(txn, tenant_id, input.bundle_product_id).await?;
+    for item in &input.items {
+        if item.quantity < 1 {
+            return Err(BundleError::InvalidInput(
+                "Item quantity must be at least 1".into(),
+            ));
+        }
+        validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
+    }
+
+    let bundle_id = Uuid::new_v4();
+    let now = Utc::now();
+
+    let bundle_active = BundleActiveModel {
+        id: Set(bundle_id),
+        tenant_id: Set(tenant_id),
+        bundle_product_id: Set(input.bundle_product_id),
+        slug: Set(slug),
+        bundle_type: Set(input.bundle_type.unwrap_or_else(|| "fixed".into())),
+        status: Set(input.status.unwrap_or_else(|| "active".into())),
+        discount_type: Set(input.discount_type.unwrap_or_else(|| "none".into())),
+        discount_value: Set(input.discount_value.unwrap_or_default()),
+        metadata: Set(input.metadata.unwrap_or_else(|| serde_json::json!({}))),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    };
+
+    let inserted_bundle = bundle_active.insert(txn).await?;
+
+    let mut inserted_translations = Vec::new();
+    for trans_input in input.translations {
+        let trans_active = BundleTranslationActiveModel {
+            id: Set(Uuid::new_v4()),
+            bundle_id: Set(bundle_id),
+            locale: Set(trans_input.locale),
+            name: Set(trans_input.name),
+            description: Set(trans_input.description),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        };
+        inserted_translations.push(trans_active.insert(txn).await?);
+    }
+
+    let mut inserted_items = Vec::new();
+    for (idx, item_input) in input.items.into_iter().enumerate() {
+        let item_active = BundleItemActiveModel {
+            id: Set(Uuid::new_v4()),
+            bundle_id: Set(bundle_id),
+            product_id: Set(item_input.product_id),
+            variant_id: Set(item_input.variant_id),
+            quantity: Set(item_input.quantity),
+            is_optional: Set(item_input.is_optional.unwrap_or(false)),
+            discount_rate: Set(item_input.discount_rate),
+            position: Set(item_input.position.unwrap_or(idx as i32)),
+            created_at: Set(now.into()),
+        };
+        inserted_items.push(item_active.insert(txn).await?);
+    }
+
+    Ok(BundleService::assemble_bundle_dto(
+        inserted_bundle,
+        inserted_translations,
+        inserted_items,
+        None,
+    ))
+}
+
+/// Adds one item to an existing bundle inside the caller transaction.
+pub(crate) async fn add_bundle_item_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    bundle_id: Uuid,
+    item: BundleItemInput,
+) -> BundleResult<BundleItemDto> {
+    let _bundle = lock_bundle_for_update(txn, tenant_id, bundle_id).await?;
+
+    if item.quantity < 1 {
+        return Err(BundleError::InvalidInput(
+            "Item quantity must be at least 1".into(),
+        ));
+    }
+
+    let now = Utc::now();
+    let item_id = Uuid::new_v4();
+
+    let position = match item.position {
+        Some(p) => p,
+        None => {
+            let count = BundleItem::find()
+                .filter(BundleItemColumn::BundleId.eq(bundle_id))
+                .count(txn)
+                .await?;
+            count as i32
+        }
+    };
+
+    validate_bundle_item_refs_in_tx(txn, tenant_id, item.product_id, item.variant_id).await?;
+
+    let active = BundleItemActiveModel {
+        id: Set(item_id),
+        bundle_id: Set(bundle_id),
+        product_id: Set(item.product_id),
+        variant_id: Set(item.variant_id),
+        quantity: Set(item.quantity),
+        is_optional: Set(item.is_optional.unwrap_or(false)),
+        discount_rate: Set(item.discount_rate),
+        position: Set(position),
+        created_at: Set(now.into()),
+    };
+
+    let inserted = active.insert(txn).await?;
+
+    Ok(BundleItemDto {
+        id: inserted.id,
+        bundle_id: inserted.bundle_id,
+        product_id: inserted.product_id,
+        variant_id: inserted.variant_id,
+        quantity: inserted.quantity,
+        is_optional: inserted.is_optional,
+        discount_rate: inserted.discount_rate,
+        position: inserted.position,
+        created_at: inserted.created_at.into(),
+    })
 }
 
 #[async_trait]
@@ -343,96 +497,10 @@ impl BundlePort for BundleService {
         tenant_id: Uuid,
         input: CreateBundleInput,
     ) -> BundleResult<BundleDto> {
-        let slug = input.slug.trim().to_lowercase();
-        if slug.is_empty() {
-            return Err(BundleError::InvalidInput("Slug cannot be empty".into()));
-        }
-
-        let existing = Bundle::find()
-            .filter(BundleColumn::TenantId.eq(tenant_id))
-            .filter(BundleColumn::Slug.eq(&slug))
-            .one(&self.db)
-            .await?;
-
-        if existing.is_some() {
-            return Err(BundleError::SlugAlreadyExists(slug));
-        }
-
         let txn = self.db.begin().await?;
-
-        validate_bundle_product_ref_in_tx(&txn, tenant_id, input.bundle_product_id).await?;
-        for item in &input.items {
-            if item.quantity < 1 {
-                return Err(BundleError::InvalidInput(
-                    "Item quantity must be at least 1".into(),
-                ));
-            }
-            validate_bundle_item_refs_in_tx(
-                &txn,
-                tenant_id,
-                item.product_id,
-                item.variant_id,
-            )
-            .await?;
-        }
-
-        let bundle_id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let bundle_active = BundleActiveModel {
-            id: Set(bundle_id),
-            tenant_id: Set(tenant_id),
-            bundle_product_id: Set(input.bundle_product_id),
-            slug: Set(slug),
-            bundle_type: Set(input.bundle_type.unwrap_or_else(|| "fixed".into())),
-            status: Set(input.status.unwrap_or_else(|| "active".into())),
-            discount_type: Set(input.discount_type.unwrap_or_else(|| "none".into())),
-            discount_value: Set(input.discount_value.unwrap_or_default()),
-            metadata: Set(input.metadata.unwrap_or_else(|| serde_json::json!({}))),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-        };
-
-        let inserted_bundle = bundle_active.insert(&txn).await?;
-
-        let mut inserted_translations = Vec::new();
-        for trans_input in input.translations {
-            let trans_active = BundleTranslationActiveModel {
-                id: Set(Uuid::new_v4()),
-                bundle_id: Set(bundle_id),
-                locale: Set(trans_input.locale),
-                name: Set(trans_input.name),
-                description: Set(trans_input.description),
-                created_at: Set(now.into()),
-                updated_at: Set(now.into()),
-            };
-            inserted_translations.push(trans_active.insert(&txn).await?);
-        }
-
-        let mut inserted_items = Vec::new();
-        for (idx, item_input) in input.items.into_iter().enumerate() {
-            let item_active = BundleItemActiveModel {
-                id: Set(Uuid::new_v4()),
-                bundle_id: Set(bundle_id),
-                product_id: Set(item_input.product_id),
-                variant_id: Set(item_input.variant_id),
-                quantity: Set(item_input.quantity),
-                is_optional: Set(item_input.is_optional.unwrap_or(false)),
-                discount_rate: Set(item_input.discount_rate),
-                position: Set(item_input.position.unwrap_or(idx as i32)),
-                created_at: Set(now.into()),
-            };
-            inserted_items.push(item_active.insert(&txn).await?);
-        }
-
+        let bundle = create_bundle_in_tx(&txn, tenant_id, input).await?;
         txn.commit().await?;
-
-        Ok(Self::assemble_bundle_dto(
-            inserted_bundle,
-            inserted_translations,
-            inserted_items,
-            None,
-        ))
+        Ok(bundle)
     }
 
     async fn update_bundle(
@@ -570,56 +638,9 @@ impl BundlePort for BundleService {
         item: BundleItemInput,
     ) -> BundleResult<BundleItemDto> {
         let txn = self.db.begin().await?;
-        let _bundle = lock_bundle_for_update(&txn, tenant_id, bundle_id).await?;
-
-        if item.quantity < 1 {
-            return Err(BundleError::InvalidInput(
-                "Item quantity must be at least 1".into(),
-            ));
-        }
-
-        let now = Utc::now();
-        let item_id = Uuid::new_v4();
-
-        let position = match item.position {
-            Some(p) => p,
-            None => {
-                let count = BundleItem::find()
-                    .filter(BundleItemColumn::BundleId.eq(bundle_id))
-                    .count(&txn)
-                    .await?;
-                count as i32
-            }
-        };
-
-        validate_bundle_item_refs_in_tx(&txn, tenant_id, item.product_id, item.variant_id).await?;
-
-        let active = BundleItemActiveModel {
-            id: Set(item_id),
-            bundle_id: Set(bundle_id),
-            product_id: Set(item.product_id),
-            variant_id: Set(item.variant_id),
-            quantity: Set(item.quantity),
-            is_optional: Set(item.is_optional.unwrap_or(false)),
-            discount_rate: Set(item.discount_rate),
-            position: Set(position),
-            created_at: Set(now.into()),
-        };
-
-        let inserted = active.insert(&txn).await?;
+        let created_item = add_bundle_item_in_tx(&txn, tenant_id, bundle_id, item).await?;
         txn.commit().await?;
-
-        Ok(BundleItemDto {
-            id: inserted.id,
-            bundle_id: inserted.bundle_id,
-            product_id: inserted.product_id,
-            variant_id: inserted.variant_id,
-            quantity: inserted.quantity,
-            is_optional: inserted.is_optional,
-            discount_rate: inserted.discount_rate,
-            position: inserted.position,
-            created_at: inserted.created_at.into(),
-        })
+        Ok(created_item)
     }
 
     async fn remove_bundle_item(

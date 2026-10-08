@@ -4,14 +4,14 @@ pub mod admin_catalog_graphql;
 pub mod admin_catalog_native;
 pub mod graphql_adapter;
 pub mod graphql_error_safety;
-pub mod lifecycle_retry_identity;
+pub(crate) use crate::lifecycle_retry_identity;
 pub mod native_server_adapter;
 pub mod product_lifecycle_graphql;
 pub mod retry;
 
 pub(crate) use retry::{
     add_product_image, create_product_variant, delete_product_image, delete_product_variant,
-    reorder_product_images, update_product_image, update_product_variant,
+    reorder_product_images, set_variant_axes, update_product_image, update_product_variant,
 };
 
 use crate::model::{

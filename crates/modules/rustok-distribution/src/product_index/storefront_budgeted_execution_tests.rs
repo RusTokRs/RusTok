@@ -147,6 +147,8 @@ fn authoritative_page(product_id: Uuid) -> StorefrontProductList {
             vendor: None,
             product_type: None,
             tags: vec!["Legacy".to_owned()],
+            primary_image: None,
+            price_from: None,
             created_at: chrono::Utc::now(),
             published_at: None,
         }],

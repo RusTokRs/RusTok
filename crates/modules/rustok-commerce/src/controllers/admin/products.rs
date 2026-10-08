@@ -472,7 +472,10 @@ pub async fn update_product(
             Some(id),
             "update_product_shipping_profile_validation",
         ),
-        input.shipping_profile_slug.as_deref(),
+        match &input.shipping_profile_slug {
+            rustok_api::Patch::Set(slug) => Some(slug.as_str()),
+            rustok_api::Patch::Keep | rustok_api::Patch::Clear => None,
+        },
     )
     .await?;
 
@@ -578,5 +581,32 @@ pub async fn unpublish_product(
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
     super::super::products::unpublish_product(state, tenant, auth, request_context, headers, path)
+        .await
+}
+
+/// Archive admin ecommerce product
+#[utoipa::path(
+    post,
+    path = "/admin/products/{id}/archive",
+    tag = "admin",
+    params(
+        ("id" = Uuid, Path, description = "Product ID"),
+        ("Idempotency-Key" = String, Header, description = "Stable identity for this logical lifecycle command, maximum 191 bytes")
+    ),
+    responses(
+        (status = 200, description = "Product archived successfully", body = ProductResponse),
+        (status = 400, description = "Missing or invalid idempotency key"),
+        (status = 401, description = "Unauthorized"), (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn archive_product(
+    state: State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    headers: HeaderMap,
+    path: Path<Uuid>,
+) -> HttpResult<Json<ProductResponse>> {
+    super::super::products::archive_product(state, tenant, auth, request_context, headers, path)
         .await
 }

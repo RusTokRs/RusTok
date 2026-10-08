@@ -375,6 +375,7 @@ pub fn attach_commerce_provider_registries(
             });
         match runtime {
             Some(runtime) => {
+                let runtime = compose_product_catalog_media_asset_validation(runtime, server, &host);
                 server.shared_insert(runtime.clone());
                 host.with_shared_value(runtime)
             }
@@ -710,4 +711,35 @@ mod product_catalog_read_port_tests {
                 .is_some()
         );
     }
+}
+
+/// Composes the Product-owned Media asset validation boundary into the Product command runtime.
+///
+/// `product_images.media_id` holds only a canonical Media asset UUID, so the Media owner must
+/// confirm existence and tenancy before an image row is written. When the deployment has neither a
+/// published Media provider nor initialized durable storage, the runtime keeps the explicit
+/// `opaque_references` policy and the host records why.
+#[cfg(all(feature = "mod-product", feature = "mod-media"))]
+fn compose_product_catalog_media_asset_validation(
+    runtime: rustok_product::ProductCatalogCommandRuntime,
+    server: &ServerRuntimeContext,
+    host: &HostRuntimeContext,
+) -> rustok_product::ProductCatalogCommandRuntime {
+    crate::services::product_media_asset_validation::compose_product_media_asset_validation(
+        runtime, server, host,
+    )
+}
+
+/// Keeps Product command composition unchanged when the Media module is not part of the deployment.
+#[cfg(all(feature = "mod-product", not(feature = "mod-media")))]
+fn compose_product_catalog_media_asset_validation(
+    runtime: rustok_product::ProductCatalogCommandRuntime,
+    _server: &ServerRuntimeContext,
+    _host: &HostRuntimeContext,
+) -> rustok_product::ProductCatalogCommandRuntime {
+    tracing::debug!(
+        policy = runtime.media_reference_policy().as_str(),
+        "Media module is not composed; Product image references stay opaque"
+    );
+    runtime
 }

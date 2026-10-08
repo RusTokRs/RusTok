@@ -17245,6 +17245,7 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
+ "regex",
  "rust_decimal",
  "rustok-api",
  "rustok-core",

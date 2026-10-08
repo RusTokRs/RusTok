@@ -10,7 +10,7 @@ use crate::core::{
     flatten_category_tree, product_category_grid_columns, slugify, CategoryTreeRowViewModel,
 };
 use crate::model::{CatalogCategoryDraft, CatalogCategorySummary};
-use crate::transport;
+use crate::catalog_transport;
 
 #[component]
 fn CategoryTreeGrid(
@@ -180,10 +180,10 @@ pub fn CategoriesPage() -> impl IntoView {
         let loc = res_locale.clone().unwrap_or_default();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_catalog_categories(
+            let res = catalog_transport::fetch_catalog_categories(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
@@ -261,13 +261,13 @@ pub fn CategoriesPage() -> impl IntoView {
         };
 
         spawn_local(async move {
-            let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                 set_is_busy.set(false);
                 set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                 return;
             };
 
-            let res = transport::create_catalog_category(
+            let res = catalog_transport::create_catalog_category(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,

@@ -3,6 +3,7 @@
 // pricing, and publishing workflows.
 
 use rust_decimal::Decimal;
+use rustok_api::Patch;
 use rustok_core::field_schema::FieldType;
 use rustok_product::CatalogService;
 use rustok_product::CommerceError;
@@ -176,14 +177,15 @@ async fn test_shipping_profile_slug_round_trips_through_catalog_service() {
             created.id,
             UpdateProductInput {
                 translations: None,
-                seller_id: None,
-                vendor: None,
-                product_type: None,
-                shipping_profile_slug: Some("Cold-Chain".to_string()),
-                primary_category_id: None,
+                seller_id: Patch::Keep,
+                vendor: Patch::Keep,
+                product_type: Patch::Keep,
+                shipping_profile_slug: Patch::Set("Cold-Chain".to_string()),
+                primary_category_id: Patch::Keep,
                 tags: None,
                 status: None,
                 metadata: None,
+                expected_revision: None,
             },
         )
         .await
@@ -292,14 +294,15 @@ async fn test_update_product_success() {
             meta_title: None,
             meta_description: None,
         }]),
-        seller_id: None,
-        vendor: Some("Updated Vendor".to_string()),
-        product_type: Some("Digital".to_string()),
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Set("Updated Vendor".to_string()),
+        product_type: Patch::Set("Digital".to_string()),
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
+        expected_revision: None,
     };
 
     let result = service
@@ -462,17 +465,18 @@ async fn test_product_locale_fallback_resolves_localized_flex_metadata_from_atta
                         meta_description: None,
                     },
                 ]),
-                seller_id: None,
-                vendor: None,
-                product_type: None,
-                shipping_profile_slug: None,
-                primary_category_id: None,
+                seller_id: Patch::Keep,
+                vendor: Patch::Keep,
+                product_type: Patch::Keep,
+                shipping_profile_slug: Patch::Keep,
+                primary_category_id: Patch::Keep,
                 tags: None,
                 status: None,
                 metadata: Some(serde_json::json!({
                     "marketing_copy": "Русский промо текст",
                     "badge": "featured"
                 })),
+                expected_revision: None,
             },
         )
         .await
@@ -945,11 +949,11 @@ async fn test_update_product_metadata() {
 
     let update_input = UpdateProductInput {
         translations: None,
-        seller_id: None,
-        vendor: None,
-        product_type: None,
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Keep,
+        product_type: Patch::Keep,
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: None,
         metadata: Some(serde_json::json!({
@@ -957,6 +961,7 @@ async fn test_update_product_metadata() {
             "priority": "high",
             "badge": "bestseller"
         })),
+        expected_revision: None,
     };
 
     let result = service
@@ -1006,14 +1011,15 @@ async fn test_update_vendor() {
 
     let update_input = UpdateProductInput {
         translations: None,
-        seller_id: None,
-        vendor: Some("New Vendor Inc".to_string()),
-        product_type: None,
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Set("New Vendor Inc".to_string()),
+        product_type: Patch::Keep,
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: None,
         metadata: None,
+        expected_revision: None,
     };
 
     let result = service
@@ -1045,14 +1051,15 @@ async fn test_update_nonexistent_product() {
             meta_title: None,
             meta_description: None,
         }]),
-        seller_id: None,
-        vendor: None,
-        product_type: None,
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Keep,
+        product_type: Patch::Keep,
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: None,
         metadata: None,
+        expected_revision: None,
     };
 
     let result = service
@@ -1165,14 +1172,15 @@ async fn test_create_archived_product() {
 
     let update_input = UpdateProductInput {
         translations: None,
-        seller_id: None,
-        vendor: None,
-        product_type: None,
-        shipping_profile_slug: None,
-        primary_category_id: None,
+        seller_id: Patch::Keep,
+        vendor: Patch::Keep,
+        product_type: Patch::Keep,
+        shipping_profile_slug: Patch::Keep,
+        primary_category_id: Patch::Keep,
         tags: None,
         status: Some(ProductStatus::Archived),
         metadata: None,
+        expected_revision: None,
     };
 
     let result = service
@@ -1265,4 +1273,129 @@ async fn test_multiple_variants_different_prices() {
 
     assert!(cheap.is_some());
     assert!(premium.is_some());
+}
+
+#[tokio::test]
+async fn update_product_refuses_a_stale_predecessor_revision() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let created = service
+        .create_product(tenant_id, actor_id, create_test_product_input())
+        .await
+        .expect("product should be created");
+    assert_eq!(created.revision, 1);
+
+    let first = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                vendor: Patch::Set("First writer".to_string()),
+                expected_revision: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("first writer wins");
+    assert_eq!(first.revision, 2);
+    assert_eq!(first.vendor.as_deref(), Some("First writer"));
+
+    let stale = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                vendor: Patch::Set("Second writer".to_string()),
+                expected_revision: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("a stale predecessor revision must be refused");
+    assert!(matches!(stale, CommerceError::Validation(_)));
+    assert!(stale.to_string().contains("product revision conflict"));
+
+    let reloaded = service
+        .get_product(tenant_id, created.id)
+        .await
+        .expect("product should load");
+    assert_eq!(reloaded.revision, 2);
+    assert_eq!(reloaded.vendor.as_deref(), Some("First writer"));
+
+    let retried = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                vendor: Patch::Set("Second writer".to_string()),
+                expected_revision: Some(reloaded.revision),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("the reloaded revision is accepted");
+    assert_eq!(retried.revision, 3);
+    assert_eq!(retried.vendor.as_deref(), Some("Second writer"));
+}
+
+#[tokio::test]
+async fn lifecycle_transitions_bump_the_revision_and_clear_patches_drop_shadows() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let created = service
+        .create_product(tenant_id, actor_id, create_test_product_input())
+        .await
+        .expect("product should be created");
+
+    let published = service
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("publish should succeed");
+    assert_eq!(published.revision, created.revision + 1);
+
+    let unpublished = service
+        .unpublish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("unpublish should succeed");
+    assert_eq!(unpublished.revision, published.revision + 1);
+
+    let bound = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                shipping_profile_slug: Patch::Set("standard".to_string()),
+                expected_revision: Some(unpublished.revision),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("binding a shipping profile should succeed");
+    assert_eq!(bound.shipping_profile_slug.as_deref(), Some("standard"));
+    assert_eq!(bound.metadata["shipping_profile"]["slug"], "standard");
+
+    let cleared = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            created.id,
+            UpdateProductInput {
+                shipping_profile_slug: Patch::Clear,
+                expected_revision: Some(bound.revision),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("clearing a shipping profile should succeed");
+    assert_eq!(cleared.shipping_profile_slug, None);
+    assert!(cleared.metadata.get("shipping_profile").is_none());
+    assert!(cleared.metadata.get("shipping_profile_slug").is_none());
 }

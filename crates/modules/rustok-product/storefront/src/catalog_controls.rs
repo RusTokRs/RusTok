@@ -14,6 +14,26 @@ pub struct CatalogListInput {
     pub sort_by: Option<String>,
     pub sort_direction: Option<String>,
     pub attribute_filters: Vec<String>,
+    /// Optional display currency of the catalog-card price snapshot.
+    pub currency_code: Option<String>,
+}
+
+impl CatalogListInput {
+    /// Applies the optional catalog-card display currency read from the route.
+    pub fn with_currency_code(mut self, currency_code: Option<String>) -> Self {
+        self.currency_code = normalize_currency_code(currency_code);
+        self
+    }
+}
+
+fn normalize_currency_code(currency_code: Option<String>) -> Option<String> {
+    let currency_code = normalize_optional_ui_text(currency_code)?;
+    let normalized = currency_code.to_ascii_uppercase();
+    if normalized.len() == 3 && normalized.chars().all(|character| character.is_ascii_alphabetic()) {
+        Some(normalized)
+    } else {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +72,115 @@ pub fn build_catalog_list_input(
 
 pub fn serialize_attribute_filters(filters: &[String]) -> String {
     filters.join(";")
+}
+
+/// Splits the `code=value` transport entry of one attribute filter into its parts.
+pub fn parse_attribute_filter(entry: &str) -> Option<(String, String)> {
+    let (code, value) = entry.split_once('=')?;
+    let code = code.trim();
+    let value = value.trim();
+    if code.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((code.to_string(), value.to_string()))
+}
+
+/// True when `code=value` is already part of the active attribute-filter list.
+pub fn is_attribute_filter_selected(filters: &[String], code: &str, value: &str) -> bool {
+    let code = code.trim();
+    let value = value.trim();
+    filters.iter().any(|entry| {
+        matches!(parse_attribute_filter(entry), Some((entry_code, entry_value))
+            if entry_code == code && entry_value == value)
+    })
+}
+
+/// Flips `code=value` in the attribute-filter list: unknown selections are appended, an already
+/// selected entry is removed, and the original order of the remaining entries is preserved.
+pub fn toggle_attribute_filter(filters: &[String], code: &str, value: &str) -> Vec<String> {
+    let code = code.trim();
+    let value = value.trim();
+    if code.is_empty() || value.is_empty() {
+        return filters.to_vec();
+    }
+    let selection = format!("{code}={value}");
+    let mut toggled: Vec<String> = Vec::with_capacity(filters.len());
+    let mut removed = false;
+    for entry in filters {
+        match parse_attribute_filter(entry) {
+            Some((entry_code, entry_value))
+                if !removed && entry_code == code && entry_value == value =>
+            {
+                removed = true;
+            }
+            _ => toggled.push(entry.clone()),
+        }
+    }
+    if !removed {
+        toggled.push(selection);
+    }
+    toggled
+}
+
+/// True when `code=<any value>` is part of the active attribute-filter list.
+pub fn has_attribute_filter_for_code(filters: &[String], code: &str) -> bool {
+    let code = code.trim();
+    filters.iter().any(|entry| {
+        matches!(parse_attribute_filter(entry), Some((entry_code, _)) if entry_code == code)
+    })
+}
+
+/// Clears every selection that belongs to `code`, keeping the other facet selections.
+pub fn clear_attribute_filter_code(filters: &[String], code: &str) -> Vec<String> {
+    let code = code.trim();
+    filters
+        .iter()
+        .filter(|entry| {
+            !matches!(parse_attribute_filter(entry), Some((entry_code, _)) if entry_code == code)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Copy of the storefront facet filter panel; the Leptos adapter renders it verbatim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetLabels {
+    pub title: String,
+    /// Sub-label of one unbounded facet (text, numeric, date): the free-form input stays the UI.
+    pub unbounded_hint: String,
+    /// Shown under a facet whose bucket list was cut by the owner value limit.
+    pub truncated_hint: String,
+    pub clear_label: String,
+    pub empty_message: String,
+    /// Bucket count template, e.g. `({count})`.
+    pub count_template: String,
+    pub selected_marker: String,
+    pub unselected_marker: String,
+}
+
+pub fn build_catalog_facet_labels(locale: Option<&str>) -> CatalogFacetLabels {
+    CatalogFacetLabels {
+        title: t(locale, "product.list.facetsLabel", "Filters"),
+        unbounded_hint: t(
+            locale,
+            "product.list.facetsUnbounded",
+            "Enter a value in the filter field above.",
+        ),
+        truncated_hint: t(
+            locale,
+            "product.list.facetsTruncated",
+            "More values are available than shown.",
+        ),
+        clear_label: t(locale, "product.list.facetsClear", "Clear filters"),
+        empty_message: t(
+            locale,
+            "product.list.facetsEmpty",
+            "No filters are available for this catalog yet.",
+        ),
+        count_template: t(locale, "product.list.facetsCount", "({count})"),
+        selected_marker: t(locale, "product.list.facetsSelected", "[x]"),
+        unselected_marker: t(locale, "product.list.facetsUnselected", "[ ]"),
+    }
 }
 
 pub fn build_catalog_search_labels(locale: Option<&str>) -> CatalogSearchLabels {

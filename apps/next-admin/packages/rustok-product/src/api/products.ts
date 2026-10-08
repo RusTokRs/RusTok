@@ -15,7 +15,9 @@ import type {
   ProductVariant,
   ProductVariantPrice,
   ProductAttributeValueItem,
-  ProductAttributeValuePatch
+  ProductAttributeValuePatch,
+  VariantAxisConfig,
+  SetVariantAxesInput
 } from './types';
 
 export const PRODUCT_DETAIL_QUERY = `
@@ -32,6 +34,7 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
     createdAt
     updatedAt
     publishedAt
+    revision
     translations {
       locale
       title
@@ -39,6 +42,18 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
       description
       metaTitle
       metaDescription
+    }
+    variantAxes {
+      id
+      attributeId
+      code
+      name
+      position
+      allowedValues {
+        optionId
+        value
+        position
+      }
     }
     variants {
       id
@@ -97,6 +112,7 @@ mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input:
     createdAt
     updatedAt
     publishedAt
+    revision
     translations {
       locale
       title
@@ -211,8 +227,8 @@ mutation ProductAdminReorderImages($idempotencyKey: String!, $productId: UUID!, 
 }`;
 
 export const SAVE_ATTRIBUTE_VALUES_MUTATION = `
-mutation ProductAdminSaveAttributeValues($productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) {
-  saveProductAttributeValues(productId: $productId, locale: $locale, patches: $patches) {
+mutation ProductAdminSaveAttributeValues($idempotencyKey: String!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) {
+  saveProductAttributeValues(idempotencyKey: $idempotencyKey, productId: $productId, locale: $locale, patches: $patches) {
     attributeId
     kind
     text
@@ -244,6 +260,7 @@ export type UpdateProductInput = {
   primaryCategoryId?: string | null;
   tags?: string[];
   status?: string | null;
+  revision?: number | null;
 };
 
 export type CreateVariantInput = {
@@ -284,6 +301,52 @@ export type UpdateProductImageInput = {
   altText?: string | null;
   locale?: string | null;
 };
+
+export const SET_VARIANT_AXES_MUTATION = `
+mutation ProductAdminSetVariantAxes($idempotencyKey: String!, $productId: UUID!, $input: SetVariantAxesInput!) {
+  setProductVariantAxes(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) {
+    id
+    attributeId
+    code
+    name
+    position
+    allowedValues {
+      optionId
+      value
+      position
+    }
+  }
+}`;
+
+/**
+ * Persists the ADR variant-axis configuration for one product.
+ *
+ * The owner command is idempotent: every call carries a freshly generated
+ * caller key, and an explicit retry of the same logical change reuses it.
+ */
+export async function setVariantAxes(
+  opts: GqlOpts,
+  productId: string,
+  input: SetVariantAxesInput
+): Promise<VariantAxisConfig[]> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage products.');
+  }
+
+  const idempotencyKey = crypto.randomUUID();
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    { idempotencyKey: string; productId: string; input: SetVariantAxesInput },
+    { setProductVariantAxes: VariantAxisConfig[] }
+  >(
+    SET_VARIANT_AXES_MUTATION,
+    { idempotencyKey, productId, input },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.setProductVariantAxes;
+}
 
 export async function fetchProductDetail(
   opts: GqlOpts,
@@ -531,9 +594,11 @@ export async function saveProductAttributeValues(
     throw new Error('Sign in again to save attribute values.');
   }
 
+  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     {
+      idempotencyKey: string;
       productId: string;
       locale: string;
       patches: ProductAttributeValuePatch[];
@@ -541,7 +606,7 @@ export async function saveProductAttributeValues(
     { saveProductAttributeValues: ProductAttributeValueItem[] }
   >(
     SAVE_ATTRIBUTE_VALUES_MUTATION,
-    { productId, locale, patches },
+    { idempotencyKey, productId, locale, patches },
     opts.token,
     opts.tenantSlug
   );

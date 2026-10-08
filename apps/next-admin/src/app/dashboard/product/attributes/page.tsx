@@ -2,9 +2,14 @@ import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { AttributesPage } from '@rustok/product-admin';
 import {
+  bindCategoryAttributeAction,
+  bindSchemaAttributeAction,
   createAttributeAction,
   createAttributeOptionAction,
-  createAttributeSchemaAction
+  createAttributeSchemaAction,
+  createCategoryAttributeGroupAction,
+  createSchemaAttributeGroupAction,
+  setCategorySchemaModeAction
 } from './actions';
 
 export const metadata = {
@@ -29,6 +34,11 @@ export default async function Page() {
         onCreateAttribute={createAttributeAction}
         onCreateOption={createAttributeOptionAction}
         onCreateSchema={createAttributeSchemaAction}
+        onSetSchemaMode={setCategorySchemaModeAction}
+        onCreateSchemaGroup={createSchemaAttributeGroupAction}
+        onCreateCategoryGroup={createCategoryAttributeGroupAction}
+        onBindSchemaAttribute={bindSchemaAttributeAction}
+        onBindCategoryAttribute={bindCategoryAttributeAction}
       />
     </PageContainer>
   );

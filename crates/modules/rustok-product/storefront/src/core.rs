@@ -1,9 +1,15 @@
 use rustok_api::locale_tags_match;
-use rustok_ui_core::normalize_optional_ui_text;
+use rustok_ui_core::{apply_ui_query_pairs, normalize_optional_ui_text};
 
+use crate::catalog_controls::{
+    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code,
+    has_attribute_filter_for_code, is_attribute_filter_selected, serialize_attribute_filters,
+    toggle_attribute_filter,
+};
 use crate::i18n::t;
 use crate::model::{
-    ProductDetail, ProductPricingContext, ProductPricingDetail, ProductTranslation, ProductVariant,
+    ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail, ProductPricingContext,
+    ProductPricingDetail, ProductTranslation, ProductVariant,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,6 +225,8 @@ pub struct SelectedProductEmptyViewModel {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SelectedProductViewModel {
+    /// Owner-resolved product gallery for the detail panel.
+    pub gallery: Vec<SelectedProductImageViewModel>,
     pub product_type: String,
     pub vendor: String,
     pub published_at: String,
@@ -240,6 +248,13 @@ pub struct SelectedProductViewModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectedProductImageViewModel {
+    pub url: String,
+    pub alt_text: String,
+    pub is_primary: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductCatalogRailLabels {
     pub title: String,
     pub total_template: String,
@@ -247,6 +262,12 @@ pub struct ProductCatalogRailLabels {
     pub open_label: String,
     pub catalog_fallback_label: String,
     pub vendor_fallback_label: String,
+    /// Catalog-card price prefix, e.g. `from {value}`.
+    pub price_from_template: String,
+    /// Shown when the product has no base price yet.
+    pub price_missing_label: String,
+    /// Alt-text fallback for catalog-card media.
+    pub image_alt_fallback: String,
 }
 
 pub fn build_product_catalog_rail_labels(locale: Option<&str>) -> ProductCatalogRailLabels {
@@ -261,6 +282,9 @@ pub fn build_product_catalog_rail_labels(locale: Option<&str>) -> ProductCatalog
         open_label: t(locale, "product.list.open", "Open"),
         catalog_fallback_label: t(locale, "product.selected.catalog", "catalog"),
         vendor_fallback_label: t(locale, "product.list.vendorFallback", "Independent label"),
+        price_from_template: t(locale, "product.list.priceFrom", "from {value}"),
+        price_missing_label: t(locale, "product.list.noPrice", "Price on request"),
+        image_alt_fallback: t(locale, "product.list.imageAlt", "Product image: "),
     }
 }
 
@@ -272,6 +296,14 @@ pub struct ProductCatalogRailItemViewModel {
     pub seller_boundary: String,
     pub published_at: String,
     pub href: String,
+    /// Catalog-card media URL resolved by the Product owner; `None` when the
+    /// product has no image yet.
+    pub image_url: Option<String>,
+    pub image_alt: String,
+    /// Catalog-card price snapshot label; `None` when the product has no base
+    /// price yet.
+    pub price_label: Option<String>,
+    pub on_sale: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -280,6 +312,8 @@ pub struct ProductCatalogRailViewModel {
     pub total_label: String,
     pub empty_message: String,
     pub open_label: String,
+    /// Shown in the price slot when the product has no base price yet.
+    pub price_missing_label: String,
     pub show_empty_state: bool,
     pub items: Vec<ProductCatalogRailItemViewModel>,
 }
@@ -360,8 +394,22 @@ pub fn build_selected_product_view_model(
         .clone()
         .unwrap_or_else(|| t(locale, "product.selected.unscheduled", "scheduled later"));
     let metadata_items = vec![product_type.clone(), vendor.clone(), published_at.clone()];
+    let gallery = product
+        .images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| SelectedProductImageViewModel {
+            url: image.url.clone(),
+            alt_text: image
+                .alt_text
+                .clone()
+                .unwrap_or_else(|| format!("{} {}", title.as_str(), index + 1)),
+            is_primary: index == 0,
+        })
+        .collect::<Vec<_>>();
 
     SelectedProductViewModel {
+        gallery,
         product_type,
         vendor,
         published_at,
@@ -582,6 +630,195 @@ pub fn count_label(template: &str, total: u64) -> String {
     template.replace("{count}", &total.to_string())
 }
 
+/// One facet bucket rendered as a toggle link; selection always round-trips through the URL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetValueViewModel {
+    pub value: String,
+    pub label: String,
+    pub count_label: String,
+    pub selected: bool,
+    /// Checkbox-like marker the adapter renders in front of the label.
+    pub marker: String,
+    pub href: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetViewModel {
+    pub code: String,
+    pub label: String,
+    pub is_enumerable: bool,
+    /// Shown when the facet domain is unbounded and the storefront keeps its free-form input.
+    pub unbounded_hint: Option<String>,
+    pub is_truncated: bool,
+    /// Shown when the owner cut the bucket list at its facet-value limit.
+    pub truncated_hint: Option<String>,
+    /// Link that drops this facet's selections; `None` while nothing of it is selected.
+    pub clear_href: Option<String>,
+    pub clear_label: String,
+    pub values: Vec<CatalogFacetValueViewModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogFacetFiltersViewModel {
+    pub title: String,
+    pub facets: Vec<CatalogFacetViewModel>,
+    pub show_empty_state: bool,
+    pub empty_message: String,
+    /// Link that drops every attribute-filter selection; `None` when nothing is selected.
+    pub clear_href: Option<String>,
+    pub clear_label: String,
+}
+
+/// Attribute codes the facet panel asks the owner to count, in catalog search-option order.
+///
+/// The owner counts only the facets a client asks for, so the storefront derives the request from
+/// the same search options it offers as filter inputs — blank and duplicate codes are dropped.
+pub fn build_catalog_facet_codes(options: &ProductCatalogSearchOptions) -> Vec<String> {
+    let mut codes: Vec<String> = Vec::new();
+    for option in &options.attribute_options {
+        let code = option.value.trim();
+        if code.is_empty() || codes.iter().any(|existing| existing == code) {
+            continue;
+        }
+        codes.push(code.to_string());
+    }
+    codes
+}
+
+/// Query of the current catalog page with one facet selection flipped.
+pub fn build_catalog_facet_toggle_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    code: &str,
+    value: &str,
+) -> String {
+    let filters = toggle_attribute_filter(controls.attribute_filters.as_slice(), code, value);
+    build_catalog_query_with_filters(module_route_base, controls, filters)
+}
+
+/// Query of the current catalog page without the selections of one facet.
+pub fn build_catalog_facet_clear_code_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    code: &str,
+) -> String {
+    let filters = clear_attribute_filter_code(controls.attribute_filters.as_slice(), code);
+    build_catalog_query_with_filters(module_route_base, controls, filters)
+}
+
+/// Query of the current catalog page without any attribute-filter selection.
+pub fn build_catalog_facet_clear_query(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+) -> String {
+    build_catalog_query_with_filters(module_route_base, controls, Vec::new())
+}
+
+fn build_catalog_query_with_filters(
+    module_route_base: &str,
+    controls: &CatalogListInput,
+    filters: Vec<String>,
+) -> String {
+    let serialized = serialize_attribute_filters(filters.as_slice());
+    apply_ui_query_pairs(
+        module_route_base,
+        &[
+            ("search", controls.search.clone()),
+            ("category_id", controls.category_id.clone()),
+            ("sort_by", controls.sort_by.clone()),
+            ("sort_direction", controls.sort_direction.clone()),
+            (
+                "attribute_filters",
+                (!serialized.is_empty()).then_some(serialized),
+            ),
+            ("currency", controls.currency_code.clone()),
+        ],
+    )
+}
+
+pub fn build_catalog_facet_filters_view_model(
+    module_route_base: &str,
+    facets: &[ProductCatalogFacet],
+    controls: &CatalogListInput,
+    labels: CatalogFacetLabels,
+) -> CatalogFacetFiltersViewModel {
+    let facets: Vec<CatalogFacetViewModel> = facets
+        .iter()
+        .map(|facet| CatalogFacetViewModel {
+            code: facet.code.clone(),
+            label: facet.label.clone(),
+            is_enumerable: facet.is_enumerable,
+            unbounded_hint: (!facet.is_enumerable).then(|| labels.unbounded_hint.clone()),
+            is_truncated: facet.is_truncated,
+            truncated_hint: facet.is_truncated.then(|| labels.truncated_hint.clone()),
+            clear_href: has_attribute_filter_for_code(
+                controls.attribute_filters.as_slice(),
+                facet.code.as_str(),
+            )
+            .then(|| {
+                build_catalog_facet_clear_code_query(
+                    module_route_base,
+                    controls,
+                    facet.code.as_str(),
+                )
+            }),
+            clear_label: labels.clear_label.clone(),
+            values: facet
+                .values
+                .iter()
+                .map(|value| {
+                    let selected = is_attribute_filter_selected(
+                        controls.attribute_filters.as_slice(),
+                        facet.code.as_str(),
+                        value.value.as_str(),
+                    );
+                    CatalogFacetValueViewModel {
+                        value: value.value.clone(),
+                        label: value.label.clone(),
+                        count_label: count_label(labels.count_template.as_str(), value.count),
+                        selected,
+                        marker: if selected {
+                            labels.selected_marker.clone()
+                        } else {
+                            labels.unselected_marker.clone()
+                        },
+                        href: build_catalog_facet_toggle_query(
+                            module_route_base,
+                            controls,
+                            facet.code.as_str(),
+                            value.value.as_str(),
+                        ),
+                    }
+                })
+                .collect(),
+        })
+        .collect();
+
+    CatalogFacetFiltersViewModel {
+        title: labels.title,
+        show_empty_state: facets.is_empty(),
+        empty_message: labels.empty_message,
+        clear_href: (!controls.attribute_filters.is_empty())
+            .then(|| build_catalog_facet_clear_query(module_route_base, controls)),
+        clear_label: labels.clear_label,
+        facets,
+    }
+}
+
+/// Formats the catalog-card "from" price snapshot provided by the Product owner.
+pub fn format_product_list_price_from(
+    template: &str,
+    price: &crate::model::ProductListPrice,
+) -> String {
+    let value = match price.compare_at_amount.as_deref() {
+        Some(compare_at) if price.on_sale => {
+            format!("{} {} ({compare_at})", price.currency_code, price.amount)
+        }
+        _ => format!("{} {}", price.currency_code, price.amount),
+    };
+    template.replace("{value}", value.as_str())
+}
+
 pub fn build_catalog_rail_view_model(
     module_route_base: &str,
     items: &[crate::model::ProductListItem],
@@ -607,6 +844,29 @@ pub fn build_catalog_rail_view_model(
                 .clone()
                 .unwrap_or_else(|| product.created_at.clone()),
             href: format!("{module_route_base}?handle={}", product.handle),
+            image_url: product
+                .primary_image
+                .as_ref()
+                .map(|image| image.url.clone()),
+            image_alt: product
+                .primary_image
+                .as_ref()
+                .and_then(|image| image.alt_text.clone())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}{}",
+                        labels.image_alt_fallback.as_str(),
+                        product.title.as_str()
+                    )
+                }),
+            price_label: product
+                .price_from
+                .as_ref()
+                .map(|price| format_product_list_price_from(labels.price_from_template.as_str(), price)),
+            on_sale: product
+                .price_from
+                .as_ref()
+                .is_some_and(|price| price.on_sale),
         })
         .collect();
 
@@ -615,6 +875,7 @@ pub fn build_catalog_rail_view_model(
         total_label: count_label(labels.total_template.as_str(), total),
         empty_message: labels.empty_message,
         open_label: labels.open_label,
+        price_missing_label: labels.price_missing_label,
         show_empty_state: items.is_empty(),
         items,
     }
@@ -689,6 +950,139 @@ pub fn build_pricing_href(
 mod tests {
     use super::*;
     use crate::model::{ProductDetail, ProductPrice, ProductPricingContext, ProductTranslation};
+
+    fn catalog_controls_with_attribute_filters(filters: &[&str]) -> CatalogListInput {
+        CatalogListInput {
+            search: Some("bag".to_string()),
+            category_id: Some("category-1".to_string()),
+            sort_by: Some("created_at".to_string()),
+            sort_direction: Some("asc".to_string()),
+            attribute_filters: filters.iter().map(|value| (*value).to_string()).collect(),
+            currency_code: Some("USD".to_string()),
+        }
+    }
+
+    #[test]
+    fn facet_codes_follow_search_options_without_blanks_and_duplicates() {
+        let options = ProductCatalogSearchOptions {
+            category_options: Vec::new(),
+            attribute_options: vec![
+                crate::model::ProductCatalogSearchOption {
+                    value: "color".to_string(),
+                    label: "Color".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: " color ".to_string(),
+                    label: "Color again".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: "   ".to_string(),
+                    label: "Blank".to_string(),
+                },
+                crate::model::ProductCatalogSearchOption {
+                    value: "size".to_string(),
+                    label: "Size".to_string(),
+                },
+            ],
+        };
+
+        assert_eq!(build_catalog_facet_codes(&options), vec!["color", "size"]);
+    }
+
+    #[test]
+    fn facet_toggle_query_flips_one_selection_and_keeps_the_rest() {
+        let controls = catalog_controls_with_attribute_filters(&["color=red", "size=m"]);
+        let href = build_catalog_facet_toggle_query("/products", &controls, "color", "red");
+        assert_eq!(
+            href,
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&attribute_filters=size%3Dm&currency=USD"
+        );
+
+        let href = build_catalog_facet_toggle_query("/products", &controls, "color", "blue");
+        assert_eq!(
+            href,
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&attribute_filters=color%3Dred%3Bsize%3Dm%3Bcolor%3Dblue&currency=USD"
+        );
+    }
+
+    #[test]
+    fn facet_clear_queries_drop_selections_without_touching_other_controls() {
+        let controls = catalog_controls_with_attribute_filters(&["color=red", "size=m"]);
+        assert_eq!(
+            build_catalog_facet_clear_query("/products", &controls),
+            "/products?search=bag&category_id=category-1&sort_by=created_at&sort_direction=asc&currency=USD"
+        );
+        let href = build_catalog_facet_clear_code_query("/products", &controls, "size");
+        assert!(href.contains("attribute_filters=color%3Dred"));
+        assert!(!href.contains("size"));
+    }
+
+    #[test]
+    fn facet_view_model_marks_selection_counts_and_unbounded_domains() {
+        let facets = vec![
+            ProductCatalogFacet {
+                code: "color".to_string(),
+                label: "Color".to_string(),
+                value_type: "select".to_string(),
+                is_localized: true,
+                is_enumerable: true,
+                is_truncated: true,
+                total_products: 12,
+                values: vec![crate::model::ProductCatalogFacetValue {
+                    value: "red".to_string(),
+                    label: "Red".to_string(),
+                    count: 7,
+                }],
+            },
+            ProductCatalogFacet {
+                code: "weight".to_string(),
+                label: "Weight".to_string(),
+                value_type: "decimal".to_string(),
+                is_localized: false,
+                is_enumerable: false,
+                is_truncated: false,
+                total_products: 3,
+                values: Vec::new(),
+            },
+        ];
+        let controls = catalog_controls_with_attribute_filters(&["color=red"]);
+        let view_model = build_catalog_facet_filters_view_model(
+            "/products",
+            facets.as_slice(),
+            &controls,
+            crate::catalog_controls::build_catalog_facet_labels(Some("en")),
+        );
+
+        assert!(!view_model.show_empty_state);
+        assert_eq!(view_model.facets.len(), 2);
+        let color = view_model.facets.first().expect("color facet");
+        assert_eq!(color.label, "Color");
+        assert!(color.is_truncated);
+        assert!(color.truncated_hint.is_some());
+        let red = color.values.first().expect("red bucket");
+        assert!(red.selected);
+        assert_eq!(red.count_label, "(7)");
+        assert!(red.href.contains("attribute_filters="));
+        let weight = view_model.facets.get(1).expect("weight facet");
+        assert!(!weight.is_enumerable);
+        assert!(weight.unbounded_hint.is_some());
+        assert!(weight.values.is_empty());
+        assert!(view_model.clear_href.is_some());
+    }
+
+    #[test]
+    fn facet_view_model_stays_empty_and_clears_nothing_without_selection() {
+        let controls = CatalogListInput::default();
+        let view_model = build_catalog_facet_filters_view_model(
+            "/products",
+            &[],
+            &controls,
+            crate::catalog_controls::build_catalog_facet_labels(None),
+        );
+        assert!(view_model.show_empty_state);
+        assert!(view_model.clear_href.is_none());
+        assert!(view_model.facets.is_empty());
+    }
 
     fn without_bidi_isolates(value: &str) -> String {
         value.replace(['\u{2068}', '\u{2069}'], "")
@@ -815,6 +1209,9 @@ mod tests {
         assert_eq!(labels.open_label, "Open");
         assert_eq!(labels.catalog_fallback_label, "catalog");
         assert_eq!(labels.vendor_fallback_label, "Independent label");
+        assert_eq!(labels.price_from_template, "from {value}");
+        assert_eq!(labels.price_missing_label, "Price on request");
+        assert_eq!(labels.image_alt_fallback, "Product image: ");
     }
 
     #[test]
@@ -828,6 +1225,18 @@ mod tests {
             tags: vec!["featured".to_string()],
             title: "Trail boot".to_string(),
             handle: "trail-boot".to_string(),
+            primary_image: Some(crate::model::ProductImage {
+                media_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                url: "/api/v1/media/00000000-0000-0000-0000-000000000001".to_string(),
+                alt_text: Some("Trail boot side view".to_string()),
+                position: 0,
+            }),
+            price_from: Some(crate::model::ProductListPrice {
+                currency_code: "USD".to_string(),
+                amount: "129.00".to_string(),
+                compare_at_amount: Some("159.00".to_string()),
+                on_sale: true,
+            }),
             published_at: None,
             created_at: "2026-05-29T00:00:00Z".to_string(),
         };
@@ -844,6 +1253,9 @@ mod tests {
                 open_label: "Open".to_string(),
                 catalog_fallback_label: "catalog".to_string(),
                 vendor_fallback_label: "Independent label".to_string(),
+                price_from_template: "from {value}".to_string(),
+                price_missing_label: "Price on request".to_string(),
+                image_alt_fallback: "Product image: ".to_string(),
             },
         );
 
@@ -859,6 +1271,55 @@ mod tests {
         assert_eq!(item.seller_boundary, "seller id: seller-1");
         assert_eq!(item.published_at, "2026-05-29T00:00:00Z");
         assert_eq!(item.href, "/products?handle=trail-boot");
+        assert_eq!(
+            item.image_url.as_deref(),
+            Some("/api/v1/media/00000000-0000-0000-0000-000000000001")
+        );
+        assert_eq!(item.image_alt, "Trail boot side view");
+        assert_eq!(item.price_label.as_deref(), Some("from USD 129.00 (159.00)"));
+        assert!(item.on_sale);
+    }
+
+    #[test]
+    fn catalog_rail_item_without_media_or_price_hides_both_slots() {
+        let item = crate::model::ProductListItem {
+            id: "product-2".to_string(),
+            status: "published".to_string(),
+            seller_id: None,
+            vendor: None,
+            product_type: None,
+            tags: Vec::new(),
+            title: "Untitled draft".to_string(),
+            handle: "untitled-draft".to_string(),
+            primary_image: None,
+            price_from: None,
+            published_at: None,
+            created_at: "2026-05-29T00:00:00Z".to_string(),
+        };
+
+        let view_model = build_catalog_rail_view_model(
+            "/products",
+            &[item],
+            1,
+            Some("en"),
+            ProductCatalogRailLabels {
+                title: "Published products".to_string(),
+                total_template: "{count} total".to_string(),
+                empty_message: "No products".to_string(),
+                open_label: "Open".to_string(),
+                catalog_fallback_label: "catalog".to_string(),
+                vendor_fallback_label: "Independent label".to_string(),
+                price_from_template: "from {value}".to_string(),
+                price_missing_label: "Price on request".to_string(),
+                image_alt_fallback: "Product image: ".to_string(),
+            },
+        );
+
+        let item = &view_model.items[0];
+        assert!(item.image_url.is_none());
+        assert_eq!(item.image_alt, "Product image: Untitled draft");
+        assert!(item.price_label.is_none());
+        assert!(!item.on_sale);
     }
 
     #[test]
@@ -875,6 +1336,9 @@ mod tests {
                 open_label: "Open".to_string(),
                 catalog_fallback_label: "catalog".to_string(),
                 vendor_fallback_label: "Independent label".to_string(),
+                price_from_template: "from {value}".to_string(),
+                price_missing_label: "Price on request".to_string(),
+                image_alt_fallback: "Product image: ".to_string(),
             },
         );
 
@@ -893,6 +1357,20 @@ mod tests {
             product_type: Some("Boots".to_string()),
             tags: vec!["featured".to_string()],
             published_at: Some("2026-05-29T00:00:00Z".to_string()),
+            images: vec![
+                ProductImage {
+                    media_id: "8b5d3d0e-6f4f-4d63-9d80-1f2c3a4b5c6d".to_string(),
+                    url: "/api/v1/media/8b5d3d0e-6f4f-4d63-9d80-1f2c3a4b5c6d".to_string(),
+                    alt_text: Some("Trail boot side view".to_string()),
+                    position: 0,
+                },
+                ProductImage {
+                    media_id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d".to_string(),
+                    url: "/api/v1/media/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d".to_string(),
+                    alt_text: None,
+                    position: 1,
+                },
+            ],
             translations: vec![ProductTranslation {
                 locale: "en".to_string(),
                 title: "Trail boot".to_string(),
@@ -933,6 +1411,18 @@ mod tests {
 
         assert_eq!(view_model.product_type, "Boots");
         assert_eq!(view_model.vendor, "Acme");
+        assert_eq!(view_model.gallery.len(), 2);
+        assert_eq!(
+            view_model.gallery[0].url,
+            "/api/v1/media/8b5d3d0e-6f4f-4d63-9d80-1f2c3a4b5c6d"
+        );
+        assert_eq!(
+            view_model.gallery[0].alt_text,
+            "Trail boot side view".to_string()
+        );
+        assert!(view_model.gallery[0].is_primary);
+        assert!(!view_model.gallery[1].is_primary);
+        assert_eq!(view_model.gallery[1].alt_text, "Trail boot 2".to_string());
         assert_eq!(view_model.published_at, "2026-05-29T00:00:00Z");
         assert_eq!(
             view_model.metadata_items,

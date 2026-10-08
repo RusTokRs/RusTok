@@ -5,7 +5,7 @@ use crate::model::ProductList;
 #[cfg(feature = "ssr")]
 use crate::model::ProductListItem;
 
-pub(super) async fn fetch_products(
+pub(crate) async fn fetch_products(
     tenant_id: String,
     locale: Option<String>,
     controls: ProductAdminListInput,

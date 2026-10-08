@@ -62,6 +62,20 @@ export type StorefrontProductTranslation = {
   description?: string | null;
 };
 
+export type StorefrontProductListImage = {
+  mediaId: string;
+  url: string;
+  altText?: string | null;
+  position: number;
+};
+
+export type StorefrontProductListPrice = {
+  currencyCode: string;
+  amount: string;
+  compareAtAmount?: string | null;
+  onSale: boolean;
+};
+
 export type StorefrontProductListItem = {
   id: string;
   status: string;
@@ -71,6 +85,8 @@ export type StorefrontProductListItem = {
   vendor?: string | null;
   productType?: string | null;
   tags: string[];
+  primaryImage?: StorefrontProductListImage | null;
+  priceFrom?: StorefrontProductListPrice | null;
   createdAt: string;
   publishedAt?: string | null;
 };
@@ -83,6 +99,13 @@ export type StorefrontProductListResponse = {
   items: StorefrontProductListItem[];
 };
 
+export type StorefrontProductImage = {
+  mediaId: string;
+  url: string;
+  altText?: string | null;
+  position: number;
+};
+
 export type StorefrontProductDetail = {
   id: string;
   status: string;
@@ -92,6 +115,7 @@ export type StorefrontProductDetail = {
   productType?: string | null;
   tags: string[];
   publishedAt?: string | null;
+  images: StorefrontProductImage[];
   translations: StorefrontProductTranslation[];
   variants: StorefrontProductVariant[];
 };
@@ -102,6 +126,7 @@ export type StorefrontCatalogFilter = {
   sortBy?: string;
   sortDirection?: string;
   attributeFilters?: string[];
+  currencyCode?: string;
   page?: number;
   perPage?: number;
 };

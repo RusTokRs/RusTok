@@ -7,8 +7,17 @@ use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, build_product_admin_list_input,
     serialize_attribute_filters,
 };
-use crate::transport;
+use crate::catalog_transport;
 
+/// Non-mounted composition of the catalog-controls query shell and the
+/// reference screen from `super::leptos`.
+///
+/// The host mounts `ui::root::ProductAdmin`. This thin wrapper (query parsing,
+/// catalog-controls context, search options) is retained as the reference
+/// implementation of the catalog-controls contract pinned by
+/// `verify-product-catalog-controls-plan-sync` and
+/// `verify-product-catalog-attribute-filters`; the same contract is exercised by
+/// the mounted pages through `crate::catalog_controls` and `ui::product_grid`.
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -38,7 +47,7 @@ pub fn ProductAdmin() -> impl IntoView {
         let token = token.get();
         let tenant = tenant.get();
         let locale = options_locale.clone();
-        async move { transport::fetch_catalog_search_options(token, tenant, locale).await }
+        async move { catalog_transport::fetch_catalog_search_options(token, tenant, locale).await }
     });
 
     view! {

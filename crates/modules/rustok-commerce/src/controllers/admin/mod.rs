@@ -175,6 +175,10 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
             "/products/{id}/unpublish",
             axum::routing::post(products::unpublish_product),
         )
+        .route(
+            "/products/{id}/archive",
+            axum::routing::post(products::archive_product),
+        )
         .route("/orders", axum::routing::get(orders::list_orders))
         .route("/orders/{id}", axum::routing::get(orders::show_order))
         .route(

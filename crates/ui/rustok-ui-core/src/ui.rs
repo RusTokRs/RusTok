@@ -200,9 +200,100 @@ pub fn safe_join_url(base: &str, path: &str) -> String {
     format!("{}/{}", base.trim_end_matches('/'), clean_path)
 }
 
+/// Applies `key=value` pairs on top of a UI route path that may already carry a query string.
+///
+/// `Some(value)` replaces every existing occurrence of the key, `None` removes it, and an empty
+/// value clears it as well — a cleared last key drops the query string entirely, so the returned
+/// path stays canonical for links, form actions and redirect targets. Keys and values are
+/// percent-encoded with the same rules a browser form uses, so a value may safely contain `=`,
+/// `;`, `&` or spaces. A path that cannot be split is returned unchanged.
+///
+/// ```ignore
+/// let href = apply_ui_query_pairs("/products", &[("attribute_filters", Some("color=red;size=m".into()))]);
+/// assert_eq!(href, "/products?attribute_filters=color%3Dred%3Bsize%3Dm");
+/// ```
+pub fn apply_ui_query_pairs(base: &str, pairs: &[(&str, Option<String>)]) -> String {
+    let (path, query) = base
+        .split_once('?')
+        .map_or((base, ""), |(path, query)| (path, query));
+    let mut merged: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    for (key, value) in pairs {
+        let next_value = value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let existing_index = merged
+            .iter()
+            .position(|(existing_key, _)| existing_key.as_str() == *key);
+        match (existing_index, next_value) {
+            // Keeps the position of an existing key so repeated toggles produce stable links.
+            (Some(index), Some(value)) => merged[index].1 = value.to_string(),
+            (Some(index), None) => {
+                merged.remove(index);
+            }
+            (None, Some(value)) => merged.push(((*key).to_string(), value.to_string())),
+            (None, None) => {}
+        }
+    }
+    if merged.is_empty() {
+        return path.to_string();
+    }
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (key, value) in &merged {
+        serializer.append_pair(key, value);
+    }
+    format!("{path}?{}", serializer.finish())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ui_query_pairs_replace_remove_and_encode_route_values() {
+        let href = apply_ui_query_pairs(
+            "/products?search=bag&attribute_filters=color%3Dred",
+            &[("attribute_filters", Some("color=red;size=m".to_string()))],
+        );
+        assert_eq!(
+            href,
+            "/products?search=bag&attribute_filters=color%3Dred%3Bsize%3Dm"
+        );
+    }
+
+    #[test]
+    fn ui_query_pairs_drop_empty_keys_and_empty_query_strings() {
+        assert_eq!(
+            apply_ui_query_pairs("/products?search=bag", &[("search", None)]),
+            "/products"
+        );
+        assert_eq!(
+            apply_ui_query_pairs(
+                "/products?search=bag",
+                &[("search", Some("   ".to_string()))]
+            ),
+            "/products"
+        );
+    }
+
+    #[test]
+    fn ui_query_pairs_keep_untouched_keys_and_repeat_free_values() {
+        let href = apply_ui_query_pairs(
+            "/products?search=bag&sort=desc",
+            &[
+                ("search", Some("bag".to_string())),
+                ("page", Some("2".to_string())),
+            ],
+        );
+        assert_eq!(href, "/products?search=bag&sort=desc&page=2");
+    }
+
+    #[test]
+    fn ui_query_pairs_return_the_bare_path_for_an_empty_route() {
+        assert_eq!(apply_ui_query_pairs("/products", &[]), "/products");
+    }
 
     #[test]
     fn safe_join_url_handles_trailing_and_leading_slashes() {

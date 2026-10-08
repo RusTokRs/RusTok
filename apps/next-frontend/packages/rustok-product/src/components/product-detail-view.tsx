@@ -69,6 +69,15 @@ export function ProductDetailView({
   const [quantity, setQuantity] = useState<number>(1);
   const [isAdding, setIsAdding] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+
+  // Owner-resolved product gallery (locale-resolved by the Product module).
+  const gallery = useMemo(
+    () => [...(product.images ?? [])].sort((a, b) => a.position - b.position),
+    [product.images]
+  );
+  const primaryImage = gallery[0] ?? null;
+  const activeImage = gallery[activeImageIndex] ?? primaryImage;
 
   const selectedVariant = useMemo(() => {
     return variants.find((v) => v.id === selectedVariantId) || variants[0];
@@ -81,6 +90,9 @@ export function ProductDetailView({
       product.translations[0]
     );
   }, [product.translations, locale]);
+
+  const displayTitle =
+    translation?.title || product.handle || (isRu ? "Товар" : "Product");
 
   // Price calculations
   const priceInfo = useMemo(() => {
@@ -144,7 +156,17 @@ export function ProductDetailView({
         {/* Left Column: Media Gallery / Image Showcase (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="relative aspect-square w-full flex items-center justify-center rounded-3xl border border-border bg-card p-8 shadow-xs overflow-hidden">
-            {isBundle ? (
+            {primaryImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={activeImage?.url || primaryImage.url}
+                alt={
+                  (activeImage?.altText || primaryImage.altText) ||
+                  (isRu ? `Изображение: ${displayTitle}` : `Product image: ${displayTitle}`)
+                }
+                className='h-full w-full object-cover'
+              />
+            ) : isBundle ? (
               <Boxes className="h-32 w-32 text-primary/70" />
             ) : (
               <Package className="h-32 w-32 text-muted-foreground/60" />
@@ -169,6 +191,37 @@ export function ProductDetailView({
               )}
             </div>
           </div>
+
+          {gallery.length > 1 && (
+            <div className="grid grid-cols-4 gap-2">
+              {gallery.slice(0, 8).map((image, index) => (
+                <button
+                  key={image.mediaId}
+                  type='button'
+                  onClick={() => setActiveImageIndex(index)}
+                  aria-label={
+                    image.altText ||
+                    (isRu
+                      ? `Показать изображение ${index + 1}`
+                      : `Show image ${index + 1}`)
+                  }
+                  className={`overflow-hidden rounded-xl border transition ${
+                    index === activeImageIndex
+                      ? 'border-primary ring-2 ring-primary/30'
+                      : 'border-border hover:border-primary/40'
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.url}
+                    alt={image.altText || displayTitle}
+                    loading='lazy'
+                    className='aspect-square h-full w-full object-cover'
+                  />
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Features highlight */}
           <div className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 text-xs">

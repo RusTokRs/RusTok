@@ -83,3 +83,7 @@ cargo check -p rustok-product-admin
 cargo check -p rustok-product-admin --features hydrate
 cargo check -p rustok-product-admin --features ssr
 ```
+
+## Landing note (2026-10-07)
+
+The canonical boundary described above now exists: `admin/src/catalog_transport.rs` owns the public read wrappers and the primary lifecycle writes, `transport.rs` remains the private compatibility gateway (native-first list and category reads included), and the mounted Product admin pages compose every read and write through the canonical facade. The primary mutation boundary is closed the same way as the reads (`GraphqlMutationContext`, payload presence and character length only), while the fallback authoring writes stay on the explicitly open `GraphqlFallbackMutationContext` boundary until their sanitized slice lands. `scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs` and `scripts/verify/verify-product-admin-catalog-options-error-safety.mjs` now pass alongside this guard.

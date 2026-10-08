@@ -12,6 +12,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 mod attributes;
+pub(crate) mod attribute_validation;
 mod categories;
 mod effective_forms;
 mod schemas;
@@ -75,6 +76,8 @@ impl CreateProductAttributeInput {
     fn validate(&self) -> CommerceResult<()> {
         validate_code("attribute code", &self.code)?;
         validate_bounded_json_object("validation", &self.validation)?;
+        attribute_validation::validate_declared_rule_keys(&self.validation)?;
+        attribute_validation::parse_product_attribute_validation(&self.validation)?;
         if let Some(default_value) = &self.default_value {
             validate_bounded_json("default_value", default_value)?;
         }
@@ -386,6 +389,8 @@ impl BindSchemaAttributeInput {
         parse_visibility_overrides(self.visibility_overrides.clone())?;
         validate_bounded_json_object("visibility_overrides", &self.visibility_overrides)?;
         validate_override_object("validation_overrides", &self.validation_overrides)?;
+        attribute_validation::validate_declared_rule_keys(&self.validation_overrides)?;
+        attribute_validation::parse_product_attribute_validation(&self.validation_overrides)?;
         validate_bounded_json_object("metadata", &self.metadata)?;
         Ok(())
     }
@@ -457,6 +462,8 @@ impl BindCategoryAttributeInput {
         parse_visibility_overrides(self.visibility_overrides.clone())?;
         validate_bounded_json_object("visibility_overrides", &self.visibility_overrides)?;
         validate_override_object("validation_overrides", &self.validation_overrides)?;
+        attribute_validation::validate_declared_rule_keys(&self.validation_overrides)?;
+        attribute_validation::parse_product_attribute_validation(&self.validation_overrides)?;
         validate_bounded_json_object("metadata", &self.metadata)?;
         Ok(())
     }
@@ -484,6 +491,7 @@ struct ProductAttributeWriteDefinitionRow {
     value_type: String,
     scope: String,
     is_localized: bool,
+    validation: Value,
 }
 
 #[derive(FromQueryResult)]
@@ -1011,7 +1019,7 @@ where
     ProductAttributeWriteDefinitionRow::find_by_statement(Statement::from_sql_and_values(
         conn.get_database_backend(),
         r#"
-        SELECT id, value_type, scope, is_localized
+        SELECT id, value_type, scope, is_localized, validation
         FROM product_attributes
         WHERE tenant_id = $1 AND id = $2 AND archived_at IS NULL
         "#,
@@ -1126,6 +1134,7 @@ fn validate_product_value_patch(
     definition: &ProductAttributeWriteDefinitionRow,
     patch: &ProductAttributeValuePatch,
     options: &HashMap<Uuid, Uuid>,
+    validation: &Value,
 ) -> CommerceResult<()> {
     if !matches!(definition.scope.as_str(), "product" | "both") {
         return Err(CommerceError::Validation(format!(
@@ -1200,6 +1209,13 @@ fn validate_product_value_patch(
             )));
         }
     }
+
+    attribute_validation::validate_attribute_value_rules(
+        patch.attribute_id,
+        &attribute_validation::parse_product_attribute_validation(validation)?,
+        value_type,
+        &patch.value,
+    )?;
     Ok(())
 }
 

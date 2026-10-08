@@ -184,6 +184,8 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::ProductCreated { .. }
             | DomainEvent::ProductUpdated { .. }
             | DomainEvent::ProductPublished { .. }
+            | DomainEvent::ProductUnpublished { .. }
+            | DomainEvent::ProductArchived { .. }
             | DomainEvent::ProductDeleted { .. }
             | DomainEvent::VariantCreated { .. }
             | DomainEvent::VariantUpdated { .. }
@@ -311,7 +313,9 @@ impl EventHandler for SearchIngestionHandler {
                 }
                 DomainEvent::ProductCreated { product_id }
                 | DomainEvent::ProductUpdated { product_id }
-                | DomainEvent::ProductPublished { product_id } => {
+                | DomainEvent::ProductPublished { product_id }
+                | DomainEvent::ProductUnpublished { product_id }
+                | DomainEvent::ProductArchived { product_id } => {
                     self.projector
                         .upsert_product(envelope.tenant_id, *product_id)
                         .await
@@ -540,6 +544,8 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
         DomainEvent::ProductCreated { .. }
         | DomainEvent::ProductUpdated { .. }
         | DomainEvent::ProductPublished { .. }
+        | DomainEvent::ProductUnpublished { .. }
+        | DomainEvent::ProductArchived { .. }
         | DomainEvent::VariantCreated { .. }
         | DomainEvent::VariantUpdated { .. }
         | DomainEvent::VariantDeleted { .. }

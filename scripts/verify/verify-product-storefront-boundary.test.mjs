@@ -39,6 +39,8 @@ function coreSource({ includeLeptos = false, omitCatalogLabels = false } = {}) {
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
 ${omitCatalogLabels ? "" : "pub fn build_product_catalog_rail_labels() {}"}
 pub fn build_catalog_rail_view_model() {}
+pub fn build_catalog_facet_codes() {}
+pub fn build_catalog_facet_filters_view_model() {}
 pub fn build_shell_view_model() {}
 pub fn build_transport_error_dom_evidence() {}
 pub fn build_selected_product_empty_view_model() {}
@@ -68,6 +70,7 @@ pub fn ProductView() {
     ${omitSearchControl ? "" : 'let controls = build_catalog_list_input(read_route_query_value(&route_context, "search"));'}
     ${omitSearchControl ? "" : 'let _search = view! { <input name="search" /> };'}
     ${omitSearchControl ? "" : "let _transport = transport::fetch_products(request, controls);"}
+    let _facets = view! { <CatalogFacetFilters /> };
     let _labels = build_product_catalog_rail_labels;
     let _rail = build_catalog_rail_view_model;
     let _route_segment = resolve_route_segment;
@@ -82,12 +85,16 @@ pub fn ProductView() {
 
 function transportSource() {
   return `
+mod catalog_facets_native;
 mod catalog_list_native;
 mod graphql_adapter;
 mod native_server_adapter;
 use crate::catalog_controls::CatalogListInput;
 pub async fn fetch_products(request: FetchRequest, controls: CatalogListInput) {
     catalog_list_native::fetch_products(request, controls);
+}
+pub async fn fetch_catalog_facets(locale: String, controls: CatalogListInput, facet_codes: Vec<String>) {
+    catalog_facets_native::fetch_catalog_facets(locale, controls, facet_codes);
 }
 `;
 }
@@ -157,7 +164,9 @@ function withFixture(options = {}) {
     root,
     "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs",
     options.omitGraphqlSearch
-      ? realGqlAdapter.replace("search: controls.search,", "search: None,")
+      ? realGqlAdapter
+          .replaceAll("search: controls.search,", "search: None,")
+          .replaceAll("search: controls.search.clone(),", "search: None,")
       : realGqlAdapter,
   );
   writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs"), "utf8"));

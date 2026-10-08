@@ -33,9 +33,9 @@ pub use route_selection::{
 pub use selection::{UiFilterOperator, UiFilterRule, UiSelectionState};
 pub use ui::{
     UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, UiRouteQueryWrite,
-    normalize_optional_ui_text, normalize_required_ui_text, normalize_ui_text, parse_ui_csv,
-    route_query_update_for_text, safe_join_url, ui_busy_key, ui_busy_key_last_segment_matches,
-    ui_busy_key_matches_action, ui_busy_key_with_id, ui_optional_busy_key_with_id,
-    ui_scoped_busy_key,
+    apply_ui_query_pairs, normalize_optional_ui_text, normalize_required_ui_text,
+    normalize_ui_text, parse_ui_csv, route_query_update_for_text, safe_join_url, ui_busy_key,
+    ui_busy_key_last_segment_matches, ui_busy_key_matches_action, ui_busy_key_with_id,
+    ui_optional_busy_key_with_id, ui_scoped_busy_key,
 };
 

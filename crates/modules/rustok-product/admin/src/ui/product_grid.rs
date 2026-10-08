@@ -5,11 +5,14 @@ use rustok_ui_core::UiRouteContext;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 
+use crate::catalog_controls::{
+    build_product_admin_catalog_controls_labels, serialize_attribute_filters,
+};
+use crate::catalog_transport;
 use crate::core::{
     filter_products, item_product_kind, product_grid_columns, ProductKind,
 };
 use crate::model::ProductListItem;
-use crate::transport;
 
 #[component]
 pub fn ProductGridPage() -> impl IntoView {
@@ -34,24 +37,51 @@ pub fn ProductGridPage() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 20, 0));
 
+    // Catalog controls travel through the URL, so the owner list contract
+    // (category, typed attribute filters, deterministic date order) survives
+    // navigation, refresh, and deep links.
+    let catalog_controls = catalog_transport::product_admin_list_input_from_route();
+    provide_context(catalog_controls.clone());
+    let catalog_labels = build_product_admin_catalog_controls_labels(locale.as_deref());
+    let current_category = catalog_controls.category_id.clone().unwrap_or_default();
+    let current_attribute_filters =
+        serialize_attribute_filters(catalog_controls.attribute_filters.as_slice());
+    let current_sort_by = catalog_controls
+        .sort_by
+        .clone()
+        .unwrap_or_else(|| "published_at".to_string());
+    let current_sort_direction = catalog_controls
+        .sort_direction
+        .clone()
+        .unwrap_or_else(|| "desc".to_string());
+
+    let options_locale = locale.clone();
+    let catalog_options_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = options_locale.clone().unwrap_or_default();
+        async move { catalog_transport::fetch_catalog_search_options(tok, ten, loc).await }
+    });
+
     // Load products resource
     let res_locale = locale.clone();
+    let res_controls = catalog_controls.clone();
     let products_resource = LocalResource::new(move || {
         let tok = token.get();
         let ten = tenant.get();
         let loc = res_locale.clone();
+        let controls = res_controls.clone();
         let _ = refresh_nonce.get();
         async move {
-            let bootstrap = transport::fetch_bootstrap(tok.clone(), ten.clone())
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = transport::fetch_products(
+            let res = catalog_transport::fetch_products(
                 tok,
                 ten,
                 bootstrap.current_tenant.id,
                 loc,
-                None,
-                None,
+                controls,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -98,14 +128,17 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some("Failed to load bootstrap for status mutation".to_string()));
                     return;
                 };
 
+                let mut failed = 0usize;
+                let mut first_error = None;
+                let total = selected_ids.len();
                 for id in selected_ids {
-                    let _ = transport::change_product_status(
+                    if let Err(err) = catalog_transport::change_product_status(
                         tok.clone(),
                         ten.clone(),
                         bootstrap.current_tenant.id.clone(),
@@ -113,12 +146,25 @@ pub fn ProductGridPage() -> impl IntoView {
                         id,
                         target_status,
                     )
-                    .await;
+                    .await
+                    {
+                        failed += 1;
+                        if first_error.is_none() {
+                            first_error = Some(err.to_string());
+                        }
+                    }
                 }
 
                 set_is_busy.set(false);
                 selection.update(|s| s.clear());
                 set_refresh_nonce.update(|n| *n += 1);
+                if let Some(err) = first_error {
+                    set_error_msg.set(Some(if is_ru {
+                        format!("Статус не изменён у {failed} из {total} товаров: {err}")
+                    } else {
+                        format!("The status was not changed for {failed} of {total} products: {err}")
+                    }));
+                }
             });
         }
     };
@@ -138,26 +184,42 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some("Failed to load bootstrap for deletion".to_string()));
                     return;
                 };
 
+                let mut failed = 0usize;
+                let mut first_error = None;
+                let total = selected_ids.len();
                 for id in selected_ids {
-                    let _ = transport::delete_product(
+                    if let Err(err) = catalog_transport::delete_product(
                         tok.clone(),
                         ten.clone(),
                         bootstrap.current_tenant.id.clone(),
                         bootstrap.me.id.clone(),
                         id,
                     )
-                    .await;
+                    .await
+                    {
+                        failed += 1;
+                        if first_error.is_none() {
+                            first_error = Some(err.to_string());
+                        }
+                    }
                 }
 
                 set_is_busy.set(false);
                 selection.update(|s| s.clear());
                 set_refresh_nonce.update(|n| *n += 1);
+                if let Some(err) = first_error {
+                    set_error_msg.set(Some(if is_ru {
+                        format!("Не удалено {failed} из {total} товаров: {err}")
+                    } else {
+                        format!("{failed} of {total} products were not deleted: {err}")
+                    }));
+                }
             });
         }
     };
@@ -174,12 +236,17 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
+                    set_error_msg.set(Some(if is_ru {
+                        "Не удалось получить данные сессии".to_string()
+                    } else {
+                        "Failed to authenticate bootstrap".to_string()
+                    }));
                     return;
                 };
 
-                let _ = transport::change_product_status(
+                match catalog_transport::change_product_status(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
@@ -187,10 +254,17 @@ pub fn ProductGridPage() -> impl IntoView {
                     id,
                     &next_status,
                 )
-                .await;
+                .await
+                {
+                    Ok(_) => set_refresh_nonce.update(|n| *n += 1),
+                    Err(err) => set_error_msg.set(Some(if is_ru {
+                        format!("Статус товара не изменён: {err}")
+                    } else {
+                        format!("The product status was not changed: {err}")
+                    })),
+                }
 
                 set_is_busy.set(false);
-                set_refresh_nonce.update(|n| *n += 1);
             });
         }
     };
@@ -207,22 +281,34 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
                     set_is_busy.set(false);
+                    set_error_msg.set(Some(if is_ru {
+                        "Не удалось получить данные сессии".to_string()
+                    } else {
+                        "Failed to authenticate bootstrap".to_string()
+                    }));
                     return;
                 };
 
-                let _ = transport::delete_product(
+                match catalog_transport::delete_product(
                     tok,
                     ten,
                     bootstrap.current_tenant.id,
                     bootstrap.me.id,
                     id,
                 )
-                .await;
+                .await
+                {
+                    Ok(_) => set_refresh_nonce.update(|n| *n += 1),
+                    Err(err) => set_error_msg.set(Some(if is_ru {
+                        format!("Товар не удалён: {err}")
+                    } else {
+                        format!("The product was not deleted: {err}")
+                    })),
+                }
 
                 set_is_busy.set(false);
-                set_refresh_nonce.update(|n| *n += 1);
             });
         }
     };
@@ -666,6 +752,75 @@ pub fn ProductGridPage() -> impl IntoView {
                     }}
                 </div>
             </Show>
+
+            // Catalog controls: the GET form keeps the owner list contract
+            // (category, typed attribute filters, deterministic date order) in
+            // the URL, so deep links and refreshes resolve the same list.
+            <form
+                method="get"
+                class="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end"
+            >
+                <div class="space-y-1 xl:col-span-5">
+                    <h2 class="text-sm font-semibold text-foreground">{catalog_labels.title.clone()}</h2>
+                    <p class="text-xs text-muted-foreground">{catalog_labels.subtitle.clone()}</p>
+                </div>
+                <label class="grid gap-2 text-xs text-foreground">
+                    <span class="font-medium">{catalog_labels.category.clone()}</span>
+                    <select
+                        name="category_id"
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
+                        prop:value=current_category.clone()
+                    >
+                        <option value="">{catalog_labels.all_categories.clone()}</option>
+                        {move || catalog_options_resource
+                            .get()
+                            .and_then(Result::ok)
+                            .map(|options| options.category_options.into_iter().map(|option| {
+                                view! { <option value=option.value>{option.label}</option> }
+                            }).collect_view())
+                            .unwrap_or_default()}
+                    </select>
+                </label>
+                <label class="grid gap-2 text-xs text-foreground">
+                    <span class="font-medium">{catalog_labels.attribute_filters.clone()}</span>
+                    <input
+                        name="attribute_filters"
+                        type="text"
+                        value=current_attribute_filters.clone()
+                        placeholder=catalog_labels.attribute_filters_placeholder.clone()
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none transition focus:border-primary"
+                    />
+                    <span class="text-[10px] text-muted-foreground">{catalog_labels.attribute_filters_help.clone()}</span>
+                </label>
+                <label class="grid gap-2 text-xs text-foreground">
+                    <span class="font-medium">{catalog_labels.sort_by.clone()}</span>
+                    <select
+                        name="sort_by"
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
+                        prop:value=current_sort_by.clone()
+                    >
+                        <option value="published_at">{catalog_labels.published_at.clone()}</option>
+                        <option value="created_at">{catalog_labels.created_at.clone()}</option>
+                    </select>
+                </label>
+                <label class="grid gap-2 text-xs text-foreground">
+                    <span class="font-medium">{catalog_labels.sort_direction.clone()}</span>
+                    <select
+                        name="sort_direction"
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition focus:border-primary"
+                        prop:value=current_sort_direction.clone()
+                    >
+                        <option value="desc">{catalog_labels.descending.clone()}</option>
+                        <option value="asc">{catalog_labels.ascending.clone()}</option>
+                    </select>
+                </label>
+                <button
+                    type="submit"
+                    class="inline-flex h-9 items-center justify-center rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                >
+                    {catalog_labels.apply.clone()}
+                </button>
+            </form>
 
             // Main DataGrid
             <DataGrid

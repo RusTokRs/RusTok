@@ -19,7 +19,7 @@ use rustok_ai_product::{
     GeneratedProductAttributes, GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG,
     PRODUCT_COPY_TOOL_NAME, validate_product_attributes_payload, validate_product_copy_payload,
 };
-use rustok_api::{PortActor, PortContext};
+use rustok_api::{Patch, PortActor, PortContext};
 use rustok_core::infer_user_role_from_permissions;
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
 use rustok_product::CatalogService;
@@ -541,6 +541,9 @@ impl DirectTaskHandler for ProductCopyHandler {
             .get_product(operator.tenant_id, input.product_id)
             .await
             .map_err(|err| AiError::Runtime(err.to_string()))?;
+        // The copy is generated over multiple model round-trips; sending the revision that was read
+        // keeps a concurrent operator edit from being overwritten by the machine translation.
+        let expected_revision = product.revision;
 
         let source_locale = normalize_locale_hint(input.source_locale.as_deref());
         let target_locale = request.resolved_locale.clone();
@@ -618,14 +621,15 @@ impl DirectTaskHandler for ProductCopyHandler {
                 product.id,
                 UpdateProductInput {
                     translations: Some(translations),
-                    seller_id: None,
-                    vendor: None,
-                    product_type: None,
-                    shipping_profile_slug: None,
-                    primary_category_id: None,
+                    seller_id: Patch::Keep,
+                    vendor: Patch::Keep,
+                    product_type: Patch::Keep,
+                    shipping_profile_slug: Patch::Keep,
+                    primary_category_id: Patch::Keep,
                     tags: None,
                     metadata: None,
                     status: None,
+                    expected_revision: Some(expected_revision),
                 },
             )
             .await
@@ -2233,7 +2237,8 @@ mod tests {
                 id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, \
                 seller_id TEXT NULL, vendor TEXT NULL, product_type TEXT NULL, \
                 shipping_profile_slug TEXT NULL, primary_category_id TEXT NULL, metadata TEXT NOT NULL, \
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL\
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL, \
+                revision INTEGER NOT NULL DEFAULT 1\
              )",
             "CREATE TABLE product_translations (\
                 id TEXT PRIMARY KEY, product_id TEXT NOT NULL, tenant_id TEXT NOT NULL, locale TEXT NOT NULL, \

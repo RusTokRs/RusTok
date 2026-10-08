@@ -16,6 +16,7 @@ import { ProductHeaderBar } from '../components/products/product-header-bar';
 import { ProductGeneralCard } from '../components/products/product-general-card';
 import { ProductCategoryCard } from '../components/products/product-category-card';
 import { ProductVariantsCard } from '../components/products/product-variants-card';
+import { ProductVariantAxesCard } from '../components/products/product-variant-axes-card';
 import { ProductMediaCard } from '../components/products/product-media-card';
 import { ProductRelationsCard } from '../components/products/product-relations-card';
 import { ProductBundleCard } from '../components/products/product-bundle-card';
@@ -23,6 +24,8 @@ import { ProductSeoCard } from '../components/products/product-seo-card';
 import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type {
+  SetVariantAxesInput,
+  VariantAxisConfig,
   ProductListItem,
   ProductDetail,
   ProductTranslation,
@@ -61,6 +64,8 @@ export interface ProductEditorPageProps {
     primaryCategoryId?: string | null;
     tags: string[];
     status?: string;
+    // Predecessor document revision; required for every edit of an existing product.
+    revision?: number | null;
     // New product initial variant
     initialVariant?: {
       sku: string;
@@ -73,7 +78,7 @@ export interface ProductEditorPageProps {
     };
     attributePatches: ProductAttributeValuePatch[];
     activeLocale: string;
-  }) => Promise<{ id: string } | void>;
+  }) => Promise<{ id: string; revision?: number | null } | void>;
   onDeleteProduct?: (id: string) => Promise<void>;
   onAddVariant?: (
     productId: string,
@@ -84,6 +89,10 @@ export interface ProductEditorPageProps {
     variant: Partial<ProductVariant>
   ) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
+  onSetVariantAxes?: (
+    productId: string,
+    input: SetVariantAxesInput
+  ) => Promise<VariantAxisConfig[] | void>;
   onAddImage?: (
     productId: string,
     input: { mediaId: string; altText?: string }
@@ -126,6 +135,7 @@ export function ProductEditorPage({
   onAddVariant,
   onUpdateVariant,
   onDeleteVariant,
+  onSetVariantAxes,
   onAddImage,
   onDeleteImage,
   onReorderImages,
@@ -140,6 +150,14 @@ export function ProductEditorPage({
   onRemoveBundleItem
 }: ProductEditorPageProps) {
   const router = useRouter();
+  // Document revision the editor may safely send back; advanced after every write that
+  // bumps the aggregate, and refreshed whenever the server component re-renders the page.
+  const [documentRevision, setDocumentRevision] = React.useState<number | null>(
+    initialProduct?.revision ?? null
+  );
+  React.useEffect(() => {
+    setDocumentRevision(initialProduct?.revision ?? null);
+  }, [initialProduct?.id, initialProduct?.revision]);
   const [activeLocale, setActiveLocale] = React.useState('en');
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -357,10 +375,15 @@ export function ProductEditorPage({
         primaryCategoryId: selectedCategoryId || null,
         tags,
         status,
+        revision: documentRevision,
         initialVariant: isNew ? newVariantDraft : undefined,
         attributePatches: patches,
         activeLocale
       });
+
+      if (res && typeof res.revision === 'number') {
+        setDocumentRevision(res.revision);
+      }
 
       setDirtyAttributeIds(new Set());
       setSuccessMessage(
@@ -386,7 +409,7 @@ export function ProductEditorPage({
     if (!isNew && initialProduct?.id) {
       setIsSaving(true);
       try {
-        await onSaveProduct({
+        const statusResult = await onSaveProduct({
           id: initialProduct.id,
           isNew: false,
           translations: Object.values(translations).filter(
@@ -395,9 +418,13 @@ export function ProductEditorPage({
           primaryCategoryId: selectedCategoryId || null,
           tags,
           status: newStatus,
+          revision: documentRevision,
           attributePatches: [],
           activeLocale
         });
+        if (statusResult && typeof statusResult.revision === 'number') {
+          setDocumentRevision(statusResult.revision);
+        }
         setSuccessMessage(`Product status updated to ${newStatus}.`);
       } catch (err) {
         setErrorMessage(
@@ -490,6 +517,20 @@ export function ProductEditorPage({
             onAttributeValueChange={handleAttributeValueChange}
             disabled={isSaving}
           />
+
+          {/* Variant axes (ADR identity model) */}
+          {initialProduct?.id ? (
+            <ProductVariantAxesCard
+              axes={initialProduct.variantAxes ?? []}
+              effectiveForm={initialEffectiveForm}
+              disabled={isSaving}
+              onSaveAxes={
+                onSetVariantAxes
+                  ? (input) => onSetVariantAxes(initialProduct.id, input)
+                  : undefined
+              }
+            />
+          ) : null}
 
           {/* Pricing & Variants Matrix */}
           <ProductVariantsCard

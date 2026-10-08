@@ -37,7 +37,18 @@ const paths = {
   native: "crates/modules/rustok-product/admin/src/transport/native_server_adapter.rs",
   graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
   graphqlHttp: "crates/ui/rustok-graphql/src/lib.rs",
-  ui: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+  // The live Product Admin surface is the mounted page set; the Leptos adapter
+  // module stays in the union so both the mounted pages and the reference
+  // adapter are checked for canonical-facade resource composition.
+  uiFiles: [
+    "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+    "crates/modules/rustok-product/admin/src/ui/root.rs",
+    "crates/modules/rustok-product/admin/src/ui/product_grid.rs",
+    "crates/modules/rustok-product/admin/src/ui/product_editor.rs",
+    "crates/modules/rustok-product/admin/src/ui/attributes.rs",
+    "crates/modules/rustok-product/admin/src/ui/categories.rs",
+    "crates/modules/rustok-product/admin/src/ui/catalog_admin.rs",
+  ],
   catalogGuard: "scripts/verify/verify-product-admin-catalog-options-error-safety.mjs",
   primaryEvidence:
     "crates/modules/rustok-product/contracts/evidence/admin-primary-graphql-read-error-safety-source.json",
@@ -60,7 +71,7 @@ const listGraphql = read(paths.listGraphql);
 const native = read(paths.native);
 const graphql = read(paths.graphql);
 const graphqlHttp = read(paths.graphqlHttp);
-const ui = read(paths.ui);
+const ui = paths.uiFiles.map((relativePath) => read(relativePath)).join("\n");
 const catalogGuard = read(paths.catalogGuard);
 const primaryEvidence = JSON.parse(read(paths.primaryEvidence));
 const primaryReview = JSON.parse(read(paths.primaryReview));
@@ -389,7 +400,7 @@ for (const marker of [
   "transport::fetch_effective_product_form(",
   "transport::fetch_product_attribute_values(",
 ]) {
-  requireText(ui, marker, `${paths.ui}: retained UI resource composition`);
+  requireText(ui, marker, `${paths.uiFiles.join(", ")}: retained UI resource composition`);
 }
 requireText(
   catalogGuard,

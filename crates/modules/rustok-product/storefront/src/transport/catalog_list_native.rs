@@ -4,7 +4,7 @@ use crate::catalog_controls::CatalogListInput;
 use crate::core::FetchRequest;
 use crate::model::{ProductList, StorefrontProductsData};
 #[cfg(feature = "ssr")]
-use crate::model::ProductListItem;
+use crate::model::{ProductImage, ProductListPrice, ProductListItem};
 
 use super::native_server_adapter::{self, ApiError};
 
@@ -82,6 +82,7 @@ pub async fn fetch_products(
         controls.sort_by,
         controls.sort_direction,
         controls.attribute_filters,
+        controls.currency_code,
     )
     .await
     .map_err(ApiError::from)?;
@@ -141,6 +142,8 @@ fn map_product_list(value: rustok_product::StorefrontProductList) -> ProductList
                 vendor: item.vendor,
                 product_type: item.product_type,
                 tags: item.tags,
+                primary_image: item.primary_image.map(map_owner_product_image),
+                price_from: item.price_from.map(map_owner_product_list_price),
                 created_at: item.created_at.to_rfc3339(),
                 published_at: item.published_at.map(|value| value.to_rfc3339()),
             })
@@ -168,6 +171,7 @@ async fn storefront_catalog_list_native(
     sort_by: Option<String>,
     sort_direction: Option<String>,
     attribute_filters: Vec<String>,
+    currency_code: Option<String>,
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -206,7 +210,9 @@ async fn storefront_catalog_list_native(
             attribute_filters,
         )
         .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?
-        .with_pagination(1, 12);
+        .with_pagination(1, 12)
+        .with_currency_code(currency_code)
+        .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?;
         let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
             .list_published_products_with_query(
                 tenant.id,
@@ -229,9 +235,38 @@ async fn storefront_catalog_list_native(
             sort_by,
             sort_direction,
             attribute_filters,
+            currency_code,
         );
         Err(ServerFnError::new(
             "product/storefront/catalog-list requires the `ssr` feature",
         ))
+    }
+}
+
+/// Maps the owner-resolved catalog-card image into the storefront model.
+#[cfg(feature = "ssr")]
+pub(crate) fn map_owner_product_image(
+    value: rustok_product::StorefrontProductListImage,
+) -> ProductImage {
+    ProductImage {
+        media_id: value.media_id.to_string(),
+        url: value.url,
+        alt_text: value.alt_text,
+        position: value.position,
+    }
+}
+
+/// Maps the owner-resolved catalog-card price snapshot into the storefront model.
+#[cfg(feature = "ssr")]
+pub(crate) fn map_owner_product_list_price(
+    value: rustok_product::StorefrontProductListPrice,
+) -> ProductListPrice {
+    ProductListPrice {
+        currency_code: value.currency_code,
+        amount: value.amount.normalize().to_string(),
+        compare_at_amount: value
+            .compare_at_amount
+            .map(|compare_at| compare_at.normalize().to_string()),
+        on_sale: value.on_sale,
     }
 }

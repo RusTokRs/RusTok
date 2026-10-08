@@ -5,7 +5,7 @@ use super::{
     rustok_order_shim as rustok_order, rustok_payment_shim as rustok_payment,
     rustok_pricing_shim as rustok_pricing,
 };
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, FieldError, Json, Object, Result};
 use rustok_api::Permission;
 use rustok_api::locale_tags_match;
 use rustok_api::{
@@ -1725,6 +1725,11 @@ impl CommerceQuery {
                         .unwrap_or_else(|| "default".to_string()),
                 ),
                 tags: item.tags,
+                // Legacy REST-catalog projection: the storefront price/image
+                // snapshot belongs to `storefrontProductCatalog`, which carries
+                // the owner-provided `primaryImage` and `priceFrom` fields.
+                primary_image: None,
+                price_from: None,
                 created_at: item.created_at.to_rfc3339(),
                 published_at: item.published_at.map(|value| value.to_rfc3339()),
             })
@@ -1970,6 +1975,7 @@ impl CommerceQuery {
                 source: effective_attribute_source_name(attribute.source).to_string(),
                 variant_axis_policy: attribute.variant_axis_policy.as_str().to_string(),
                 default_variant_axis: attribute.default_variant_axis,
+                validation: Json(attribute.validation),
             })
             .collect();
 
@@ -2265,6 +2271,11 @@ impl CommerceQuery {
                 product_type: item.product_type,
                 shipping_profile_slug: Some(item.shipping_profile_slug),
                 tags: item.tags,
+                // Legacy REST-catalog projection: the storefront price/image
+                // snapshot belongs to `storefrontProductCatalog`, which carries
+                // the owner-provided `primaryImage` and `priceFrom` fields.
+                primary_image: None,
+                price_from: None,
                 created_at: item.created_at.to_rfc3339(),
                 published_at: item.published_at.map(|value| value.to_rfc3339()),
             })

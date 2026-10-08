@@ -28,6 +28,7 @@ pub(super) struct GraphqlCallContext {
     sort_by_present: bool,
     sort_direction_present: bool,
     attribute_filter_count: usize,
+    facet_code_count: usize,
 }
 
 impl GraphqlCallContext {
@@ -49,6 +50,7 @@ impl GraphqlCallContext {
             sort_by_present: controls.sort_by.is_some(),
             sort_direction_present: controls.sort_direction.is_some(),
             attribute_filter_count: controls.attribute_filters.len(),
+            facet_code_count: 0,
         }
     }
 
@@ -70,6 +72,33 @@ impl GraphqlCallContext {
             sort_by_present: false,
             sort_direction_present: false,
             attribute_filter_count: 0,
+            facet_code_count: 0,
+        }
+    }
+
+    pub(super) fn fetch_catalog_facets(
+        locale: Option<&str>,
+        controls: &CatalogListInput,
+        facet_codes: &[String],
+    ) -> Self {
+        Self {
+            owner_operation: "fetch_catalog_facets",
+            correlation_id: correlation_id("fetch_catalog_facets"),
+            tenant_slug_length: configured_tenant_slug_length(),
+            selected_handle_length: None,
+            locale_length: text_length(locale),
+            currency_code_length: text_length(controls.currency_code.as_deref()),
+            region_id_length: None,
+            price_list_id_length: None,
+            channel_id_length: None,
+            channel_slug_length: None,
+            quantity_present: false,
+            search_length: text_length(controls.search.as_deref()),
+            category_id_length: text_length(controls.category_id.as_deref()),
+            sort_by_present: controls.sort_by.is_some(),
+            sort_direction_present: controls.sort_direction.is_some(),
+            attribute_filter_count: controls.attribute_filters.len(),
+            facet_code_count: facet_codes.len(),
         }
     }
 
@@ -146,6 +175,7 @@ impl GraphqlCallContext {
                 sort_by_present = self.sort_by_present,
                 sort_direction_present = self.sort_direction_present,
                 attribute_filter_count = self.attribute_filter_count,
+                facet_code_count = self.facet_code_count,
                 error_kind,
                 code,
                 boundary = PRODUCT_STOREFRONT_GRAPHQL_BOUNDARY,
@@ -183,6 +213,7 @@ impl GraphqlCallContext {
                 sort_by_present = self.sort_by_present,
                 sort_direction_present = self.sort_direction_present,
                 attribute_filter_count = self.attribute_filter_count,
+                facet_code_count = self.facet_code_count,
                 error_kind,
                 code,
                 boundary = PRODUCT_STOREFRONT_GRAPHQL_BOUNDARY,

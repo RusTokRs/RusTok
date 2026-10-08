@@ -1,5 +1,6 @@
+use super::concurrency::{ensure_expected_revision, next_revision, validate_patch_text_length};
 use super::*;
-use rustok_api::TenantLocale;
+use rustok_api::{Patch, TenantLocale};
 use rustok_core::error::Error as CoreError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
 
@@ -154,6 +155,7 @@ impl CatalogService {
             } else {
                 None
             }),
+            revision: Set(1),
         };
         product.insert(&txn).await?;
         debug!("Product entity inserted");
@@ -402,8 +404,12 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
-        if input.primary_category_id.is_some() {
-            self.validate_primary_category(tenant_id, input.primary_category_id)
+        validate_patch_text_length(&input.seller_id, 100, "Seller ID")?;
+        validate_patch_text_length(&input.vendor, 255, "Vendor")?;
+        validate_patch_text_length(&input.product_type, 255, "Product type")?;
+        validate_patch_text_length(&input.shipping_profile_slug, 64, "Shipping profile slug")?;
+        if let Patch::Set(primary_category_id) = &input.primary_category_id {
+            self.validate_primary_category(tenant_id, Some(*primary_category_id))
                 .await?;
         }
 
@@ -417,12 +423,13 @@ impl CatalogService {
                 error
             })?;
         let existing_product = product.clone();
-        if let Some(primary_category_id) = input.primary_category_id {
+        ensure_expected_revision(&existing_product, input.expected_revision)?;
+        if let Patch::Set(primary_category_id) = &input.primary_category_id {
             validate_existing_variant_axes_for_category_in(
                 &txn,
                 tenant_id,
                 product_id,
-                primary_category_id,
+                *primary_category_id,
             )
             .await?;
         }
@@ -449,42 +456,79 @@ impl CatalogService {
         } else {
             None
         };
-        let metadata_update = normalize_update_product_metadata(
+        let shipping_profile_patch = input.shipping_profile_slug.clone();
+        let shipping_profile_input = match &shipping_profile_patch {
+            Patch::Set(slug) => Some(slug.clone()),
+            Patch::Keep | Patch::Clear => None,
+        };
+        let mut metadata_update = normalize_update_product_metadata(
             input.tags.clone(),
-            input.shipping_profile_slug.clone(),
+            shipping_profile_input,
             prepared_custom_fields
                 .as_ref()
                 .and_then(|prepared| prepared.metadata.clone()),
             existing_product.metadata.clone(),
         );
-        let shipping_profile_input = input.shipping_profile_slug.clone();
+        if matches!(shipping_profile_patch, Patch::Clear) {
+            // Clearing the typed binding must also drop its legacy metadata shadow; otherwise the
+            // projection would resurrect a shipping profile the operator removed.
+            let base = match metadata_update.take() {
+                Some((metadata, tags)) => (clear_shipping_profile_metadata_shadow(metadata), tags),
+                None => (
+                    clear_shipping_profile_metadata_shadow(existing_product.metadata.clone()),
+                    None,
+                ),
+            };
+            metadata_update = Some(base);
+        }
 
-        if let Some(vendor) = input.vendor {
-            product_active.vendor = Set(Some(vendor));
+        match input.vendor {
+            Patch::Keep => {}
+            Patch::Set(vendor) => product_active.vendor = Set(Some(vendor)),
+            Patch::Clear => product_active.vendor = Set(None),
         }
-        if input.seller_id.is_some() {
-            product_active.seller_id = Set(normalize_seller_id(input.seller_id.as_deref()));
+        if !input.seller_id.is_keep() {
+            product_active.seller_id = match &input.seller_id {
+                Patch::Set(seller_id) => Set(normalize_seller_id(Some(seller_id.as_str()))),
+                Patch::Keep | Patch::Clear => Set(None),
+            };
         }
-        if let Some(product_type) = input.product_type {
-            product_active.product_type = Set(Some(product_type));
+        match input.product_type {
+            Patch::Keep => {}
+            Patch::Set(product_type) => product_active.product_type = Set(Some(product_type)),
+            Patch::Clear => product_active.product_type = Set(None),
         }
-        if shipping_profile_input.is_some() {
-            product_active.shipping_profile_slug = Set(shipping_profile_input
-                .as_deref()
-                .and_then(normalize_shipping_profile_slug));
+        if !shipping_profile_patch.is_keep() {
+            product_active.shipping_profile_slug = match &shipping_profile_patch {
+                Patch::Set(slug) => Set(normalize_shipping_profile_slug(slug)),
+                Patch::Keep | Patch::Clear => Set(None),
+            };
         }
-        let primary_category_changed = input.primary_category_id.is_some()
-            && input.primary_category_id != existing_product.primary_category_id;
-        if input.primary_category_id.is_some() {
-            product_active.primary_category_id = Set(input.primary_category_id);
+        let primary_category_changed = match &input.primary_category_id {
+            Patch::Keep => false,
+            Patch::Set(category_id) => Some(*category_id) != existing_product.primary_category_id,
+            Patch::Clear => existing_product.primary_category_id.is_some(),
+        };
+        match &input.primary_category_id {
+            Patch::Keep => {}
+            Patch::Set(category_id) => product_active.primary_category_id = Set(Some(*category_id)),
+            Patch::Clear => product_active.primary_category_id = Set(None),
         }
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());
         }
+        product_active.revision = Set(next_revision(existing_product.revision)?);
 
         let will_become_active = match input.status.as_ref() {
             Some(entities::product::ProductStatus::Active) => {
                 existing_product.status != entities::product::ProductStatus::Active
+            }
+            _ => false,
+        };
+        let will_archive = match input.status.as_ref() {
+            Some(status) => {
+                *status == entities::product::ProductStatus::Archived
+                    && existing_product.status != entities::product::ProductStatus::Archived
             }
             _ => false,
         };
@@ -659,6 +703,20 @@ impl CatalogService {
                 DomainEvent::ProductPublished { product_id },
             )
             .await?;
+        } else if will_archive {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductArchived { product_id },
+            )
+            .await?;
+        } else if will_deactivate {
+            txn.publish(
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductUnpublished { product_id },
+            )
+            .await?;
         }
         if primary_category_changed {
             txn.publish(
@@ -740,7 +798,9 @@ impl CatalogService {
             .validate_product_publish_requirements_in(&txn, tenant_id, product_id)
             .await?;
 
+        let next_revision = next_revision(product.revision)?;
         let mut product_active: entities::product::ActiveModel = product.into();
+        product_active.revision = Set(next_revision);
         product_active.status = Set(entities::product::ProductStatus::Active);
         product_active.published_at = Set(Some(Utc::now().into()));
         product_active.updated_at = Set(Utc::now().into());
@@ -772,7 +832,9 @@ impl CatalogService {
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
+        let next_revision = next_revision(product.revision)?;
         let mut product_active: entities::product::ActiveModel = product.into();
+        product_active.revision = Set(next_revision);
         product_active.status = Set(entities::product::ProductStatus::Draft);
         product_active.published_at = Set(None);
         product_active.updated_at = Set(Utc::now().into());
@@ -781,12 +843,46 @@ impl CatalogService {
         txn.publish(
             tenant_id,
             Some(actor_id),
-            DomainEvent::ProductUpdated { product_id },
+            DomainEvent::ProductUnpublished { product_id },
         )
         .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product unpublished successfully");
+
+        self.get_product(tenant_id, product_id).await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn archive_product(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        product_id: Uuid,
+    ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Archiving product");
+
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
+
+        let next_revision = next_revision(product.revision)?;
+        let mut product_active: entities::product::ActiveModel = product.into();
+        product_active.revision = Set(next_revision);
+        product_active.status = Set(entities::product::ProductStatus::Archived);
+        product_active.published_at = Set(None);
+        product_active.updated_at = Set(Utc::now().into());
+        product_active.update(&txn).await?;
+
+        txn.publish(
+            tenant_id,
+            Some(actor_id),
+            DomainEvent::ProductArchived { product_id },
+        )
+        .await?;
+
+        txn.commit().await?;
+        info!(product_id = %product_id, "Product archived successfully");
 
         self.get_product(tenant_id, product_id).await
     }

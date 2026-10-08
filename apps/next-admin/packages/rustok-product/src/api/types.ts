@@ -113,6 +113,13 @@ export interface BindSchemaAttributePayload {
   position: number;
 }
 
+export interface CreateProductAttributeSchemaGroupPayload {
+  schemaId: string;
+  code: string;
+  label: string;
+  position?: number;
+}
+
 export interface ProductAttributeOptionSummary {
   id: string;
   code: string;
@@ -226,6 +233,31 @@ export interface ProductTranslation {
   metaDescription: string | null;
 }
 
+export interface AxisAllowedValue {
+  optionId: string;
+  value: string;
+  position: number;
+}
+
+export interface VariantAxisConfig {
+  id: string;
+  attributeId: string;
+  code: string;
+  name: string;
+  position: number;
+  allowedValues: AxisAllowedValue[];
+}
+
+export interface VariantAxisDraftInput {
+  attributeId: string;
+  position?: number | null;
+  allowedOptionIds?: string[] | null;
+}
+
+export interface SetVariantAxesInput {
+  axes: VariantAxisDraftInput[];
+}
+
 export interface ProductDetail {
   id: string;
   status: string;
@@ -238,7 +270,9 @@ export interface ProductDetail {
   createdAt: string | null;
   updatedAt: string | null;
   publishedAt: string | null;
+  revision: number;
   translations: ProductTranslation[];
+  variantAxes: VariantAxisConfig[];
   variants: ProductVariant[];
   images: ProductImage[];
 }

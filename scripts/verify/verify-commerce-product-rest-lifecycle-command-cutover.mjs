@@ -31,7 +31,18 @@ function functionSlice(source, name, nextName) {
     return "";
   }
   const end = nextName ? source.indexOf(`pub async fn ${nextName}(`, start + 1) : -1;
-  return source.slice(start, end < 0 ? source.length : end);
+  // Include the attached doc comment / attribute block so one wrapper cannot satisfy the
+  // annotation requirements of the neighbouring wrapper.
+  let sliceStart = start;
+  const previousBlockBreak = source.lastIndexOf("\n\n", start - 1);
+  if (previousBlockBreak >= 0) {
+    const blockStart = previousBlockBreak + 2;
+    const attachedBlock = source.slice(blockStart, start).trimStart();
+    if (attachedBlock.startsWith("#[") || attachedBlock.startsWith("///")) {
+      sliceStart = blockStart;
+    }
+  }
+  return source.slice(sliceStart, end < 0 ? source.length : end);
 }
 
 const shared = read("crates/modules/rustok-commerce/src/controllers/products.rs");
@@ -62,7 +73,7 @@ const lifecycleKeyStart = shared.indexOf("pub(crate) fn admin_product_lifecycle_
 const lifecycleContextStart = shared.indexOf("pub(crate) fn admin_product_command_context(", lifecycleKeyStart);
 const lifecycleKey = shared.slice(lifecycleKeyStart, lifecycleContextStart);
 for (const required of [
-  'headers.get("idempotency-key")',
+  '.get("idempotency-key")',
   '"product_idempotency_key_required"',
   '"Idempotency-Key header is required"',
   "MAX_ADMIN_PRODUCT_LIFECYCLE_KEY_LENGTH",
@@ -78,12 +89,14 @@ for (const required of [
 
 const deleteHandler = functionSlice(shared, "delete_product", "publish_product");
 const publishHandler = functionSlice(shared, "publish_product", "unpublish_product");
-const unpublishHandler = functionSlice(shared, "unpublish_product", null);
+const unpublishHandler = functionSlice(shared, "unpublish_product", "archive_product");
+const archiveHandler = functionSlice(shared, "archive_product", null);
 
 for (const [handler, operation, permission, portCall] of [
   [deleteHandler, "delete_product", "Permission::PRODUCTS_DELETE", ".delete_product(port_context.clone(), id)"],
   [publishHandler, "publish_product", "Permission::PRODUCTS_UPDATE", ".publish_product(port_context.clone(), id)"],
   [unpublishHandler, "unpublish_product", "Permission::PRODUCTS_UPDATE", ".unpublish_product(port_context.clone(), id)"],
+  [archiveHandler, "archive_product", "Permission::PRODUCTS_UPDATE", ".archive_product(port_context.clone(), id)"],
 ]) {
   for (const required of [
     permission,
@@ -104,6 +117,7 @@ for (const [handler, operation, permission, portCall] of [
     `.delete_product(tenant.id, auth.user_id, id)`,
     `.publish_product(tenant.id, auth.user_id, id)`,
     `.unpublish_product(tenant.id, auth.user_id, id)`,
+    `.archive_product(tenant.id, auth.user_id, id)`,
     "map_admin_product_error(",
   ]) {
     forbidText(handler, forbidden, `${operation} handler must not contain ${forbidden}`);
@@ -113,7 +127,8 @@ for (const [handler, operation, permission, portCall] of [
 for (const [name, nextName] of [
   ["delete_product", "publish_product"],
   ["publish_product", "unpublish_product"],
-  ["unpublish_product", null],
+  ["unpublish_product", "archive_product"],
+  ["archive_product", null],
 ]) {
   const handler = functionSlice(mounted, name, nextName);
   for (const required of [
@@ -132,6 +147,7 @@ for (const required of [
   ".delete(products::delete_product)",
   "axum::routing::post(products::publish_product)",
   "axum::routing::post(products::unpublish_product)",
+  "axum::routing::post(products::archive_product)",
 ]) {
   requireText(router, required, `mounted Product lifecycle route must contain ${required}`);
 }

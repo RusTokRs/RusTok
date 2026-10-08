@@ -11,6 +11,7 @@ use crate::services::catalog_attribute_terms::{
 use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
+use super::helpers::sql_placeholder;
 use super::types::validate_product_attribute_filters;
 
 #[derive(Debug, FromQueryResult)]
@@ -84,6 +85,13 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                     definition.code
                 ))
             })?;
+        if !value_type.is_attribute_filterable() {
+            return Err(CommerceError::Validation(format!(
+                "attribute {} uses {} and cannot be used in attribute_filters",
+                definition.code,
+                value_type.as_str()
+            )));
+        }
         conditions.push(build_attribute_filter_condition(
             backend,
             tenant_id,
@@ -344,11 +352,4 @@ fn custom_condition(
             )
         });
     Condition::all().add(Expr::cust_with_values(sql, values))
-}
-
-fn sql_placeholder(backend: DbBackend, index: usize) -> String {
-    match backend {
-        DbBackend::Sqlite => "?".to_string(),
-        _ => format!("${index}"),
-    }
 }

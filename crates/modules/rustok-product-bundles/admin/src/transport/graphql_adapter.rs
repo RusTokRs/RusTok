@@ -63,8 +63,8 @@ query BundleAdminDetail($id: UUID!) {
 "#;
 
 const CREATE_MUTATION: &str = r#"
-mutation BundleAdminCreate($input: CreateBundleInputGql!) {
-  createBundle(input: $input) {
+mutation BundleAdminCreate($idempotencyKey: String!, $input: CreateBundleInputGql!) {
+  createBundle(idempotencyKey: $idempotencyKey, input: $input) {
     id
     tenantId
     bundleProductId
@@ -109,8 +109,8 @@ mutation BundleAdminDelete($id: UUID!) {
 "#;
 
 const ADD_ITEM_MUTATION: &str = r#"
-mutation BundleAdminAddItem($bundleId: UUID!, $input: AddBundleItemInputGql!) {
-  addBundleItem(bundleId: $bundleId, input: $input) {
+mutation BundleAdminAddItem($idempotencyKey: String!, $bundleId: UUID!, $input: AddBundleItemInputGql!) {
+  addBundleItem(idempotencyKey: $idempotencyKey, bundleId: $bundleId, input: $input) {
     id
     bundleId
     productId
@@ -358,7 +358,7 @@ pub async fn load_detail(
 pub async fn execute_command(
     token: Option<String>,
     tenant_slug: Option<String>,
-    _idempotency_key: String,
+    idempotency_key: String,
     command: BundleAdminCommand,
 ) -> Result<BundleAdminCommandResult, GraphqlBundleAdminError> {
     match command {
@@ -378,10 +378,13 @@ pub async fn execute_command(
             }
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 input: Input,
             }
 
             let vars = Vars {
+                idempotency_key,
                 input: Input {
                     slug: draft.slug,
                     name: draft.name,
@@ -500,12 +503,15 @@ pub async fn execute_command(
             }
             #[derive(Serialize)]
             struct Vars {
+                #[serde(rename = "idempotencyKey")]
+                idempotency_key: String,
                 #[serde(rename = "bundleId")]
                 bundle_id: String,
                 input: Input,
             }
 
             let vars = Vars {
+                idempotency_key,
                 bundle_id: bundle_id.clone(),
                 input: Input {
                     product_id,

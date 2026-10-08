@@ -109,7 +109,7 @@ impl CatalogService {
         } else {
             entities::product_translation::Entity::find()
                 .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
-                .filter(entities::product_translation::Column::ProductId.is_in(product_ids))
+                .filter(entities::product_translation::Column::ProductId.is_in(product_ids.clone()))
                 .all(&self.db)
                 .await?
         };
@@ -124,6 +124,43 @@ impl CatalogService {
         let product_tags = self
             .load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))
             .await?;
+        let media_summaries = self
+            .load_storefront_product_list_media(product_ids.as_slice(), locale, fallback_locale)
+            .await?;
+        let variants = if product_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::product_variant::Entity::find()
+                .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+                .filter(entities::product_variant::Column::ProductId.is_in(product_ids.clone()))
+                .all(&self.db)
+                .await?
+        };
+        let variant_ids = variants
+            .iter()
+            .map(|variant| variant.id)
+            .collect::<Vec<_>>();
+        let prices = if variant_ids.is_empty() {
+            Vec::new()
+        } else {
+            rustok_pricing_persistence::entities::price::Entity::find()
+                .filter(
+                    rustok_pricing_persistence::entities::price::Column::VariantId
+                        .is_in(variant_ids.clone()),
+                )
+                .all(&self.db)
+                .await?
+        };
+        let mut variant_to_product = HashMap::<Uuid, Uuid>::new();
+        for variant in &variants {
+            variant_to_product.insert(variant.id, variant.product_id);
+        }
+        let price_from_by_product = build_storefront_list_price_from_map(
+            &variant_to_product,
+            prices.as_slice(),
+            list_query.currency_code.as_deref(),
+            public_channel_slug,
+        );
 
         let items = products
             .into_iter()
@@ -144,6 +181,8 @@ impl CatalogService {
                     vendor: product.vendor,
                     product_type: product.product_type,
                     tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
+                    primary_image: media_summaries.get(&product.id).cloned(),
+                    price_from: price_from_by_product.get(&product.id).cloned(),
                     created_at: product.created_at.into(),
                     published_at: product.published_at.map(Into::into),
                 }
@@ -227,7 +266,7 @@ impl CatalogService {
         } else {
             entities::product_translation::Entity::find()
                 .filter(entities::product_translation::Column::TenantId.eq(tenant_id))
-                .filter(entities::product_translation::Column::ProductId.is_in(product_ids))
+                .filter(entities::product_translation::Column::ProductId.is_in(product_ids.clone()))
                 .all(&self.db)
                 .await?
         };
@@ -363,7 +402,10 @@ impl CatalogService {
     }
 }
 
-fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> sea_orm::Condition {
+pub(super) fn product_title_search_condition(
+    backend: sea_orm::DbBackend,
+    search: &str,
+) -> sea_orm::Condition {
     let pattern = format!("%{search}%");
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {
@@ -388,4 +430,177 @@ fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> 
         exists_sql,
         vec![sea_orm::Value::from(pattern)],
     ))
+}
+
+impl CatalogService {
+    /// Loads the lowest-position image of every listed product together with
+    /// its locale-resolved alt text.
+    ///
+    /// The storefront list contract owns this projection so catalog cards can
+    /// render real media instead of placeholders. One batched image query and
+    /// one batched translation query cover the whole page, so the page cost does
+    /// not grow with `per_page`.
+    async fn load_storefront_product_list_media(
+        &self,
+        product_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: &str,
+    ) -> CommerceResult<HashMap<Uuid, StorefrontProductListImage>> {
+        if product_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let images = entities::product_image::Entity::find()
+            .filter(entities::product_image::Column::ProductId.is_in(product_ids.to_vec()))
+            .order_by_asc(entities::product_image::Column::Position)
+            .order_by_asc(entities::product_image::Column::Id)
+            .all(&self.db)
+            .await?;
+
+        let mut primary_by_product = HashMap::<Uuid, entities::product_image::Model>::new();
+        for image in images {
+            primary_by_product.entry(image.product_id).or_insert(image);
+        }
+        let image_ids = primary_by_product
+            .values()
+            .map(|image| image.id)
+            .collect::<Vec<_>>();
+        let translations = if image_ids.is_empty() {
+            Vec::new()
+        } else {
+            entities::product_image_translation::Entity::find()
+                .filter(
+                    entities::product_image_translation::Column::ImageId.is_in(image_ids.clone()),
+                )
+                .all(&self.db)
+                .await?
+        };
+        let mut translations_by_image: HashMap<
+            Uuid,
+            Vec<entities::product_image_translation::Model>,
+        > = HashMap::new();
+        for translation in translations {
+            translations_by_image
+                .entry(translation.image_id)
+                .or_default()
+                .push(translation);
+        }
+
+        Ok(primary_by_product
+            .into_iter()
+            .map(|(product_id, image)| {
+                let alt_text = translations_by_image
+                    .get(&image.id)
+                    .map(|translations| {
+                        projection::resolve_image_alt_text(
+                            translations.as_slice(),
+                            locale,
+                            Some(fallback_locale),
+                        )
+                    })
+                    .unwrap_or(None);
+                (
+                    product_id,
+                    StorefrontProductListImage {
+                        media_id: image.media_id,
+                        url: helpers::format_product_media_url(image.media_id),
+                        alt_text,
+                        position: image.position,
+                    },
+                )
+            })
+            .collect())
+    }
+}
+
+/// Derives the storefront "from" price of every listed product from its base
+/// variant prices.
+///
+/// Only base rows participate: price-list rows are resolved by the pricing
+/// owner against a price-list/channel/quantity context, and quantity tiers
+/// (`min_quantity`) are intentionally excluded from a catalog snapshot. Channel
+/// scoping is honoured by preferring rows of the requested public channel and
+/// falling back to channel-neutral rows, then to any channel when the tenant
+/// only maintains channel-scoped prices.
+fn build_storefront_list_price_from_map(
+    variant_to_product: &HashMap<Uuid, Uuid>,
+    prices: &[rustok_pricing_persistence::entities::price::Model],
+    currency_code: Option<&str>,
+    public_channel_slug: Option<&str>,
+) -> HashMap<Uuid, StorefrontProductListPrice> {
+    let mut candidates_by_product =
+        HashMap::<Uuid, Vec<&rustok_pricing_persistence::entities::price::Model>>::new();
+    for price in prices {
+        if price.price_list_id.is_some() || price.min_quantity.is_some() {
+            continue;
+        }
+        if let Some(currency_code) = currency_code {
+            if !price.currency_code.eq_ignore_ascii_case(currency_code) {
+                continue;
+            }
+        }
+        let Some(product_id) = variant_to_product.get(&price.variant_id) else {
+            continue;
+        };
+        candidates_by_product
+            .entry(*product_id)
+            .or_default()
+            .push(price);
+    }
+
+    candidates_by_product
+        .into_iter()
+        .filter_map(|(product_id, candidates)| {
+            let selected = select_storefront_list_price_candidates(candidates, public_channel_slug);
+            selected
+                .into_iter()
+                .min_by(|left, right| left.amount.cmp(&right.amount))
+                .map(|price| {
+                    let on_sale = price
+                        .compare_at_amount
+                        .is_some_and(|compare_at| compare_at > price.amount);
+                    (
+                        product_id,
+                        StorefrontProductListPrice {
+                            currency_code: price.currency_code.to_ascii_uppercase(),
+                            amount: price.amount,
+                            compare_at_amount: price.compare_at_amount,
+                            on_sale,
+                        },
+                    )
+                })
+        })
+        .collect()
+}
+
+fn select_storefront_list_price_candidates<'a>(
+    candidates: Vec<&'a rustok_pricing_persistence::entities::price::Model>,
+    public_channel_slug: Option<&str>,
+) -> Vec<&'a rustok_pricing_persistence::entities::price::Model> {
+    if let Some(channel_slug) = public_channel_slug {
+        let channel_scoped = candidates
+            .iter()
+            .copied()
+            .filter(|price| {
+                price
+                    .channel_slug
+                    .as_deref()
+                    .is_some_and(|slug| slug.eq_ignore_ascii_case(channel_slug))
+            })
+            .collect::<Vec<_>>();
+        if !channel_scoped.is_empty() {
+            return channel_scoped;
+        }
+    }
+
+    let channel_neutral = candidates
+        .iter()
+        .copied()
+        .filter(|price| price.channel_slug.is_none())
+        .collect::<Vec<_>>();
+    if !channel_neutral.is_empty() {
+        return channel_neutral;
+    }
+
+    candidates
 }

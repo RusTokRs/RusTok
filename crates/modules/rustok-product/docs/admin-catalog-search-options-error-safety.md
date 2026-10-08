@@ -102,3 +102,7 @@ cargo check -p rustok-product-admin
 cargo check -p rustok-product-admin --features hydrate
 cargo check -p rustok-product-admin --features ssr
 ```
+
+## Landing note (2026-10-07)
+
+`admin/src/catalog_transport.rs` now holds the wrapper described above and the mounted admin pages consume it (`ui/catalog_admin.rs`, `ui/product_grid.rs`), while `lib.rs` keeps the compatibility re-export `pub use transport::fetch_catalog_search_options;` for hosts that still call the private executor. `scripts/verify/verify-product-admin-catalog-options-error-safety.mjs` passes with the canonical wrapper in use.

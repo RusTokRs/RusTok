@@ -4,16 +4,17 @@ use super::native_server_adapter::ApiError;
 use crate::catalog_controls::CatalogListInput;
 use crate::core::{FetchRequest, build_pricing_context};
 use crate::model::{
-    ProductCatalogSearchOptions, ProductDetail, ProductList, ProductPricingDetail,
-    StorefrontProductsData,
+    ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail, ProductList,
+    ProductPricingDetail, StorefrontProductsData,
 };
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
-const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontProductCatalog($locale: String, $filter: StorefrontProductCatalogFilter) { storefrontProductCatalog(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";
-const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontProductCatalog($locale: String, $filter: StorefrontProductCatalogFilter) { storefrontProductCatalog(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags primaryImage { mediaId url altText position } priceFrom { currencyCode amount compareAtAmount onSale } createdAt publishedAt } } }";
+const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt images { mediaId url altText position } translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
 const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
+const STOREFRONT_CATALOG_FACETS_QUERY: &str = "query StorefrontCatalogFacets($locale: String, $filter: StorefrontProductCatalogFilter, $facetCodes: [String!]!) { storefrontProductCatalogFacets(locale: $locale, filter: $filter, facetCodes: $facetCodes) { code label valueType isLocalized isEnumerable isTruncated totalProducts values { value label count } } }";
 
 impl From<rustok_graphql::GraphqlHttpError> for ApiError {
     fn from(value: rustok_graphql::GraphqlHttpError) -> Self {
@@ -79,9 +80,26 @@ struct StorefrontProductsFilter {
     sort_direction: Option<String>,
     #[serde(rename = "attributeFilters")]
     attribute_filters: Vec<String>,
+    /// Display currency of the catalog-card price snapshot.
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<String>,
     page: Option<u64>,
     #[serde(rename = "perPage")]
     per_page: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontCatalogFacetsResponse {
+    #[serde(rename = "storefrontProductCatalogFacets")]
+    facets: Vec<ProductCatalogFacet>,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontCatalogFacetsVariables {
+    locale: Option<String>,
+    filter: StorefrontProductsFilter,
+    #[serde(rename = "facetCodes")]
+    facet_codes: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -160,6 +178,38 @@ pub async fn fetch_catalog_search_options(
     Ok(response.options)
 }
 
+/// Facet counting shares the catalog filter set but never paginates: buckets are aggregated over
+/// every matching product.
+fn catalog_facets_filter(controls: &CatalogListInput) -> StorefrontProductsFilter {
+    StorefrontProductsFilter {
+        search: controls.search.clone(),
+        category_id: controls.category_id.clone(),
+        sort_by: controls.sort_by.clone(),
+        sort_direction: controls.sort_direction.clone(),
+        attribute_filters: controls.attribute_filters.clone(),
+        currency_code: controls.currency_code.clone(),
+        page: None,
+        per_page: None,
+    }
+}
+
+pub async fn fetch_catalog_facets(
+    locale: Option<String>,
+    controls: CatalogListInput,
+    facet_codes: Vec<String>,
+) -> Result<Vec<ProductCatalogFacet>, ApiError> {
+    let response: StorefrontCatalogFacetsResponse = request(
+        STOREFRONT_CATALOG_FACETS_QUERY,
+        StorefrontCatalogFacetsVariables {
+            locale,
+            filter: catalog_facets_filter(&controls),
+            facet_codes,
+        },
+    )
+    .await?;
+    Ok(response.facets)
+}
+
 async fn fetch_storefront_products(
     selected_handle: Option<String>,
     locale: Option<String>,
@@ -181,6 +231,7 @@ async fn fetch_storefront_products(
                 sort_by: controls.sort_by,
                 sort_direction: controls.sort_direction,
                 attribute_filters: controls.attribute_filters,
+                currency_code: controls.currency_code.clone(),
                 page: Some(1),
                 per_page: Some(12),
             },

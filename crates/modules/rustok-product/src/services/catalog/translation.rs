@@ -586,6 +586,7 @@ mod tests {
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),
             published_at: None,
+            revision: 1,
         };
         let en = translation("en", "Title");
         let fr = translation("fr", "Titre");

@@ -14,6 +14,7 @@
 #![forbid(unsafe_code)]
 
 pub mod column;
+pub mod facet;
 pub mod filter;
 pub mod pagination;
 pub mod resize;
@@ -24,6 +25,10 @@ pub mod state;
 pub use column::{
     CHECKBOX_COLUMN_ID, ColumnAlign, ColumnId, ColumnWidth, GridColumnDef, PinnedSide,
     has_filter_row, visible_column_count, visible_columns,
+};
+pub use facet::{
+    FacetDomain, FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS,
+    SELECTION_SEPARATOR, selection_except, selection_key,
 };
 pub use filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
 pub use pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};
@@ -38,6 +43,10 @@ pub mod prelude {
     pub use crate::column::{
         CHECKBOX_COLUMN_ID, ColumnAlign, ColumnId, ColumnWidth, GridColumnDef, PinnedSide,
         has_filter_row, visible_column_count, visible_columns,
+    };
+    pub use crate::facet::{
+        FacetDomain, FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS,
+        SELECTION_SEPARATOR, selection_except, selection_key,
     };
     pub use crate::filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
     pub use crate::pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};

@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-18",
+  "generated_at": "2026-10-07",
   "status": "product_storefront_catalog_native_error_safety_source_unvalidated",
   "scope": "product-owned storefront catalog-list native server function",
+  "contract_extension": "storefront catalog-list now forwards an optional display currency to the owner price snapshot and returns owner-resolved primaryImage/priceFrom alongside the pre-existing item fields",
   "source_contract": {
     "runtime_dependency_static_public_envelope": true,
     "tenant_context_static_public_envelope": true,
@@ -13,11 +14,11 @@
     "locale_logging_when_available": true,
     "stable_owner_operation": true,
     "product_public_error_mapper_preserved": true,
-    "catalog_query_contract_changed": false,
+    "catalog_query_contract_changed": true,
     "pagination_changed": false,
     "locale_fallback_changed": false,
     "channel_fallback_changed": false,
-    "request_response_dto_changed": false,
+    "request_response_dto_changed": true,
     "raw_context_error_public": false,
     "host_runtime_context_fallible": true,
     "host_runtime_context_failure_public_safe": true
