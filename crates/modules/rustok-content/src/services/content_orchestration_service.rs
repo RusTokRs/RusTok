@@ -16,7 +16,6 @@ use rustok_core::{
 use rustok_api::{Action, Resource};
 use rustok_outbox::TransactionalEventBus;
 
-use super::canonical_url_service::CanonicalUrlWriter;
 use crate::entities::{orchestration_audit_log, orchestration_operation};
 use crate::error::{ContentError, ContentResult};
 
@@ -64,29 +63,11 @@ pub struct OrchestrationResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RetiredCanonicalTarget {
-    pub target_kind: String,
-    pub target_id: Uuid,
-    pub locale: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CanonicalUrlMutation {
-    pub target_kind: String,
-    pub target_id: Uuid,
-    pub locale: String,
-    pub canonical_url: String,
-    pub alias_urls: Vec<String>,
-    pub retired_targets: Vec<RetiredCanonicalTarget>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromoteTopicToPostOutput {
     pub topic_id: Uuid,
     pub post_id: Uuid,
     pub moved_comments: u64,
     pub effective_locale: String,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,7 +76,6 @@ pub struct DemotePostToTopicOutput {
     pub topic_id: Uuid,
     pub moved_comments: u64,
     pub effective_locale: String,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +84,6 @@ pub struct SplitTopicOutput {
     pub target_topic_id: Uuid,
     pub moved_reply_ids: Vec<Uuid>,
     pub moved_comments: u64,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,7 +91,6 @@ pub struct MergeTopicsOutput {
     pub target_topic_id: Uuid,
     pub source_topic_ids: Vec<Uuid>,
     pub moved_comments: u64,
-    pub url_updates: Vec<CanonicalUrlMutation>,
 }
 
 #[async_trait]
@@ -208,22 +186,6 @@ impl ContentOrchestrationService {
             .promote_topic_to_post(&txn, tenant_id, security.user_id, &input)
             .await?;
 
-        self.claim_blog_post_routes_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
-
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
-
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -295,14 +257,6 @@ impl ContentOrchestrationService {
             .bridge
             .demote_post_to_topic(&txn, tenant_id, security.user_id, &input)
             .await?;
-
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -376,14 +330,6 @@ impl ContentOrchestrationService {
             .split_topic(&txn, tenant_id, security.user_id, &input)
             .await?;
 
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
-
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -455,14 +401,6 @@ impl ContentOrchestrationService {
             .bridge
             .merge_topics(&txn, tenant_id, security.user_id, &input)
             .await?;
-
-        self.apply_canonical_url_mutations(
-            &txn,
-            tenant_id,
-            security.user_id,
-            &bridge_result.url_updates,
-        )
-        .await?;
 
         self.event_bus
             .publish_in_tx(
@@ -560,37 +498,6 @@ impl ContentOrchestrationService {
 
     /// A promoted topic takes its Blog route over from any retired alias that an
     /// earlier post left behind, the same claim rule Blog applies to its own slugs.
-    async fn claim_blog_post_routes_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        updates: &[CanonicalUrlMutation],
-    ) -> ContentResult<()> {
-        let writer = CanonicalUrlWriter::new(self.event_bus.clone());
-        for update in updates
-            .iter()
-            .filter(|update| update.target_kind == "blog_post")
-        {
-            writer
-                .release_alias_route_in_tx(txn, tenant_id, actor_id, &update.canonical_url)
-                .await?;
-        }
-        Ok(())
-    }
-
-    async fn apply_canonical_url_mutations(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        updates: &[CanonicalUrlMutation],
-    ) -> ContentResult<()> {
-        CanonicalUrlWriter::new(self.event_bus.clone())
-            .apply_canonical_url_mutations(txn, tenant_id, actor_id, updates)
-            .await
-    }
-
     async fn fetch_idempotent_result(
         &self,
         txn: &DatabaseTransaction,

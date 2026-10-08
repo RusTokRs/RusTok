@@ -2,9 +2,9 @@ use chrono::Utc;
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_blog::{blog_category, blog_post, blog_post_translation};
 use rustok_content::{
-    CanonicalUrlMutation, ContentError, ContentResult, PromoteTopicToPostInput,
-    PromoteTopicToPostOutput, RetiredCanonicalTarget,
+    ContentError, ContentResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
 };
+use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{TopicStatus, forum_topic};
 use rustok_taxonomy::TaxonomyService;
 use sea_orm::{
@@ -13,15 +13,17 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::bridge::OwnerRoutes;
 use crate::bridge::helpers::{
     ForumReplyRecord, adjust_forum_category_counters_in_tx, find_topic_in_tx,
-    forum_topic_route, load_forum_reply_records_in_tx, load_topic_translations_in_tx,
+    load_forum_reply_records_in_tx, load_topic_translations_in_tx,
     locales_from_topic_translations, normalize_locale, normalize_slug, resolve_topic_translation,
 };
 use crate::bridge::tags::{load_forum_tag_names_for_topic_in_tx, sync_blog_tags_for_post_in_tx};
 
 pub(crate) async fn promote_topic_to_post(
     taxonomy: &TaxonomyService,
+    routes: &OwnerRoutes,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
@@ -153,31 +155,46 @@ pub(crate) async fn promote_topic_to_post(
     adjust_forum_category_counters_in_tx(txn, tenant_id, topic.category_id, -1, -topic.reply_count)
         .await?;
 
-    // Blog routes are global, so the Blog mutation is written once under the
-    // Blog route locale. Every topic translation is retired into it.
-    let retired_targets = locales_from_topic_translations(&translations)?
-        .into_iter()
-        .map(|locale| RetiredCanonicalTarget {
-            target_kind: "forum_topic".to_string(),
-            target_id: topic.id,
-            locale,
-        })
-        .collect();
-    let url_updates = vec![CanonicalUrlMutation {
-        target_kind: "blog_post".to_string(),
-        target_id: post_id,
-        locale: rustok_blog::CANONICAL_POST_ROUTE_LOCALE.to_string(),
-        canonical_url: rustok_blog::canonical_post_route(&slug),
-        alias_urls: vec![forum_topic_route(topic.id)],
-        retired_targets,
-    }];
+    // Routes move from Forum to Blog. Redirects that pointed at the topic leave
+    // with it, and its derived canonical route is purged in every topic locale.
+    // The forum route of every translation then redirects to the post. Blog
+    // routes are global, so the post's canonical route is locale-neutral, and
+    // the slug claim frees any redirect that still holds that route.
+    let topic_locales = locales_from_topic_translations(&translations)?;
+    routes
+        .forum
+        .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "forum_topic", topic.id)
+        .await?;
+    routes
+        .forum
+        .purge_topic_canonical_in_tx(txn, tenant_id, actor_id, topic.id, &topic_locales)
+        .await?;
+    routes
+        .blog
+        .release_slug_route_in_tx(txn, tenant_id, actor_id, &slug)
+        .await?;
+    let blog_canonical = rustok_blog::canonical_post_route(&slug);
+    for locale in &topic_locales {
+        routes
+            .forum
+            .record_redirect_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                locale,
+                &forum_topic_route(topic.id),
+                "blog_post",
+                post_id,
+                &blog_canonical,
+            )
+            .await?;
+    }
 
     Ok(PromoteTopicToPostOutput {
         topic_id: topic.id,
         post_id,
         moved_comments: reply_records.len() as u64,
         effective_locale: resolved.effective_locale,
-        url_updates,
     })
 }
 

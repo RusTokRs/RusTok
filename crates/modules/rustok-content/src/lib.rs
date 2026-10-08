@@ -32,7 +32,7 @@ mod state_machine_proptest;
 
 pub use analytics::{ContentCountSnapshot, load_post_stats_snapshot};
 pub use dto::*;
-pub use entities::{Body, CanonicalUrl, Node, NodeTranslation, UrlAlias};
+pub use entities::{Body, Node, NodeTranslation};
 pub use error::{ContentError, ContentResult};
 pub use locale::{
     ResolvedLocale, available_locales_from, normalize_locale_code, resolve_by_locale,
@@ -44,10 +44,10 @@ pub use richtext::{
     render_html, validate, validate_and_normalize,
 };
 pub use services::{
-    CanonicalUrlMutation, CanonicalUrlService, CanonicalUrlWriter, ContentOrchestrationBridge,
-    ContentOrchestrationService, DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput,
-    MergeTopicsOutput, OrchestrationResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
-    ResolvedContentRoute, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput,
+    CanonicalRouteResolver, ContentOrchestrationBridge, ContentOrchestrationService,
+    DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput,
+    OrchestrationResult, PromoteTopicToPostInput, PromoteTopicToPostOutput, ResolvedContentRoute,
+    SharedCanonicalRouteResolver, SplitTopicInput, SplitTopicOutput, normalize_route,
 };
 pub use state_machine::{Archived, ContentNode, Draft, Published, ToContentStatus};
 

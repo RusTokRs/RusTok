@@ -680,14 +680,8 @@ impl PostService {
                 "Blog post changed concurrently before deletion",
             ));
         }
-        CanonicalUrlWriter::new(self.event_bus.clone())
-            .remove_target_routes_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                BLOG_POST_TARGET_KIND,
-                post_id,
-            )
+        BlogPostRouteOwner::new(self.event_bus.clone())
+            .remove_post_routes_in_tx(&txn, tenant_id, security.user_id, post_id, &post.slug)
             .await?;
 
         self.event_bus

@@ -21,7 +21,10 @@ mod enabled {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> SharedContentOrchestrationService {
-        let bridge = Arc::new(ServerContentOrchestrationBridge::new(db.clone()));
+        let bridge = Arc::new(ServerContentOrchestrationBridge::new(
+            db.clone(),
+            event_bus.clone(),
+        ));
         let service = Arc::new(ContentOrchestrationService::new(db, event_bus, bridge));
         SharedContentOrchestrationService(service)
     }

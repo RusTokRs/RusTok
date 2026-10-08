@@ -77,7 +77,7 @@ impl PostService {
         // change. The returned post always carries its current slug, so callers
         // can issue a permanent redirect when the requested slug was retired.
         let Some(post) = self
-            .find_post_by_current_or_canonical_route(tenant_id, &locale, &normalized_slug)
+            .find_post_by_current_or_canonical_route(tenant_id, &normalized_slug)
             .await?
         else {
             return Ok(None);

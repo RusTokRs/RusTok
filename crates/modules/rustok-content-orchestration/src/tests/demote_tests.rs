@@ -5,7 +5,7 @@ use rustok_blog::{
     CreatePostInput, PostService, blog_post,
 };
 use rustok_comments::{CommentsService, ListCommentsFilter, comment};
-use rustok_content::{CanonicalUrlService, ContentOrchestrationService, DemotePostToTopicInput};
+use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, DemotePostToTopicInput};
 use rustok_core::SecurityContext;
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ListRepliesFilter, ReplyService, ReplyStatus,
@@ -15,6 +15,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use crate::OwnerCanonicalRouteResolver;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, blog_settings_reader, ensure_conversion_schema, insert_test_actor, richtext,
@@ -231,7 +232,7 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
         .expect("legacy blog comments should be queryable");
     assert_eq!(remaining_comments, 0);
 
-    let canonical = CanonicalUrlService::new(db.clone());
+    let canonical = OwnerCanonicalRouteResolver::new(db.clone());
     let alias_resolution = canonical
         .resolve_route(tenant_id, "en", "/modules/blog?slug=legacy-post")
         .await

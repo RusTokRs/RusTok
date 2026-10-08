@@ -6,6 +6,7 @@ license.workspace = true
 description = "Owner-owned cross-module content orchestration bridge for blog/forum/content workflows"
 
 [dependencies]
+tracing.workspace = true
 async-trait.workspace = true
 async-graphql.workspace = true
 chrono.workspace = true

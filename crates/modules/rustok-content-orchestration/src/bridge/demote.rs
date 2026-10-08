@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
-    CanonicalUrlMutation, ContentError, ContentResult, DemotePostToTopicInput,
-    DemotePostToTopicOutput, RetiredCanonicalTarget, resolve_by_locale_with_fallback,
+    ContentError, ContentResult, DemotePostToTopicInput,
+    DemotePostToTopicOutput, resolve_by_locale_with_fallback,
 };
 use rustok_forum::{TopicStatus, forum_topic, forum_topic_translation};
 use rustok_taxonomy::TaxonomyService;
@@ -15,16 +15,18 @@ use uuid::Uuid;
 
 use crate::bridge::helpers::{
     adjust_forum_category_counters_in_tx, ensure_forum_category_exists_in_tx,
-    forum_topic_route, locales_from_post_translations, normalize_locale,
-    refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
+    normalize_locale, refresh_forum_topic_stats_in_tx, resequence_forum_topic_replies_in_tx,
 };
+use crate::bridge::OwnerRoutes;
+use rustok_forum::services::topic_routes::forum_topic_route;
 use crate::bridge::tags::{load_blog_tag_names_for_post_in_tx, sync_forum_tags_for_topic_in_tx};
 
 pub(crate) async fn demote_post_to_topic(
     taxonomy: &TaxonomyService,
+    routes: &OwnerRoutes,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    _actor_id: Option<Uuid>,
+    actor_id: Option<Uuid>,
     input: &DemotePostToTopicInput,
 ) -> ContentResult<DemotePostToTopicOutput> {
     let requested_locale = normalize_locale(&input.locale)?;
@@ -130,28 +132,35 @@ pub(crate) async fn demote_post_to_topic(
         .await?;
     blog_post::Entity::delete_by_id(post.id).exec(txn).await?;
 
-    let url_updates = locales_from_post_translations(&translations)?
-        .into_iter()
-        .map(|locale| CanonicalUrlMutation {
-            target_kind: "forum_topic".to_string(),
-            target_id: topic_id,
-            locale: locale.clone(),
-            canonical_url: forum_topic_route(topic_id),
-            alias_urls: vec![rustok_blog::canonical_post_route(post.slug.as_str())],
-            retired_targets: vec![RetiredCanonicalTarget {
-                target_kind: "blog_post".to_string(),
-                target_id: post.id,
-                locale: rustok_blog::CANONICAL_POST_ROUTE_LOCALE.to_string(),
-            }],
-        })
-        .collect();
+    // Routes move from Blog to Forum. The post's canonical route and every
+    // redirect that pointed at the post leave Blog and Forum. The retired Blog
+    // route then redirects to the new topic.
+    routes
+        .blog
+        .remove_post_routes_in_tx(txn, tenant_id, actor_id, post.id, &post.slug)
+        .await?;
+    routes
+        .forum
+        .remove_redirects_to_target_in_tx(txn, tenant_id, actor_id, "blog_post", post.id)
+        .await?;
+    routes
+        .blog
+        .redirect_source_route_in_tx(
+            txn,
+            tenant_id,
+            actor_id,
+            &rustok_blog::canonical_post_route(&post.slug),
+            "forum_topic",
+            topic_id,
+            &forum_topic_route(topic_id),
+        )
+        .await?;
 
     Ok(DemotePostToTopicOutput {
         post_id: post.id,
         topic_id,
         moved_comments: comment_records.len() as u64,
         effective_locale: resolved.effective_locale,
-        url_updates,
     })
 }
 

@@ -19,8 +19,7 @@ struct PostTranslationUpsertInput {
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Patch, Resource};
 use rustok_channel::ChannelService;
 use rustok_content::{
-    CanonicalUrlMutation, CanonicalUrlService, CanonicalUrlWriter, available_locales_from,
-    normalize_locale_code, resolve_by_locale_with_fallback,
+    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;

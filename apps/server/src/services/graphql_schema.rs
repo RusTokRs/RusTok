@@ -130,6 +130,12 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
             feature = "mod-comments"
         ))]
         content_orchestration: content_orchestration_from_ctx(ctx),
+        #[cfg(all(
+            feature = "mod-content",
+            feature = "mod-blog",
+            feature = "mod-forum"
+        ))]
+        canonical_route_resolver: canonical_route_resolver_from_ctx(ctx),
         #[cfg(feature = "mod-media")]
         storage: storage_from_ctx(ctx),
     }));
@@ -232,6 +238,17 @@ fn content_orchestration_from_ctx(
     ctx: &ServerRuntimeContext,
 ) -> Option<rustok_content_orchestration::SharedContentOrchestrationService> {
     ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum"
+))]
+fn canonical_route_resolver_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Option<rustok_content::SharedCanonicalRouteResolver> {
+    ctx.shared_get::<rustok_content::SharedCanonicalRouteResolver>()
 }
 
 #[cfg(all(feature = "mod-forum", feature = "mod-media"))]

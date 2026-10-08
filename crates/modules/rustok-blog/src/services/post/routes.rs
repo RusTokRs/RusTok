@@ -107,35 +107,32 @@ impl BlogPostRouteOwner {
         if retired_route == canonical_route {
             return Ok(());
         }
-        self.upsert_redirect_in_tx(
-            txn,
-            tenant_id,
-            actor_id,
-            &retired_route,
-            "blog_post",
-            post_id,
-        )
-        .await.map_err(BlogError::from)?;
-        self.event_bus
-            .publish_in_tx(
-                txn,
-                tenant_id,
-                actor_id,
-                DomainEvent::CanonicalUrlChanged {
-                    target_id: post_id,
-                    target_kind: "blog_post".to_string(),
-                    locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
-                    new_canonical_url: canonical_route,
-                    old_urls: vec![retired_route],
-                },
-            )
-            .await
-            .map_err(BlogError::from)?;
+        let changed = self
+            .upsert_redirect_in_tx(txn, tenant_id, actor_id, &retired_route, "blog_post", post_id)
+            .await?;
+        if changed {
+            self.event_bus
+                .publish_in_tx(
+                    txn,
+                    tenant_id,
+                    actor_id,
+                    DomainEvent::CanonicalUrlChanged {
+                        target_id: post_id,
+                        target_kind: "blog_post".to_string(),
+                        locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
+                        new_canonical_url: canonical_route,
+                        old_urls: vec![retired_route],
+                    },
+                )
+                .await
+                .map_err(BlogError::from)?;
+        }
         Ok(())
     }
 
     /// Records a redirect from a Blog source route to any target, for example a
-    /// post demoted to a forum topic.
+    /// post demoted to a forum topic. `target_canonical_url` is the canonical
+    /// route of the target in its own owner, and it is published with the change.
     pub async fn redirect_source_route_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -144,9 +141,29 @@ impl BlogPostRouteOwner {
         source_route: &str,
         target_kind: &str,
         target_id: Uuid,
+        target_canonical_url: &str,
     ) -> BlogResult<()> {
-        self.upsert_redirect_in_tx(txn, tenant_id, actor_id, source_route, target_kind, target_id)
-            .await
+        let changed = self
+            .upsert_redirect_in_tx(txn, tenant_id, actor_id, source_route, target_kind, target_id)
+            .await?;
+        if changed {
+            self.event_bus
+                .publish_in_tx(
+                    txn,
+                    tenant_id,
+                    actor_id,
+                    DomainEvent::CanonicalUrlChanged {
+                        target_id,
+                        target_kind: target_kind.to_string(),
+                        locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
+                        new_canonical_url: target_canonical_url.to_string(),
+                        old_urls: vec![source_route.to_string()],
+                    },
+                )
+                .await
+                .map_err(BlogError::from)?;
+        }
+        Ok(())
     }
 
     /// Removes every redirect that points at a deleted or converted post and
@@ -194,7 +211,7 @@ impl BlogPostRouteOwner {
         source_route: &str,
         target_kind: &str,
         target_id: Uuid,
-    ) -> BlogResult<()> {
+    ) -> BlogResult<bool> {
         if !source_route.starts_with(BLOG_ROUTE_PREFIX) {
             return Err(BlogError::validation(format!(
                 "Blog redirect source must start with `{BLOG_ROUTE_PREFIX}`"
@@ -211,7 +228,7 @@ impl BlogPostRouteOwner {
 
         match existing {
             Some(existing) if existing.target_kind == target_kind && existing.target_id == target_id => {
-                return Ok(());
+                return Ok(false);
             }
             Some(existing) => {
                 // The source route moves to a new target. The displaced target
@@ -224,7 +241,7 @@ impl BlogPostRouteOwner {
                     existing.target_id,
                     vec![source_route.to_string()],
                 )
-                .await.map_err(BlogError::from)?;
+                .await?;
                 let mut active: blog_post_route::ActiveModel = existing.into();
                 active.target_kind = Set(target_kind.to_string());
                 active.target_id = Set(target_id);
@@ -245,7 +262,7 @@ impl BlogPostRouteOwner {
                 .map_err(BlogError::from)?;
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     async fn publish_purged(

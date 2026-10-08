@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_api::RichTextDocument;
-use rustok_content::{CanonicalUrlService, ContentOrchestrationService, MergeTopicsInput};
+use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, MergeTopicsInput};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ReplyService,
     TopicService, forum_category, forum_reply, forum_topic,
@@ -10,6 +10,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
+use crate::OwnerCanonicalRouteResolver;
 use crate::ServerContentOrchestrationBridge;
 use crate::tests::helpers::{
     admin_security, ensure_conversion_schema, insert_test_actor, setup_conversion_test_db,
@@ -175,7 +176,7 @@ async fn merge_topics_moves_replies_and_updates_category_counters() {
         .expect("category B exists");
     assert_eq!(cat_b.topic_count, 0);
 
-    let canonical = CanonicalUrlService::new(db.clone());
+    let canonical = OwnerCanonicalRouteResolver::new(db.clone());
     let alias = canonical
         .resolve_route(
             tenant_id,

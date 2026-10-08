@@ -47,14 +47,19 @@ the [central implementation plan](../../../docs/modules/rich-text-implementation
 - `apps/server` only composes the owner-provided GraphQL roots and dashboard
   post analytics helper.
 
-- Conversion flows persist typed redirect/canonical state in
-  `content_canonical_urls` and `content_url_aliases` and publish
-  `CanonicalUrlChanged` / `UrlAliasPurged` through the outbox contract.
-- `CanonicalUrlWriter` is the single writer of these tables for every module.
-  Blog post routes (create, rename, delete) and content orchestration go
-  through it. `release_alias_route_in_tx` lets a module claim a route that a
-  retired alias still holds, and `remove_target_routes_in_tx` purges a deleted
-  target's routes.
+- Canonical routes are derived from owner identity and are never stored.
+  Redirects live in the owner tables: `blog_post_routes` (Blog, keyed by
+  `(tenant_id, source_route)` because Blog slugs are global) and
+  `forum_topic_routes` (Forum, keyed by `(tenant_id, locale, source_route)`).
+  Every change publishes `CanonicalUrlChanged` / `UrlAliasPurged` through the
+  outbox contract.
+- `rustok-content` owns the read port `CanonicalRouteResolver`.
+  `rustok-content-orchestration` implements it over the owner tables.
+  Consumers (SEO, storefront, GraphQL) receive the port as
+  `SharedCanonicalRouteResolver`; `rustok-content` does not write owner tables.
+  `BlogPostRouteOwner::release_slug_route_in_tx` lets Blog claim a slug that a
+  retired redirect still holds, and `remove_post_routes_in_tx` purges a deleted
+  post's routes.
 
 Richtext policy is the production runtime gate for Blog, Forum, and Comments.
 Their owner services select fixed profiles and keep locale in owner rows. The

@@ -43,8 +43,8 @@ pub use module::BlogModule;
 pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 pub use rustok_comments_api::CommentsThreadPort;
 pub use services::{
-    CANONICAL_POST_ROUTE_LOCALE, CategoryService, CommentService, PostService, TagService,
-    canonical_post_route,
+    BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
+    CategoryService, CommentService, PostService, TagService, canonical_post_route,
 };
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
