@@ -9,7 +9,7 @@ product-list-attributeFiltersPlaceholder = color=red;weight=12.5
 product-list-categoryLabel = Category
 product-list-empty = No published products are available yet.
 product-list-facetsClear = Clear filters
-product-list-facetsCount = ({count})
+# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
 product-list-facetsEmpty = No filters are available for this catalog yet.
 product-list-facetsLabel = Filters
 product-list-facetsSelected = [x]

@@ -54,6 +54,40 @@ pub struct ProductListItem {
     pub published_at: Option<String>,
 }
 
+/// One bucket of an enumerable admin facet.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct AdminCatalogFacetValue {
+    /// `code=<value>` payload: an option id for dictionary attributes, `true`/`false` for booleans.
+    pub value: String,
+    pub label: String,
+    pub count: u64,
+}
+
+/// A facet the Product owner resolved for the current admin filter set.
+///
+/// The serde names match the GraphQL answer (`adminProductCatalogFacets`) and the native server
+/// function payload, so the admin grid reads one model on both transports.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct AdminCatalogFacet {
+    pub code: String,
+    pub label: String,
+    /// Stored attribute value type, e.g. `select`.
+    #[serde(rename = "valueType")]
+    pub value_type: String,
+    #[serde(rename = "isLocalized")]
+    pub is_localized: bool,
+    /// False when the value domain is unbounded (text, numeric, date): `values` stays empty.
+    #[serde(rename = "isEnumerable")]
+    pub is_enumerable: bool,
+    /// True when the owner cut the bucket list at its facet-value limit.
+    #[serde(rename = "isTruncated")]
+    pub is_truncated: bool,
+    /// Products matching every other active facet that carry a value for this attribute.
+    #[serde(rename = "totalProducts")]
+    pub total_products: u64,
+    pub values: Vec<AdminCatalogFacetValue>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductDetail {
     pub id: String,

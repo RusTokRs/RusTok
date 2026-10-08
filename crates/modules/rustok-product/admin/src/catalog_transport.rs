@@ -193,6 +193,53 @@ pub(crate) async fn fetch_products(
     }
 }
 
+/// Admin catalog facets: native-first with the GraphQL root as the fallback transport.
+///
+/// Counting is optional and must never take the grid down: an owner without the admin facet
+/// capability, or a transport that rejects the optional root, degrades to "no facets" so the list
+/// itself keeps working. That is why this wrapper reports `Option` rather than an error.
+pub(crate) async fn fetch_admin_catalog_facets(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: Option<String>,
+    controls: ProductAdminListInput,
+    facet_codes: Vec<String>,
+) -> Option<Vec<crate::model::AdminCatalogFacet>> {
+    if let Ok(value) = legacy::admin_catalog_native::fetch_admin_catalog_facets(
+        tenant_id.clone(),
+        locale.clone(),
+        controls.clone(),
+        facet_codes.clone(),
+    )
+    .await
+    {
+        return Some(value);
+    }
+    let context = GraphqlReadContext::for_products(
+        token.as_deref(),
+        tenant_slug.as_deref(),
+        tenant_id.as_str(),
+        locale.as_deref(),
+        controls.search.as_deref(),
+        controls.status.as_deref(),
+    );
+    legacy::admin_catalog_graphql::fetch_facets(
+        token,
+        tenant_slug,
+        tenant_id,
+        locale,
+        controls,
+        facet_codes,
+    )
+    .await
+    .map(Some)
+    .unwrap_or_else(|error| {
+        context.map_error(error);
+        None
+    })
+}
+
 pub(crate) async fn fetch_product(
     token: Option<String>,
     tenant_slug: Option<String>,

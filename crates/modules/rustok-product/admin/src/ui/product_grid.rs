@@ -5,9 +5,11 @@ use rustok_ui_core::UiRouteContext;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 
+use super::catalog_facets::AdminCatalogFacetPanel;
 use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, serialize_attribute_filters,
 };
+use crate::facets::{build_product_admin_facet_labels, build_product_admin_facet_panel};
 use crate::catalog_transport;
 use crate::core::{
     filter_products, item_product_kind, product_grid_columns, ProductKind,
@@ -88,6 +90,51 @@ pub fn ProductGridPage() -> impl IntoView {
             Ok::<Vec<ProductListItem>, String>(res.items)
         }
     });
+
+    // Owner-counted facet buckets for the same URL-driven controls. Counting is optional: no
+    // facet capability, no transport, or no countable attribute all degrade to "no panel" instead
+    // of an error, because the grid itself must keep working.
+    let facets_locale = locale.clone();
+    let facets_controls = catalog_controls.clone();
+    let facets_resource = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = facets_locale.clone();
+        let controls = facets_controls.clone();
+        let _ = refresh_nonce.get();
+        async move {
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .ok()?;
+            let options = catalog_transport::fetch_catalog_search_options(
+                tok.clone(),
+                ten.clone(),
+                loc.clone().unwrap_or_default(),
+            )
+            .await
+            .ok()?;
+            let facet_codes = crate::facets::build_product_admin_facet_codes(&options);
+            if facet_codes.is_empty() {
+                return Some(Vec::new());
+            }
+            catalog_transport::fetch_admin_catalog_facets(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                loc,
+                controls,
+                facet_codes,
+            )
+            .await
+        }
+    });
+
+    // The panel is a pure view over the owner answer and the controls, so it is rebuilt from the
+    // resource instead of being cached: a selection change navigates, and the new render shows the
+    // new counts.
+    let facet_panel_base = base_route.clone();
+    let facet_panel_controls = catalog_controls.clone();
+    let facet_panel_labels = build_product_admin_facet_labels(locale.as_deref());
 
     // Reactive filtered data
     let filtered_data = Memo::new(move |_| {
@@ -524,6 +571,21 @@ pub fn ProductGridPage() -> impl IntoView {
 
     view! {
         <div class="flex flex-col gap-5 w-full">
+            // Facet panel: owner-counted buckets for the current admin filter set.
+            {move || {
+                let facets = facets_resource.get().flatten().unwrap_or_default();
+                if facets.is_empty() {
+                    return ().into_any();
+                }
+                let panel = build_product_admin_facet_panel(
+                    facet_panel_base.as_str(),
+                    facets.as_slice(),
+                    &facet_panel_controls,
+                    facet_panel_labels.clone(),
+                );
+                view! { <AdminCatalogFacetPanel panel /> }.into_any()
+            }}
+
             // Top Action Toolbar
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card rounded-2xl border border-border p-4 shadow-sm">
                 <div>

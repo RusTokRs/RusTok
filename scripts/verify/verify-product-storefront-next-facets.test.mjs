@@ -304,10 +304,10 @@ test("panel copy stays in sync with the storefront locale files", () => {
   );
   assert.equal(behaviour.labelsEn.clearLabel, english["product-list-facetsClear"]);
   assert.equal(behaviour.labelsEn.emptyMessage, english["product-list-facetsEmpty"]);
-  assert.equal(
-    behaviour.labelsEn.countTemplate,
-    english["product-list-facetsCount"],
-  );
+  // The bucket count template is code-owned: the panel substitutes the number textually, so the
+  // entry never reaches Fluent (as Fluent, `{count}` would be a message reference, not a variable).
+  assert.equal(english["product-list-facetsCount"], undefined);
+  assert.equal(behaviour.labelsEn.countTemplate, "({count})");
   assert.equal(
     behaviour.labelsEn.selectedMarker,
     english["product-list-facetsSelected"],
@@ -328,10 +328,8 @@ test("panel copy stays in sync with the storefront locale files", () => {
   );
   assert.equal(behaviour.labelsRu.clearLabel, russian["product-list-facetsClear"]);
   assert.equal(behaviour.labelsRu.emptyMessage, russian["product-list-facetsEmpty"]);
-  assert.equal(
-    behaviour.labelsRu.countTemplate,
-    russian["product-list-facetsCount"],
-  );
+  assert.equal(russian["product-list-facetsCount"], undefined);
+  assert.equal(behaviour.labelsRu.countTemplate, "({count})");
   assert.equal(
     behaviour.labelsRu.selectedMarker,
     russian["product-list-facetsSelected"],

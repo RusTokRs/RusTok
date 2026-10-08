@@ -4,6 +4,7 @@
 pub mod catalog_controls;
 pub mod catalog_transport;
 pub mod core;
+pub mod facets;
 mod i18n;
 // The retry-identity contract is crate-level: it is the caller identity that
 // the admin package owns for every lifecycle command, independent of the
@@ -14,9 +15,15 @@ pub mod transport;
 pub mod ui;
 
 pub use core::{product_grid_columns, ProductKind};
+pub use facets::{
+    ProductAdminFacetLabels, ProductAdminFacetPanelView, ProductAdminFacetValueView,
+    ProductAdminFacetView, admin_catalog_facets_to_grid, build_product_admin_facet_codes,
+    build_product_admin_facet_labels, build_product_admin_facet_panel,
+};
 pub use model::{
-    AxisAllowedValue, ProductCatalogSearchOption, ProductCatalogSearchOptions, SetVariantAxesDraft,
-    VariantAxisConfig, VariantAxisDraft, VariantAxisValue, VariantAxisValueDraft,
+    AdminCatalogFacet, AdminCatalogFacetValue, AxisAllowedValue, ProductCatalogSearchOption,
+    ProductCatalogSearchOptions, SetVariantAxesDraft, VariantAxisConfig, VariantAxisDraft,
+    VariantAxisValue, VariantAxisValueDraft,
 };
 pub use transport::fetch_catalog_search_options;
 // One mounted admin per surface: the host codegen mounts `ui::root::ProductAdmin`.

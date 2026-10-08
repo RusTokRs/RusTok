@@ -11,7 +11,8 @@ use super::diagnostics::{
     product_variant_not_found,
 };
 use super::types::{
-    AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
+    AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
+    LegacyAdminProductsRequest,
     LegacyStorefrontProductList, LegacyStorefrontProductsRequest, ProductProjectionRequest,
     PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
@@ -26,6 +27,7 @@ const READ_STOREFRONT_PRODUCT_PROJECTION_OPERATION: &str = "read_storefront_prod
 const LIST_PUBLISHED_PRODUCTS_OPERATION: &str = "list_published_products";
 const LIST_FILTERED_PUBLISHED_PRODUCTS_OPERATION: &str = "list_filtered_published_products";
 const LOAD_STOREFRONT_CATALOG_FACETS_OPERATION: &str = "load_storefront_catalog_facets";
+const LOAD_ADMIN_CATALOG_FACETS_OPERATION: &str = "load_admin_catalog_facets";
 const LIST_LEGACY_STOREFRONT_PRODUCTS_OPERATION: &str = "list_legacy_storefront_products";
 const LIST_ADMIN_PRODUCTS_OPERATION: &str = "list_admin_products";
 const LIST_LEGACY_ADMIN_PRODUCTS_OPERATION: &str = "list_legacy_admin_products";
@@ -82,6 +84,20 @@ pub trait ProductCatalogReadPort: Send + Sync {
         Err(PortError::unavailable(
             "product.catalog_facets_unavailable",
             "product catalog facets are unavailable",
+        ))
+    }
+
+    /// Optional admin facet capability: per-attribute bucket counts under the current admin filter
+    /// set, including drafts and archived rows. Adapters that cannot count admin facets stay
+    /// source-compatible and fail closed.
+    async fn load_admin_catalog_facets(
+        &self,
+        _context: PortContext,
+        _request: AdminCatalogFacetsRequest,
+    ) -> Result<Vec<StorefrontCatalogFacet>, PortError> {
+        Err(PortError::unavailable(
+            "product.admin_catalog_facets_unavailable",
+            "product admin catalog facets are unavailable",
         ))
     }
 
@@ -263,6 +279,27 @@ impl ProductCatalogReadPort for crate::CatalogService {
             locale,
             request.fallback_locale.as_deref(),
             request.public_channel_slug.as_deref(),
+            &request.query,
+            request.facet_codes.as_slice(),
+        )
+        .await
+        .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
+    }
+
+    async fn load_admin_catalog_facets(
+        &self,
+        context: PortContext,
+        request: AdminCatalogFacetsRequest,
+    ) -> Result<Vec<StorefrontCatalogFacet>, PortError> {
+        let owner_operation = LOAD_ADMIN_CATALOG_FACETS_OPERATION;
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
+        crate::CatalogService::admin_catalog_facets(
+            self,
+            tenant_id,
+            locale,
+            request.fallback_locale.as_deref(),
             &request.query,
             request.facet_codes.as_slice(),
         )
