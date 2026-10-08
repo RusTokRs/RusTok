@@ -65,6 +65,9 @@ struct ResolvedTranslationRecord<'a> {
 mod commands;
 mod queries;
 mod repository;
+mod routes;
+
+pub use routes::{BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
 pub(crate) use repository::load_post_subject_snapshot;
 

@@ -3,6 +3,7 @@
 pub mod forum_attachment_relation;
 pub mod forum_attachment_relation_head;
 pub mod forum_audience_mention;
+pub mod forum_topic_route;
 pub mod forum_category;
 pub mod forum_category_audience_channel;
 pub mod forum_category_audience_group;

@@ -23,6 +23,7 @@ mod m20260922_000027_create_blog_tag_usage_projection;
 mod m20260922_000028_remove_blog_category_post_count;
 mod m20260924_000029_enforce_blog_category_settings_contract;
 mod m20261008_000031_remove_blog_post_view_count;
+mod m20261008_000032_create_blog_post_routes;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -54,6 +55,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260922_000028_remove_blog_category_post_count::Migration),
         Box::new(m20260924_000029_enforce_blog_category_settings_contract::Migration),
         Box::new(m20261008_000031_remove_blog_post_view_count::Migration),
+        Box::new(m20261008_000032_create_blog_post_routes::Migration),
     ]
 }
 
@@ -127,6 +129,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261008_000031_remove_blog_post_view_count",
             vec!["m20260924_000029_enforce_blog_category_settings_contract"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261008_000032_create_blog_post_routes",
+            vec!["m20261008_000031_remove_blog_post_view_count"],
         ),
     ]
 }
