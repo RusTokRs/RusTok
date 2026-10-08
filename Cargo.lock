@@ -14817,6 +14817,7 @@ dependencies = [
  "async-graphql",
  "async-trait",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "proptest",
  "rustok-api",
@@ -15440,6 +15441,7 @@ dependencies = [
  "sea-orm-migration",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -15700,6 +15702,7 @@ dependencies = [
  "async-graphql-value",
  "async-trait",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "flex",
  "hex",
@@ -17920,6 +17923,7 @@ dependencies = [
  "rustok-api",
  "rustok-blog",
  "rustok-content",
+ "rustok-content-orchestration",
  "rustok-core",
  "rustok-forum",
  "rustok-media",
