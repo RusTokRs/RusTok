@@ -8,6 +8,14 @@ product-list-attributeFiltersLabel = Attribute filters
 product-list-attributeFiltersPlaceholder = color=red;weight=12.5
 product-list-categoryLabel = Category
 product-list-empty = No published products are available yet.
+product-list-facetsClear = Clear filters
+product-list-facetsCount = ({count})
+product-list-facetsEmpty = No filters are available for this catalog yet.
+product-list-facetsLabel = Filters
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = More values are available than shown.
+product-list-facetsUnbounded = Enter a value in the filter field above.
+product-list-facetsUnselected = [ ]
 product-list-open = Open
 product-list-searchLabel = Search catalog
 product-list-searchPlaceholder = Search published products

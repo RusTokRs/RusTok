@@ -130,3 +130,26 @@ export type StorefrontCatalogFilter = {
   page?: number;
   perPage?: number;
 };
+
+/** One bucket of an enumerable facet: an option id for dictionaries, `true`/`false` for booleans. */
+export type ProductCatalogFacetValue = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+/** A facet the Product owner counted for the current catalog filter set. */
+export type ProductCatalogFacet = {
+  code: string;
+  label: string;
+  /** Stored attribute value type, e.g. `select`. */
+  valueType: string;
+  isLocalized: boolean;
+  /** False for unbounded domains (text, numeric, date): `values` stays empty. */
+  isEnumerable: boolean;
+  /** True when the owner cut the bucket list at its facet-value limit. */
+  isTruncated: boolean;
+  /** Products matching every other active facet that carry a value for this attribute. */
+  totalProducts: number;
+  values: ProductCatalogFacetValue[];
+};

@@ -12,6 +12,8 @@ import { registerStorefrontModule } from "@/modules/registry";
 import { CatalogSection } from "./components/catalog-section";
 
 export type {
+  ProductCatalogFacet,
+  ProductCatalogFacetValue,
   ProductCatalogSearchOption,
   ProductCatalogSearchOptions,
   StorefrontCatalogFilter,
@@ -24,8 +26,30 @@ export type {
   StorefrontProductVariant,
 } from "./api/types";
 
+export type {
+  CatalogFacetControls,
+  CatalogFacetFiltersView,
+  CatalogFacetLabels,
+  CatalogFacetValueView,
+  CatalogFacetView,
+} from "./catalog/facets";
+
+export {
+  applyQueryPairs,
+  buildCatalogFacetCodes,
+  buildCatalogFacetFiltersView,
+  buildCatalogFacetLabels,
+  clearAttributeFilterCode,
+  hasAttributeFilterForCode,
+  isAttributeFilterSelected,
+  parseAttributeFilters,
+  serializeAttributeFilters,
+  toggleAttributeFilter,
+} from "./catalog/facets";
+
 export {
   fetchCatalogSearchOptions,
+  fetchStorefrontCatalogFacets,
   fetchStorefrontProduct,
   fetchStorefrontProductPricing,
   fetchStorefrontProducts,

@@ -10,6 +10,7 @@
 
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 import type {
+  ProductCatalogFacet,
   ProductCatalogSearchOptions,
   StorefrontCatalogFilter,
   StorefrontProductDetail,
@@ -139,6 +140,74 @@ const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY = `
   }
 `;
 
+/**
+ * Bucket counts for typed EAV facets under the current storefront filter set.
+ *
+ * Facets are aggregated over the whole filtered catalog, so the request deliberately carries no
+ * pagination: the owner counts every matching product, not one page.
+ */
+const STOREFRONT_CATALOG_FACETS_QUERY = `
+  query StorefrontCatalogFacets(
+    $locale: String,
+    $filter: StorefrontProductCatalogFilter,
+    $facetCodes: [String!]!
+  ) {
+    storefrontProductCatalogFacets(
+      locale: $locale,
+      filter: $filter,
+      facetCodes: $facetCodes
+    ) {
+      code
+      label
+      valueType
+      isLocalized
+      isEnumerable
+      isTruncated
+      totalProducts
+      values {
+        value
+        label
+        count
+      }
+    }
+  }
+`;
+
+type CatalogFilterVariables = {
+  search?: string;
+  categoryId?: string;
+  sortBy?: string;
+  sortDirection?: string;
+  attributeFilters?: string[];
+  currencyCode?: string;
+  page?: number;
+  perPage?: number;
+};
+
+function toCatalogFilterVariables(
+  filter: StorefrontCatalogFilter | undefined,
+  paginate: boolean,
+): CatalogFilterVariables | undefined {
+  if (!filter) return undefined;
+  const variables: CatalogFilterVariables = {
+    search: filter.search?.trim() || undefined,
+    categoryId: filter.categoryId?.trim() || undefined,
+    sortBy: filter.sortBy || undefined,
+    sortDirection: filter.sortDirection || undefined,
+    attributeFilters: filter.attributeFilters?.length
+      ? filter.attributeFilters
+      : undefined,
+    currencyCode: filter.currencyCode?.trim().toUpperCase() || undefined,
+    page: filter.page ?? 1,
+    perPage: filter.perPage ?? 12,
+  };
+  if (!paginate) {
+    delete variables.page;
+    delete variables.perPage;
+  }
+  return variables;
+}
+
 export async function fetchCatalogSearchOptions(
   requestOrGraphql:
     | {
@@ -203,34 +272,12 @@ export async function fetchStorefrontProducts(
     storefrontProductCatalog: StorefrontProductListResponse;
   }, {
     locale?: string;
-    filter?: {
-      search?: string;
-      categoryId?: string;
-      sortBy?: string;
-      sortDirection?: string;
-      attributeFilters?: string[];
-      currencyCode?: string;
-      page?: number;
-      perPage?: number;
-    };
+    filter?: CatalogFilterVariables;
   }>({
     query: STOREFRONT_PRODUCTS_QUERY,
     variables: {
       locale: locale.trim() || undefined,
-      filter: filter
-        ? {
-            search: filter.search?.trim() || undefined,
-            categoryId: filter.categoryId?.trim() || undefined,
-            sortBy: filter.sortBy || undefined,
-            sortDirection: filter.sortDirection || undefined,
-            attributeFilters: filter.attributeFilters?.length
-              ? filter.attributeFilters
-              : undefined,
-            currencyCode: filter.currencyCode?.trim().toUpperCase() || undefined,
-            page: filter.page ?? 1,
-            perPage: filter.perPage ?? 12,
-          }
-        : undefined,
+      filter: toCatalogFilterVariables(filter, true),
     },
     tenant: tenantSlug ?? undefined,
   });
@@ -244,6 +291,43 @@ export async function fetchStorefrontProducts(
       items: [],
     }
   );
+}
+
+/**
+ * Loads the owner-counted facets for the requested attribute codes.
+ *
+ * The caller derives the codes from the same catalog search options it renders as filter inputs
+ * (`buildCatalogFacetCodes`); the owner answers in that order and ignores unknown codes.
+ */
+export async function fetchStorefrontCatalogFacets(
+  graphql: ProductGraphqlExecutor,
+  locale: string,
+  filter: StorefrontCatalogFilter | undefined,
+  facetCodes: readonly string[],
+  tenantSlug?: string | null,
+): Promise<ProductCatalogFacet[]> {
+  const codes = facetCodes
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0);
+  if (codes.length === 0) return [];
+
+  const response = await graphql<{
+    storefrontProductCatalogFacets: ProductCatalogFacet[];
+  }, {
+    locale?: string;
+    filter?: CatalogFilterVariables;
+    facetCodes: string[];
+  }>({
+    query: STOREFRONT_CATALOG_FACETS_QUERY,
+    variables: {
+      locale: locale.trim() || undefined,
+      filter: toCatalogFilterVariables(filter, false),
+      facetCodes: codes,
+    },
+    tenant: tenantSlug ?? undefined,
+  });
+
+  return response.data?.storefrontProductCatalogFacets ?? [];
 }
 
 export async function fetchStorefrontProduct(

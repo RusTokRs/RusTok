@@ -8,6 +8,14 @@ product-list-attributeFiltersLabel = Фильтры по атрибутам
 product-list-attributeFiltersPlaceholder = color=red;weight=12.5
 product-list-categoryLabel = Категория
 product-list-empty = Опубликованные товары пока недоступны.
+product-list-facetsClear = Очистить фильтры
+product-list-facetsCount = ({count})
+product-list-facetsEmpty = Для этого каталога фильтры пока недоступны.
+product-list-facetsLabel = Фильтры
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = Доступны и другие значения, кроме показанных.
+product-list-facetsUnbounded = Укажите значение в поле фильтра выше.
+product-list-facetsUnselected = [ ]
 product-list-open = Открыть
 product-list-searchLabel = Поиск по каталогу
 product-list-searchPlaceholder = Поиск опубликованных товаров
