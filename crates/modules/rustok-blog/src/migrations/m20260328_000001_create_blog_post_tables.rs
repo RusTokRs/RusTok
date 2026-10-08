@@ -96,6 +96,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Keyset scan by id for bulk and sitemap jobs.
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_posts_tenant_status_id")
+                    .table(BlogPosts::Table)
+                    .col(BlogPosts::TenantId)
+                    .col(BlogPosts::Status)
+                    .col(BlogPosts::Id)
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .create_index(
                 Index::create()

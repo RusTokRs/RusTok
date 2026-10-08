@@ -225,9 +225,11 @@ topics must scale. Measured on the current code:
   adds `publicBlogPosts` (keyset on `(published_at, id)`, no `total`, opaque
   `nextCursor`), removes the public branch from `posts`, and moves the
   storefront, the Next.js blog package, and the blog index page to cursors.
-  The SEO sitemap and bulk scans, the forum, comments, and the admin lists keep
-  their offset paths until their own slices. `idx_blog_posts_status_published_at`
-  is amended with `id` as the keyset tie-breaker.
+  `idx_blog_posts_status_published_at` is amended with `id` as the keyset
+  tie-breaker. Second slice (same day): the SEO bulk and sitemap scans of Blog
+  use `scan_published_posts`, a keyset on `id` (`idx_blog_posts_tenant_status_id`).
+  The forum, comments, and the admin lists keep their offset paths until their
+  own slices.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
   time-bounded exception is recorded in `compatibility-exceptions.json` first.

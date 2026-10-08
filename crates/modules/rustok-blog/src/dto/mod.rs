@@ -19,6 +19,6 @@ pub use comment::{
 pub use post::{
     ArchivePostInput, CreatePostInput, PostListQuery, PostListResponse, PostResponse,
     PostSortField, PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery,
-    PublishedPostCursor, UpdatePostInput,
+    PublishedPostCursor, PublishedPostScanPage, UpdatePostInput,
 };
 pub use tag::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};

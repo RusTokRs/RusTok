@@ -12,9 +12,7 @@ use rustok_seo_targets::{
 use url::Url;
 
 use crate::state_machine::BlogPostStatus;
-use crate::{
-    BlogError, PostListQuery, PostResponse, PostService, PostSortField, PostSortOrder, PostSummary,
-};
+use crate::{BlogError, PostResponse, PostService, PostSummary};
 
 const BULK_FETCH_SIZE: u32 = 48;
 
@@ -108,40 +106,28 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         request: SeoTargetBulkListRequest<'_>,
     ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u32;
+        let mut after = None;
         let mut summaries = Vec::new();
 
         loop {
             let page = service
-                .list_public_visible_with_locale_fallback(
+                .scan_published_posts(
                     request.tenant_id,
-                    PostListQuery {
-                        status: Some(BlogPostStatus::Published),
-                        category_id: None,
-                        tag: None,
-                        author_id: None,
-                        locale: Some(request.locale.to_string()),
-                        page: Some(page_number),
-                        per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some(PostSortField::PublishedAt),
-                        sort_order: Some(PostSortOrder::Desc),
-                    },
+                    request.locale,
                     Some(request.default_locale),
-                    None,
+                    after,
+                    BULK_FETCH_SIZE,
                 )
                 .await?;
-            if page.items.is_empty() {
-                break;
-            }
 
             for item in page.items {
                 summaries.push(map_post_bulk_summary(item));
             }
 
-            if page_number >= page.total_pages.max(1) {
-                break;
+            match page.next_after {
+                Some(next) => after = Some(next),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(summaries)
@@ -153,40 +139,28 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u32;
+        let mut after = None;
         let mut candidates = Vec::new();
 
         loop {
             let page = service
-                .list_public_visible_with_locale_fallback(
+                .scan_published_posts(
                     request.tenant_id,
-                    PostListQuery {
-                        status: Some(BlogPostStatus::Published),
-                        category_id: None,
-                        tag: None,
-                        author_id: None,
-                        locale: Some(request.default_locale.to_string()),
-                        page: Some(page_number),
-                        per_page: Some(BULK_FETCH_SIZE),
-                        sort_by: Some(PostSortField::PublishedAt),
-                        sort_order: Some(PostSortOrder::Desc),
-                    },
+                    request.default_locale,
                     Some(request.default_locale),
-                    None,
+                    after,
+                    BULK_FETCH_SIZE,
                 )
                 .await?;
-            if page.items.is_empty() {
-                break;
-            }
 
             for item in page.items {
                 candidates.push(map_post_sitemap_candidate(item));
             }
 
-            if page_number >= page.total_pages.max(1) {
-                break;
+            match page.next_after {
+                Some(next) => after = Some(next),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(candidates)

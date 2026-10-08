@@ -523,6 +523,55 @@ impl PostService {
         Ok(PostListResponse::new(items, total, &query))
     }
 
+    /// Keyset scan of published posts ordered by `id`, for bulk and sitemap jobs.
+    /// Callers loop until `next_after` is `None`; no row is counted.
+    #[instrument(skip(self))]
+    pub async fn scan_published_posts(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        after: Option<Uuid>,
+        per_page: u32,
+    ) -> BlogResult<PublishedPostScanPage> {
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let per_page = u64::from(per_page.clamp(1, 100));
+
+        let mut select = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
+        if let Some(after) = after {
+            select = select.filter(blog_post::Column::Id.gt(after));
+        }
+        let mut posts = select
+            .order_by_asc(blog_post::Column::Id)
+            .limit(per_page + 1)
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+
+        let has_next_page = posts.len() as u64 > per_page;
+        posts.truncate(per_page as usize);
+        let next_after = if has_next_page {
+            Some(
+                posts
+                    .last()
+                    .ok_or_else(|| {
+                        BlogError::invariant("Keyset scan reported a next page without rows")
+                    })?
+                    .id,
+            )
+        } else {
+            None
+        };
+
+        let items = self
+            .summarize_posts(tenant_id, posts, locale, fallback_locale)
+            .await?;
+        Ok(PublishedPostScanPage { items, next_after })
+    }
+
     pub async fn get_posts_by_tag(
         &self,
         tenant_id: Uuid,

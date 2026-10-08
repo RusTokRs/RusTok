@@ -281,3 +281,12 @@ pub struct PublicPostPage {
     /// Present only when another page exists.
     pub next_cursor: Option<PublishedPostCursor>,
 }
+
+/// One keyset page of a published-post scan for bulk and sitemap jobs.
+/// `next_after` is the last id of this page when another page exists.
+#[derive(Debug, Clone)]
+pub struct PublishedPostScanPage {
+    pub items: Vec<PostSummary>,
+    pub next_after: Option<Uuid>,
+}
+
