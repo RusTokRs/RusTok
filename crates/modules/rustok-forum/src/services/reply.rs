@@ -105,7 +105,10 @@ impl ReplyService {
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-        let (replies, next_cursor) = self
+        let ReplyPage {
+            items: replies,
+            next_cursor,
+        } = self
             .fetch_reply_page(tenant_id, topic_id, &filter, None)
             .await?;
         let solution_reply_id = self
@@ -176,7 +179,10 @@ impl ReplyService {
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let locale = normalize_locale(&locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let (replies, next_cursor) = self
+        let ReplyPage {
+            items: replies,
+            next_cursor,
+        } = self
             .fetch_reply_page(tenant_id, topic_id, &filter, statuses)
             .await?;
         let solution_reply_id = self
@@ -300,7 +306,7 @@ impl ReplyService {
         topic_id: Uuid,
         filter: &ListRepliesFilter,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<forum_reply::Model>, Option<String>)> {
+    ) -> ForumResult<ReplyPage<forum_reply::Model>> {
         let per_page = filter.per_page.max(1);
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -352,7 +358,10 @@ impl ReplyService {
         } else {
             None
         };
-        Ok((replies, next_cursor))
+        Ok(ReplyPage {
+            items: replies,
+            next_cursor,
+        })
     }
 
     async fn load_bodies_map(
