@@ -295,6 +295,8 @@ topics must scale. Measured on the current code:
   the admin editor offers next and first page. The legacy offset list and the
   `page` field of the job filter are removed. Still on offset: the pages and product
   sitemap scans (`list_public_visible`, `list_published_products_with_locale_fallback`).
+  Product SEO loads treat only `ProductNotFound` as absent (`load_product_if_present`);
+  other errors propagate.
   Verifier: `verify-seo-bulk-cursor-pagination`.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a

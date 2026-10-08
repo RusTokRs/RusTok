@@ -45,15 +45,14 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = CatalogService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let product = service
-            .get_product_with_locale_fallback(
-                request.tenant_id,
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await
-            .ok();
+        let product = load_product_if_present(
+            &service,
+            request.tenant_id,
+            request.target_id,
+            request.locale,
+            request.default_locale,
+        )
+        .await?;
         let Some(product) = product else {
             return Ok(None);
         };
@@ -176,6 +175,24 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
     }
 }
 
+/// Loads a product for SEO. A missing product is `None`; every other error propagates.
+async fn load_product_if_present(
+    service: &CatalogService,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    locale: &str,
+    default_locale: &str,
+) -> AnyResult<Option<ProductResponse>> {
+    match service
+        .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(default_locale))
+        .await
+    {
+        Ok(product) => Ok(Some(product)),
+        Err(CommerceError::ProductNotFound(_)) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 async fn load_product_summary(
     service: &CatalogService,
     tenant_id: uuid::Uuid,
@@ -183,13 +200,10 @@ async fn load_product_summary(
     default_locale: &str,
     product_id: uuid::Uuid,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let product = match service
-        .get_product_with_locale_fallback(tenant_id, product_id, locale, Some(default_locale))
-        .await
-    {
-        Ok(product) => product,
-        Err(CommerceError::ProductNotFound(_)) => return Ok(None),
-        Err(error) => return Err(error.into()),
+    let Some(product) =
+        load_product_if_present(service, tenant_id, product_id, locale, default_locale).await?
+    else {
+        return Ok(None);
     };
     let mapped = map_product_response(product, locale, default_locale);
     Ok(Some(SeoBulkSummaryRecord {
@@ -207,11 +221,9 @@ async fn load_product_sitemap_candidate(
     default_locale: &str,
     item: StorefrontProductListItem,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let product = service
-        .get_product_with_locale_fallback(tenant_id, item.id, default_locale, Some(default_locale))
-        .await
-        .ok();
-    let Some(product) = product else {
+    let Some(product) =
+        load_product_if_present(service, tenant_id, item.id, default_locale, default_locale).await?
+    else {
         return Ok(None);
     };
     let mapped = map_product_response(product, default_locale, default_locale);
