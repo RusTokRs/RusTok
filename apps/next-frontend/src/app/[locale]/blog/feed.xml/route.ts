@@ -41,7 +41,7 @@ export async function GET(
         storefrontGraphql,
         tenantId,
         tenantSlug,
-        1,
+        null,
         25,
         undefined,
         undefined,

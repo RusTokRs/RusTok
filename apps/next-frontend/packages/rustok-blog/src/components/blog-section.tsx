@@ -17,7 +17,7 @@ export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }
   let posts;
   try {
     posts = (
-      await fetchPublishedPosts(storefrontGraphql, tenantId, tenantSlug, 1, 6, undefined, undefined, locale)
+      await fetchPublishedPosts(storefrontGraphql, tenantId, tenantSlug, null, 6, undefined, undefined, locale)
     ).items;
   } catch {
     return null;

@@ -84,26 +84,26 @@ export default async function BlogListingPage({
         ? query.search.trim()
         : undefined;
 
-  const rawPage = typeof query.page === "string" ? parseInt(query.page, 10) : 1;
-  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const currentCursor =
+    typeof query.after === "string" && query.after.trim() ? query.after.trim() : null;
   const pageSize = 9;
 
   let posts: BlogPostSummary[] = [];
-  let totalPosts = 0;
+  let nextCursor: string | null = null;
   try {
     if (tenantId) {
       const res = await fetchPublishedPosts(
         storefrontGraphql,
         tenantId,
         tenantSlug,
-        page,
+        currentCursor,
         pageSize,
         selectedTag,
         selectedCategory,
         locale
       );
       posts = res.items;
-      totalPosts = res.total;
+      nextCursor = res.nextCursor;
     }
   } catch {
     posts = [];
@@ -384,9 +384,8 @@ export default async function BlogListingPage({
 
             {/* Pagination */}
             <BlogPagination
-              currentPage={page}
-              totalItems={totalPosts}
-              pageSize={pageSize}
+              nextCursor={nextCursor}
+              currentCursor={currentCursor}
               baseUrl={`/${locale}/blog`}
               selectedTag={selectedTag}
               selectedCategory={selectedCategory}

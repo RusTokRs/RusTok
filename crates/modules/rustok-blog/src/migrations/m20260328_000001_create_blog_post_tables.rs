@@ -90,6 +90,8 @@ impl MigrationTrait for Migration {
                     .col(BlogPosts::TenantId)
                     .col(BlogPosts::Status)
                     .col(BlogPosts::PublishedAt)
+                    // Keyset tie-breaker for the public list: (published_at, id).
+                    .col(BlogPosts::Id)
                     .to_owned(),
             )
             .await?;

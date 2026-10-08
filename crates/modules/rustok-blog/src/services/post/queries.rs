@@ -249,77 +249,40 @@ impl PostService {
         Ok(PostListResponse::new(items, total, &query))
     }
 
-    #[instrument(skip(self))]
-    pub async fn list_public_visible_with_locale_fallback(
+    /// Public channel gate. Returns `false` when the channel is unknown, inactive,
+    /// or does not enable Blog; the caller then returns an empty page.
+    async fn channel_is_public_visible(
         &self,
         tenant_id: Uuid,
-        query: PostListQuery,
-        fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
-    ) -> BlogResult<PostListResponse> {
-        let locale = query
-            .locale
-            .clone()
-            .or_else(|| fallback_locale.map(str::to_string))
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let locale = normalize_locale(&locale)?;
-        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-
-        if let Some(channel_slug) = normalize_public_channel_slug(channel_slug) {
-            let channel_service = rustok_channel::ChannelService::new(self.db.clone());
-            let Some(channel) = channel_service
-                .get_channel_by_slug(tenant_id, channel_slug.as_str())
-                .await
-                .map_err(BlogError::from)?
-            else {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            };
-            if !channel.is_active
-                || !channel_service
-                    .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
-                    .await
-                    .map_err(BlogError::from)?
-            {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            }
-        }
-
-        let tag_filter = query.tag.clone();
-        let mut select = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
-
-        if let Some(ref tag) = tag_filter {
-            let Some(tag_id) = resolve_tag_id_for_posts(
-                &self.db,
-                tenant_id,
-                tag,
-                &locale,
-                fallback_locale.as_deref(),
-            )
-            .await?
-            else {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
-            };
-            select = apply_tag_filter(select, tenant_id, tag_id);
-        }
-
-        if let Some(author_id) = query.author_id {
-            select = select.filter(blog_post::Column::AuthorId.eq(author_id));
-        }
-        if let Some(category_id) = query.category_id {
-            select = select.filter(blog_post::Column::CategoryId.eq(category_id));
-        }
-
-        select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
-        select = apply_post_sort(select, &query);
-
-        let paginator = select.paginate(&self.db, query.per_page() as u64);
-        let total = paginator.num_items().await.map_err(BlogError::from)?;
-        let posts = paginator
-            .fetch_page((query.page().saturating_sub(1)) as u64)
+    ) -> BlogResult<bool> {
+        let Some(channel_slug) = normalize_public_channel_slug(channel_slug) else {
+            return Ok(true);
+        };
+        let channel_service = rustok_channel::ChannelService::new(self.db.clone());
+        let Some(channel) = channel_service
+            .get_channel_by_slug(tenant_id, channel_slug.as_str())
             .await
-            .map_err(BlogError::from)?;
+            .map_err(BlogError::from)?
+        else {
+            return Ok(false);
+        };
+        Ok(channel.is_active
+            && channel_service
+                .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
+                .await
+                .map_err(BlogError::from)?)
+    }
+
+    /// Builds public summaries for already-filtered posts: translations, channel
+    /// slugs, tags and category names are loaded in batch for the page only.
+    async fn summarize_posts(
+        &self,
+        tenant_id: Uuid,
+        posts: Vec<blog_post::Model>,
+        locale: String,
+        fallback_locale: Option<String>,
+    ) -> BlogResult<Vec<PostSummary>> {
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(tenant_id, &post_ids).await?;
@@ -391,6 +354,172 @@ impl PostService {
             });
         }
 
+        Ok(items)
+    }
+
+    /// Public keyset page of published posts, ordered `(published_at DESC, id DESC)`.
+    /// Fetches one extra row to learn whether another page exists, so the list
+    /// never counts rows.
+    #[instrument(skip(self))]
+    pub async fn list_public_visible_keyset(
+        &self,
+        tenant_id: Uuid,
+        query: PublicPostsPageQuery,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> BlogResult<PublicPostPage> {
+        let locale = query
+            .locale
+            .clone()
+            .or_else(|| fallback_locale.map(str::to_string))
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let per_page = u64::from(query.per_page());
+
+        if !self.channel_is_public_visible(tenant_id, channel_slug).await? {
+            return Ok(PublicPostPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let mut select = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
+            .filter(blog_post::Column::PublishedAt.is_not_null());
+
+        if let Some(ref tag) = query.tag {
+            let Some(tag_id) = resolve_tag_id_for_posts(
+                &self.db,
+                tenant_id,
+                tag,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?
+            else {
+                return Ok(PublicPostPage {
+                    items: Vec::new(),
+                    next_cursor: None,
+                });
+            };
+            select = apply_tag_filter(select, tenant_id, tag_id);
+        }
+        if let Some(author_id) = query.author_id {
+            select = select.filter(blog_post::Column::AuthorId.eq(author_id));
+        }
+        if let Some(category_id) = query.category_id {
+            select = select.filter(blog_post::Column::CategoryId.eq(category_id));
+        }
+        if let Some(after) = query.after {
+            select = select.filter(
+                Condition::any()
+                    .add(blog_post::Column::PublishedAt.lt(after.published_at))
+                    .add(
+                        Condition::all()
+                            .add(blog_post::Column::PublishedAt.eq(after.published_at))
+                            .add(blog_post::Column::Id.lt(after.id)),
+                    ),
+            );
+        }
+
+        select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
+        let mut posts = select
+            .order_by_desc(blog_post::Column::PublishedAt)
+            .order_by_desc(blog_post::Column::Id)
+            .limit(per_page + 1)
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+
+        let has_next_page = posts.len() as u64 > per_page;
+        posts.truncate(per_page as usize);
+        let next_cursor = if has_next_page {
+            let last = posts.last().ok_or_else(|| {
+                BlogError::invariant("Keyset page reported a next page without rows")
+            })?;
+            let published_at = last.published_at.ok_or_else(|| {
+                BlogError::invariant(format!("Published blog post {} has no published_at", last.id))
+            })?;
+            Some(PublishedPostCursor {
+                published_at,
+                id: last.id,
+            })
+        } else {
+            None
+        };
+
+        let items = self
+            .summarize_posts(tenant_id, posts, locale, fallback_locale)
+            .await?;
+        Ok(PublicPostPage { items, next_cursor })
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_public_visible_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        query: PostListQuery,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> BlogResult<PostListResponse> {
+        let locale = query
+            .locale
+            .clone()
+            .or_else(|| fallback_locale.map(str::to_string))
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        if !self.channel_is_public_visible(tenant_id, channel_slug).await? {
+            return Ok(PostListResponse::new(Vec::new(), 0, &query));
+        }
+
+        let tag_filter = query.tag.clone();
+        let mut select = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
+
+        if let Some(ref tag) = tag_filter {
+            let Some(tag_id) = resolve_tag_id_for_posts(
+                &self.db,
+                tenant_id,
+                tag,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?
+            else {
+                return Ok(PostListResponse::new(Vec::new(), 0, &query));
+            };
+            select = apply_tag_filter(select, tenant_id, tag_id);
+        }
+
+        if let Some(author_id) = query.author_id {
+            select = select.filter(blog_post::Column::AuthorId.eq(author_id));
+        }
+        if let Some(category_id) = query.category_id {
+            select = select.filter(blog_post::Column::CategoryId.eq(category_id));
+        }
+
+        select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
+        select = apply_post_sort(select, &query);
+
+        let paginator = select.paginate(&self.db, query.per_page() as u64);
+        let total = paginator.num_items().await.map_err(BlogError::from)?;
+        let posts = paginator
+            .fetch_page((query.page().saturating_sub(1)) as u64)
+            .await
+            .map_err(BlogError::from)?;
+        let items = self
+            .summarize_posts(
+                tenant_id,
+                posts,
+                locale.clone(),
+                fallback_locale.clone(),
+            )
+            .await?;
         Ok(PostListResponse::new(items, total, &query))
     }
 

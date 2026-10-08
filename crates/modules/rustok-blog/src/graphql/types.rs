@@ -324,6 +324,13 @@ pub struct GqlPostList {
     pub total: u64,
 }
 
+#[derive(SimpleObject)]
+pub struct GqlPublicPostList {
+    pub items: Vec<GqlPostListItem>,
+    /// Present only when another page exists.
+    pub next_cursor: Option<String>,
+}
+
 #[derive(InputObject)]
 pub struct CreatePostInput {
     pub locale: String,
@@ -363,6 +370,18 @@ pub struct UpdatePostInput {
     pub seo_description: MaybeUndefined<String>,
     pub channel_slugs: Option<Vec<String>>,
     pub version: i32,
+}
+
+/// Filter for the public, cursor-paginated post list.
+#[derive(InputObject, Default)]
+pub struct PublicPostsFilter {
+    pub category_id: Option<Uuid>,
+    pub tag: Option<String>,
+    pub author_id: Option<Uuid>,
+    pub locale: Option<String>,
+    /// Opaque cursor returned by the previous page as `nextCursor`.
+    pub after: Option<String>,
+    pub per_page: Option<u64>,
 }
 
 #[derive(InputObject)]

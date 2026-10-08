@@ -25,7 +25,7 @@ pub use dto::{
     CommentResponse, CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput,
     ListCategoriesFilter, ListCommentsFilter, ListTagsFilter, ModerateCommentInput,
     ModerateCommentStatus, PostListQuery, PostListResponse, PostResponse, PostSortField,
-    PostSortOrder, PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
+    PostSortOrder, PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
     UpdatePostInput, UpdateTagInput,
 };
 pub use error::{BlogError, BlogPublicError, BlogResult};

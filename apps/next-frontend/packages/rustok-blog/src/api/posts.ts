@@ -27,7 +27,8 @@ export interface BlogPostSummary {
 
 export interface BlogPostListResponse {
   items: BlogPostSummary[];
-  total: number;
+  /** Opaque cursor for the next page; null when this is the last page. */
+  nextCursor: string | null;
 }
 
 export interface BlogPublicComment {
@@ -84,20 +85,20 @@ type PostsQueryResponse = {
       tags: string[];
       publishedAt: string | null;
     }>;
-    total: number;
+    nextCursor?: string | null;
   };
 };
 
 const PUBLISHED_POSTS_QUERY = `
-  query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
-    posts(tenantId: $tenantId, filter: $filter) {
+  query PublishedPosts($tenantId: UUID!, $filter: PublicPostsFilter) {
+    posts: publicBlogPosts(tenantId: $tenantId, filter: $filter) {
       items {
         id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt
         authorProfile {
           userId handle displayName tags avatarMediaId
         }
       }
-      total
+      nextCursor
     }
   }
 `;
@@ -134,24 +135,20 @@ export async function fetchPublishedPosts(
   graphql: BlogGraphqlExecutor,
   tenantId: string,
   tenantSlug: string | null,
-  page = 1,
+  after: string | null = null,
   perPage = 6,
   tag?: string,
   categoryId?: string,
   locale?: string,
 ): Promise<BlogPostListResponse> {
   const filter: {
-    status: string;
-    page: number;
     perPage: number;
+    after?: string;
     tag?: string;
     categoryId?: string;
     locale?: string;
-  } = {
-    status: "PUBLISHED",
-    page,
-    perPage,
-  };
+  } = { perPage };
+  if (after) filter.after = after;
   if (tag) filter.tag = tag;
   if (categoryId) filter.categoryId = categoryId;
   // Requested locale drives the read; the backend applies the canonical
@@ -173,7 +170,7 @@ export async function fetchPublishedPosts(
 
   return {
     items: response.data.posts.items,
-    total: response.data.posts.total,
+    nextCursor: response.data.posts.nextCursor ?? null,
   };
 }
 

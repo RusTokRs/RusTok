@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::{DateTime, FixedOffset, SecondsFormat, Utc};
 use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,6 +7,7 @@ use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::error::{BlogError, BlogResult};
 use crate::state_machine::BlogPostStatus;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -221,4 +223,61 @@ impl PostListResponse {
 pub struct ArchivePostInput {
     #[schema(max_length = 1000)]
     pub reason: Option<String>,
+}
+
+/// Keyset position of a public post list: `(published_at, id)` of the last item
+/// on the previous page. Ordering is `published_at DESC, id DESC`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishedPostCursor {
+    pub published_at: DateTime<FixedOffset>,
+    pub id: Uuid,
+}
+
+impl PublishedPostCursor {
+    /// Opaque, URL-safe token. Clients must not parse it.
+    pub fn encode(&self) -> String {
+        let raw = format!(
+            "{}|{}",
+            self.published_at.to_rfc3339_opts(SecondsFormat::Nanos, false),
+            self.id
+        );
+        URL_SAFE_NO_PAD.encode(raw)
+    }
+
+    pub fn decode(value: &str) -> BlogResult<Self> {
+        let invalid = || BlogError::validation("Blog list cursor is invalid");
+        let bytes = URL_SAFE_NO_PAD
+            .decode(value.trim())
+            .map_err(|_| invalid())?;
+        let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
+        let (published_at, id) = raw.split_once('|').ok_or_else(invalid)?;
+        Ok(Self {
+            published_at: DateTime::parse_from_rfc3339(published_at).map_err(|_| invalid())?,
+            id: Uuid::parse_str(id).map_err(|_| invalid())?,
+        })
+    }
+}
+
+/// Public, cursor-paginated post list request. Public lists never count rows.
+#[derive(Debug, Clone, Default)]
+pub struct PublicPostsPageQuery {
+    pub category_id: Option<Uuid>,
+    pub tag: Option<String>,
+    pub author_id: Option<Uuid>,
+    pub locale: Option<String>,
+    pub per_page: Option<u32>,
+    pub after: Option<PublishedPostCursor>,
+}
+
+impl PublicPostsPageQuery {
+    pub fn per_page(&self) -> u32 {
+        self.per_page.unwrap_or(20).clamp(1, 100)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PublicPostPage {
+    pub items: Vec<PostSummary>,
+    /// Present only when another page exists.
+    pub next_cursor: Option<PublishedPostCursor>,
 }

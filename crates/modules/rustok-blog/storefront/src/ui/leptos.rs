@@ -124,18 +124,14 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         }
     }
 
-    let (other_posts, other_total) = if let Some(slug) = selected_post_slug.as_deref() {
-        let items: Vec<_> = data
-            .posts
+    let other_posts = if let Some(slug) = selected_post_slug.as_deref() {
+        data.posts
             .items
             .into_iter()
             .filter(|item| item.slug.as_deref() != Some(slug))
-            .collect();
-        let total = items.len() as u64;
-        (items, total)
+            .collect::<Vec<_>>()
     } else {
-        let total = data.posts.total;
-        (data.posts.items, total)
+        data.posts.items
     };
 
     let related_title = t(locale.as_deref(), "blog.related.title", "Related articles");
@@ -147,13 +143,13 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let active_tag = tag_query.get();
     let active_category = category_query.get();
 
-    let (other_posts, other_total) = if let Some(q) = active_search
+    let other_posts = if let Some(q) = active_search
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
         let q_lower = q.to_lowercase();
-        let items: Vec<_> = other_posts
+        other_posts
             .into_iter()
             .filter(|p| {
                 p.title.to_lowercase().contains(&q_lower)
@@ -167,11 +163,9 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                         .map(|c| c.to_lowercase().contains(&q_lower))
                         .unwrap_or(false)
             })
-            .collect();
-        let total = items.len() as u64;
-        (items, total)
+            .collect()
     } else {
-        (other_posts, other_total)
+        other_posts
     };
 
     let has_active_filter =
@@ -304,7 +298,6 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                         <div class="mt-8 border-t border-border pt-6">
                             <PublishedPostsList
                                 items=other_posts
-                                total=other_total
                                 list_title=related_title
                             />
                         </div>
@@ -315,7 +308,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 }
             } else {
                 view! {
-                    <PublishedPostsList items=other_posts total=other_total />
+                    <PublishedPostsList items=other_posts />
                 }
                 .into_any()
             }}
@@ -614,7 +607,6 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
 #[component]
 fn PublishedPostsList(
     items: Vec<BlogPostListItem>,
-    total: u64,
     #[prop(optional)] list_title: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -627,11 +619,8 @@ fn PublishedPostsList(
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
     let default_title = t(locale.as_deref(), "blog.list.title", "Published posts");
     let header_title = list_title.unwrap_or(default_title);
-    let header_view = core::published_posts_header_typed_view(
-        header_title,
-        total,
-        &t(locale.as_deref(), "blog.list.total", "total"),
-    );
+    // The public list is cursor-paginated and carries no total, so the header
+    // shows the title only.
 
     let items = match core::published_posts_ready_typed_view(
         items,
@@ -658,11 +647,8 @@ fn PublishedPostsList(
         <div class="space-y-3">
             <div class="flex items-center justify-between gap-3">
                 <h3 class="text-lg font-semibold text-card-foreground">
-                    {header_view.title}
+                    {header_title}
                 </h3>
-                <span class="text-sm text-muted-foreground">
-                    {header_view.total_label}
-                </span>
             </div>
             <div class="grid gap-3 md:grid-cols-2">
                 {items

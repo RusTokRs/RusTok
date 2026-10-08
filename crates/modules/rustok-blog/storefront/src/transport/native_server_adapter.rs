@@ -193,8 +193,8 @@ async fn storefront_blog_native(
         use leptos::prelude::use_context;
         use rustok_api::HostRuntimeContext;
         use rustok_blog::{
-            BlogPostStatus, PostListQuery, PostService, PostSortField, PostSortOrder,
-            PublicCommentsSnapshotStore, list_public_comments_with_snapshot,
+            PostService, PublicCommentsSnapshotStore, PublicPostsPageQuery,
+            list_public_comments_with_snapshot,
         };
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
@@ -310,19 +310,16 @@ async fn storefront_blog_native(
             .filter(|s| !s.is_empty())
             .map(ToOwned::to_owned);
 
-        let posts = service
-            .list_public_visible_with_locale_fallback(
+        let page = service
+            .list_public_visible_keyset(
                 tenant_id,
-                PostListQuery {
-                    status: Some(BlogPostStatus::Published),
+                PublicPostsPageQuery {
                     category_id: category_uuid,
                     tag: tag_normalized,
                     author_id: None,
                     locale: Some(requested_locale),
-                    page: Some(1),
                     per_page: Some(6),
-                    sort_by: Some(PostSortField::PublishedAt),
-                    sort_order: Some(PostSortOrder::Desc),
+                    after: None,
                 },
                 Some(fallback_locale.as_str()),
                 public_channel_slug.as_deref(),
@@ -333,8 +330,7 @@ async fn storefront_blog_native(
         Ok(StorefrontBlogData {
             selected_post,
             posts: BlogPostList {
-                items: posts.items.into_iter().map(map_post_list_item).collect(),
-                total: posts.total,
+                items: page.items.into_iter().map(map_post_list_item).collect(),
             },
         })
     }

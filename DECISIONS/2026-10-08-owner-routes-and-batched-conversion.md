@@ -220,6 +220,14 @@ topics must scale. Measured on the current code:
   change covers GraphQL, `#[server]` functions, the Next.js packages, reference
   artifacts, and module docs. The `total` field is removed from hot-path lists;
   counts come from the projection.
+- Implementation slice (2026-10-08, owner decision): the public Blog list is
+  cut over first, as a deliberate exception to the single atomic change. It
+  adds `publicBlogPosts` (keyset on `(published_at, id)`, no `total`, opaque
+  `nextCursor`), removes the public branch from `posts`, and moves the
+  storefront, the Next.js blog package, and the blog index page to cursors.
+  The SEO sitemap and bulk scans, the forum, comments, and the admin lists keep
+  their offset paths until their own slices. `idx_blog_posts_status_published_at`
+  is amended with `id` as the keyset tie-breaker.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
   time-bounded exception is recorded in `compatibility-exceptions.json` first.
