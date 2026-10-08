@@ -2620,7 +2620,10 @@ function LaggingTable({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.documentKey} className='border-t border-zinc-100'>
+            <TableRow
+              key={row.documentKey}
+              className='border-t border-zinc-100'
+            >
               <Td>
                 <div className='font-medium text-zinc-900'>{row.title}</div>
                 <div className='mt-1 text-xs text-zinc-500'>
@@ -2885,7 +2888,9 @@ function Th({ children }: { children: React.ReactNode }): React.JSX.Element {
 
 function Td({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <TableCell className='px-4 py-3 align-top text-xs text-zinc-600'>{children}</TableCell>
+    <TableCell className='px-4 py-3 align-top text-xs text-zinc-600'>
+      {children}
+    </TableCell>
   );
 }
 

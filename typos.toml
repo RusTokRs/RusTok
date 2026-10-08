@@ -32,3 +32,12 @@ extend-ignore-re = [
   "\\bAuThOrIzEd\\b",
   "\\bsitemap_enabeld\\b",
 ]
+
+[default.extend-words]
+Copie = "Copie"
+repid = "repid"
+ANC = "ANC"
+INSERTs = "INSERTs"
+INSER = "INSER"
+abd = "abd"
+mis = "mis"

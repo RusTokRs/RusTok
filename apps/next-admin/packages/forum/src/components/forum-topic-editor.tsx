@@ -219,7 +219,7 @@ export function ForumTopicEditor({
                   'rounded-full px-2.5 py-0.5 text-xs font-medium',
                   isPinned
                     ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                    : 'border text-muted-foreground'
+                    : 'text-muted-foreground border'
                 )}
               >
                 {isPinned ? 'Pinned' : 'Normal'}
@@ -229,7 +229,7 @@ export function ForumTopicEditor({
                   'rounded-full px-2.5 py-0.5 text-xs font-medium',
                   isLocked
                     ? 'bg-destructive/15 text-destructive'
-                    : 'border text-muted-foreground'
+                    : 'text-muted-foreground border'
                 )}
               >
                 {isLocked ? 'Locked' : 'Unlocked'}
@@ -253,8 +253,8 @@ export function ForumTopicEditor({
         </div>
 
         {isEditing && (
-          <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3'>
-            <span className='text-xs font-medium text-muted-foreground uppercase tracking-wider'>
+          <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3'>
+            <span className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
               Moderator Actions
             </span>
             <div className='flex flex-wrap items-center gap-2'>

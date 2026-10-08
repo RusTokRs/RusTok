@@ -1,6 +1,26 @@
 use async_graphql::{FieldError, Result};
 use rustok_api::{AuthContext, AuthPrincipalContext, graphql::GraphQLError};
+use sea_orm::{DbBackend, Statement, Value};
 use uuid::Uuid;
+
+pub(super) fn prepare_statement(backend: DbBackend, sql: &str, values: Vec<Value>) -> Statement {
+    let mut index = 0;
+    let rendered = sql
+        .chars()
+        .map(|character| {
+            if character == '?' {
+                index += 1;
+                match backend {
+                    DbBackend::Postgres | DbBackend::MySql => format!("${index}"),
+                    _ => format!("?{index}"),
+                }
+            } else {
+                character.to_string()
+            }
+        })
+        .collect::<String>();
+    Statement::from_sql_and_values(backend, rendered, values)
+}
 
 pub(super) fn require_direct_control_plane_user(
     auth: &AuthContext,

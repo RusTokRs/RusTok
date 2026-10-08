@@ -661,3 +661,133 @@ modules-depends_on = Зависит от
 modules-toast-enabled = Модуль успешно включён
 modules-toast-disabled = Модуль успешно отключён
 modules-error-load = Не удалось загрузить модули
+
+# RBAC Management
+rbac-title = Роли и разрешения
+rbac-subtitle = Управление контролем доступа, системными и пользовательскими ролями, а также детальными разрешениями всех модулей платформы.
+rbac-tab-roles = Роли ({ $count })
+rbac-tab-permissions = Каталог разрешений
+rbac-btn-create-role = Создать роль
+rbac-btn-assign-role = Назначить роль пользователю
+rbac-metrics-total-roles = Роли платформы
+rbac-metrics-total-roles-desc = Активные архетипы безопасности
+rbac-metrics-permissions = Уникальных разрешений
+rbac-metrics-permissions-desc = Каталогизировано по всем модулям
+rbac-metrics-admin-roles = Административные роли
+rbac-metrics-admin-roles-desc = Уровни Super Admin и Admin
+rbac-metrics-custom-roles = Пользовательские роли
+rbac-metrics-custom-roles-desc = Динамические роли тенанта
+rbac-search-placeholder = Поиск ролей или разрешений...
+rbac-table-role = Роль
+rbac-table-slug = Слаг
+rbac-table-type = Тип
+rbac-table-permissions = Разрешения
+rbac-table-description = Описание и просмотр
+rbac-table-actions = Действия
+rbac-badge-system = Системная
+rbac-badge-custom = Пользовательская
+rbac-action-edit = Редактировать права
+rbac-action-assign = Назначить пользователю
+rbac-action-delete = Удалить роль
+rbac-action-hide-perms = Скрыть разрешения
+rbac-action-view-perms = Показать { $count } разрешений
+rbac-perms-granted-for = Выданные разрешения для { $name }:
+rbac-perms-total = всего { $count }
+rbac-system-protected-tooltip = Системные роли нельзя удалить
+rbac-superadmin-locked-notice = Суперадминистратор обладает полным неизменяемым авторитетом на платформе. Все разрешения выданы и не могут быть ограничены.
+rbac-role-desc-super-admin = Полные неограниченные привилегии управления платформой и тенантом
+rbac-role-desc-admin = Операционный административный контроль по всем модулям и настройкам
+rbac-role-desc-manager = Управление каталогом, контентом, заказами и логистикой
+rbac-role-desc-customer = Стандартная учетная запись витрины с публичным доступом
+rbac-role-desc-custom = Пользовательская роль платформы
+
+
+# Permission Matrix
+rbac-matrix-title = Матрица разрешений
+rbac-matrix-search-placeholder = Фильтр по модулям или разрешениям...
+rbac-matrix-select-all = Выбрать все
+rbac-matrix-clear-all = Снять все
+rbac-matrix-selected-count = Выбрано { $selected } из { $total } разрешений
+rbac-matrix-module-all = Выбрать все в модуле
+rbac-matrix-module-none = Снять все в модуле
+
+# Create Role Dialog
+rbac-create-dialog-title = Создание пользовательской роли
+rbac-create-dialog-desc = Задайте новую роль и определите точные разрешения для сервисов платформы.
+rbac-field-name = Название роли
+rbac-field-name-placeholder = например, Редактор контента
+rbac-field-slug = Слаг (идентификатор)
+rbac-field-slug-placeholder = например, content_editor
+rbac-field-slug-help = Уникальный идентификатор из строчных латинских букв, цифр, дефисов или подчеркиваний.
+rbac-field-description = Описание
+rbac-field-description-placeholder = Опишите обязанности и уровень доступа этой роли...
+rbac-btn-cancel = Отмена
+rbac-btn-create = Создать роль
+rbac-btn-saving = Сохранение...
+
+# Edit Role Dialog
+rbac-edit-dialog-title = Редактирование роли: { $name }
+rbac-edit-dialog-desc = Измените параметры роли и настройте разрешения в матрице доступа.
+rbac-btn-save = Сохранить изменения
+
+# Delete Role Dialog
+rbac-delete-dialog-title = Удаление роли: { $name }
+rbac-delete-dialog-desc = Вы уверены, что хотите удалить эту роль? Это действие необратимо.
+rbac-delete-dialog-warning = Системные роли удалить нельзя. Роли, назначенные активным пользователям, сначала необходимо переназначить.
+rbac-btn-delete = Удалить роль
+rbac-btn-deleting = Удаление...
+
+# Assign Role Dialog
+rbac-assign-dialog-title = Назначить роль пользователю
+rbac-assign-dialog-desc = Назначьте или измените роль доступа для указанного ID пользователя.
+rbac-assign-field-user-id = ID пользователя (UUID)
+rbac-assign-field-user-id-placeholder = например, 00000000-0000-0000-0000-000000000000
+rbac-assign-field-role = Роль
+rbac-assign-field-role-placeholder = Выберите роль
+rbac-assign-btn-submit = Назначить роль
+rbac-assign-btn-submitting = Назначение...
+rbac-assign-err-user-id-required = ID пользователя обязателен
+rbac-assign-err-uuid-invalid = ID пользователя должен быть корректным UUID (например, 00000000-0000-0000-0000-000000000000)
+rbac-assign-err-role-required = Пожалуйста, выберите роль
+rbac-assign-toast-success = Роль успешно назначена пользователю
+rbac-assign-toast-fail = Не удалось назначить роль
+rbac-assign-toast-error = Ошибка назначения роли: { $error }
+
+# Toasts
+rbac-toast-create-success = Роль успешно создана
+rbac-toast-update-success = Роль успешно обновлена
+rbac-toast-delete-success = Роль успешно удалена
+rbac-toast-error = Произошла ошибка
+
+# Users table and actions
+users-table-select-all = Выбрать все
+users-table-select-row = Выбрать строку
+users-table-email-header = Email / Пользователь
+users-table-email-search-placeholder = Поиск по email или имени...
+users-table-role-header = Роль
+users-table-status-header = Статус
+users-table-created-header = Создан
+users-action-title = Действия
+users-action-open-menu = Открыть меню
+users-action-copy-id = Скопировать ID пользователя
+users-action-change-role = Изменить роль
+users-action-view-profile = Профиль пользователя
+users-action-open-new-tab = Открыть в новой вкладке
+users-toast-id-copied = ID пользователя скопирован в буфер обмена
+users-toast-load-error = Не удалось загрузить пользователей
+users-toast-update-success = Пользователь успешно обновлен
+users-toast-deactivate-success = Пользователь деактивирован
+users-toast-update-error = Не удалось обновить пользователя
+users-toast-deactivate-error = Не удалось деактивировать пользователя
+users-detail-deactivate = Деактивировать
+users-detail-workspace = Рабочее пространство
+users-detail-member-since = Зарегистрирован
+users-detail-name-placeholder = Полное имя
+users-detail-role-select-placeholder = Выберите роль
+users-toast-detail-load-error = Не удалось загрузить пользователя
+users-toast-detail-update-success = Данные пользователя обновлены
+users-toast-detail-update-error = Не удалось обновить данные пользователя
+users-toast-detail-deactivate-success = Пользователь деактивирован
+users-toast-detail-deactivate-error = Не удалось деактивировать пользователя
+
+

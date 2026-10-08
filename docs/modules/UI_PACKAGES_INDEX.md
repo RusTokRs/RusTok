@@ -154,8 +154,7 @@ integration. The canonical source of truth here is only manifest wiring.
   `vendor` remains a merchandising/display label and is not used as identity.
 - `rustok-region` storefront UI: [README](../../crates/modules/rustok-region/storefront/README.md)
 - `rustok-search` storefront UI: [README](../../crates/modules/rustok-search/storefront/README.md)
-- `rustok-seo` remains `admin_only`: storefront SEO runtime lives in `apps/storefront` and `apps/next-frontend`
-  through shared SEO contract, not through a separate module-owned storefront package.
+- `rustok-seo` storefront UI: [README](../../crates/modules/rustok-seo/storefront/README.md)
 - Entity-specific SEO UI is not centralized in `rustok-seo-admin`: page/product/blog/forum SEO
   panels belong to owner modules, while `rustok-seo-admin` remains a cross-cutting infrastructure UI.
 - Reusable owner-side SEO widgets and transport helpers live in the support crate

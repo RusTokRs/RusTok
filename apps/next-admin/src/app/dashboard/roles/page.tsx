@@ -19,7 +19,6 @@ export default async function Page() {
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
 
-
   return (
     <PageContainer
       scrollable

@@ -113,7 +113,10 @@ export interface ProductEditorPageProps {
   ) => Promise<ProductEffectiveForm | null>;
   initialBundles?: ProductBundle[];
   onCreateBundle?: (input: CreateBundleInput) => Promise<void>;
-  onUpdateBundle?: (bundleId: string, input: UpdateBundleInput) => Promise<void>;
+  onUpdateBundle?: (
+    bundleId: string,
+    input: UpdateBundleInput
+  ) => Promise<void>;
   onAddBundleItem?: (input: AddBundleItemInput) => Promise<void>;
   onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
 }

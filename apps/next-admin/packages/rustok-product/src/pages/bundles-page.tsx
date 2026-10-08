@@ -14,10 +14,7 @@ import { Boxes, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BundlesTable } from '../components/bundles/bundles-table';
 import { BundleCreateDialog } from '../components/bundles/bundle-create-dialog';
-import type {
-  ProductBundle,
-  CreateBundleInput
-} from '../api/types';
+import type { ProductBundle, CreateBundleInput } from '../api/types';
 
 interface BundlesPageProps {
   initialBundles: ProductBundle[];
@@ -71,11 +68,14 @@ export function BundlesPage({
       <div className='flex flex-wrap items-center justify-between gap-4 border-b pb-4'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2'>
-            <Boxes className='h-6 w-6 text-primary' />
-            <h1 className='text-xl font-bold tracking-tight'>Product Bundles & Kits</h1>
+            <Boxes className='text-primary h-6 w-6' />
+            <h1 className='text-xl font-bold tracking-tight'>
+              Product Bundles & Kits
+            </h1>
           </div>
-          <p className='text-sm text-muted-foreground'>
-            Manage curated product packages, kits, configurable sets, and package discounts.
+          <p className='text-muted-foreground text-sm'>
+            Manage curated product packages, kits, configurable sets, and
+            package discounts.
           </p>
         </div>
 
@@ -94,7 +94,9 @@ export function BundlesPage({
         onPageChange={(p) => onFilterChange?.({ page: p })}
         onSearchChange={(search) => onFilterChange?.({ search, page: 1 })}
         onStatusFilterChange={(status) => onFilterChange?.({ status, page: 1 })}
-        onTypeFilterChange={(bundleType) => onFilterChange?.({ bundleType, page: 1 })}
+        onTypeFilterChange={(bundleType) =>
+          onFilterChange?.({ bundleType, page: 1 })
+        }
         onDeleteBundle={handleDelete}
         onCreateClick={() => setIsCreateOpen(true)}
       />

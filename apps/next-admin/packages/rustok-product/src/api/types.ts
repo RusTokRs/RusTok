@@ -321,11 +321,7 @@ export interface ProductAttributeValuePatch {
 }
 
 export type ProductRelationType =
-  | 'CROSS_SELL'
-  | 'UP_SELL'
-  | 'RELATED'
-  | 'ACCESSORY'
-  | 'ALTERNATIVE';
+  'CROSS_SELL' | 'UP_SELL' | 'RELATED' | 'ACCESSORY' | 'ALTERNATIVE';
 
 export interface ProductRelation {
   id: string;
@@ -439,5 +435,3 @@ export interface BundleListResponse {
   page: number;
   perPage: number;
 }
-
-

@@ -14,10 +14,7 @@ import {
   BundlesPage,
   type BundleListResponse
 } from '@rustok/product-admin';
-import {
-  createBundleAction,
-  deleteBundleAction
-} from '../actions';
+import { createBundleAction, deleteBundleAction } from '../actions';
 
 export const metadata = {
   title: 'RusTok Admin: Product Bundles'
@@ -46,7 +43,12 @@ export default async function ProductBundlesRoute({ searchParams }: PageProps) {
   const currentPage = parseInt(page || '1', 10) || 1;
   const perPage = 20;
 
-  let bundlesData: BundleListResponse = { items: [], total: 0, page: 1, perPage };
+  let bundlesData: BundleListResponse = {
+    items: [],
+    total: 0,
+    page: 1,
+    perPage
+  };
   try {
     bundlesData = await fetchBundles(
       opts,

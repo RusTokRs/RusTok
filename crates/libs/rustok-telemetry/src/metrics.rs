@@ -9,7 +9,7 @@
 use lazy_static::lazy_static;
 use crate::factory::*;
 use prometheus::{
-    GaugeVec, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Registry,
+    GaugeVec, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
 };
 
 // ============================================================================

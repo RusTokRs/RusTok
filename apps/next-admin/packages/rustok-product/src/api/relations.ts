@@ -127,12 +127,7 @@ export async function removeProductRelation(
   const data = await executor<
     { id: string },
     { removeProductRelation: boolean }
-  >(
-    REMOVE_RELATION_MUTATION,
-    { id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(REMOVE_RELATION_MUTATION, { id }, opts.token, opts.tenantSlug);
 
   return data.removeProductRelation;
 }

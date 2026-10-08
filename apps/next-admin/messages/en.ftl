@@ -661,3 +661,133 @@ modules-depends_on = Depends on
 modules-toast-enabled = Module enabled successfully
 modules-toast-disabled = Module disabled successfully
 modules-error-load = Failed to load modules
+
+# RBAC Management
+rbac-title = Roles & Permissions
+rbac-subtitle = Manage access control, system roles, custom roles, and fine-grained permissions across all platform modules.
+rbac-tab-roles = Roles ({ $count })
+rbac-tab-permissions = Permissions Catalog
+rbac-btn-create-role = Create Role
+rbac-btn-assign-role = Assign Role to User
+rbac-metrics-total-roles = Platform Roles
+rbac-metrics-total-roles-desc = Active security archetypes
+rbac-metrics-permissions = Unique Permissions
+rbac-metrics-permissions-desc = Catalogued across all modules
+rbac-metrics-admin-roles = Administrative Roles
+rbac-metrics-admin-roles-desc = Super Admin & Admin tiers
+rbac-metrics-custom-roles = Custom Roles
+rbac-metrics-custom-roles-desc = Tenant-defined dynamic roles
+rbac-search-placeholder = Search roles or permissions...
+rbac-table-role = Role
+rbac-table-slug = Slug
+rbac-table-type = Type
+rbac-table-permissions = Permissions
+rbac-table-description = Description & Preview
+rbac-table-actions = Actions
+rbac-badge-system = System
+rbac-badge-custom = Custom
+rbac-action-edit = Edit Role & Permissions
+rbac-action-assign = Assign to User
+rbac-action-delete = Delete Role
+rbac-action-hide-perms = Hide permissions
+rbac-action-view-perms = View { $count } permissions
+rbac-perms-granted-for = Granted Permissions for { $name }:
+rbac-perms-total = { $count } total
+rbac-system-protected-tooltip = System roles cannot be deleted
+rbac-superadmin-locked-notice = Super Administrator possesses full immutable platform authority. All permissions are granted and cannot be restricted.
+rbac-role-desc-super-admin = Full unrestricted platform and tenant governance privileges
+rbac-role-desc-admin = Operational administrative control across modules and settings
+rbac-role-desc-manager = Catalog, content, orders, and fulfillment operations
+rbac-role-desc-customer = Standard storefront identity with read-only public access
+rbac-role-desc-custom = Custom platform role
+
+
+# Permission Matrix
+rbac-matrix-title = Permission Matrix
+rbac-matrix-search-placeholder = Filter modules or permissions...
+rbac-matrix-select-all = Select All
+rbac-matrix-clear-all = Clear All
+rbac-matrix-selected-count = { $selected } of { $total } permissions selected
+rbac-matrix-module-all = Select All in Module
+rbac-matrix-module-none = Deselect All in Module
+
+# Create Role Dialog
+rbac-create-dialog-title = Create Custom Role
+rbac-create-dialog-desc = Define a new role and grant precise permissions across platform services.
+rbac-field-name = Role Name
+rbac-field-name-placeholder = e.g. Content Editor
+rbac-field-slug = Slug
+rbac-field-slug-placeholder = e.g. content_editor
+rbac-field-slug-help = Unique identifier using lowercase letters, numbers, hyphens or underscores.
+rbac-field-description = Description
+rbac-field-description-placeholder = What responsibilities and authority this role represents...
+rbac-btn-cancel = Cancel
+rbac-btn-create = Create Role
+rbac-btn-saving = Saving...
+
+# Edit Role Dialog
+rbac-edit-dialog-title = Edit Role: { $name }
+rbac-edit-dialog-desc = Modify role details and configure granted permissions in the matrix.
+rbac-btn-save = Save Changes
+
+# Delete Role Dialog
+rbac-delete-dialog-title = Delete Role: { $name }
+rbac-delete-dialog-desc = Are you sure you want to delete this custom role? This action cannot be undone.
+rbac-delete-dialog-warning = Built-in system roles cannot be deleted. Roles assigned to active users must be reassigned first.
+rbac-btn-delete = Delete Role
+rbac-btn-deleting = Deleting...
+
+# Assign Role Dialog
+rbac-assign-dialog-title = Assign Role to User
+rbac-assign-dialog-desc = Assign or update the permission role for a specific user ID.
+rbac-assign-field-user-id = User ID (UUID)
+rbac-assign-field-user-id-placeholder = e.g. 00000000-0000-0000-0000-000000000000
+rbac-assign-field-role = Role
+rbac-assign-field-role-placeholder = Select a role
+rbac-assign-btn-submit = Assign Role
+rbac-assign-btn-submitting = Assigning...
+rbac-assign-err-user-id-required = User ID is required
+rbac-assign-err-uuid-invalid = User ID must be a valid UUID (e.g. 00000000-0000-0000-0000-000000000000)
+rbac-assign-err-role-required = Please select a role
+rbac-assign-toast-success = Role assigned successfully to user
+rbac-assign-toast-fail = Failed to assign role
+rbac-assign-toast-error = Assignment error: { $error }
+
+# Toasts
+rbac-toast-create-success = Role created successfully
+rbac-toast-update-success = Role updated successfully
+rbac-toast-delete-success = Role deleted successfully
+rbac-toast-error = Operation failed
+
+# Users table and actions
+users-table-select-all = Select all
+users-table-select-row = Select row
+users-table-email-header = Email / User
+users-table-email-search-placeholder = Search by email or name...
+users-table-role-header = Role
+users-table-status-header = Status
+users-table-created-header = Created
+users-action-title = Actions
+users-action-open-menu = Open menu
+users-action-copy-id = Copy User ID
+users-action-change-role = Change Role
+users-action-view-profile = View Profile
+users-action-open-new-tab = Open in new tab
+users-toast-id-copied = User ID copied to clipboard
+users-toast-load-error = Failed to load users
+users-toast-update-success = User updated
+users-toast-deactivate-success = User deactivated
+users-toast-update-error = Failed to update user
+users-toast-deactivate-error = Failed to disable user
+users-detail-deactivate = Deactivate
+users-detail-workspace = Workspace
+users-detail-member-since = Member Since
+users-detail-name-placeholder = Full name
+users-detail-role-select-placeholder = Select a role
+users-toast-detail-load-error = Failed to load user
+users-toast-detail-update-success = User updated
+users-toast-detail-update-error = Failed to update user
+users-toast-detail-deactivate-success = User deactivated
+users-toast-detail-deactivate-error = Failed to disable user
+
+

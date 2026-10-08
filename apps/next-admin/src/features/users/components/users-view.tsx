@@ -17,7 +17,10 @@ query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String)
   }
 }`;
 
+import { useTranslations } from '@rustok/next-fluent';
+
 export default function UsersView() {
+  const t = useTranslations('users');
   const { data: session } = useSession();
   const token = session?.user?.rustokToken;
   const tenantSlug = session?.user?.tenantSlug;
@@ -55,7 +58,7 @@ export default function UsersView() {
       setUsers(data.users.edges.map((e) => e.node));
       setTotalCount(data.users.pageInfo.totalCount);
     } catch {
-      toast.error('Failed to load users');
+      toast.error(t('toast.load.error'));
     } finally {
       setIsLoading(false);
     }

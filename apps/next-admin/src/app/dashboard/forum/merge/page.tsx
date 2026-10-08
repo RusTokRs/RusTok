@@ -1,8 +1,5 @@
 import { auth } from '@/auth';
-import {
-  ForumTopicMerge,
-  listForumTopics
-} from '@rustok/forum-admin';
+import { ForumTopicMerge, listForumTopics } from '@rustok/forum-admin';
 import { PageContainer } from '@/widgets/app-shell';
 
 export const metadata = {

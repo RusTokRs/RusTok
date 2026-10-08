@@ -867,7 +867,10 @@ export async function moveAdminCategory(
   `;
 
   await graphqlRequest<
-    { categoryId: string; input: { parent_id: string | null; position: number } },
+    {
+      categoryId: string;
+      input: { parent_id: string | null; position: number };
+    },
     { moveForumCategory: { moved: { id: string } } }
   >(
     mutation,
@@ -899,7 +902,12 @@ export async function setAdminCategoryTopicPolicy(
 
   await graphqlRequest<
     { categoryId: string; input: { allows_topics: boolean } },
-    { setForumCategoryTopicPolicy: { category_id: string; allows_topics: boolean } }
+    {
+      setForumCategoryTopicPolicy: {
+        category_id: string;
+        allows_topics: boolean;
+      };
+    }
   >(
     mutation,
     {
@@ -1032,12 +1040,7 @@ export async function closeForumTopic(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { closeForumTopic: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.closeForumTopic;
 }
@@ -1055,12 +1058,7 @@ export async function reopenForumTopic(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { reopenForumTopic: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.reopenForumTopic;
 }
@@ -1078,12 +1076,7 @@ export async function deleteForumTopic(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { deleteForumTopic: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.deleteForumTopic;
 }
@@ -1101,12 +1094,7 @@ export async function restoreForumTopic(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { restoreForumTopic: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.restoreForumTopic;
 }
@@ -1124,12 +1112,7 @@ export async function deleteForumReply(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { deleteForumReply: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.deleteForumReply;
 }
@@ -1147,12 +1130,7 @@ export async function restoreForumReply(
   const data = await graphqlRequest<
     { tenantId?: string | null; id: string },
     { restoreForumReply: boolean }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, id }, opts.token, opts.tenantSlug);
 
   return data.restoreForumReply;
 }

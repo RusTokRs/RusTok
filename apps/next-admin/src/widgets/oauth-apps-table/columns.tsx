@@ -200,7 +200,9 @@ export function getOAuthAppsColumns({
               size='sm'
               onClick={() => onRevokeApp(app)}
               disabled={!app.canRevoke}
-              title={app.canRevoke ? 'Revoke app' : 'Managed by config/manifest'}
+              title={
+                app.canRevoke ? 'Revoke app' : 'Managed by config/manifest'
+              }
             >
               Revoke
             </Button>

@@ -556,7 +556,9 @@ export function TranslationAdminPage({
                             <TableHead className='px-4 py-3'>
                               {t('targets.provider')}
                             </TableHead>
-                            <TableHead className='px-4 py-3'>{t('targets.target')}</TableHead>
+                            <TableHead className='px-4 py-3'>
+                              {t('targets.target')}
+                            </TableHead>
                             <TableHead className='px-4 py-3'>
                               {t('targets.capabilities')}
                             </TableHead>
@@ -827,11 +829,15 @@ export function TranslationAdminPage({
                         >
                           <TableHeader className='bg-muted/50 text-muted-foreground text-left text-xs tracking-wide uppercase'>
                             <TableRow>
-                              <TableHead className='px-3 py-2'>{t('field.itemId')}</TableHead>
+                              <TableHead className='px-3 py-2'>
+                                {t('field.itemId')}
+                              </TableHead>
                               <TableHead className='px-3 py-2'>
                                 {t('field.reviewer')}
                               </TableHead>
-                              <TableHead className='px-3 py-2'>{t('field.status')}</TableHead>
+                              <TableHead className='px-3 py-2'>
+                                {t('field.status')}
+                              </TableHead>
                               <TableHead className='px-3 py-2'>
                                 {t('field.submittedAt')}
                               </TableHead>
@@ -1184,10 +1190,18 @@ export function TranslationAdminPage({
                           <TableHead className='px-3 py-2'>
                             {t('field.interchangeDirection')}
                           </TableHead>
-                          <TableHead className='px-3 py-2'>{t('field.status')}</TableHead>
-                          <TableHead className='px-3 py-2'>{t('field.expiresAt')}</TableHead>
-                          <TableHead className='px-3 py-2'>{t('field.totalItems')}</TableHead>
-                          <TableHead className='px-3 py-2'>{t('field.actions')}</TableHead>
+                          <TableHead className='px-3 py-2'>
+                            {t('field.status')}
+                          </TableHead>
+                          <TableHead className='px-3 py-2'>
+                            {t('field.expiresAt')}
+                          </TableHead>
+                          <TableHead className='px-3 py-2'>
+                            {t('field.totalItems')}
+                          </TableHead>
+                          <TableHead className='px-3 py-2'>
+                            {t('field.actions')}
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody className='divide-y'>
@@ -1196,11 +1210,15 @@ export function TranslationAdminPage({
                             <TableCell className='px-3 py-2 font-mono text-xs'>
                               {artifact.id}
                             </TableCell>
-                            <TableCell className='px-3 py-2'>{artifact.direction}</TableCell>
+                            <TableCell className='px-3 py-2'>
+                              {artifact.direction}
+                            </TableCell>
                             <TableCell className='px-3 py-2'>
                               <Badge variant='outline'>{artifact.status}</Badge>
                             </TableCell>
-                            <TableCell className='px-3 py-2'>{artifact.expiresAt}</TableCell>
+                            <TableCell className='px-3 py-2'>
+                              {artifact.expiresAt}
+                            </TableCell>
                             <TableCell className='px-3 py-2'>
                               {artifact.report?.totalItems ?? '—'}
                             </TableCell>

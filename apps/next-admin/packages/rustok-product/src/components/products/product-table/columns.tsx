@@ -55,7 +55,7 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
         <div className='flex flex-col'>
           <Link
             href={`/dashboard/product/${product.id}`}
-            className='hover:text-primary max-w-[280px] truncate font-medium text-foreground transition hover:underline'
+            className='hover:text-primary text-foreground max-w-[280px] truncate font-medium transition hover:underline'
           >
             {product.title || product.handle}
           </Link>
@@ -158,7 +158,7 @@ export const columns: ColumnDef<StockFeatures, ProductListItem, any>[] = [
       const raw = getValue() as string | null;
       if (!raw) return <span className='text-muted-foreground text-xs'>—</span>;
       return (
-        <span className='text-muted-foreground whitespace-nowrap text-xs'>
+        <span className='text-muted-foreground text-xs whitespace-nowrap'>
           {new Date(raw).toLocaleDateString()}
         </span>
       );

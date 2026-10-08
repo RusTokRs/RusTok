@@ -67,7 +67,7 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
         <div className='flex flex-col'>
           <Link
             href={`/dashboard/commerce/orders/${order.id}`}
-            className='hover:text-primary max-w-[200px] truncate font-mono text-xs font-semibold text-foreground transition hover:underline'
+            className='hover:text-primary text-foreground max-w-[200px] truncate font-mono text-xs font-semibold transition hover:underline'
             title={order.id}
           >
             #{shortId}
@@ -96,7 +96,7 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
       const val = getValue() as string;
       const short = val ? val.slice(0, 8) : '—';
       return (
-        <span className='font-mono text-xs text-muted-foreground' title={val}>
+        <span className='text-muted-foreground font-mono text-xs' title={val}>
           {short}
         </span>
       );
@@ -191,9 +191,11 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
     cell: ({ row }) => {
       const count = row.original.lineItems?.length ?? 0;
       return (
-        <div className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+        <div className='text-muted-foreground flex items-center gap-1.5 text-xs'>
           <Package className='h-3.5 w-3.5' />
-          <span>{count} {count === 1 ? 'item' : 'items'}</span>
+          <span>
+            {count} {count === 1 ? 'item' : 'items'}
+          </span>
         </div>
       );
     }
@@ -207,7 +209,7 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
     cell: ({ row }) => {
       const order = row.original;
       return (
-        <span className='font-semibold text-xs tracking-tight text-foreground'>
+        <span className='text-foreground text-xs font-semibold tracking-tight'>
           {order.totalAmount} {order.currencyCode}
         </span>
       );
@@ -227,10 +229,10 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
       return (
         <div className='flex flex-col text-xs'>
           {order.carrier && (
-            <span className='font-medium text-foreground'>{order.carrier}</span>
+            <span className='text-foreground font-medium'>{order.carrier}</span>
           )}
           {order.trackingNumber && (
-            <span className='font-mono text-muted-foreground text-[10px]'>
+            <span className='text-muted-foreground font-mono text-[10px]'>
               {order.trackingNumber}
             </span>
           )}
@@ -248,7 +250,7 @@ export const columns: ColumnDef<StockFeatures, OrderListItem, any>[] = [
       const raw = getValue() as string | null;
       if (!raw) return <span className='text-muted-foreground text-xs'>—</span>;
       return (
-        <span className='text-muted-foreground whitespace-nowrap text-xs'>
+        <span className='text-muted-foreground text-xs whitespace-nowrap'>
           {new Date(raw).toLocaleDateString()}
         </span>
       );

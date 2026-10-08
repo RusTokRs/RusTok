@@ -13,7 +13,13 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
+} from '@/components/ui/card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,8 +56,12 @@ export default function CategoriesPage({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<BlogCategory | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<BlogCategory | null>(null);
+  const [editingCategory, setEditingCategory] = useState<BlogCategory | null>(
+    null
+  );
+  const [deletingCategory, setDeletingCategory] = useState<BlogCategory | null>(
+    null
+  );
 
   const fetchCategories = () => {
     setLoading(true);
@@ -107,14 +117,14 @@ export default function CategoriesPage({
   return (
     <div className='flex flex-1 flex-col space-y-4'>
       <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-        <div className='relative flex-1 max-w-sm'>
-          <IconSearch className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+        <div className='relative max-w-sm flex-1'>
+          <IconSearch className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <input
             type='text'
             placeholder='Search categories...'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className='flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-9 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='border-input placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 pl-9 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:outline-none'
           />
         </div>
         <Button onClick={handleCreate}>
@@ -131,13 +141,13 @@ export default function CategoriesPage({
         </CardHeader>
         <CardContent className='p-0'>
           {loading ? (
-            <div className='flex h-48 items-center justify-center text-sm text-muted-foreground'>
+            <div className='text-muted-foreground flex h-48 items-center justify-center text-sm'>
               Loading categories...
             </div>
           ) : filteredCategories.length === 0 ? (
             <div className='flex h-48 flex-col items-center justify-center gap-2 text-center'>
-              <IconFolder className='h-8 w-8 text-muted-foreground' />
-              <p className='text-sm text-muted-foreground'>
+              <IconFolder className='text-muted-foreground h-8 w-8' />
+              <p className='text-muted-foreground text-sm'>
                 {searchQuery
                   ? 'No categories found matching your query.'
                   : 'No categories created yet.'}
@@ -151,7 +161,7 @@ export default function CategoriesPage({
           ) : (
             <div className='overflow-x-auto'>
               <table className='w-full text-left text-sm'>
-                <thead className='border-b bg-muted/50 text-xs uppercase text-muted-foreground'>
+                <thead className='bg-muted/50 text-muted-foreground border-b text-xs uppercase'>
                   <tr>
                     <th className='px-4 py-3'>Name</th>
                     <th className='px-4 py-3'>Slug</th>
@@ -163,16 +173,19 @@ export default function CategoriesPage({
                 </thead>
                 <tbody className='divide-y'>
                   {filteredCategories.map((category) => (
-                    <tr key={category.id} className='hover:bg-muted/50 transition-colors'>
+                    <tr
+                      key={category.id}
+                      className='hover:bg-muted/50 transition-colors'
+                    >
                       <td className='px-4 py-3'>
                         <div className='font-medium'>{category.name}</div>
                         {category.description && (
-                          <div className='text-xs text-muted-foreground truncate max-w-xs'>
+                          <div className='text-muted-foreground max-w-xs truncate text-xs'>
                             {category.description}
                           </div>
                         )}
                       </td>
-                      <td className='px-4 py-3 font-mono text-xs text-muted-foreground'>
+                      <td className='text-muted-foreground px-4 py-3 font-mono text-xs'>
                         {category.slug}
                       </td>
                       <td className='px-4 py-3'>
@@ -180,7 +193,7 @@ export default function CategoriesPage({
                           {category.postsCount} posts
                         </Badge>
                       </td>
-                      <td className='px-4 py-3 text-xs text-muted-foreground'>
+                      <td className='text-muted-foreground px-4 py-3 text-xs'>
                         {category.displayOrder}
                       </td>
                       <td className='px-4 py-3'>
@@ -191,7 +204,7 @@ export default function CategoriesPage({
                           {category.isActive ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
-                      <td className='px-4 py-3 text-right space-x-2'>
+                      <td className='space-x-2 px-4 py-3 text-right'>
                         <Button
                           variant='ghost'
                           size='icon'
@@ -204,7 +217,7 @@ export default function CategoriesPage({
                         <Button
                           variant='ghost'
                           size='icon'
-                          className='h-8 w-8 text-destructive hover:text-destructive'
+                          className='text-destructive hover:text-destructive h-8 w-8'
                           onClick={() => setDeletingCategory(category)}
                         >
                           <IconTrash className='h-4 w-4' />
@@ -237,8 +250,8 @@ export default function CategoriesPage({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the category &ldquo;{deletingCategory?.name}&rdquo;?
-              This action cannot be undone.
+              Are you sure you want to delete the category &ldquo;
+              {deletingCategory?.name}&rdquo;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

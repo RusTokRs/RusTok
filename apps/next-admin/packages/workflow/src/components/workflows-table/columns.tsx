@@ -38,7 +38,7 @@ export const columns: ColumnDef<StockFeatures, WorkflowSummary, any>[] = [
       return (
         <Link
           href={`/dashboard/workflows/${wf.id}`}
-          className='font-medium text-foreground hover:underline'
+          className='text-foreground font-medium hover:underline'
         >
           {wf.name}
         </Link>

@@ -2,8 +2,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_cart::dto::{
     AddCartLineItemInput, CartLineFulfillmentRequirement, CartShippingSelectionInput,
-    CreateCartInput, SetCartAdjustmentInput,
-    UpdateCartContextInput,
+    CreateCartInput, SetCartAdjustmentInput, UpdateCartContextInput,
 };
 use rustok_cart::error::CartError;
 use rustok_cart::services::{CartService, cart::CartPricingAdjustmentUpdate};
@@ -1646,7 +1645,12 @@ async fn sanitization_strips_customer_tax_exempt_from_line_item_metadata() {
         .await
         .unwrap();
 
-    assert!(updated.line_items[0].metadata.get("customer_tax_exempt").is_none());
+    assert!(
+        updated.line_items[0]
+            .metadata
+            .get("customer_tax_exempt")
+            .is_none()
+    );
     assert_eq!(
         updated.line_items[0].metadata.get("custom_note"),
         Some(&serde_json::json!("gift"))

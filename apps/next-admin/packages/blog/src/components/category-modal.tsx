@@ -116,7 +116,9 @@ export function CategoryModal({
       onOpenChange(false);
       onSuccess();
     } catch {
-      toast.error(isEditing ? 'Failed to update category' : 'Failed to create category');
+      toast.error(
+        isEditing ? 'Failed to update category' : 'Failed to create category'
+      );
     }
   }
 
@@ -129,7 +131,11 @@ export function CategoryModal({
           </DialogTitle>
         </DialogHeader>
 
-        <Form form={form} onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+        <Form
+          form={form}
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='space-y-4'
+        >
           <FormInput
             control={form.control}
             name='name'
@@ -161,11 +167,7 @@ export function CategoryModal({
             placeholder='0'
           />
 
-          <FormSwitch
-            control={form.control}
-            name='isActive'
-            label='Active'
-          />
+          <FormSwitch control={form.control} name='isActive' label='Active' />
 
           <DialogFooter className='pt-4'>
             <Button
