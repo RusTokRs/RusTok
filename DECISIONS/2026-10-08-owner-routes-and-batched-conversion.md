@@ -293,10 +293,13 @@ topics must scale. Measured on the current code:
   followed by more pages. A page is empty only when the scan budget (20 provider
   calls) runs out. `SeoBulkPage` drops `total` and `page` and returns `next_cursor`;
   the admin editor offers next and first page. The legacy offset list and the
-  `page` field of the job filter are removed. Still on offset: the pages and product
-  sitemap scans (`list_public_visible`, `list_published_products_with_locale_fallback`).
-  Product SEO loads treat only `ProductNotFound` as absent (`load_product_if_present`);
-  other errors propagate.
+  `page` field of the job filter are removed. Sitemap scans of pages and product walk
+  the same keysets. The pages sitemap uses `scan_public_published_pages`, which keeps
+  the channel-less public scope (`apply_public_page_channel_filter` with no slug), so
+  channel-restricted pages stay out of the sitemap. The product sitemap uses
+  `scan_published_product_ids` with no channel, the same base filters as the storefront
+  list. SEO loads in pages and product treat only not-found as absent
+  (`load_page_if_present`, `load_product_if_present`); other errors propagate.
   Verifier: `verify-seo-bulk-cursor-pagination`.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a

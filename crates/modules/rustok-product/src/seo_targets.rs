@@ -14,7 +14,7 @@ use rustok_seo_targets::{
 use url::Url;
 use uuid::Uuid;
 
-use crate::{CatalogService, CommerceError, StorefrontProductListItem};
+use crate::{CatalogService, CommerceError};
 
 const BULK_FETCH_SIZE: u64 = 48;
 
@@ -136,39 +136,31 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = CatalogService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page = 1_u64;
+        let mut after: Option<Uuid> = None;
         let mut candidates = Vec::new();
 
         loop {
-            let list = service
-                .list_published_products_with_locale_fallback(
-                    request.tenant_id,
-                    request.default_locale,
-                    Some(request.default_locale),
-                    None,
-                    page,
-                    BULK_FETCH_SIZE,
-                )
+            // Sitemap scope is the channel-less public scope, the same base filters
+            // as the storefront list, walked by id instead of offset.
+            let (product_ids, next_after) = service
+                .scan_published_product_ids(request.tenant_id, None, after, BULK_FETCH_SIZE)
                 .await?;
-            if list.items.is_empty() {
-                break;
-            }
-            for item in list.items {
+            for product_id in product_ids {
                 if let Some(candidate) = load_product_sitemap_candidate(
                     &service,
                     request.tenant_id,
                     request.default_locale,
-                    item,
+                    product_id,
                 )
                 .await?
                 {
                     candidates.push(candidate);
                 }
             }
-            if !list.has_next {
-                break;
+            match next_after {
+                Some(cursor) => after = Some(cursor),
+                None => break,
             }
-            page += 1;
         }
 
         Ok(candidates)
@@ -219,10 +211,11 @@ async fn load_product_sitemap_candidate(
     service: &CatalogService,
     tenant_id: uuid::Uuid,
     default_locale: &str,
-    item: StorefrontProductListItem,
+    product_id: Uuid,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
     let Some(product) =
-        load_product_if_present(service, tenant_id, item.id, default_locale, default_locale).await?
+        load_product_if_present(service, tenant_id, product_id, default_locale, default_locale)
+            .await?
     else {
         return Ok(None);
     };

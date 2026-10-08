@@ -96,6 +96,24 @@ forbidText(adminCore, 'pub page: i32,', 'admin filter page');
 forbidText(adminBulk, 'Total scope items', 'admin total label');
 requireText(adminBulk, 'Next page', 'admin next page control');
 
+// Sitemap scans walk the same keyset; pages keep the channel-less public scope.
+const pagesSeo = read('crates/modules/rustok-pages/src/seo_targets.rs');
+const productSeo = read('crates/modules/rustok-product/src/seo_targets.rs');
+requireText(pagesSeo, 'scan_public_published_pages(', 'pages sitemap keyset');
+forbidText(pagesSeo, 'list_public_visible(', 'pages sitemap offset');
+requireText(read('crates/modules/rustok-pages/src/services/page/read.rs'),
+  'apply_public_page_channel_filter(select, tenant_id, None)', 'pages public scan channel scope');
+requireText(productSeo, 'scan_published_product_ids(request.tenant_id, None, after, BULK_FETCH_SIZE)',
+  'product sitemap keyset');
+forbidText(productSeo, 'list_published_products_with_locale_fallback(', 'product sitemap offset');
+
+// Provider loads treat only not-found as absent. Silent `.ok()` is forbidden.
+for (const [source, label] of [[pagesSeo, 'pages'], [productSeo, 'product']]) {
+  forbidText(source, '.ok();', `${label} provider silent error`);
+}
+requireText(pagesSeo, 'Err(PagesError::PageNotFound(_)) => Ok(None),', 'pages not-found only');
+requireText(productSeo, 'Err(CommerceError::ProductNotFound(_)) => Ok(None),', 'product not-found only');
+
 if (exists('crates/modules/rustok-seo/src/services/bulk_legacy_offset.rs')) {
   failures.push('offset bulk helper file must not exist');
 }

@@ -268,10 +268,39 @@ impl PageService {
         after: Option<&str>,
         limit: u64,
     ) -> PagesResult<(Vec<PageListItem>, Option<String>)> {
+        self.scan_published_pages_inner(tenant_id, locale, after, limit, false)
+            .await
+    }
+
+    /// Same keyset as `scan_published_pages`, restricted to pages visible without a
+    /// channel (the public storefront scope with no channel slug). Used by the sitemap,
+    /// which must not list channel-restricted pages.
+    pub(crate) async fn scan_public_published_pages(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        after: Option<&str>,
+        limit: u64,
+    ) -> PagesResult<(Vec<PageListItem>, Option<String>)> {
+        self.scan_published_pages_inner(tenant_id, locale, after, limit, true)
+            .await
+    }
+
+    async fn scan_published_pages_inner(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        after: Option<&str>,
+        limit: u64,
+        public_only: bool,
+    ) -> PagesResult<(Vec<PageListItem>, Option<String>)> {
         let limit = limit.max(1);
         let mut select = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)));
+        if public_only {
+            select = apply_public_page_channel_filter(select, tenant_id, None);
+        }
         if let Some(raw) = after {
             let cursor = PublishedPageCursor::decode(raw)?;
             select = select.filter(
