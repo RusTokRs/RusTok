@@ -1,4 +1,6 @@
-use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
+mod support;
+use fly_browser::BrowserAdapterConfig;
+use support::contains;
 
 #[test]
 fn auto_mount_false_serializes_for_javascript() {
@@ -16,8 +18,8 @@ fn auto_mount_false_serializes_for_javascript() {
 
 #[test]
 fn public_bundle_separates_bootstrap_from_manual_mount() {
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("export function bootstrapFlyBrowsers"));
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("bootstrapConfig.autoMount !== false"));
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("bootstrap: bootstrapFlyBrowsers"));
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("mountAll: mountAllFlyBrowsers"));
+    assert!(contains("export function bootstrapFlyBrowsers"));
+    assert!(contains("bootstrapConfig.autoMount !== false"));
+    assert!(contains("bootstrap: bootstrapFlyBrowsers"));
+    assert!(contains("mountAll: mountAllFlyBrowsers"));
 }

@@ -1,0 +1,354 @@
+# Page and Page Builder subsystem — deep engineering audit
+
+**Date:** 2026-10-08
+**Base commit:** `7895d7fe817bccc1a194dbcb25b9f918fa0f5840` (branch `arena/ecde41c8-rustok`, forked from `main` at `6d353fda87185b149fbbf987ab7368dcb6a749ff` lineage)
+**Scope:** `crates/modules/rustok-pages`, `crates/modules/rustok-page-builder`, `crates/ui/fly/**`
+(`fly`, `fly-ui`, `fly-web`, `fly-browser`, `fly-leptos`, `fly-dioxus`), the admin and storefront
+surfaces that consume them, and the verification surface that guards them:
+`scripts/verify/verify-fly-*.mjs`, `scripts/verify/verify-page-builder-*`, `scripts/fly-check.sh`,
+`.github/workflows/fly-page-builder.yml`.
+**Companion:** `docs/audits/fly-builder-engineering-audit-2026-10-02.md` receives an in-place
+status-verification section (§10) for its §1a remediation table. This document does not supersede
+it; it audits the wider subsystem and records where the 2026-10-02 conclusions still hold.
+
+---
+
+## 1. Verification limits — read this before the findings
+
+The audit environment has **no Rust toolchain** (`cargo` and `rustc` are absent; there is no
+`target/`, no `~/.cargo`, and no dependency source cache), and `crates.io` is not reachable, so a
+compiler cannot be provisioned even though `@rustbin/*` npm packages do ship `rustc`/`cargo`
+binaries — every dependency body would still be missing.
+
+Consequences, stated plainly:
+
+- `cargo check`, `cargo test`, `cargo clippy` and `cargo fmt --check` were **not** run for this
+  audit. Every finding that depends on them is labelled **needs toolchain**; none is described as
+  passing.
+- GitHub Actions logs are not retrievable from this environment (`gh run view --log-failed` fails
+  with `EOF`); only job/step names and conclusions are available through
+  `gh api .../actions/runs/<id>/jobs`. Root causes below were therefore derived statically and are
+  labelled as hypothesis where the toolchain would decide.
+- Two substitute checks were provisioned, verified against the repository itself, and committed as
+  audit tooling under `scripts/audit/` (they are deliberately **not** wired into CI):
+  - `scripts/audit/rust_syntax_check.mjs` — parses changed `.rs` files with the real
+    `tree-sitter-rust` grammar and reports `ERROR`/`MISSING` nodes.
+  - `scripts/audit/rustfmt_check.mjs` — reproduces `cargo fmt --check` per file using
+    `@scalar/rust-fmt` (the actual rustfmt compiled to wasm; upstream asserts byte-identical output
+    against the native CLI and rustfmt's own 345-file corpus). Supports `--write`.
+  - Calibration: the wasm formatter reproduces the repository's own formatting history exactly —
+    it re-derives the 55 files that upstream commit `6d353fda` reformatted, and it flags nothing
+    else in those packages except one boundary case discussed in F-6. A tool that is wrong in
+    general would not agree on 55/55 files it never saw.
+
+## 2. Summary
+
+| # | Failing CI step (run `37723570779`, `fly-page-builder.yml`) | Status |
+|---|---|---|
+| F-1 | `Verify editor capability policy` | **Fixed** — brittle literal marker in the gate |
+| F-2 | `Run Fly browser contract tests` | **Fixed** — 6 assertions tied to pre-refactor code shapes; suites also never ran before `--lib` was removed |
+| F-3 | `Check Fly adapter feature combinations` | Root-caused (hypothesis): the `desktop` combination needs WebKitGTK/GTK system libraries the job never installs. **Workflow patch proposed, not applied** (§4.1) |
+| F-4 | `Check admin SSR Page Builder endpoint` | **Unresolved — needs toolchain** (§4.2) |
+| F-5 | `Lint Fly browser and Page Builder integrations` | **Unresolved — needs toolchain** (§4.3) |
+| F-6 | `Check focused formatting` (`Focused formatting`) | Root-caused and bounded: 56 in-package files at the audit base, 55 of them reformatted by upstream `6d353fda`, 1 remaining case judged a formatter-version boundary (§4.4) |
+| F-7 | `Audit dependencies` (advisory job, non-blocking) | Out of scope; job is explicitly advisory |
+
+The same workflow has been red on every `main` push observed between 2026-10-01 and 2026-10-08
+(`be5dbca7d`, `ed3267b18`, `a97744a21`, `a85d56e24`, `bb9357fa3`, …). Two neighbouring evidence
+workflows (`Page Builder Static Sanitization Evidence`, `Pages Consumer Properties Source
+Evidence`) fail on a different, already-identified cause: two gates demand the literal string
+`actions/upload-artifact@v7` while every workflow pins the immutable v7.0.1 commit SHA — correct
+supply-chain practice, so the gates are stale, not the workflows. Fixing those gates is a one-line
+change in each and is left to the maintainer because it touches evidence-pipeline fixtures.
+
+**The pattern behind F-1, F-2 and the two evidence workflows is the same:** verification here
+frequently asserts *source text* rather than *behaviour*, so a formatter run or a rename silently
+turns a passing gate into a permanently red one. The 2026-10-02 audit recorded this as H-7 and the
+meta-gate `verify-fly-gates-are-wired.mjs` was added in response — but that gate only proves a
+check is *referenced by a workflow*, not that it *can pass*. F-1 lived behind exactly that gap.
+
+## 3. Findings fixed in this change set
+
+### 3.1 F-1 — `verify-fly-ui-capability-policy.mjs` required a line that formatting removed
+
+The gate required the literal marker `EditorCapability::ALL.into_iter()`. The shipped source has
+the same code split by `rustfmt` across two lines in
+`crates/modules/rustok-page-builder/admin/src/editor/capability_controls.rs` (line 352/353 at the
+audit base; the call is inside a `Memo::new` closure whose argument list pushed the chain over the
+line width). The marker therefore never matched, and `Verify editor capability policy` failed on
+every run — including at `main` today, where the gate was re-checked against the `6d353fda` tree.
+
+Fix: markers are matched against a **whitespace-free token sequence** of both the file and the
+marker. Rust is whitespace-insensitive between tokens, so the assertion keeps its meaning wherever
+the formatter breaks a line, and the rule is monotone — a marker that matched before still matches,
+and the `!contains` (forbidden-marker) direction can only become stricter, never weaker. The
+alternative — holding the source to one particular line wrapping — would make every `cargo fmt`
+run a potential CI failure.
+
+Verified: `node scripts/verify/verify-fly-ui-capability-policy.mjs` → exit 0;
+`bash scripts/fly-check.sh gates` → **19 passed, 0 failed** (was 18/1).
+
+### 3.2 F-2 — eight contract suites, six assertions pinned to deleted code shapes
+
+`crates/ui/fly/browser/tests/*_contract.rs` asserts properties of the shipped JavaScript bundle
+`crates/ui/fly/browser/assets/fly-browser.js` by searching it for code fragments. The workflow used
+to pass `--lib` for these suites, so they compiled nothing and ran nothing; the `--lib` removal (a
+recorded improvement, the workflow comment says so) exposed rot:
+
+| Suite | Assertion that no longer matched | What the bundle actually contains |
+|---|---|---|
+| `browser_problem_contract` | `role", "alert` and `aria-live", "assertive` | the problem status node is created by `ensureProblemStatus`, which passes `"alert"`/`"assertive"` as arguments to `ensureStatus`, and the attributes are set from those parameters |
+| `intent_abort_contract` | `signal: requestOptions?.signal` | request options are normalised by `normalizedTransportOptions(requestOptions)` and the signal is validated: `signal: isAbortSignal(transport.signal) ? transport.signal : undefined` |
+| `intent_timeout_contract` | `controller.abort()` | the timeout path reports first and carries a classified reason: `this.reportIntentTimeout(record); controller.abort(` |
+| `pending_intent_contract` | `controller.abort()` | stopping the adapter aborts every pending intent with `INTENT_ABORT_KIND.ADAPTER_STOP` and `record.controller.abort(record.abort.error)` |
+| `response_order_contract` | `requestGeneration, current` | the abort detail computes currency: `current: record.requestGeneration === this.latestIntentRequestGeneration` |
+
+Fix: a shared `tests/support/mod.rs` exposes `contains`, which folds whitespace out of both sides
+before comparing; the eight suites consume it (`mod support; use support::contains;`) and the five
+obsolete literals were replaced with the contract each one was really asserting. Two extra tests
+(`tests/support_contract.rs`) pin the matcher itself, so a future edit that makes `contains`
+vacuously true fails immediately. No assertion was deleted or weakened: the forbidden-marker
+(`!contains`) assertions survive verbatim.
+
+Verified statically: an independent scan extracted **58/58** assertions from the nine test files and
+confirmed each against the shipped asset under the folding rule (the same rule the Rust matcher
+uses); all nine files parse clean under `tree-sitter-rust`; all nine match `rustfmt` byte-for-byte
+(edition 2024, default style). **Needs toolchain:** `cargo test -p fly-browser --all-targets` — the
+suites are Rust code and only the compiler can confirm the 5 added expectations compile.
+
+## 4. Root-caused findings that need the maintainer
+
+### 4.1 F-3 — `Check Fly adapter feature combinations`: the desktop combination has no system libraries
+
+The step runs five checks; the first is
+`cargo check -p fly-dioxus --features desktop`.
+
+`crates/ui/fly/dioxus/Cargo.toml` maps that feature to `dioxus/desktop`, and `Cargo.lock` resolves
+`dioxus 0.6.3` with `dioxus-desktop 0.6.3`, `wry 0.45.0` and `tao 0.30.8` in the graph. On Linux
+those crates reach WebKitGTK/GTK/soup through sys crates whose build scripts run `pkg-config`
+during `cargo check`. No workflow installs them: the only `apt-get install` calls in the repository
+are `lld` (`.github/workflows/ci.yml:200`) and `redis-server`
+(`cache-hardening.yml:288`, `rbac-runtime-evidence.yml:170`). This is the leading hypothesis for
+the step's failure and it explains why the failure is confined to the desktop combination while the
+wasm32 checks pass.
+
+Proposed patch (not applied — `AGENTS.md` §15 forbids editing CI workflow files unless CI changes
+are explicitly requested):
+
+```yaml
+      - name: Install Linux GUI dependencies for the desktop adapter
+        if: ${{ !cancelled() }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev
+```
+
+Placed before the feature-combination step, this is the standard Dioxus/Tauri Linux dependency set
+and is harmless if the real cause turns out to differ. If the desktop adapter is deliberately not
+part of the shipped surface (`crates/ui/fly/README.md` lists `fly-dioxus` as *Foundation only*),
+the alternative is to drop `--features desktop` from the step and document that the combination is
+not compiled anywhere — but then nothing would compile it, which is the situation the step exists
+to prevent.
+
+**Needs toolchain:** with `cargo`, `cargo check -p fly-dioxus --features desktop` on a clean
+runner settles this in one command.
+
+### 4.2 F-4 — `Check admin SSR Page Builder endpoint`
+
+`cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr` failed in
+runs `37723570779` and earlier. No static evidence explains it: the crate's default feature set is
+`["ssr"]`, so the invocation is the plain default build, and the Page Builder contribution glue in
+`apps/admin/src/app/page_builder_contributions.rs` (the file this step exists to protect) was
+reformatted upstream in `6d353fda` with no semantic change. **Needs toolchain** — run the command
+and triage, or read the failing step's log.
+
+### 4.3 F-5 — `Lint Fly browser and Page Builder integrations`
+
+`cargo clippy -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p
+rustok-pages-storefront --lib -- -D warnings`. The workspace denies only five clippy lints
+(`dbg_macro`, `todo`, `unimplemented`, `print_stdout`, `print_stderr`; root `Cargo.toml:94-99`), so
+any *default* warning in any of the five crates fails the step. Static reading found no `dbg!`,
+`todo!()` or `print_*` in the audited crates, but default-on lints (`needless_return`,
+`collapsible_if`, `result_large_err`, …) cannot be evaluated by reading. **Needs toolchain** —
+`cargo clippy` output is the only way to name the warning, and the repository has no local cache to
+fall back on.
+
+### 4.4 F-6 — `Check focused formatting`: bounded, and one case to leave alone
+
+The job runs `cargo fmt -p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p fly-dioxus
+-p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront
+-p rustok-admin -- --check`.
+
+Measured with the wasm rustfmt at the audit base: **56 files** in those packages are not in rustfmt
+canonical form. Upstream commit `6d353fda` ("…format workspace…") then reformatted **exactly those
+55 of the 56** — the set matches one-for-one, with zero extra files. The single exception is
+`crates/ui/fly/src/bundle.rs`, whose `use crate::{…}` block ends a continuation line at exactly 100
+columns:
+
+```rust
+    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq, validate_project,
+```
+
+The wasm build (rustfmt 1.88-era nightly) wants that line split; upstream's formatter run left it
+untouched, and the same file contains a 100-column line that another crate's import block keeps
+unchanged in a file the formatter accepts. The evidence says this is a nightly-vs-stable boundary
+case, **not** a violation: splitting it on a nightly verdict risks *creating* the very failure it
+is meant to fix. Recommendation: leave `bundle.rs` alone and confirm with
+`cargo fmt -p fly -- --check`; if stable agrees with the nightly, the two-line split below is the
+expected output.
+
+```rust
+    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
+    validate_project,
+```
+
+Note for reviewers: this means the formatting failure at the *audit base* is not a defect of this
+change set — it was already fixed upstream, and this branch is built on the commit before that fix.
+Every file touched here is rustfmt-clean (verified), so the branch adds no formatting debt.
+
+## 5. Integrity finding — C-1 is only partially remediated (not fixed here, by decision)
+
+The 2026-10-02 audit's C-1 was "`ProjectHash` (FNV-1a 64) is used as an integrity check". Its
+remediation introduced `crates/ui/fly/src/digest.rs`, whose module documentation states the policy
+in as many words:
+
+> Every gate that answers "is this payload the one that was approved?" — snapshot restore,
+> project-bundle import, **runtime-scenario release baselines** — uses `ContentDigest` instead.
+
+`ContentDigest` is SHA-256. But the runtime-scenario release baseline — one of the three gates the
+paragraph names — still hashes with FNV-1a 64:
+
+- `crates/ui/fly/src/runtime_scenario_release.rs:44-53` — `computed_hash()` serialises the baseline
+  and returns `ProjectHash::from_bytes(&bytes).hex()`.
+- `crates/ui/fly/src/runtime_scenario_release.rs:57` — `has_valid_hash()` compares the stored
+  `baseline_hash` against that FNV value.
+- `crates/ui/fly/src/runtime_scenario_release.rs:338` — `snapshot_has_valid_hash()` does the same
+  for `snapshot.snapshot_hash`.
+- `crates/ui/fly/src/runtime_scenario_snapshot.rs:320-330` — `snapshot_hash()` builds that value
+  from `serde_json::to_vec(...).unwrap_or_default()` and FNV-1a 64.
+
+The check is a real gate, not dirty tracking: `RuntimeScenarioReleaseBaseline::validate()` emits
+`runtime_scenario_baseline_hash_invalid` ("release baseline integrity hash does not match its
+contents") and `snapshot_hash_invalid` diagnostics, `is_valid()` gates on them, and
+`RuntimeScenarioReleaseMode::{BlockBroken, RequireStable}` turns baseline validity into a
+publication decision. The hash is persisted in
+`page_builder_scenario_baseline.baseline_hash` with `expected_baseline_hash` used as a
+compare-and-swap precondition, and it is exposed over GraphQL.
+
+Why this matters: FNV-1a 64 is not collision-resistant, and it is not merely "2^32 birthday" weak —
+its multiply/xor chain is invertible, so a payload that hashes to a *chosen* 64-bit value is
+cheaply constructible. The threat model is the one tamper-evidence exists for: an actor who can
+write the baseline payload (an admin-side write path, a compromised or buggy client, a replay of a
+stored record) but cannot update the stored digest can substitute content that still validates as
+"the approved baseline". Severity is **P1**, not P0: it does not by itself cross a privilege
+boundary — it removes a layer of tamper evidence behind one — but it is the difference between a
+control and a formality.
+
+Not fixed in this change set, deliberately. Switching these hashes to `ContentDigest` changes a
+value that is persisted in MySQL, exported through GraphQL and compared across the admin/Pages
+boundary, so every stored baseline becomes invalid the moment the algorithm changes. That is a
+migration, not a patch: it needs a `format`/algorithm marker so old records are rejected
+explicitly (rather than silently failing validation), a re-capture of live baselines, and the
+`cargo test -p fly` suite to confirm — none of which can be verified without a toolchain. Landing
+it blind would be exactly the "claim completion for unverified work" that `AGENTS.md` §14 forbids.
+
+Recommended remediation, in order:
+
+1. Give `RuntimeScenarioRenderSnapshot` and `RuntimeScenarioReleaseBaseline` an explicit
+   algorithm label next to the hash (the `ContentDigest` type already renders `sha256:<hex>`), so a
+   mismatch is diagnosable.
+2. Switch `snapshot_hash()` / `computed_hash()` / both `has_valid_hash` checks to
+   `ContentDigest::of(&bytes)`; keep `ProjectHash` for dirty tracking and optimistic concurrency
+   only, which its own documentation permits.
+3. Treat pre-migration baselines as invalid by marker, and require re-capture; update the Pages-side
+   `scenario_baseline` validation and any fixtures in the same change.
+4. Separately, replace the `unwrap_or_default()` in `snapshot_hash()`: a serialisation failure
+   currently hashes *empty bytes* and returns a stable, well-known digest instead of an error. It is
+   a fail-open path in an integrity function and should be a `FlyResult`.
+
+## 6. Verified clean (checked, no defect found)
+
+These areas were examined in this and the preceding pass and are recorded as sound, so the next
+reader does not repeat the work:
+
+- **Static publish sanitisation is wired and internally consistent.** `static_publish_policy.rs`
+  rejects every `on*` handler, forbidden attributes, control characters and backslash/protocol-relative
+  URLs; per-kind URL policy covers navigation (fragment/relative/https/mailto/tel), resources
+  (relative/https), resource images (plus an allowlist of `data:image/*;base64,`), form actions
+  (relative only), canonical and fragment. `url(` is deliberately *not* a forbidden CSS token —
+  `safe_css_value` strips each `url()` reference through per-URL validation and then rejects any
+  survivor. Validators are actually reached: `validate_static_publish_resource_limits`
+  (`static_landing.rs:151`), `validate_static_publish_document` (`static_landing.rs:178`),
+  `sanitize_static_landing_project` (`artifact_rebuild.rs:186`, `publish_manifest.rs:127`,
+  `reviewed_publish.rs:249`, plus tests).
+- **Publication is transactional.** Page services take `db.begin()`, publish through
+  `publish_in_tx(...)` and commit once; `artifact_binding_replacement.rs` has two `commit()` calls
+  that are mutually exclusive (idempotent-replay early return vs. main path) inside one owner
+  transaction.
+- **Tenant scoping.** Production `Entity::find()` chains that omit `TenantId` number four and all
+  four are justified by upstream scoping (`scenario_baseline.rs:333,370`,
+  `publish_manifest.rs:61,65`). The storefront server functions resolve the tenant from
+  `TenantContext` and fall back to the configured slug only when it is absent, rejecting a
+  mismatching slug rather than trusting it — the `.ok()` on the extract degrades to the fallback
+  path, not to a cross-tenant read.
+- **No hand-written `unsafe`** in the audited crates; `fly` and `fly-browser` are `forbid(unsafe_code)`.
+- **The rollback adapter does not swallow GraphQL failures.**
+  `rustok-pages/admin/src/transport/rollback_retry_adapter.rs` keeps a durable
+  `(expected_version, idempotency_key)` pair in session storage so a retry after a network failure
+  replays rather than double-applies, and clears it only on success or on a classified definitive
+  rejection. `rustok_graphql::execute_with_client` checks the response's `errors` array and returns
+  `Err(GraphqlHttpError::Graphql(_))` before it looks at `data`, so a rejected mutation cannot be
+  reported as a successful rollback. The one deliberately ignored result is the storage clear on
+  the success path (`let _ = clear_pending_attempt(...)`), which is safe: the leftover identity is
+  the same key the next attempt would reuse.
+- **All 19 local Fly source guards pass** (`bash scripts/fly-check.sh gates`), including
+  `verify-fly-gates-are-wired`, which confirms every `verify-fly-*.mjs` is reachable from a workflow.
+- **Every browser-contract assertion** extracted from the nine suites holds against the shipped
+  asset under the token-folding rule (58/58), and the code the matcher explains is the code the
+  adapter actually ships.
+
+## 7. Documentation and repository hygiene observations
+
+- `PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md` (repository root, 928 lines) is a captured failing
+  `cargo build` for `rustok-page-builder` recording `E0252` (three duplicate imports at
+  `service.rs:13`) and `E0433` (`crate::runtime_telemetry::crate::runtime_telemetry::…` at
+  `service.rs:1295,1307`). All five errors are fixed at the audit base — the duplicate import block
+  and the malformed paths are gone. The file is a stale receipt: it is in both `typos.toml` and
+  `_typos.toml` ignore lists, and nothing references it. Recommend moving it to the evidence archive
+  or deleting it, so the repository root does not advertise a defect that no longer exists.
+- Two gates assert a *tag* where the repository's supply-chain policy pins a *SHA*:
+  `verify-page-builder-static-sanitization-execution.mjs` (literal `actions/upload-artifact@v7`)
+  and `verify-pages-consumer-properties-source-execution.mjs` (same). All workflows pin the
+  immutable v7.0.1 commit. The gates are the staleness; the fix is to assert the pinned-SHA form
+  the supply-chain checker already enforces.
+- Language policy: `AGENTS.md` §12 makes English the only repository documentation language with
+  `README.ru.md` as the single exception, yet `docs/audits/` contains Russian documents
+  (`fly-builder-engineering-audit-2026-10-02.md`, `ffa-ui-libraries-engineering-audit-2026-10-03.md`,
+  `product-module-engineering-audit-2026-10-07.md`) alongside English ones. New material here is
+  English; the rule and the existing corpus should be reconciled one way or the other rather than
+  drifting.
+- `crates/ui/fly/README.md`'s status table matches the code: `fly`/`fly-ui` stable,
+  `fly-web`/`fly-browser` beta, `fly-leptos`/`fly-dioxus` foundation-only shells. The ADRs that
+  describe full Leptos/Dioxus editors remain aspirational; that gap is tracked here rather than
+  silently inherited.
+
+## 8. Recommended order of work
+
+1. Apply the `bundle.rs` decision in §4.4 and run `cargo fmt -p fly -- --check` (one minute; closes F-6).
+2. Apply the adapter-dependency patch in §4.1 (F-3) and run the feature-combination step.
+3. Run `cargo test -p fly-browser --all-targets` and `cargo clippy … -- -D warnings` locally to
+   close F-2 and name F-5 (F-2 is expected to pass; F-5 needs the warning text).
+4. Triage F-4 with the failing log.
+5. Schedule §5 (C-1 residual) as a migration-sized change, not a drive-by patch.
+6. Repair the two `upload-artifact` gates (§7) and retire the stale root receipt.
+
+## 9. What this audit does not establish
+
+- Nothing here proves the page subsystem compiles or its tests pass at this commit; the toolchain
+  was unavailable by construction (§1).
+- F-3, F-4 and F-5 are root-cause *hypotheses* of failing steps, not confirmed diagnoses; each
+  needs one command with a toolchain, or the step's log.
+- The audit covers the page/builder subsystem; unrelated red workflows (forum, e-commerce, index
+  evidence) were out of scope except where they share a cause with the findings above.
+- Performance claims (clone counts, query patterns) were not re-measured; §1a of the 2026-10-02
+  audit remains the record for those, with the status verification in its new §10.
