@@ -321,7 +321,15 @@ pub struct GqlPostListItem {
 #[derive(SimpleObject)]
 pub struct GqlPostList {
     pub items: Vec<GqlPostListItem>,
-    pub total: u64,
+    /// Present only when another page exists. Admin lists never count rows.
+    pub next_cursor: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPublicPostList {
+    pub items: Vec<GqlPostListItem>,
+    /// Present only when another page exists.
+    pub next_cursor: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -391,7 +399,8 @@ pub struct PostsFilter {
     pub tag: Option<String>,
     pub author_id: Option<Uuid>,
     pub locale: Option<String>,
-    pub page: Option<u64>,
+    /// Opaque cursor: `nextCursor` of the previous page. Absent for the first page.
+    pub after: Option<String>,
     pub per_page: Option<u64>,
 }
 

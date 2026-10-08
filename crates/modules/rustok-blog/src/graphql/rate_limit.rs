@@ -381,7 +381,7 @@ mod tests {
                         status: APPROVED
                     )
                 }
-                fragment BlogReads on Query { postBySlug(slug: "hello") { id } posts { total } }
+                fragment BlogReads on Query { postBySlug(slug: "hello") { id } posts { nextCursor } }
             "#,
         )
         .expect("document should parse");

@@ -465,12 +465,14 @@ owner decision or a larger implementation.
 
 - **H-6 scheduled publishing.** No `scheduled` status, no `publish_at`, and no
   worker. Only `Draft -> Published` exists.
-- **H-7 list search and facets.** The `?q=` filter applies to the current
-  client page only, and the tag list is built from that page. `PostsFilter` and
-  `PublicPostsFilter` have no text query and no sort field. Search is not wired
-  to `rustok-search`. The public list (`publicBlogPosts`) is keyset-paginated on
-  `(published_at, id)` and returns no total; the admin `posts` list keeps offset
-  paging and total until its own cutover.
+- **H-7 list search and facets.** The `?q=` filter applies to the rows loaded so
+  far, and the tag list is built from those rows. `PostsFilter` and
+  `PublicPostsFilter` have no text query. Search is not wired to `rustok-search`.
+  The public list (`publicBlogPosts`) is keyset-paginated on `(published_at, id)`
+  and returns no total. The admin `posts` list is keyset-paginated on the sort
+  column and `id` (`nextCursor`, no total); its REST sort options are
+  `published_at`, `updated_at`, and `created_at`, and NULL sort values come last.
+  The GraphQL `posts` query always sorts by `created_at DESC`.
 - **H-8 article richness.** The rich-text profile has no inline images, tables,
   embeds, footnotes, callouts, or heading anchors.
 - **H-9 comments.** Readers cannot edit, delete, or report comments. The

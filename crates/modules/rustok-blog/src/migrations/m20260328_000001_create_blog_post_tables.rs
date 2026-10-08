@@ -121,6 +121,25 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Keyset tie-breakers for the admin post list, one per sort field: (sort column, id).
+        for (name, column) in [
+            ("idx_blog_posts_tenant_created_id", BlogPosts::CreatedAt),
+            ("idx_blog_posts_tenant_updated_id", BlogPosts::UpdatedAt),
+            ("idx_blog_posts_tenant_published_id", BlogPosts::PublishedAt),
+        ] {
+            manager
+                .create_index(
+                    Index::create()
+                        .name(name)
+                        .table(BlogPosts::Table)
+                        .col(BlogPosts::TenantId)
+                        .col(column)
+                        .col(BlogPosts::Id)
+                        .to_owned(),
+                )
+                .await?;
+        }
+
         manager
             .create_table(
                 Table::create()

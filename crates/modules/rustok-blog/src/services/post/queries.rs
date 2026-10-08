@@ -144,7 +144,7 @@ impl PostService {
             )
             .await?
             else {
-                return Ok(PostListResponse::new(Vec::new(), 0, &query));
+                return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
             };
             select = apply_tag_filter(select, tenant_id, tag_id);
         }
@@ -158,7 +158,7 @@ impl PostService {
         if !can_read_non_public_posts(&security)
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
         {
-            return Ok(PostListResponse::new(Vec::new(), 0, &query));
+            return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
         }
         if let Some(author_id) = query.author_id {
             select = select.filter(blog_post::Column::AuthorId.eq(author_id));
@@ -167,14 +167,37 @@ impl PostService {
             select = select.filter(blog_post::Column::CategoryId.eq(category_id));
         }
 
-        select = apply_post_sort(select, &query);
-
-        let paginator = select.paginate(&self.db, query.per_page() as u64);
-        let total = paginator.num_items().await.map_err(BlogError::from)?;
-        let posts = paginator
-            .fetch_page((query.page().saturating_sub(1)) as u64)
+        let (sort_by, sort_order) = query.sort();
+        if let Some(raw) = query.after.as_deref() {
+            let after = AdminPostCursor::decode(raw, sort_by, sort_order)?;
+            select = apply_admin_post_keyset(select, after);
+        }
+        // Fetches one extra row to learn whether another page exists, so the list never counts rows.
+        let per_page = u64::from(query.per_page());
+        let select = apply_admin_post_order(select, sort_by, sort_order);
+        let mut posts = select
+            .limit(per_page + 1)
+            .all(&self.db)
             .await
             .map_err(BlogError::from)?;
+        let has_next_page = posts.len() as u64 > per_page;
+        posts.truncate(per_page as usize);
+        let next_cursor = if has_next_page {
+            let last = posts.last().ok_or_else(|| {
+                BlogError::invariant("Keyset page reported a next page without rows")
+            })?;
+            Some(
+                AdminPostCursor {
+                    sort_by,
+                    sort_order,
+                    value: admin_post_sort_value(last, sort_by),
+                    id: last.id,
+                }
+                .encode(),
+            )
+        } else {
+            None
+        };
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(tenant_id, &post_ids).await?;
@@ -246,7 +269,7 @@ impl PostService {
             });
         }
 
-        Ok(PostListResponse::new(items, total, &query))
+        Ok(PostListResponse::new(items, next_cursor, query.per_page()))
     }
 
     /// Public channel gate. Returns `false` when the channel is unknown, inactive,
@@ -510,12 +533,12 @@ impl PostService {
         tenant_id: Uuid,
         security: SecurityContext,
         tag: String,
-        page: u32,
+        after: Option<String>,
         per_page: u32,
     ) -> BlogResult<PostListResponse> {
         let query = PostListQuery {
             tag: Some(tag),
-            page: Some(page),
+            after,
             per_page: Some(per_page),
             ..Default::default()
         };
@@ -527,12 +550,12 @@ impl PostService {
         tenant_id: Uuid,
         security: SecurityContext,
         category_id: Uuid,
-        page: u32,
+        after: Option<String>,
         per_page: u32,
     ) -> BlogResult<PostListResponse> {
         let query = PostListQuery {
             category_id: Some(category_id),
-            page: Some(page),
+            after,
             per_page: Some(per_page),
             ..Default::default()
         };
@@ -544,12 +567,12 @@ impl PostService {
         tenant_id: Uuid,
         security: SecurityContext,
         author_id: Uuid,
-        page: u32,
+        after: Option<String>,
         per_page: u32,
     ) -> BlogResult<PostListResponse> {
         let query = PostListQuery {
             author_id: Some(author_id),
-            page: Some(page),
+            after,
             per_page: Some(per_page),
             ..Default::default()
         };

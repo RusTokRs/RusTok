@@ -70,7 +70,8 @@ pub(super) fn BlogEditBanner(
 #[component]
 pub(super) fn BlogPostsTable(
     items: Vec<BlogPostListItem>,
-    total: u64,
+    next_cursor: Option<String>,
+    on_load_more: Callback<String>,
     editing_post_id: Option<String>,
     busy_key: Option<String>,
     on_edit: Callback<(String, String)>,
@@ -83,7 +84,6 @@ pub(super) fn BlogPostsTable(
     let table_classes = core::blog_post_admin_table_classes_view();
     let table = core::blog_post_admin_posts_table_view_from_items(
         items,
-        total,
         editing_post_id.as_deref(),
         busy_key.as_deref(),
         core::BlogPostAdminPostsTableLabels {
@@ -112,7 +112,9 @@ pub(super) fn BlogPostsTable(
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
-    let pagination = RwSignal::new(GridPagination::new(1, 10, total));
+    // Rows arrive page by page; the effect below sets the total from the rows on screen.
+    let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
+    let load_more_label = t(locale.as_deref(), "blog.table.loadMore", "Load more");
     let is_ru = locale
         .as_deref()
         .map(|l| l.starts_with("ru"))
@@ -288,6 +290,20 @@ pub(super) fn BlogPostsTable(
                 on_filter_change=on_filters_change
                 on_row_click=Callback::new(|_| ())
             />
+            {next_cursor.map(|cursor| {
+                let label = load_more_label.clone();
+                view! {
+                    <div class="flex justify-center">
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                            on:click=move |_| on_load_more.run(cursor.clone())
+                        >
+                            {label}
+                        </button>
+                    </div>
+                }
+            })}
         </div>
     }
     .into_any()

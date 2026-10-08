@@ -171,8 +171,8 @@ pub struct PostListQuery {
     pub tag: Option<String>,
     pub author_id: Option<Uuid>,
     pub locale: Option<String>,
-    #[schema(default = 1)]
-    pub page: Option<u32>,
+    /// Opaque cursor: `next_cursor` of the previous page. Absent for the first page.
+    pub after: Option<String>,
     #[schema(default = 20, maximum = 100)]
     pub per_page: Option<u32>,
     pub sort_by: Option<PostSortField>,
@@ -180,42 +180,136 @@ pub struct PostListQuery {
 }
 
 impl PostListQuery {
-    pub fn page(&self) -> u32 {
-        self.page.unwrap_or(1).max(1)
-    }
-
     pub fn per_page(&self) -> u32 {
         self.per_page.unwrap_or(20).clamp(1, 100)
     }
 
-    pub fn offset(&self) -> u64 {
-        (self.page() - 1) as u64 * self.per_page() as u64
+    pub fn sort(&self) -> (PostSortField, PostSortOrder) {
+        (
+            self.sort_by.unwrap_or_default(),
+            self.sort_order.unwrap_or_default(),
+        )
     }
 }
 
+/// One page of an admin post list. The list never counts rows; `next_cursor` is
+/// present only when another page exists.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PostListResponse {
     pub items: Vec<PostSummary>,
-    pub total: u64,
-    pub page: u32,
+    pub next_cursor: Option<String>,
     pub per_page: u32,
-    pub total_pages: u32,
 }
 
 impl PostListResponse {
-    pub fn new(items: Vec<PostSummary>, total: u64, query: &PostListQuery) -> Self {
-        let per_page = query.per_page();
-        let total_pages =
-            total.saturating_add(u64::from(per_page).saturating_sub(1)) / u64::from(per_page);
-        let total_pages = u32::try_from(total_pages).unwrap_or(u32::MAX);
-
+    pub fn new(items: Vec<PostSummary>, next_cursor: Option<String>, per_page: u32) -> Self {
         Self {
             items,
-            total,
-            page: query.page(),
+            next_cursor,
             per_page,
-            total_pages,
         }
+    }
+}
+
+/// Keyset position of an admin post list: the sort value and id of the last item of
+/// the previous page. Posts whose sort column is NULL (drafts have no `published_at`)
+/// come after every non-null value, so their cursor carries `value: None`.
+/// The sort field and order are part of the token, so a cursor cannot be replayed
+/// against a different sort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdminPostCursor {
+    pub sort_by: PostSortField,
+    pub sort_order: PostSortOrder,
+    pub value: Option<DateTime<FixedOffset>>,
+    pub id: Uuid,
+}
+
+impl AdminPostCursor {
+    /// Opaque, URL-safe token. Clients must not parse it.
+    pub fn encode(&self) -> String {
+        let value = self.value.map_or_else(
+            || "-".to_string(),
+            |value| value.to_rfc3339_opts(SecondsFormat::Nanos, false),
+        );
+        let raw = format!(
+            "{}|{}|{}|{}",
+            sort_field_token(self.sort_by),
+            sort_order_token(self.sort_order),
+            value,
+            self.id
+        );
+        URL_SAFE_NO_PAD.encode(raw)
+    }
+
+    /// Decodes a token and checks that it was issued for the same sort as `sort_by`/`sort_order`.
+    pub fn decode(
+        token: &str,
+        sort_by: PostSortField,
+        sort_order: PostSortOrder,
+    ) -> BlogResult<Self> {
+        let invalid = || BlogError::validation("Blog list cursor is invalid");
+        let bytes = URL_SAFE_NO_PAD.decode(token.trim()).map_err(|_| invalid())?;
+        let raw = String::from_utf8(bytes).map_err(|_| invalid())?;
+        let mut parts = raw.split('|');
+        let (Some(field), Some(order), Some(value), Some(id), None) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) else {
+            return Err(invalid());
+        };
+        if parse_sort_field(field).ok_or_else(invalid)? != sort_by
+            || parse_sort_order(order).ok_or_else(invalid)? != sort_order
+        {
+            return Err(BlogError::validation(
+                "Blog list cursor does not match the requested sort",
+            ));
+        }
+        let value = if value == "-" {
+            None
+        } else {
+            Some(DateTime::parse_from_rfc3339(value).map_err(|_| invalid())?)
+        };
+        Ok(Self {
+            sort_by,
+            sort_order,
+            value,
+            id: Uuid::parse_str(id).map_err(|_| invalid())?,
+        })
+    }
+}
+
+fn sort_field_token(field: PostSortField) -> &'static str {
+    match field {
+        PostSortField::PublishedAt => "published_at",
+        PostSortField::UpdatedAt => "updated_at",
+        PostSortField::CreatedAt => "created_at",
+    }
+}
+
+fn parse_sort_field(token: &str) -> Option<PostSortField> {
+    match token {
+        "published_at" => Some(PostSortField::PublishedAt),
+        "updated_at" => Some(PostSortField::UpdatedAt),
+        "created_at" => Some(PostSortField::CreatedAt),
+        _ => None,
+    }
+}
+
+fn sort_order_token(order: PostSortOrder) -> &'static str {
+    match order {
+        PostSortOrder::Asc => "asc",
+        PostSortOrder::Desc => "desc",
+    }
+}
+
+fn parse_sort_order(token: &str) -> Option<PostSortOrder> {
+    match token {
+        "asc" => Some(PostSortOrder::Asc),
+        "desc" => Some(PostSortOrder::Desc),
+        _ => None,
     }
 }
 

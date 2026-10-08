@@ -1,6 +1,6 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
+    Order, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
     sea_query::{Query, SelectStatement},
 };
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
 use crate::dto::{
-    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
+    AdminPostCursor, CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
     PostSummary, PublicPostPage, PublicPostsPageQuery, PublishedPostCursor,
     PublishedPostScanPage, UpdatePostInput,
 };
@@ -110,32 +110,73 @@ fn resolve_translation_record<'a>(
     }
 }
 
-fn apply_post_sort(
-    mut select: sea_orm::Select<blog_post::Entity>,
-    query: &PostListQuery,
-) -> sea_orm::Select<blog_post::Entity> {
-    let ascending = matches!(query.sort_order.unwrap_or_default(), PostSortOrder::Asc);
-    let field = query.sort_by.unwrap_or_default();
-
-    macro_rules! order {
-        ($column:expr) => {{
-            if ascending {
-                select = select.order_by_asc($column);
-                select = select.order_by_asc(blog_post::Column::Id);
-            } else {
-                select = select.order_by_desc($column);
-                select = select.order_by_desc(blog_post::Column::Id);
-            }
-        }};
-    }
-
+fn admin_post_sort_column(field: PostSortField) -> blog_post::Column {
     match field {
-        PostSortField::PublishedAt => order!(blog_post::Column::PublishedAt),
-        PostSortField::UpdatedAt => order!(blog_post::Column::UpdatedAt),
-        PostSortField::CreatedAt => order!(blog_post::Column::CreatedAt),
+        PostSortField::PublishedAt => blog_post::Column::PublishedAt,
+        PostSortField::UpdatedAt => blog_post::Column::UpdatedAt,
+        PostSortField::CreatedAt => blog_post::Column::CreatedAt,
     }
+}
 
+fn admin_post_sort_value(
+    post: &blog_post::Model,
+    field: PostSortField,
+) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    match field {
+        PostSortField::PublishedAt => post.published_at,
+        PostSortField::UpdatedAt => Some(post.updated_at),
+        PostSortField::CreatedAt => Some(post.created_at),
+    }
+}
+
+/// Orders an admin list by `(sort column IS NULL, sort column, id)` in the requested
+/// direction. NULL sort values always come last, on every database.
+fn apply_admin_post_order(
+    select: Select<blog_post::Entity>,
+    sort_by: PostSortField,
+    sort_order: PostSortOrder,
+) -> Select<blog_post::Entity> {
+    let order = match sort_order {
+        PostSortOrder::Asc => Order::Asc,
+        PostSortOrder::Desc => Order::Desc,
+    };
     select
+        .order_by(admin_post_sort_column(sort_by).is_null(), Order::Asc)
+        .order_by(admin_post_sort_column(sort_by), order.clone())
+        .order_by(blog_post::Column::Id, order)
+}
+
+/// Restricts an admin list to rows strictly after `after` in the order built by
+/// `apply_admin_post_order`.
+fn apply_admin_post_keyset(
+    select: Select<blog_post::Entity>,
+    after: AdminPostCursor,
+) -> Select<blog_post::Entity> {
+    let column = admin_post_sort_column(after.sort_by);
+    let descending = matches!(after.sort_order, PostSortOrder::Desc);
+    let id_beyond = if descending {
+        blog_post::Column::Id.lt(after.id)
+    } else {
+        blog_post::Column::Id.gt(after.id)
+    };
+    let condition = match after.value {
+        // Non-null cursor: later non-null values, the same value with a later id,
+        // or any NULL-valued row (NULLs follow every non-null value).
+        Some(value) => {
+            let value_beyond = if descending {
+                column.lt(value)
+            } else {
+                column.gt(value)
+            };
+            Condition::any()
+                .add(value_beyond)
+                .add(Condition::all().add(column.eq(value)).add(id_beyond))
+                .add(column.is_null())
+        }
+        // NULL cursor: only NULL-valued rows with a later id remain.
+        None => Condition::all().add(column.is_null()).add(id_beyond),
+    };
+    select.filter(condition)
 }
 
 fn validate_title(title: &str) -> BlogResult<()> {

@@ -7,7 +7,7 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 
 pub type ApiError = GraphqlHttpError;
 
-const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status createdAt publishedAt } } }";
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt } } }";
 const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
@@ -60,7 +60,7 @@ struct BlogPostsVariables {
 #[derive(Debug, Serialize)]
 struct PostsFilter {
     locale: Option<String>,
-    page: u64,
+    after: Option<String>,
     #[serde(rename = "perPage")]
     per_page: u64,
 }
@@ -155,13 +155,14 @@ pub async fn fetch_posts(
     token: Option<String>,
     tenant_slug: Option<String>,
     locale: Option<String>,
+    after: Option<String>,
 ) -> Result<BlogPostList, ApiError> {
     let response: BlogPostsResponse = request(
         BLOG_POSTS_QUERY,
         BlogPostsVariables {
             filter: PostsFilter {
                 locale,
-                page: 1,
+                after,
                 per_page: 20,
             },
         },

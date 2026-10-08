@@ -9,8 +9,11 @@ use crate::model::{
     BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
 };
 
-pub(super) async fn fetch_posts(locale: Option<String>) -> Result<BlogPostList, ServerFnError> {
-    blog_admin_posts_native(locale).await
+pub(super) async fn fetch_posts(
+    locale: Option<String>,
+    after: Option<String>,
+) -> Result<BlogPostList, ServerFnError> {
+    blog_admin_posts_native(locale, after).await
 }
 
 pub(super) async fn fetch_post(
@@ -190,7 +193,10 @@ fn requested_locale(locale: Option<String>, fallback: &str) -> String {
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/posts")]
-async fn blog_admin_posts_native(locale: Option<String>) -> Result<BlogPostList, ServerFnError> {
+async fn blog_admin_posts_native(
+    locale: Option<String>,
+    after: Option<String>,
+) -> Result<BlogPostList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_blog::{PostListQuery, PostService, PostSortField, PostSortOrder};
@@ -203,7 +209,7 @@ async fn blog_admin_posts_native(locale: Option<String>) -> Result<BlogPostList,
                 security_context(&context.auth),
                 PostListQuery {
                     locale: Some(locale),
-                    page: Some(1),
+                    after,
                     per_page: Some(20),
                     sort_by: Some(PostSortField::CreatedAt),
                     sort_order: Some(PostSortOrder::Desc),
@@ -216,7 +222,7 @@ async fn blog_admin_posts_native(locale: Option<String>) -> Result<BlogPostList,
 
         Ok(BlogPostList {
             items: result.items.into_iter().map(map_post_list_item).collect(),
-            total: result.total,
+            next_cursor: result.next_cursor,
         })
     }
     #[cfg(not(feature = "ssr"))]

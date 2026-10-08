@@ -155,7 +155,7 @@ ${selectedRichtext}
 <CommentComposer />;
 ${selectedComments}
 }
-fn PublicCommentsList() {}
+fn PublishedPostsList() {}
 `,
   );
 

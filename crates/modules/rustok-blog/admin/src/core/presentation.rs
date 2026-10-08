@@ -169,16 +169,17 @@ pub struct BlogPostAdminPostsTableLabels {
     pub delete: String,
 }
 
+/// The count label reports the loaded rows: admin lists are cursor-paged and never count.
 pub fn blog_post_admin_posts_table_view_from_items(
     items: Vec<BlogPostListItem>,
-    total: u64,
     editing_post_id: Option<&str>,
     busy_key: Option<&str>,
     labels: BlogPostAdminPostsTableLabels,
 ) -> BlogPostAdminPostsTableViewModel {
+    let loaded = items.len() as u64;
     let table = blog_post_admin_table_view(
         items.len(),
-        total,
+        loaded,
         BlogPostAdminTableLabels {
             empty_message: labels.empty_message,
             total_label: labels.total_label,
@@ -433,7 +434,8 @@ pub fn blog_post_admin_edit_banner_view(
 pub enum BlogPostAdminPostsLoadViewModel {
     Loaded {
         items: Vec<BlogPostListItem>,
-        total: u64,
+        /// Present only when another page exists.
+        next_cursor: Option<String>,
     },
     EmptyContractUnavailable,
     Error {
@@ -442,12 +444,12 @@ pub enum BlogPostAdminPostsLoadViewModel {
 }
 
 pub fn blog_post_admin_posts_load_view(
-    result: Result<(Vec<BlogPostListItem>, u64), String>,
+    result: Result<(Vec<BlogPostListItem>, Option<String>), String>,
     contract_unavailable: bool,
     error_context: &str,
 ) -> BlogPostAdminPostsLoadViewModel {
     match result {
-        Ok((items, total)) => BlogPostAdminPostsLoadViewModel::Loaded { items, total },
+        Ok((items, next_cursor)) => BlogPostAdminPostsLoadViewModel::Loaded { items, next_cursor },
         Err(_) if contract_unavailable => BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable,
         Err(error) => BlogPostAdminPostsLoadViewModel::Error {
             message: error_with_context(error_context, error.as_str()),
@@ -461,7 +463,7 @@ pub fn blog_post_admin_posts_load_view_from_list(
     error_context: &str,
 ) -> BlogPostAdminPostsLoadViewModel {
     blog_post_admin_posts_load_view(
-        result.map(|post_list| (post_list.items, post_list.total)),
+        result.map(|post_list| (post_list.items, post_list.next_cursor)),
         contract_unavailable,
         error_context,
     )
