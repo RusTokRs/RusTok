@@ -266,23 +266,24 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     assert_eq!(topics[0].vote_score, 1);
     assert_eq!(topics[0].current_user_vote, Some(1));
 
-    let (replies, total_replies) = reply_service
+    let replies_page = reply_service
         .list_response_for_topic_with_locale_fallback(
             tenant_id,
             voter.clone(),
             topic.id,
             ListRepliesFilter {
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
             Some("en"),
         )
         .await
         .expect("reply list should load");
-    assert_eq!(total_replies, 1);
-    assert_eq!(replies[0].vote_score, -1);
-    assert_eq!(replies[0].current_user_vote, Some(-1));
+    assert!(replies_page.next_cursor.is_none());
+    assert_eq!(replies_page.items.len(), 1);
+    assert_eq!(replies_page.items[0].vote_score, -1);
+    assert_eq!(replies_page.items[0].current_user_vote, Some(-1));
 
     vote_service
         .set_topic_vote(tenant_id, topic.id, voter.clone(), -1)

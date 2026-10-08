@@ -24,7 +24,7 @@ use crate::{
     category_read_audience_port_context, reply_read_audience_port_context,
 };
 
-use super::{ForumGraphqlRuntimeData, types::*};
+use super::{ForumGraphqlRuntimeData, ForumReplyPage, types::*};
 
 const MODULE_SLUG: &str = "forum";
 const PUBLIC_REPLY_STATUSES: [ReplyStatus; 1] = [ReplyStatus::Approved];
@@ -287,8 +287,9 @@ impl ForumContentQuery {
         tenant_id: Option<Uuid>,
         topic_id: Uuid,
         locale: Option<String>,
-        #[graphql(default)] pagination: PaginationInput,
-    ) -> Result<ForumReplyConnection> {
+        after: Option<String>,
+        per_page: Option<i32>,
+    ) -> Result<ForumReplyPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -299,13 +300,13 @@ impl ForumContentQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let requested_limit = pagination.requested_limit();
-        let (offset, limit) = pagination.normalize()?;
+        let requested_limit = per_page.map(|value| value.max(0) as u64);
+        let per_page = crate::dto::bounded_forum_read_limit(requested_limit);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {
             locale: Some(locale.clone()),
-            page: (offset / limit + 1) as u64,
-            per_page: limit as u64,
+            after,
+            per_page,
         };
         let audience_context = reply_read_audience_port_context(
             ForumReplyReadTransport::Graphql,
@@ -318,7 +319,7 @@ impl ForumContentQuery {
         let service = forum_runtime(ctx).reply_audience_read_service(db.clone(), event_bus.clone());
 
         let started_at = Instant::now();
-        let (replies, total) = service
+        let page = service
             .list_response_authenticated_owner_visible_with_audience_context(
                 tenant_id,
                 SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions),
@@ -334,8 +335,11 @@ impl ForumContentQuery {
             "forum.replies",
             "exact_reply_audience_owner",
             started_at.elapsed().as_secs_f64(),
-            total,
+            page.items.len() as u64,
         );
+
+        let next_cursor = page.next_cursor;
+        let replies = page.items;
 
         let author_profiles = load_author_profiles_map(
             ctx,
@@ -358,17 +362,15 @@ impl ForumContentQuery {
         metrics::record_read_path_budget(
             "graphql",
             "forum.replies",
-            Some(requested_limit),
-            limit as u64,
+            requested_limit,
+            per_page,
             items.len(),
         );
 
-        Ok(ForumReplyConnection::new(
+        Ok(ForumReplyPage {
             items,
-            total as i64,
-            offset,
-            limit,
-        ))
+            next_cursor,
+        })
     }
 
     async fn forum_user_stats(
@@ -632,26 +634,27 @@ impl ForumContentQuery {
         topic_id: Uuid,
         tenant_id: Option<Uuid>,
         locale: Option<String>,
-        #[graphql(default)] pagination: PaginationInput,
-    ) -> Result<ForumReplyConnection> {
+        after: Option<String>,
+        per_page: Option<i32>,
+    ) -> Result<ForumReplyPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let requested_limit = pagination.requested_limit();
-        let (offset, limit) = pagination.normalize()?;
+        let requested_limit = per_page.map(|value| value.max(0) as u64);
+        let per_page = crate::dto::bounded_forum_read_limit(requested_limit);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {
             locale: Some(locale.clone()),
-            page: (offset / limit + 1) as u64,
-            per_page: limit as u64,
+            after,
+            per_page,
         };
         let service = forum_runtime(ctx).reply_audience_read_service(db.clone(), event_bus.clone());
 
         let started_at = Instant::now();
-        let (replies, total) = if let Some(auth) = ctx.data_opt::<AuthContext>() {
+        let page = if let Some(auth) = ctx.data_opt::<AuthContext>() {
             let audience_context = reply_read_audience_port_context(
                 ForumReplyReadTransport::Graphql,
                 ForumReplyReadOperation::ReplyList,
@@ -691,8 +694,11 @@ impl ForumContentQuery {
             "forum.storefront_replies",
             "exact_reply_audience_owner",
             started_at.elapsed().as_secs_f64(),
-            total,
+            page.items.len() as u64,
         );
+
+        let next_cursor = page.next_cursor;
+        let replies = page.items;
 
         let author_profiles = load_author_profiles_map(
             ctx,
@@ -715,17 +721,15 @@ impl ForumContentQuery {
         metrics::record_read_path_budget(
             "graphql",
             "forum.storefront_replies",
-            Some(requested_limit),
-            limit as u64,
+            requested_limit,
+            per_page,
             items.len(),
         );
 
-        Ok(ForumReplyConnection::new(
+        Ok(ForumReplyPage {
             items,
-            total as i64,
-            offset,
-            limit,
-        ))
+            next_cursor,
+        })
     }
 }
 

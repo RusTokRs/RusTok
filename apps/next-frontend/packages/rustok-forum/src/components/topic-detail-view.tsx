@@ -85,13 +85,14 @@ function TopicDetailContent({
               topicId,
               locale,
             })
-          : Promise.resolve({ items: initialReplies, total: initialRepliesTotal }),
+          : Promise.resolve({ items: initialReplies, nextCursor: null }),
       ]);
 
       setCategories(catsData.items);
       if (topicData) setTopic(topicData);
       setReplies(repliesData.items);
-      setRepliesTotal(repliesData.total);
+      // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
+      setRepliesTotal(topicData?.replyCount ?? initialRepliesTotal);
 
       // Collect author IDs for member cards
       const userIds = Array.from(

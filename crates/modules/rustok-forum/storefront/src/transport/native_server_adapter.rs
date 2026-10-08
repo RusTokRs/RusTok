@@ -6,7 +6,7 @@ use crate::model::StorefrontForumData;
 #[cfg(feature = "ssr")]
 use crate::model::{
     ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard, ForumMemberProfileSummary,
-    ForumMemberStats, ForumReplyConnection, ForumReplyDetail, ForumTopicConnection,
+    ForumMemberStats, ForumReplyDetail, ForumReplyPage, ForumTopicConnection,
     ForumTopicDetail, ForumTopicListItem,
 };
 
@@ -283,7 +283,7 @@ async fn storefront_forum_native(
             && selected_topic.is_some()
         {
             let approved_statuses = [ReplyStatus::Approved];
-            let (items, total) = if let Some(auth) = auth.as_ref().filter(|auth| {
+            let page = if let Some(auth) = auth.as_ref().filter(|auth| {
                 has_any_effective_permission(&auth.permissions, &[Permission::FORUM_REPLIES_LIST])
             }) {
                 let security = SecurityContext::from_permission_snapshot(
@@ -307,7 +307,7 @@ async fn storefront_forum_native(
                         topic_id,
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
-                            page: 1,
+                            after: None,
                             per_page: 20,
                         },
                         Some(tenant.default_locale.as_str()),
@@ -322,7 +322,7 @@ async fn storefront_forum_native(
                         topic_id,
                         ListRepliesFilter {
                             locale: Some(effective_locale.clone()),
-                            page: 1,
+                            after: None,
                             per_page: 20,
                         },
                         Some(tenant.default_locale.as_str()),
@@ -332,9 +332,9 @@ async fn storefront_forum_native(
                     .await
                     .map_err(server_error)?
             };
-            ForumReplyConnection {
-                items: items.into_iter().map(map_reply).collect(),
-                total,
+            ForumReplyPage {
+                items: page.items.into_iter().map(map_reply).collect(),
+                next_cursor: page.next_cursor,
             }
         } else {
             empty_replies()
@@ -632,7 +632,7 @@ fn storefront_member_card_audience(
 fn storefront_author_ids(
     topics: &[ForumTopicListItem],
     selected_topic: Option<&ForumTopicDetail>,
-    replies: &ForumReplyConnection,
+    replies: &ForumReplyPage,
 ) -> Result<Vec<uuid::Uuid>, ServerFnError> {
     let mut seen = std::collections::HashSet::new();
     let mut user_ids = Vec::new();
@@ -781,10 +781,10 @@ fn map_reply(value: rustok_forum::ReplyResponse) -> ForumReplyDetail {
 }
 
 #[cfg(feature = "ssr")]
-fn empty_replies() -> ForumReplyConnection {
-    ForumReplyConnection {
+fn empty_replies() -> ForumReplyPage {
+    ForumReplyPage {
         items: Vec::new(),
-        total: 0,
+        next_cursor: None,
     }
 }
 

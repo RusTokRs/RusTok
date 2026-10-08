@@ -13,7 +13,7 @@ export interface ForumTopicSplitReply {
 }
 
 export interface ForumTopicSplitReplyPage {
-  total: number;
+  /** Every reply of the source topic, loaded through the keyset cursor. */
   items: ForumTopicSplitReply[];
 }
 
@@ -115,7 +115,7 @@ export function buildForumTopicSplitCommand(input: {
   if (new Set(replyIds).size !== replyIds.length) {
     throw new Error('Selected reply identities must be unique.');
   }
-  if (replyIds.length >= input.replies.total) {
+  if (replyIds.length >= input.replies.items.length) {
     throw new Error('The source topic must retain at least one reply.');
   }
 

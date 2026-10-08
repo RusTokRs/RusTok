@@ -239,7 +239,10 @@ fn ForumShowcase(
                             <ForumThreadPanel
                                 topic=selected_topic.clone()
                                 replies=replies.items.clone()
-                                replies_total=replies.total
+                                replies_total=selected_topic
+                                    .as_ref()
+                                    .map(|topic| u64::try_from(topic.reply_count).unwrap_or_default())
+                                    .unwrap_or_default()
                                 read_state_available
                                 on_mark_topic_read
                                 mutation_busy

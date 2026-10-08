@@ -165,9 +165,9 @@ const STOREFRONT_TOPIC_QUERY = `
 `;
 
 const STOREFRONT_REPLIES_QUERY = `
-  query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $pagination: PaginationInput) {
-    forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, pagination: $pagination) {
-      total
+  query StorefrontForumReplies($tenantId: UUID, $topicId: UUID!, $locale: String, $after: String, $perPage: Int) {
+    forumStorefrontReplies(tenantId: $tenantId, topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) {
+      nextCursor
       items {
         id effectiveLocale topicId authorId
         content { document html }
@@ -305,11 +305,12 @@ export async function fetchStorefrontReplies(options: {
   tenantSlug?: string;
   topicId: string;
   locale?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<{ items: ForumReplyDetail[]; total: number }> {
+  /** Opaque cursor returned as `nextCursor` by the previous page. */
+  after?: string | null;
+  perPage?: number;
+}): Promise<{ items: ForumReplyDetail[]; nextCursor: string | null }> {
   const result = await storefrontGraphql<{
-    forumStorefrontReplies: { items: ForumReplyDetail[]; total: number };
+    forumStorefrontReplies: { items: ForumReplyDetail[]; nextCursor: string | null };
   }>({
     query: STOREFRONT_REPLIES_QUERY,
     tenant: options.tenantSlug,
@@ -317,17 +318,15 @@ export async function fetchStorefrontReplies(options: {
       tenantId: options.tenantId,
       topicId: options.topicId,
       locale: options.locale,
-      pagination: {
-        offset: options.offset ?? 0,
-        limit: options.limit ?? 100,
-      },
+      after: options.after ?? null,
+      perPage: options.perPage ?? 100,
     },
   });
 
   return (
     result.data?.forumStorefrontReplies ?? {
       items: [],
-      total: 0,
+      nextCursor: null,
     }
   );
 }

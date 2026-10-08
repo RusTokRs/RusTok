@@ -12,7 +12,9 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{ListRepliesFilter, ReplyListItem, ReplyResponse, bounded_forum_read_limit};
+use crate::dto::{
+    ListRepliesFilter, ReplyListItem, ReplyPage, ReplyResponse, bounded_forum_read_limit,
+};
 use crate::entities::{
     forum_reply, forum_reply_body, forum_solution, forum_topic_merge_operation,
 };
@@ -109,7 +111,7 @@ impl ReplyService {
         topic_id: Uuid,
         mut filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
-    ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyListItem>> {
         filter.per_page = bounded_forum_read_limit(Some(filter.per_page));
         self.inner
             .list_for_topic_with_locale_fallback(
@@ -131,7 +133,7 @@ impl ReplyService {
         mut filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[ReplyStatus]>,
-    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+    ) -> ForumResult<ReplyPage<ReplyResponse>> {
         filter.per_page = bounded_forum_read_limit(Some(filter.per_page));
         self.inner
             .list_response_for_topic_by_statuses_with_locale_fallback(

@@ -17,7 +17,7 @@ pub struct StorefrontForumData {
     pub selected_category_id: Option<String>,
     pub selected_topic_id: Option<String>,
     pub selected_topic: Option<ForumTopicDetail>,
-    pub replies: ForumReplyConnection,
+    pub replies: ForumReplyPage,
     #[serde(default)]
     pub member_cards: Vec<ForumMemberCard>,
     #[serde(default)]
@@ -37,9 +37,11 @@ pub struct ForumTopicConnection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ForumReplyConnection {
+pub struct ForumReplyPage {
     pub items: Vec<ForumReplyDetail>,
-    pub total: u64,
+    /// Present only when another page exists.
+    #[serde(rename = "nextCursor", default)]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

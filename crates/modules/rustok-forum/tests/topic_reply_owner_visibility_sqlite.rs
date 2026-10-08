@@ -143,7 +143,7 @@ fn topic_filter() -> ListTopicsFilter {
         category_id: None,
         status: None,
         locale: Some("en".into()),
-        page: 1,
+        after: None,
         per_page: 20,
     }
 }
@@ -151,7 +151,7 @@ fn topic_filter() -> ListTopicsFilter {
 fn reply_filter() -> ListRepliesFilter {
     ListRepliesFilter {
         locale: Some("en".into()),
-        page: 1,
+        after: None,
         per_page: 20,
     }
 }
@@ -321,7 +321,7 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
         "public reply page must fail as an absent hidden topic before pagination"
     );
 
-    let (authenticated_replies, authenticated_reply_total) = replies
+    let authenticated_reply_page = replies
         .list_response_for_topic_with_locale_fallback(
             tenant_id,
             authenticated.clone(),
@@ -331,8 +331,9 @@ async fn inherited_authenticated_floor_guards_topic_and_reply_owner_reads() {
         )
         .await
         .expect("authenticated reply page should resolve");
-    assert_eq!(authenticated_reply_total, 1);
-    assert_eq!(authenticated_replies[0].id, restricted_reply);
+    assert!(authenticated_reply_page.next_cursor.is_none());
+    assert_eq!(authenticated_reply_page.items.len(), 1);
+    assert_eq!(authenticated_reply_page.items[0].id, restricted_reply);
     assert_eq!(
         replies
             .get_with_locale_fallback(tenant_id, authenticated, restricted_reply, "en", Some("en"),)

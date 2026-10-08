@@ -178,21 +178,22 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
     assert_eq!(topic_translation.body, "Original blog body");
 
     let reply_service = ReplyService::new(db.clone(), events.clone());
-    let (replies, total) = reply_service
+    let replies_page = reply_service
         .list_response_for_topic_with_locale_fallback(
             tenant_id,
             SecurityContext::system(),
             demoted.target_id,
             ListRepliesFilter {
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
             None,
         )
         .await
         .expect("replies for demoted topic should list");
-    assert_eq!(total, 2);
+    assert!(replies_page.next_cursor.is_none());
+    let replies = replies_page.items;
     assert_eq!(replies.len(), 2);
     assert_eq!(replies[0].content_plain_text, "First blog comment");
     assert_eq!(replies[1].content_plain_text, "Second blog comment");

@@ -545,7 +545,7 @@ fn assert_index_capability(plan: &Value) -> TestResult<()> {
             "approved reply lookup",
             &[
                 "uq_forum_replies_tenant_topic_position",
-                "idx_forum_replies_cursor",
+                "idx_forum_replies_keyset",
                 "idx_forum_replies_tenant_topic_deleted",
                 "idx_forum_replies_topic_position",
             ][..],

@@ -101,7 +101,7 @@ function verifyStatic() {
   for (const token of [
     "idx_forum_categories_cursor",
     "idx_forum_topics_cursor",
-    "idx_forum_replies_cursor",
+    "idx_forum_replies_keyset",
   ]) {
     if (!migration.includes(token)) fail(`${paths.migration}: missing index ${token}`);
   }

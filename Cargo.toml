@@ -152,7 +152,7 @@ base64 = "0.23"
 ed25519-dalek = "3.0.0"
 
 # IDs
-uuid = { version = "1.25.0", features = ["v4", "serde", "js"] }
+uuid = { version = "1.25.0", features = ["v4", "v7", "serde", "js"] }
 ulid = "3.0"
 
 # Serialization

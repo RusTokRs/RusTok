@@ -130,7 +130,8 @@ export function ForumSection({
 
       setSelectedTopic(topicData);
       setReplies(repliesData.items);
-      setRepliesTotal(repliesData.total);
+      // Reply count comes from the topic counter; the reply list is cursor-paged and uncounted.
+      setRepliesTotal(topicData?.replyCount ?? 0);
 
       // Collect author IDs
       const userIds = Array.from(

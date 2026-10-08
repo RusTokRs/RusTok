@@ -43,7 +43,7 @@ const DELETE_REPLY_MUTATION: &str =
     "mutation ForumAdminDeleteReply($id: UUID!) { deleteForumReply(id: $id) }";
 const APPROVE_REPLY_MUTATION: &str = "mutation ForumAdminApproveReply($replyId: UUID!, $topicId: UUID!) { approveForumReply(replyId: $replyId, topicId: $topicId) }";
 const REJECT_REPLY_MUTATION: &str = "mutation ForumAdminRejectReply($replyId: UUID!, $topicId: UUID!) { rejectForumReply(replyId: $replyId, topicId: $topicId) }";
-const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } } }";
+const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumReplies(topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } } }";
 const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } }";
 
 #[derive(Debug, Deserialize)]
@@ -207,7 +207,9 @@ struct RepliesVariables {
     #[serde(rename = "topicId")]
     topic_id: String,
     locale: Option<String>,
-    pagination: PaginationInput,
+    after: Option<String>,
+    #[serde(rename = "perPage")]
+    per_page: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -819,10 +821,8 @@ pub async fn fetch_replies(
         RepliesVariables {
             topic_id,
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 20,
-            },
+            after: None,
+            per_page: 20,
         },
         token,
         tenant_slug,

@@ -235,6 +235,19 @@ topics must scale. Measured on the current code:
   `MAX_BULK_TARGETS` per request and filters and offsets in memory, so its cost is
   the full load, not the `OFFSET`. Moving it to a cursor requires a provider-side
   keyset and an admin contract change, so it is a separate slice.
+  Forum replies (fourth slice): the reply list keyset is `(created_at, id)`, as the
+  user confirmed. Reply rows get UUIDv7 ids on creation, so `id` breaks ties in
+  creation order. Rows created before this change keep UUIDv4 ids; the tie-break is
+  still a total order, so the keyset stays correct. Consequence accepted by the
+  user: replies moved into a target topic by a merge keep their original
+  `created_at` and sort by time, not after the target's replies. The reply list
+  drops `total` everywhere: GraphQL `ForumReplyPage`, REST `ReplyListItemPage`,
+  the storefront and the admin clients. Thread reply counts read the topic
+  `reply_count` counter. The split and fork admin flows walk the cursor to the end
+  and refuse threads above 5000 replies. Index `idx_forum_replies_keyset` on
+  `(tenant_id, topic_id, created_at, id)` replaces the position index. Still on
+  offset: forum topic lists, the `topic_list` page-builder widget, comments, and the
+  admin lists.
   The forum, comments, and the admin lists keep their offset paths until their
   own slices.
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The

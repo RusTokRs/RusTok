@@ -26,7 +26,7 @@ pub struct ForumTopicForkReply {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ForumTopicForkReplyPage {
-    pub total: i64,
+    /// Every reply of the source topic, loaded through the keyset cursor.
     pub items: Vec<ForumTopicForkReply>,
 }
 
@@ -263,7 +263,6 @@ mod tests {
             target_topic_id: "00000000-0000-4000-8000-000000000003".to_string(),
         };
         let replies = ForumTopicForkReplyPage {
-            total: 1,
             items: vec![reply(root)],
         };
         let command = build_forum_topic_fork_command(
@@ -285,7 +284,6 @@ mod tests {
     #[test]
     fn unloaded_root_is_rejected_before_transport() {
         let replies = ForumTopicForkReplyPage {
-            total: 1,
             items: vec![reply("00000000-0000-4000-8000-000000000011")],
         };
         let identity = new_forum_topic_fork_identity("source");
