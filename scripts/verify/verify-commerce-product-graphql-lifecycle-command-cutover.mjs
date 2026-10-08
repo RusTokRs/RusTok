@@ -85,11 +85,7 @@ for (const required of [
   "Product mutation idempotency key must not be empty",
   "BAD_USER_INPUT",
   "let caller_key = idempotency_key.trim();",
-  "digest.update(tenant_id.as_bytes())",
-  "digest.update(user_id.as_bytes())",
-  "digest.update(operation.as_bytes())",
-  "digest.update(product_id.as_bytes())",
-  "digest.update(caller_key.as_bytes())",
+  "scoped_caller_idempotency_key(",
   "PortActor::user(user_id.to_string())",
   ".with_idempotency_key(scoped_key)",
   ".with_deadline(PRODUCT_COMMAND_DEADLINE)",
@@ -97,6 +93,21 @@ for (const required of [
   "context = context.with_channel(channel)",
 ]) {
   requireText(mutations, required, "GraphQL Product command context");
+}
+
+// The scoped key derivation is owned by rustok-product so Commerce GraphQL and Product Admin
+// native calls produce the same owner receipt identity for one logical operation.
+const ownerSchemaPort = read("crates/modules/rustok-product/src/catalog_schema_write_port.rs");
+for (const required of [
+  "pub fn scoped_caller_idempotency_key(",
+  "PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE: &str = \"commerce-graphql-product\"",
+  "digest.update(tenant_id.as_bytes())",
+  "digest.update(user_id.as_bytes())",
+  "digest.update(operation.as_bytes())",
+  "digest.update(product_id.as_bytes())",
+  "digest.update(caller_key.trim().as_bytes())",
+]) {
+  requireText(ownerSchemaPort, required, "Product caller idempotency key derivation");
 }
 
 for (const forbidden of [

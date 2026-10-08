@@ -48,6 +48,7 @@ const paths = {
   ownerPort: "crates/modules/rustok-product/src/catalog_schema_write_port.rs",
   commerceMutations: "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
   facade: "crates/modules/rustok-product/admin/src/catalog_transport.rs",
+  fallbackWrappers: "crates/modules/rustok-product/admin/src/transport/graphql_fallback_mutations.rs",
   legacy: "crates/modules/rustok-product/admin/src/transport.rs",
   card: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
   mountedPage: "crates/modules/rustok-product/admin/src/ui/attributes.rs",
@@ -59,6 +60,7 @@ const ownerSchemas = read(paths.ownerSchemas);
 const ownerPort = read(paths.ownerPort);
 const commerceMutations = read(paths.commerceMutations);
 const facade = read(paths.facade);
+const fallbackWrappers = read(paths.fallbackWrappers);
 const legacy = read(paths.legacy);
 const card = read(paths.card);
 const mountedPage = read(paths.mountedPage);
@@ -103,8 +105,23 @@ for (const marker of [
   assertContains(commerceMutations, marker, paths.commerceMutations);
 }
 
-// 3. Admin transport facade: every command carries a typed error policy and
-//    delegates through the legacy transport instead of bypassing it.
+// 3. Admin transport facade re-exports the eleven typed fallback wrappers, which
+//    live in transport/graphql_fallback_mutations.rs. Each command carries a typed
+//    error policy and delegates through the legacy transport instead of bypassing it.
+assertContains(facade, "pub(crate) use graphql_fallback_mutations::{", paths.facade);
+const reexportBlock = facade.slice(
+  facade.indexOf("pub(crate) use graphql_fallback_mutations::{"),
+  facade.indexOf("};", facade.indexOf("pub(crate) use graphql_fallback_mutations::{")),
+);
+for (const name of [
+  "set_category_schema_mode",
+  "create_product_attribute_schema_group",
+  "create_category_attribute_group",
+  "bind_schema_attribute",
+  "bind_category_attribute",
+]) {
+  assertContains(reexportBlock, name, paths.facade);
+}
 for (const marker of [
   "pub(crate) async fn set_category_schema_mode(",
   "pub(crate) async fn create_product_attribute_schema_group(",
@@ -119,12 +136,12 @@ for (const marker of [
   "legacy::set_category_schema_mode(token, tenant_slug, tenant_id, user_id, draft)",
   "legacy::bind_category_attribute(token, tenant_slug, tenant_id, user_id, draft)",
 ]) {
-  assertContains(facade, marker, paths.facade);
+  assertContains(fallbackWrappers, marker, paths.fallbackWrappers);
 }
-const facadeFallbackMappers = (facade.match(/\|fallback_mutation_error\| context\.map_error\(fallback_mutation_error\)/g) ?? []).length;
+const facadeFallbackMappers = (fallbackWrappers.match(/\|fallback_mutation_error\| context\.map_error\(fallback_mutation_error\)/g) ?? []).length;
 if (facadeFallbackMappers !== 11) {
   failures.push(
-    `${paths.facade}: expected 11 typed fallback mutation error mappers, found ${facadeFallbackMappers}`
+    `${paths.fallbackWrappers}: expected 11 typed fallback mutation error mappers, found ${facadeFallbackMappers}`
   );
 }
 
@@ -135,10 +152,23 @@ for (const marker of [
   "native_server_adapter::create_category_attribute_group(",
   "native_server_adapter::bind_schema_attribute(",
   "native_server_adapter::bind_category_attribute(",
-  "graphql_adapter::set_category_schema_mode(token, tenant_slug, tenant_id, user_id, draft)",
-  "graphql_adapter::bind_category_attribute(token, tenant_slug, tenant_id, user_id, draft)",
+  "graphql_adapter::set_category_schema_mode(",
+  "graphql_adapter::bind_category_attribute(",
 ]) {
   assertContains(legacy, marker, paths.legacy);
+}
+// Whitespace-insensitive: the minted caller key must reach both the native owner call and the
+// GraphQL fallback for the same logical operation.
+const legacyCompact = legacy.replace(/\s+/g, "");
+for (const call of [
+  "native_server_adapter::set_category_schema_mode(tenant_id.clone(),draft.clone(),idempotency_key.clone()",
+  "native_server_adapter::bind_category_attribute(tenant_id.clone(),draft.clone(),idempotency_key.clone()",
+  "graphql_adapter::set_category_schema_mode(token,tenant_slug,draft,idempotency_key",
+  "graphql_adapter::bind_category_attribute(token,tenant_slug,draft,idempotency_key",
+]) {
+  if (!legacyCompact.includes(call)) {
+    failures.push(`${paths.legacy}: missing ${call}`);
+  }
 }
 
 // 5. The authoring card: one result handler, one failure copy, no raw discard.

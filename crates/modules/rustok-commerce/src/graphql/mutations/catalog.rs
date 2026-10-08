@@ -8,7 +8,9 @@ use sha2::{Digest, Sha256};
 use std::time::Duration;
 use uuid::Uuid;
 
-use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogSchemaWritePort};
+use rustok_product::{
+    ProductCatalogCommandRuntime, ProductCatalogSchemaWritePort, scoped_caller_idempotency_key,
+};
 use rustok_product_relations::ports::ProductRelationsPort;
 
 use super::super::{
@@ -76,18 +78,8 @@ fn product_command_context(
         .map(|request| request.locale.clone())
         .unwrap_or_else(|| tenant.default_locale.clone());
 
-    let mut digest = Sha256::new();
-    digest.update(tenant_id.as_bytes());
-    digest.update(user_id.as_bytes());
-    digest.update(operation.as_bytes());
-    if let Some(product_id) = product_id {
-        digest.update(product_id.as_bytes());
-    }
-    digest.update(caller_key.as_bytes());
-    let scoped_key = format!(
-        "commerce-graphql-product:{operation}:{}",
-        hex::encode(digest.finalize())
-    );
+    let scoped_key =
+        scoped_caller_idempotency_key(tenant_id, user_id, operation, product_id, caller_key);
 
     let mut context = PortContext::new(
         tenant_id.to_string(),

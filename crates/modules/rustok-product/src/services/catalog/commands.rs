@@ -101,12 +101,6 @@ impl CatalogService {
             input.variant_axes.as_slice(),
         )
         .await?;
-        if input.publish {
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_new_product_publish_requirements(tenant_id, input.primary_category_id)
-                .await?;
-        }
-
         let product_id = generate_id();
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
@@ -130,6 +124,14 @@ impl CatalogService {
         );
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        if input.publish {
+            ProductCatalogSchemaService::validate_new_product_publish_requirements_in(
+                &txn,
+                tenant_id,
+                input.primary_category_id,
+            )
+            .await?;
+        }
 
         let product = entities::product::ActiveModel {
             id: Set(product_id),

@@ -16,6 +16,8 @@ use crate::model::{
     CatalogCategorySummary, ProductAttributeOptionSummary, ProductAttributeSchemaSummary,
     ProductAttributeSummary, ProductCatalogSearchOption, ProductEffectiveFormAttribute,
 };
+#[cfg(feature = "ssr")]
+use rustok_product::ProductCatalogSchemaWritePort;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -98,8 +100,9 @@ pub(super) async fn create_product_attribute(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_attribute_native(tenant_id, locale, draft)
+    product_admin_create_attribute_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -108,8 +111,9 @@ pub(super) async fn create_product_attribute_option(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeOptionDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_attribute_option_native(tenant_id, locale, draft)
+    product_admin_create_attribute_option_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -118,8 +122,9 @@ pub(super) async fn create_catalog_category(
     tenant_id: String,
     locale: String,
     draft: CatalogCategoryDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_category_native(tenant_id, locale, draft)
+    product_admin_create_category_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -128,8 +133,9 @@ pub(super) async fn create_attribute_schema(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_schema_native(tenant_id, locale, draft)
+    product_admin_create_schema_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -137,8 +143,9 @@ pub(super) async fn create_attribute_schema(
 pub(super) async fn set_category_schema_mode(
     tenant_id: String,
     draft: SetCategorySchemaModeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_set_category_schema_mode_native(tenant_id, draft)
+    product_admin_set_category_schema_mode_native(tenant_id, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -146,8 +153,9 @@ pub(super) async fn set_category_schema_mode(
 pub(super) async fn bind_schema_attribute(
     tenant_id: String,
     draft: BindSchemaAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_bind_schema_attribute_native(tenant_id, draft)
+    product_admin_bind_schema_attribute_native(tenant_id, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -156,8 +164,9 @@ pub(super) async fn create_product_attribute_schema_group(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaGroupDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_schema_group_native(tenant_id, locale, draft)
+    product_admin_create_schema_group_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(|err| ApiError::ServerFn(err.to_string()))
 }
@@ -166,8 +175,9 @@ pub(super) async fn create_category_attribute_group(
     tenant_id: String,
     locale: String,
     draft: CategoryAttributeGroupDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_create_category_group_native(tenant_id, locale, draft)
+    product_admin_create_category_group_native(tenant_id, locale, draft, idempotency_key)
         .await
         .map_err(|err| ApiError::ServerFn(err.to_string()))
 }
@@ -175,8 +185,9 @@ pub(super) async fn create_category_attribute_group(
 pub(super) async fn bind_category_attribute(
     tenant_id: String,
     draft: BindCategoryAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ApiError> {
-    product_admin_bind_category_attribute_native(tenant_id, draft)
+    product_admin_bind_category_attribute_native(tenant_id, draft, idempotency_key)
         .await
         .map_err(Into::into)
 }
@@ -186,10 +197,17 @@ pub(super) async fn save_product_attribute_values(
     product_id: String,
     locale: String,
     patches: Vec<ProductAttributeValuePatchDraft>,
+    idempotency_key: String,
 ) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    product_admin_save_attribute_values_native(tenant_id, product_id, locale, patches)
-        .await
-        .map_err(Into::into)
+    product_admin_save_attribute_values_native(
+        tenant_id,
+        product_id,
+        locale,
+        patches,
+        idempotency_key,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 pub(super) async fn clear_detached_product_attribute_values(
@@ -197,12 +215,14 @@ pub(super) async fn clear_detached_product_attribute_values(
     product_id: String,
     locale: String,
     attribute_ids: Vec<String>,
+    idempotency_key: String,
 ) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
     product_admin_clear_detached_attribute_values_native(
         tenant_id,
         product_id,
         locale,
         attribute_ids,
+        idempotency_key,
     )
     .await
     .map_err(Into::into)
@@ -266,7 +286,7 @@ fn parse_attribute_value_type(
     value: &str,
 ) -> Result<rustok_product::services::AttributeValueType, ServerFnError> {
     rustok_product::services::AttributeValueType::from_storage(value.trim())
-        .map_err(|error| ServerFnError::new(format!("{error:?}")))
+        .map_err(|_| ServerFnError::new("attribute value type is not supported"))
 }
 
 #[cfg(feature = "ssr")]
@@ -274,7 +294,7 @@ fn parse_category_kind(
     value: &str,
 ) -> Result<rustok_product::services::CatalogCategoryKind, ServerFnError> {
     rustok_product::services::CatalogCategoryKind::from_storage(value.trim())
-        .map_err(|error| ServerFnError::new(format!("{error:?}")))
+        .map_err(|_| ServerFnError::new("category kind is not supported"))
 }
 
 #[cfg(feature = "ssr")]
@@ -282,7 +302,7 @@ fn parse_schema_mode(
     value: &str,
 ) -> Result<rustok_product::services::CategorySchemaMode, ServerFnError> {
     rustok_product::services::CategorySchemaMode::from_storage(value.trim())
-        .map_err(|error| ServerFnError::new(format!("{error:?}")))
+        .map_err(|_| ServerFnError::new("category schema mode is not supported"))
 }
 
 #[cfg(feature = "ssr")]
@@ -290,7 +310,7 @@ fn parse_binding_kind(
     value: &str,
 ) -> Result<rustok_product::services::CategoryAttributeBindingKind, ServerFnError> {
     rustok_product::services::CategoryAttributeBindingKind::from_storage(value.trim())
-        .map_err(|error| ServerFnError::new(format!("{error:?}")))
+        .map_err(|_| ServerFnError::new("category attribute binding kind is not supported"))
 }
 
 #[cfg(feature = "ssr")]
@@ -527,6 +547,70 @@ async fn native_context() -> Result<
         ));
     }
     Ok((service, auth, tenant))
+}
+
+#[cfg(feature = "ssr")]
+const SCHEMA_WRITE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
+#[cfg(feature = "ssr")]
+const MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+
+/// Builds the owner write context for a schema mutation.
+///
+/// The owner key is derived with the same formula as the mounted GraphQL resolvers, so the
+/// native attempt and its GraphQL fallback for one logical operation share one receipt.
+#[cfg(feature = "ssr")]
+fn schema_write_context(
+    auth: &rustok_api::AuthContext,
+    tenant: &rustok_api::TenantContext,
+    locale: String,
+    operation: &'static str,
+    product_id: Option<uuid::Uuid>,
+    idempotency_key: &str,
+) -> Result<rustok_api::PortContext, ServerFnError> {
+    let caller_key = idempotency_key.trim();
+    if caller_key.is_empty() {
+        return Err(ServerFnError::new(
+            "Product mutation idempotency key must not be empty",
+        ));
+    }
+    if caller_key.len() > MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH {
+        return Err(ServerFnError::new(format!(
+            "Product mutation idempotency key must contain at most {MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH} bytes"
+        )));
+    }
+    let scoped_key = rustok_product::scoped_caller_idempotency_key(
+        tenant.id,
+        auth.user_id,
+        operation,
+        product_id,
+        caller_key,
+    );
+    let mut context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        locale,
+        scoped_key.clone(),
+    )
+    .with_idempotency_key(scoped_key)
+    .with_deadline(SCHEMA_WRITE_DEADLINE);
+    for permission in &auth.permissions {
+        context = context.with_claim(permission.to_string());
+    }
+    Ok(context)
+}
+
+/// Maps owner port errors to public server-function errors.
+///
+/// Infrastructure failures collapse to the generic product error; validation, conflict and
+/// not-found messages are the owner's curated port messages, tagged with their stable code.
+#[cfg(feature = "ssr")]
+fn map_schema_port_error(error: rustok_api::PortError) -> ServerFnError {
+    match error.kind {
+        rustok_api::PortErrorKind::Unavailable
+        | rustok_api::PortErrorKind::Timeout
+        | rustok_api::PortErrorKind::InvariantViolation => map_product_internal_error(),
+        _ => ServerFnError::new(format!("{} (code: {})", error.message, error.code)),
+    }
 }
 
 #[server(prefix = "/api/fn", endpoint = "product/admin/attributes")]
@@ -885,6 +969,7 @@ async fn product_admin_save_attribute_values_native(
     product_id: String,
     locale: String,
     patches: Vec<ProductAttributeValuePatchDraft>,
+    idempotency_key: String,
 ) -> Result<Vec<ProductAttributeValueItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -904,21 +989,29 @@ async fn product_admin_save_attribute_values_native(
             .into_iter()
             .map(parse_attribute_value_patch)
             .collect::<Result<Vec<_>, _>>()?;
-        service
-            .save_product_attribute_values(
-                tenant.id,
-                auth.user_id,
-                parse_uuid(&product_id, "product_id")?,
-                locale.trim(),
-                patches,
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "save_product_attribute_values"))
-            .map(|items| items.into_iter().map(map_attribute_value).collect())
+        let product_id = parse_uuid(&product_id, "product_id")?;
+        let locale = locale.trim().to_string();
+        ProductCatalogSchemaWritePort::save_product_attribute_values(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "save_product_attribute_values",
+                Some(product_id),
+                &idempotency_key,
+            )?,
+            product_id,
+            locale,
+            patches,
+        )
+        .await
+        .map_err(map_schema_port_error)
+        .map(|items| items.into_iter().map(map_attribute_value).collect())
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, product_id, locale, patches);
+        let _ = (tenant_id, product_id, locale, patches, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/save-attribute-values requires the `ssr` feature",
         ))
@@ -934,6 +1027,7 @@ async fn product_admin_clear_detached_attribute_values_native(
     product_id: String,
     locale: String,
     attribute_ids: Vec<String>,
+    idempotency_key: String,
 ) -> Result<Vec<ProductAttributeValueItem>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -953,23 +1047,35 @@ async fn product_admin_clear_detached_attribute_values_native(
             .into_iter()
             .map(|attribute_id| parse_uuid(&attribute_id, "attribute_id"))
             .collect::<Result<Vec<_>, _>>()?;
-        service
-            .clear_detached_product_attribute_values(
-                tenant.id,
-                auth.user_id,
-                parse_uuid(&product_id, "product_id")?,
-                locale.trim(),
-                attribute_ids,
-            )
-            .await
-            .map_err(|error| {
-                map_product_service_error(error, "clear_detached_product_attribute_values")
-            })
-            .map(|items| items.into_iter().map(map_attribute_value).collect())
+        let product_id = parse_uuid(&product_id, "product_id")?;
+        let locale = locale.trim().to_string();
+        ProductCatalogSchemaWritePort::clear_detached_product_attribute_values(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "clear_detached_product_attribute_values",
+                Some(product_id),
+                &idempotency_key,
+            )?,
+            product_id,
+            locale,
+            attribute_ids,
+        )
+        .await
+        .map_err(map_schema_port_error)
+        .map(|items| items.into_iter().map(map_attribute_value).collect())
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, product_id, locale, attribute_ids);
+        let _ = (
+            tenant_id,
+            product_id,
+            locale,
+            attribute_ids,
+            idempotency_key,
+        );
         Err(ServerFnError::new(
             "product/admin/clear-detached-attribute-values requires the `ssr` feature",
         ))
@@ -981,6 +1087,7 @@ async fn product_admin_create_attribute_native(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -996,44 +1103,50 @@ async fn product_admin_create_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_attribute(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateProductAttributeInput {
-                    code: draft.code,
-                    value_type: parse_attribute_value_type(&draft.value_type)?,
-                    scope: "product".to_string(),
-                    is_localized: draft.is_localized,
-                    is_filterable: draft.is_filterable,
-                    is_searchable: draft.is_searchable,
-                    is_sortable: draft.is_sortable,
-                    is_comparable: false,
-                    show_on_storefront: draft.show_on_storefront,
-                    show_in_admin_grid: true,
-                    search_weight: 0,
-                    filter_display: None,
-                    facet_mode: None,
-                    position: 0,
-                    validation: empty_json(),
-                    default_value: None,
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::AttributeTranslationInput {
-                        locale,
-                        label: draft.label,
-                        help_text: draft.help_text,
-                        facet_label: None,
-                        seo_label: None,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_attribute"))?;
+        ProductCatalogSchemaWritePort::create_attribute(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_attribute",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateProductAttributeInput {
+                code: draft.code,
+                value_type: parse_attribute_value_type(&draft.value_type)?,
+                scope: "product".to_string(),
+                is_localized: draft.is_localized,
+                is_filterable: draft.is_filterable,
+                is_searchable: draft.is_searchable,
+                is_sortable: draft.is_sortable,
+                is_comparable: false,
+                show_on_storefront: draft.show_on_storefront,
+                show_in_admin_grid: true,
+                search_weight: 0,
+                filter_display: None,
+                facet_mode: None,
+                position: 0,
+                validation: empty_json(),
+                default_value: None,
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::AttributeTranslationInput {
+                    locale,
+                    label: draft.label,
+                    help_text: draft.help_text,
+                    facet_label: None,
+                    seo_label: None,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-attribute requires the `ssr` feature",
         ))
@@ -1045,6 +1158,7 @@ async fn product_admin_create_attribute_option_native(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeOptionDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1060,28 +1174,34 @@ async fn product_admin_create_attribute_option_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_attribute_option(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateProductAttributeOptionInput {
-                    attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
-                    code: draft.code,
-                    position: draft.position,
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::AttributeOptionTranslationInput {
-                        locale,
-                        label: draft.label,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_attribute_option"))?;
+        ProductCatalogSchemaWritePort::create_attribute_option(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_attribute_option",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateProductAttributeOptionInput {
+                attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
+                code: draft.code,
+                position: draft.position,
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::AttributeOptionTranslationInput {
+                    locale,
+                    label: draft.label,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-attribute-option requires the `ssr` feature",
         ))
@@ -1093,6 +1213,7 @@ async fn product_admin_create_category_native(
     tenant_id: String,
     locale: String,
     draft: CatalogCategoryDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1108,34 +1229,40 @@ async fn product_admin_create_category_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_category(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateCatalogCategoryInput {
-                    parent_id: parse_optional_uuid(draft.parent_id, "parent_id")?,
-                    code: draft.code,
-                    slug: draft.slug,
-                    kind: parse_category_kind(&draft.kind)?,
-                    position: 0,
-                    rule_config: empty_json(),
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::CategoryTranslationInput {
-                        locale,
-                        name: draft.name,
-                        description: draft.description,
-                        meta_title: None,
-                        meta_description: None,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_category"))?;
+        ProductCatalogSchemaWritePort::create_category(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_category",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateCatalogCategoryInput {
+                parent_id: parse_optional_uuid(draft.parent_id, "parent_id")?,
+                code: draft.code,
+                slug: draft.slug,
+                kind: parse_category_kind(&draft.kind)?,
+                position: 0,
+                rule_config: empty_json(),
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::CategoryTranslationInput {
+                    locale,
+                    name: draft.name,
+                    description: draft.description,
+                    meta_title: None,
+                    meta_description: None,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-category requires the `ssr` feature",
         ))
@@ -1147,6 +1274,7 @@ async fn product_admin_create_schema_native(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1162,27 +1290,33 @@ async fn product_admin_create_schema_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_schema(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateProductAttributeSchemaInput {
-                    code: draft.code,
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::SchemaTranslationInput {
-                        locale,
-                        name: draft.name,
-                        description: draft.description,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_schema"))?;
+        ProductCatalogSchemaWritePort::create_schema(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_schema",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateProductAttributeSchemaInput {
+                code: draft.code,
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::SchemaTranslationInput {
+                    locale,
+                    name: draft.name,
+                    description: draft.description,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-attribute-schema requires the `ssr` feature",
         ))
@@ -1196,6 +1330,7 @@ async fn product_admin_create_schema_native(
 async fn product_admin_set_category_schema_mode_native(
     tenant_id: String,
     draft: SetCategorySchemaModeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1211,27 +1346,33 @@ async fn product_admin_set_category_schema_mode_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .set_category_schema_mode(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::SetCategorySchemaModeInput {
-                    category_id: parse_uuid(&draft.category_id, "category_id")?,
-                    mode: parse_schema_mode(&draft.mode)?,
-                    schema_id: parse_optional_uuid(draft.schema_id, "schema_id")?,
-                    clone_from_category_id: parse_optional_uuid(
-                        draft.clone_from_category_id,
-                        "clone_from_category_id",
-                    )?,
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "set_category_schema_mode"))?;
+        ProductCatalogSchemaWritePort::set_category_schema_mode(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                tenant.default_locale.clone(),
+                "set_category_schema_mode",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::SetCategorySchemaModeInput {
+                category_id: parse_uuid(&draft.category_id, "category_id")?,
+                mode: parse_schema_mode(&draft.mode)?,
+                schema_id: parse_optional_uuid(draft.schema_id, "schema_id")?,
+                clone_from_category_id: parse_optional_uuid(
+                    draft.clone_from_category_id,
+                    "clone_from_category_id",
+                )?,
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, draft);
+        let _ = (tenant_id, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/set-category-schema-mode requires the `ssr` feature",
         ))
@@ -1242,6 +1383,7 @@ async fn product_admin_set_category_schema_mode_native(
 async fn product_admin_bind_schema_attribute_native(
     tenant_id: String,
     draft: BindSchemaAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1257,29 +1399,35 @@ async fn product_admin_bind_schema_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .bind_schema_attribute(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::BindSchemaAttributeInput {
-                    schema_id: parse_uuid(&draft.schema_id, "schema_id")?,
-                    attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
-                    group_code: draft.group_code,
-                    is_required: draft.is_required,
-                    is_disabled: draft.is_disabled,
-                    position: draft.position,
-                    visibility_overrides: empty_json(),
-                    validation_overrides: empty_json(),
-                    metadata: empty_json(),
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "bind_schema_attribute"))?;
+        ProductCatalogSchemaWritePort::bind_schema_attribute(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                tenant.default_locale.clone(),
+                "bind_schema_attribute",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::BindSchemaAttributeInput {
+                schema_id: parse_uuid(&draft.schema_id, "schema_id")?,
+                attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
+                group_code: draft.group_code,
+                is_required: draft.is_required,
+                is_disabled: draft.is_disabled,
+                position: draft.position,
+                visibility_overrides: empty_json(),
+                validation_overrides: empty_json(),
+                metadata: empty_json(),
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, draft);
+        let _ = (tenant_id, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/bind-schema-attribute requires the `ssr` feature",
         ))
@@ -1291,6 +1439,7 @@ async fn product_admin_create_schema_group_native(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaGroupDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1306,28 +1455,34 @@ async fn product_admin_create_schema_group_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_schema_group(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateProductAttributeSchemaGroupInput {
-                    schema_id: parse_uuid(&draft.schema_id, "schema_id")?,
-                    code: draft.code,
-                    position: draft.position,
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::AttributeGroupTranslationInput {
-                        locale,
-                        label: draft.label,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_schema_group"))?;
+        ProductCatalogSchemaWritePort::create_schema_group(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_schema_group",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateProductAttributeSchemaGroupInput {
+                schema_id: parse_uuid(&draft.schema_id, "schema_id")?,
+                code: draft.code,
+                position: draft.position,
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::AttributeGroupTranslationInput {
+                    locale,
+                    label: draft.label,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-schema-group requires the `ssr` feature",
         ))
@@ -1339,6 +1494,7 @@ async fn product_admin_create_category_group_native(
     tenant_id: String,
     locale: String,
     draft: CategoryAttributeGroupDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1354,28 +1510,34 @@ async fn product_admin_create_category_group_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .create_category_group(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::CreateCategoryAttributeGroupInput {
-                    category_id: parse_uuid(&draft.category_id, "category_id")?,
-                    code: draft.code,
-                    position: draft.position,
-                    metadata: empty_json(),
-                    translations: vec![rustok_product::services::AttributeGroupTranslationInput {
-                        locale,
-                        label: draft.label,
-                    }],
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "create_category_group"))?;
+        ProductCatalogSchemaWritePort::create_category_group(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                locale.clone(),
+                "create_category_group",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::CreateCategoryAttributeGroupInput {
+                category_id: parse_uuid(&draft.category_id, "category_id")?,
+                code: draft.code,
+                position: draft.position,
+                metadata: empty_json(),
+                translations: vec![rustok_product::services::AttributeGroupTranslationInput {
+                    locale,
+                    label: draft.label,
+                }],
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, locale, draft);
+        let _ = (tenant_id, locale, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/create-category-group requires the `ssr` feature",
         ))
@@ -1386,6 +1548,7 @@ async fn product_admin_create_category_group_native(
 async fn product_admin_bind_category_attribute_native(
     tenant_id: String,
     draft: BindCategoryAttributeDraft,
+    idempotency_key: String,
 ) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1401,30 +1564,36 @@ async fn product_admin_bind_category_attribute_native(
                 "tenant_id does not match current tenant",
             ));
         }
-        service
-            .bind_category_attribute(
-                tenant.id,
-                auth.user_id,
-                rustok_product::services::BindCategoryAttributeInput {
-                    category_id: parse_uuid(&draft.category_id, "category_id")?,
-                    attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
-                    group_code: draft.group_code,
-                    binding_kind: parse_binding_kind(&draft.binding_kind)?,
-                    is_required: draft.is_required,
-                    is_disabled: draft.is_disabled,
-                    position: draft.position,
-                    visibility_overrides: empty_json(),
-                    validation_overrides: empty_json(),
-                    metadata: empty_json(),
-                },
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "bind_category_attribute"))?;
+        ProductCatalogSchemaWritePort::bind_category_attribute(
+            &service,
+            schema_write_context(
+                &auth,
+                &tenant,
+                tenant.default_locale.clone(),
+                "bind_category_attribute",
+                None,
+                &idempotency_key,
+            )?,
+            rustok_product::services::BindCategoryAttributeInput {
+                category_id: parse_uuid(&draft.category_id, "category_id")?,
+                attribute_id: parse_uuid(&draft.attribute_id, "attribute_id")?,
+                group_code: draft.group_code,
+                binding_kind: parse_binding_kind(&draft.binding_kind)?,
+                is_required: draft.is_required,
+                is_disabled: draft.is_disabled,
+                position: draft.position,
+                visibility_overrides: empty_json(),
+                validation_overrides: empty_json(),
+                metadata: empty_json(),
+            },
+        )
+        .await
+        .map_err(map_schema_port_error)?;
         Ok(true)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (tenant_id, draft);
+        let _ = (tenant_id, draft, idempotency_key);
         Err(ServerFnError::new(
             "product/admin/bind-category-attribute requires the `ssr` feature",
         ))
