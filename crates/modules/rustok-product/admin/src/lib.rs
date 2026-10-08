@@ -11,6 +11,10 @@ mod i18n;
 // transport module that consumes it.
 pub(crate) mod lifecycle_retry_identity;
 pub mod model;
+#[path = "transport/product_schema_graphql.rs"]
+mod product_schema_graphql;
+// Schema-authoring retry identity follows the same crate-level ownership as the lifecycle one.
+pub(crate) mod schema_retry_identity;
 pub mod transport;
 pub mod ui;
 

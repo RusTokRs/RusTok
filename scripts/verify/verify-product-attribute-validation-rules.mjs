@@ -331,7 +331,12 @@ assertContains(
 );
 const newProductRequirements = functionBody(
   values,
-  "pub async fn validate_new_product_publish_requirements("
+  "pub(crate) async fn validate_new_product_publish_requirements_in<C>("
+);
+assertContains(
+  values,
+  "Self::validate_new_product_publish_requirements_in(&self.db, tenant_id, primary_category_id)",
+  `${paths.values}: public publish-requirement check must delegate to the connection-scoped variant`
 );
 assertContains(
   newProductRequirements,

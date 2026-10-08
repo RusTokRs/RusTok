@@ -324,11 +324,16 @@ async fn list_categories_from_taxonomy(
         FROM catalog_categories c
         WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
         ORDER BY c.path ASC
+        LIMIT $2
         "#,
-        vec![tenant_id.into()],
+        vec![
+            tenant_id.into(),
+            ((super::MAX_SCHEMA_LIST_ROWS + 1) as i64).into(),
+        ],
     ))
     .all(&service.db)
     .await?;
+    super::ensure_schema_list_within_limit(rows.len(), "category")?;
 
     if rows.is_empty() {
         return Ok(Vec::new());

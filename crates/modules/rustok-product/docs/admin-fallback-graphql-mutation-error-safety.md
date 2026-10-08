@@ -25,17 +25,13 @@ previously merged bounded diagnostic policies.
 
 ## Confirmed diagnostic gap
 
-The public fallback-mutation envelope was already static and owner-controlled:
+Before this slice, `GraphqlFallbackMutationContext::map_error` returned the typed error unchanged, so a
+raw `Http(String)` or `Graphql(String)` payload reached the caller, and it wrote the complete typed
+error through `raw_error = ?error` in both tracing severity branches. HTTP status text or a GraphQL
+server message could therefore reach both the public result and structured diagnostics.
 
-- `GraphqlHttpError::Network` remained `Network`;
-- `GraphqlHttpError::Http(String)` mapped to `Product admin service is temporarily unavailable`;
-- `GraphqlHttpError::Unauthorized` remained `Unauthorized`;
-- `GraphqlHttpError::Graphql(String)` mapped to `Product admin request could not be completed`.
-
-However, `GraphqlFallbackMutationContext::map_error` still wrote the complete typed error through
-`raw_error = ?error` in both tracing severity branches. HTTP status text or a GraphQL server
-message could therefore be copied into structured diagnostics even though the public result was
-safe.
+This slice applies the same classification as the primary read path: the public envelope is static
+and the payload is reduced to presence and length before tracing.
 
 ## Boundary placement
 
@@ -56,7 +52,7 @@ therefore means the native path failed and the single GraphQL fallback also fail
 
 ## Public error policy
 
-The public type and messages remain unchanged.
+The public type and the four static messages below are the target policy.
 
 | Internal variant | Public result |
 | --- | --- |
@@ -68,8 +64,8 @@ The public type and messages remain unchanged.
 ## Correlation-safe diagnostics
 
 The complete typed error is not logged. The mapper still matches the typed variant before building
-the public result, severity and stable code, but tracing retains only payload presence and character
-length for `Http` and `Graphql` variants. `Network` and `Unauthorized` retain no invented payload.
+the public result, severity and stable code. For `Http` and `Graphql` variants, tracing retains
+only payload presence and character length. `Network` and `Unauthorized` retain no invented payload.
 
 Every final fallback failure also records:
 
@@ -84,15 +80,28 @@ The logger does not emit token, tenant slug, tenant ID, actor ID, product ID, lo
 contents, patch contents, attribute identifiers, HTTP status text or GraphQL server messages as
 structured values.
 
+## Schema-write wire contract (changed in the same wave)
+
+The eleven schema-authoring documents now live in `transport/product_schema_graphql.rs`. Each declares a
+non-null `$idempotencyKey: String!` and forwards it. The `tenantId`/`userId` variables were removed: the
+mounted resolvers take no tenant or user arguments and derive the actor from the request context. The
+retry identity is in `schema_retry_identity.rs`.
+
+The native-first path carries the same caller key as the GraphQL fallback. `transport.rs` mints one key per
+logical invocation through `run_keyed_schema_write`; the native `#[server]` function builds a `PortContext`
+with that key, and the owner derives its receipt key with `rustok_product::scoped_caller_idempotency_key`
+(the formula used by the mounted Commerce resolvers). A native write whose response is lost is therefore
+deduplicated when the fallback retries with the same key.
+
+A GraphQL response without a confirmed `true` (null or `false`, without a GraphQL error) is a protocol error,
+not success: the key stays retained for an explicit retry.
+
 ## Preserved transport behavior
 
 This slice does not change:
 
-- native server adapter functions;
 - the native-first / GraphQL-fallback order;
 - the number of GraphQL fallback attempts;
-- GraphQL documents or variables;
-- tenant/user variable framing;
 - mutation input DTOs or normalization;
 - boolean and attribute-value response mapping;
 - UI action composition;

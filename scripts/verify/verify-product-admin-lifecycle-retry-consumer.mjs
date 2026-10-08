@@ -9,7 +9,8 @@ const root = path.resolve(here, "../..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const lib = read("crates/modules/rustok-product/admin/src/lib.rs");
-const facade = read("crates/modules/rustok-product/admin/src/catalog_transport_retry.rs");
+const facade = read("crates/modules/rustok-product/admin/src/transport/retry.rs");
+const transportRoot = read("crates/modules/rustok-product/admin/src/transport.rs");
 const adapter = read("crates/modules/rustok-product/admin/src/transport/product_lifecycle_graphql.rs");
 const identity = read("crates/modules/rustok-product/admin/src/lifecycle_retry_identity.rs");
 const commerce = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
@@ -23,12 +24,11 @@ function forbidText(source, text, label) {
   if (source.includes(text)) failures.push(`${label}: forbidden ${text}`);
 }
 
-for (const required of [
-  '#[path = "catalog_transport.rs"]\nmod legacy_transport;',
-  '#[path = "catalog_transport_retry.rs"]\nmod transport;',
-  '#[path = "transport/product_lifecycle_graphql.rs"]\nmod product_lifecycle_graphql;',
-]) {
-  requireText(lib, required, "Product Admin active transport wiring");
+// The lifecycle retry facade is mounted as the `transport` module; its GraphQL
+// lifecycle adapter is declared inside that module tree.
+requireText(lib, "pub mod transport;", "Product Admin active transport wiring");
+for (const required of ["pub mod product_lifecycle_graphql;", "pub mod retry;"]) {
+  requireText(transportRoot, required, "Product Admin lifecycle transport wiring");
 }
 
 for (const required of [
@@ -41,10 +41,10 @@ for (const required of [
   ".idempotency_key_for(operation, &intent)",
   "if result.is_ok()",
   "mark_lifecycle_succeeded(&slot);",
-  "crate::product_lifecycle_graphql::create_product(",
-  "crate::product_lifecycle_graphql::update_product(",
-  "crate::product_lifecycle_graphql::change_product_status(",
-  "crate::product_lifecycle_graphql::delete_product(",
+  "product_lifecycle_graphql::create_product(",
+  "product_lifecycle_graphql::update_product(",
+  "product_lifecycle_graphql::change_product_status(",
+  "product_lifecycle_graphql::delete_product(",
 ]) {
   requireText(facade, required, "Product Admin lifecycle retry consumer facade");
 }

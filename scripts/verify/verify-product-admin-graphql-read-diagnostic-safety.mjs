@@ -178,10 +178,10 @@ for (const marker of [
 ]) {
   forbidText(readBlock, marker, `${paths.safety}: raw read request value`);
 }
-requireText(
+forbidText(
   mutationBlock,
   "raw_error = ?error",
-  `${paths.safety}: mutation diagnostic boundary remains explicitly open`,
+  `${paths.safety}: primary mutation diagnostics must not log the complete typed error`,
 );
 
 const primaryOperations = [

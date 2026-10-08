@@ -3,6 +3,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_outbox::idempotency;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::CommerceError;
@@ -15,6 +16,38 @@ use crate::services::{
     ProductAttributeValueRecord, ProductCatalogSchemaService, SetCategorySchemaModeInput,
     with_product_operation_receipt,
 };
+
+/// Namespace of caller-scoped owner idempotency keys for Product mutations.
+///
+/// The mounted GraphQL resolvers and the Product Admin native server functions derive keys
+/// through [`scoped_caller_idempotency_key`], so a native attempt and its GraphQL fallback
+/// for one logical operation reach the owner with the same receipt identity.
+pub const PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-product";
+
+/// Derives the owner idempotency key for a caller-supplied key.
+///
+/// The digest binds tenant, actor, operation, optional product, and the trimmed caller key.
+/// Callers must validate the caller key (non-empty, bounded length) before calling this.
+pub fn scoped_caller_idempotency_key(
+    tenant_id: Uuid,
+    user_id: Uuid,
+    operation: &str,
+    product_id: Option<Uuid>,
+    caller_key: &str,
+) -> String {
+    let mut digest = Sha256::new();
+    digest.update(tenant_id.as_bytes());
+    digest.update(user_id.as_bytes());
+    digest.update(operation.as_bytes());
+    if let Some(product_id) = product_id {
+        digest.update(product_id.as_bytes());
+    }
+    digest.update(caller_key.trim().as_bytes());
+    format!(
+        "{PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE}:{operation}:{}",
+        hex::encode(digest.finalize())
+    )
+}
 
 /// Transport-neutral owner boundary for Product catalog schema writes.
 ///
@@ -582,6 +615,30 @@ fn schema_receipt_error(
     }
 }
 
+/// Owner-side authorization for schema writes.
+///
+/// Transports check `products:manage` before calling the port; the owner repeats the check from
+/// the caller claims so an in-process caller cannot bypass it.
+fn require_products_manage_claim(
+    context: &PortContext,
+    operation: &'static str,
+) -> Result<(), PortError> {
+    let required = rustok_api::Permission::PRODUCTS_MANAGE.to_string();
+    if context.claims.iter().any(|claim| claim == &required) {
+        return Ok(());
+    }
+    tracing::warn!(
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        operation,
+        "Product schema write rejected: products:manage claim is missing"
+    );
+    Err(PortError::forbidden(
+        "product.schema_write_forbidden",
+        "products:manage permission is required",
+    ))
+}
+
 fn schema_write_scope(
     context: &PortContext,
     operation: &'static str,
@@ -589,6 +646,7 @@ fn schema_write_scope(
     context
         .require_policy(PortCallPolicy::write())
         .map_err(|error| schema_context_error(context, operation, error))?;
+    require_products_manage_claim(context, operation)?;
 
     let tenant_id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
         tracing::warn!(

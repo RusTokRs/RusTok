@@ -247,13 +247,21 @@ impl ProductCatalogSchemaService {
                 ON t.attribute_id = a.id AND t.locale = $2
             WHERE a.tenant_id = $1 AND a.archived_at IS NULL
             ORDER BY a.position ASC, a.code ASC
+            LIMIT $3
             "#,
-            vec![tenant_id.into(), locale.to_string().into()],
+            vec![
+                tenant_id.into(),
+                locale.to_string().into(),
+                ((super::MAX_SCHEMA_LIST_ROWS + 1) as i64).into(),
+            ],
         ))
         .all(&self.db)
         .await
         .map_err(Into::into)
-        .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
+        .and_then(|rows| -> CommerceResult<Vec<ProductAttributeListRecord>> {
+            super::ensure_schema_list_within_limit(rows.len(), "attribute")?;
+            rows.into_iter().map(TryInto::try_into).collect()
+        })
     }
 
     pub async fn list_attribute_options(

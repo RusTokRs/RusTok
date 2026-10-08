@@ -23,6 +23,9 @@ use crate::model::{
     ProductDetail, ProductDraft, ProductEffectiveForm, ProductList, ProductPricingDetail,
     SetCategorySchemaModeDraft, ShippingProfileList,
 };
+use crate::schema_retry_identity::{
+    ProductAdminSchemaOperation, run_keyed_schema_write, schema_intent, schema_slot,
+};
 use graphql_adapter::ApiError;
 
 pub(crate) async fn fetch_bootstrap(
@@ -249,26 +252,38 @@ pub(crate) async fn create_product_attribute(
     locale: String,
     draft: ProductAttributeDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_product_attribute(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_product_attribute(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateAttribute;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_product_attribute(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_product_attribute(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn create_product_attribute_option(
@@ -279,26 +294,38 @@ pub(crate) async fn create_product_attribute_option(
     locale: String,
     draft: ProductAttributeOptionDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_product_attribute_option(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_product_attribute_option(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateAttributeOption;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_product_attribute_option(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_product_attribute_option(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn create_catalog_category(
@@ -309,26 +336,38 @@ pub(crate) async fn create_catalog_category(
     locale: String,
     draft: CatalogCategoryDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_catalog_category(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_catalog_category(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateCategory;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_catalog_category(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_catalog_category(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn create_attribute_schema(
@@ -339,26 +378,38 @@ pub(crate) async fn create_attribute_schema(
     locale: String,
     draft: ProductAttributeSchemaDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_attribute_schema(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_attribute_schema(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateSchema;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_attribute_schema(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_attribute_schema(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn set_category_schema_mode(
@@ -368,13 +419,30 @@ pub(crate) async fn set_category_schema_mode(
     user_id: String,
     draft: SetCategorySchemaModeDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::set_category_schema_mode(tenant_id.clone(), draft.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::set_category_schema_mode(token, tenant_slug, tenant_id, user_id, draft)
+    let operation = ProductAdminSchemaOperation::SetCategorySchemaMode;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(operation, &tenant_id, &user_id, None, &draft);
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::set_category_schema_mode(
+            tenant_id.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::set_category_schema_mode(
+                    token,
+                    tenant_slug,
+                    draft,
+                    idempotency_key,
+                )
                 .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn create_product_attribute_schema_group(
@@ -385,26 +453,38 @@ pub(crate) async fn create_product_attribute_schema_group(
     locale: String,
     draft: ProductAttributeSchemaGroupDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_product_attribute_schema_group(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_product_attribute_schema_group(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateSchemaGroup;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_product_attribute_schema_group(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_product_attribute_schema_group(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn create_category_attribute_group(
@@ -415,26 +495,38 @@ pub(crate) async fn create_category_attribute_group(
     locale: String,
     draft: CategoryAttributeGroupDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::create_category_attribute_group(
-        tenant_id.clone(),
-        locale.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::create_category_attribute_group(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                locale,
-                draft,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::CreateCategoryGroup;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &draft,
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::create_category_attribute_group(
+            tenant_id.clone(),
+            locale.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::create_category_attribute_group(
+                    token,
+                    tenant_slug,
+                    locale,
+                    draft,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn bind_schema_attribute(
@@ -444,13 +536,25 @@ pub(crate) async fn bind_schema_attribute(
     user_id: String,
     draft: BindSchemaAttributeDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::bind_schema_attribute(tenant_id.clone(), draft.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::bind_schema_attribute(token, tenant_slug, tenant_id, user_id, draft)
-                .await
+    let operation = ProductAdminSchemaOperation::BindSchemaAttribute;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(operation, &tenant_id, &user_id, None, &draft);
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::bind_schema_attribute(
+            tenant_id.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::bind_schema_attribute(token, tenant_slug, draft, idempotency_key)
+                    .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn bind_category_attribute(
@@ -460,13 +564,25 @@ pub(crate) async fn bind_category_attribute(
     user_id: String,
     draft: BindCategoryAttributeDraft,
 ) -> Result<bool, ApiError> {
-    match native_server_adapter::bind_category_attribute(tenant_id.clone(), draft.clone()).await {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::bind_category_attribute(token, tenant_slug, tenant_id, user_id, draft)
-                .await
+    let operation = ProductAdminSchemaOperation::BindCategoryAttribute;
+    let slot = schema_slot(operation, &tenant_id, &user_id, None);
+    let intent = schema_intent(operation, &tenant_id, &user_id, None, &draft);
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::bind_category_attribute(
+            tenant_id.clone(),
+            draft.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::bind_category_attribute(token, tenant_slug, draft, idempotency_key)
+                    .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn save_product_attribute_values(
@@ -478,28 +594,40 @@ pub(crate) async fn save_product_attribute_values(
     locale: String,
     patches: Vec<ProductAttributeValuePatchDraft>,
 ) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    match native_server_adapter::save_product_attribute_values(
-        tenant_id.clone(),
-        product_id.clone(),
-        locale.clone(),
-        patches.clone(),
-    )
-    .await
-    {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            graphql_adapter::save_product_attribute_values(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                product_id,
-                locale,
-                patches,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::SaveAttributeValues;
+    let slot = schema_slot(operation, &tenant_id, &user_id, Some(product_id.as_str()));
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &(&product_id, &patches),
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::save_product_attribute_values(
+            tenant_id.clone(),
+            product_id.clone(),
+            locale.clone(),
+            patches.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::save_product_attribute_values(
+                    token,
+                    tenant_slug,
+                    product_id,
+                    locale,
+                    patches,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn clear_detached_product_attribute_values(
@@ -511,28 +639,40 @@ pub(crate) async fn clear_detached_product_attribute_values(
     locale: String,
     attribute_ids: Vec<String>,
 ) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
-    match native_server_adapter::clear_detached_product_attribute_values(
-        tenant_id.clone(),
-        product_id.clone(),
-        locale.clone(),
-        attribute_ids.clone(),
-    )
-    .await
-    {
-        Ok(values) => Ok(values),
-        Err(_) => {
-            graphql_adapter::clear_detached_product_attribute_values(
-                token,
-                tenant_slug,
-                tenant_id,
-                user_id,
-                product_id,
-                locale,
-                attribute_ids,
-            )
-            .await
+    let operation = ProductAdminSchemaOperation::ClearDetachedAttributeValues;
+    let slot = schema_slot(operation, &tenant_id, &user_id, Some(product_id.as_str()));
+    let intent = schema_intent(
+        operation,
+        &tenant_id,
+        &user_id,
+        Some(locale.as_str()),
+        &(&product_id, &attribute_ids),
+    );
+    run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {
+        match native_server_adapter::clear_detached_product_attribute_values(
+            tenant_id.clone(),
+            product_id.clone(),
+            locale.clone(),
+            attribute_ids.clone(),
+            idempotency_key.clone(),
+        )
+        .await
+        {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                graphql_adapter::clear_detached_product_attribute_values(
+                    token,
+                    tenant_slug,
+                    product_id,
+                    locale,
+                    attribute_ids,
+                    idempotency_key,
+                )
+                .await
+            }
         }
-    }
+    })
+    .await
 }
 
 pub(crate) async fn update_product(

@@ -845,3 +845,119 @@ node scripts/verify/verify-product-runtime-fallback-smoke.mjs  → passed (no-co
 **Подключение TS-пакета: лок-файлы приложений не были синхронизированы (найдено при сверке с CI).** Волна 10 добавила `@rustok/ui-grid` как `file:`-зависимость в `apps/next-frontend/package.json`, `apps/next-admin/package.json` и в витринный саб-пакет, но `apps/*/package-lock.json` не пересобрала. Локально это невидимо: свип читает исходники, а прежние ad-hoc `tsc --noEmit` проходили, потому что TypeScript разрешал импорт по `paths` из `tsconfig.json`, а не через `node_modules`. В CI шаг `npm ci` падает сразу — воспроизведено на прежнем локе: `npm error code EUSAGE` + `Missing: @rustok/ui-grid@0.1.0 from lock file` (для обоих приложений). Это и есть причина красных `Next.js (apps/next-frontend)` и `Playwright Smoke (apps/next-frontend)`: оба джоба были зелёными на базе `7895d7f` и на `main`, а на ветке падают. Исправлено пересборкой локов (`npm install --package-lock-only`, только аддитивные вставки: 11 строк в витринном локе, 10 в админском) и объявлением зависимости в саб-пакете `apps/next-frontend/packages/rustok-product` (тот же паттерн, что у соседнего `@rustok/cart-frontend`). После правки `npm ci` проходит проверку синхронности и доходит до скачивания зависимостей (дальше падает только на TLS-сертификате git-зависимости `next-fluent` — ограничение песочницы, не дерева). Гейта на синхронность «манифест ↔ лок» в репозитории нет: эту роль исполняет сам `npm ci` в CI, поэтому в очередь гигиены добавлено правило-кандидат.
 
 **Открытым остаётся** по этому гейту подлинный дрейф текста: план `crates/modules/rustok-product/docs/implementation-plan.md` не содержит фразы `Concrete external transport execution remains open` (её нет ни в базе `7895d7f`, ни в `main`, ни в ветке), то есть объявленный статус внешнего транспорта в плане разошёлся с реестром `product-fba-registry.json` — это тот же незаленденный контракт каталог-чтения, что стоит в очереди ниже; править прозу плана «под гейт» не стал. Прежние формулировки записи («фикстура теста … при том что сам гейт по реальному дереву проходит», «падает одинаково на HEAD и в рабочем дереве (5/1)») были неверны дважды: гейт по реальному дереву не проходил (два перенесённых маркера плюс отсутствующая фраза плана), а «5/1» — это результат теста, где канонический случай не был каноническим. Плюс унаследованные падения из свипа `main`.
+
+### Волна 16 — очередь верификаторов Части IV: GraphQL-фолбэк схемных мутаций, ошибки фолбэка, раскладка lifecycle (не закоммичено)
+
+**Дефект рантайма, найденный при переносе.** GraphQL-фолбэк одиннадцати схемных мутаций в `transport/graphql_adapter.rs` не отправлял `idempotencyKey`, хотя сервер требует `String!`, и передавал `tenantId`/`userId` в переменных. Документы и вызовы вынесены в `transport/product_schema_graphql.rs` (`$idempotencyKey: String!` и `idempotencyKey: $idempotencyKey` в каждой из 11 мутаций); retry-идентичность — в `schema_retry_identity.rs` (5 unit-тестов). В `graphql_adapter.rs` остаются только реэкспорты и удалённые неиспользуемые импорты.
+
+**Ошибки фолбэка: диагностика раскрывала полную ошибку.** `GraphqlFallbackMutationContext::map_error` писал `raw_error = ?error` в обеих ветках логирования и возвращал сырую ошибку наружу. Новая реализация в `transport/graphql_fallback_mutation_error_safety.rs` повторяет read-путь: статическая публичная оболочка (`Network`, `Http` → «Product admin service is temporarily unavailable», `Unauthorized`, `Graphql` → «Product admin request could not be completed»), в логах только признаки нагрузки (`error_payload_present`, `error_payload_length`) и длины/счётчики запроса (`resource_id_length`, `locale_length`, `item_count`, `input_present`, `native_fallback_attempted`). **Видимое изменение:** для вариантов `Http` и `Graphql` интерфейс получает статический текст вместо сырого сообщения сервера. Так описано в `docs/admin-fallback-graphql-mutation-error-safety.md`, который раньше не соответствовал коду.
+
+**Раскладка.** Обёртки 11 команд вынесены из `catalog_transport.rs` в `transport/graphql_fallback_mutations.rs`; фасад реэкспортирует их явным списком. Решение пользователя: вариант A.
+
+| Верификатор | Статус | Что сделано |
+|---|---|---|
+| `verify-product-admin-schema-authoring.mjs` | Проходит (на `main` проходил; после переноса падал, исправлено) | Проверки обёрток перенесены на `graphql_fallback_mutations.rs`; реэкспорт проверяется в фасаде по именам внутри блока `pub(crate) use graphql_fallback_mutations::{…}`. |
+| `verify-product-admin-graphql-read-diagnostic-safety.mjs` | Проходит | Утверждение «граница мутаций открыта (`raw_error = ?error`)» описывало состояние до этой волны; заменено запретом `raw_error` в блоке `GraphqlMutationContext`. |
+| `verify-product-admin-lifecycle-retry-consumer.mjs` | Проходит | Пути подогнаны под текущую раскладку: фасад lifecycle — `transport/retry.rs`, подключение — `pub mod transport;` в `lib.rs` и `pub mod product_lifecycle_graphql;` в `transport.rs`. Решение пользователя: подогнать верификатор, не переносить файлы. |
+| `verify-product-admin-boundary.test.mjs` | Проходит 14/14 | Исправлена синтаксическая ошибка тестовой фикстуры (закрывающий обратный апостроф). |
+| `verify-product-admin-fallback-mutation-error-safety.mjs` | Проходит | Документы и `*Variables` ищутся в `transport/product_schema_graphql.rs`; `graphql_adapter.rs` проверяется по реэкспорту `pub(super) use crate::product_schema_graphql::{…}` и именам одиннадцати функций. Решение пользователя: документы остаются в per-concern модуле. |
+| `verify-commerce-product-schema-write-consumer-cutover.mjs` | Проходит | Путь «активного транспорта» указан на `transport/graphql_adapter.rs`, проверка реэкспорта — `pub(super) use crate::product_schema_graphql::{`. Остальные проверки (`$idempotencyKey: String!` ×11, `retained_caller_key`, `mark_succeeded`, фикстура foreign-actor) не менялись. |
+
+**Полный sweep (318 верификаторов).** 156 PASS против 153 на базе. Три верификатора переходят из FAIL в PASS: `fallback-mutation-error-safety`, `commerce-product-schema-write-consumer-cutover`, `lifecycle-retry-consumer`. Регрессий нет. Набор `*.test.mjs` продуктового и коммерческого контуров: 45 PASS и на базе, и в дереве.
+
+**Решение по схемным документам (принято).** Вопрос пользователя: как должно быть при FFA. Документы FFA фиксируют, что покрытие фронтендов проверяется шлюзами паритета и контрактом хоста, а не перемещением файлов; раскладку файлов внутри модуля они не предписывают. Принятая раскладка: GraphQL-документы схемных мутаций в `transport/product_schema_graphql.rs` по образцу `product_lifecycle_graphql.rs`, `graphql_adapter.rs` — агрегатор реэкспортов. Пользователь подтвердил этот вариант.
+
+**Не сделано:** коммит и push ждут подтверждения пользователя; полная компиляция крейта невозможна без `cargo`, подтверждение только статическое (rustfmt, харнесс, node-верификаторы).
+
+**Сквозной аудит волны 16 (проверка всего сделанного).** Проверено: полный дифф (13 файлов, без побочных правок и мусора), видимость и разрешение имён в новых Rust-файлах, соответствие переменных и типов GraphQL-документов схеме Commerce, логика повтора ключа, исчерпываемость `match` по `GraphqlHttpError` (ровно четыре варианта), полнота полей `self.*` в логирующем контексте, форматирование, изменённые верификаторы на предмет ослабления проверок, согласованность evidence и документа.
+
+| Найдено | Серьёзность | Исправлено |
+|---|---|---|
+| Схемные мутации отправляли `tenantId`/`userId` в переменных, которых документы не объявляют и которые сервер не принимает. Тенант и пользователь берутся из контекста (`product_mutation_actor`). Lifecycle-путь их не отправляет. | Средняя | Удалены из `SchemaWriteVariables`; комментарий, который утверждал обратное, переписан. |
+| Evidence `source.json` утверждал `graphql_documents_changed: false` и `graphql_variables_changed: false`, а в серии документы переехали и переменные изменились. | Средняя | Флаги ограничены срезом безопасности ошибок (как требует верификатор); wire-изменение записано отдельным блоком `schema_write_wire_contract`. |
+| Документ и `review.json` утверждали, что публичная оболочка фолбэков уже статическая. На `HEAD` это было неверно. | Средняя | Исправлены: finding помечен `corrected`, документ описывает прежнее состояние. |
+| Документ перечислял GraphQL-документы и `tenantId`/`userId` как «не меняется». | Низкая | Список исправлен, добавлен раздел о wire-контракте схемных записей. |
+| Харнесс не проверял серде-переименования и макросы `tracing`. | Ограничение проверки | Харнесс пересобран из актуального файла (5/5). Переименования проверены статически против документов. Макросы `tracing` проверены вручную: все поля `self.*` существуют. |
+
+**Остаточные риски (не исправлены, требуют отдельного решения).**
+1. **Native-путь схемных записей без ключа повтора.** *Закрыто волной 17.* Одиннадцать команд сначала вызывают владельца напрямую через native server functions без `idempotencyKey`. Ключ защищает только GraphQL-фолбэк. Если native-запись прошла, а ответ потерян, повтор не дедуплицируется. Исправление требует передавать ключ в native-функции и меняет их сигнатуры.
+2. **Успех с `Ok(false)` освобождает ключ.** *Закрыто волной 17 (для схемных мутаций; lifecycle — см. ниже).* `run_keyed_schema_write` освобождает ключ при любом `Ok`, в том числе когда владелец вернул `false` (запись не применена). Так же устроен lifecycle. Для схемных мутаций стоит решить, нужно ли удерживать ключ при `false`.
+3. **Общая проверка не заменяет компиляцию.** `cargo` недоступен, полной сборки крейта не было. Отдельные файлы проверены харнессом и rustfmt.
+4. **`ui/leptos.rs` не проходит rustfmt, но это дрейф базы.** В `HEAD` та же ошибка (`rustfmt --check` возвращает 1), файл в этой серии не менялся.
+
+**Итог аудита.** Все семь верификаторов из очереди проходят или переведены в проходящее состояние (`fallback`, `schema-cutover`, `lifecycle`, `schema-authoring`, `read-diagnostic`, `boundary`, `boundary.test`). Sweep 156 PASS против 153 на базе, регрессий нет. Изменения не закоммичены.
+
+### Волна 17 — `native`-путь схемных записей получает общий ключ владельца с GraphQL-фолбэком (не закоммичено)
+
+**Дефект.** Одиннадцать схемных команд сначала вызывали владельца напрямую через native server functions без ключа. Ключ защищал только GraphQL-фолбэк, поэтому native-запись, чей ответ потерян, при повторе не дедуплицировалась, а `Ok(false)` без ошибки освобождал ключ как успех.
+
+**Решение (выбран полный вариант: один ключ владельца на логическую операцию).**
+
+1. **Формула ключа вынесена во владельца.** `rustok-product::scoped_caller_idempotency_key(tenant, user, operation, product?, caller_key)` (`catalog_schema_write_port.rs`, реэкспорт в `lib.rs`) повторяет формулу `commerce-graphql-product:{op}:{sha256}`. `product_command_context` в Commerce переведён на хелпер; вывод не изменился (тот же порядок байтов в дайджесте, та же строка-пространство имён).
+2. **Native-серверные функции принимают `idempotency_key`.** `native_server_adapter.rs`: хелпер `schema_write_context` собирает `PortContext` (актор из `AuthContext`, локаль, claims из `permissions`, `with_idempotency_key(scoped)`, дедлайн 2 с как `PRODUCT_COMMAND_DEADLINE`). Вызов явный через трейт: `ProductCatalogSchemaWritePort::<op>(&service, ctx, input)` — инхерентные методы сервиса с другой арностью не используются. Ошибки порта: `Unavailable`/`Timeout`/`InvariantViolation` → общая `map_product_internal_error`; остальные — сообщение порта с кодом.
+3. **Ключ минтится один раз на операцию в `transport.rs`.** Одиннадцать легаси-обёрток вызывают `run_keyed_schema_write` (перенесён из `product_schema_graphql.rs` в `schema_retry_identity.rs`, теперь общий по типу ошибки); ключ передаётся и в native-вызов, и в GraphQL-фолбэк. Публичные сигнатуры обёрток и фасада `catalog_transport.rs` не менялись.
+4. **GraphQL-слой без собственного повтора.** `product_schema_graphql.rs` принимает `idempotency_key` и не строит слот/намерение. `confirmed_schema_write`: `Some(true)` — успех; `null` или `false` без GraphQL-ошибки — ошибка протокола, ключ сохраняется для явного повтора.
+
+**Что сохраняется при повторе.** Ключ переиспользуется только при той же операции и намерении; при изменении ввода ротируется; после успеха освобождается. Нетерминальные ошибки владельца не записываются как терминальные квитанции, поэтому повтор с тем же ключом снова выполняет запись; терминальные (`!retryable`) сохраняются и повторяются с тем же ключом до смены намерения — это поведение владельца, не изменено.
+
+**Верификаторы подогнаны под раскладку (решение: подгонять, не переименовывать):**
+
+| Верификатор | Что изменено |
+|---|---|
+| `verify-commerce-product-graphql-lifecycle-command-cutover.mjs` | Дайджест проверяется в `rustok-product/src/catalog_schema_write_port.rs` (владелец); в Commerce — вызов `scoped_caller_idempotency_key(`. |
+| `verify-commerce-product-schema-write-consumer-cutover.mjs` | `retained_caller_key`/`mark_succeeded`/`if result.is_ok()` ищутся в `schema_retry_identity.rs`; минт ключа — в `transport.rs` (`run_keyed_schema_write(slot, operation, intent, move \|idempotency_key\| async move {`), передача ключа в native — `idempotency_key.clone(),`. |
+| `verify-product-admin-schema-authoring.mjs` | Маркеры фолбэка — `graphql_adapter::<op>(`; дополнительно пробельно-независимая проверка, что ключ уходит и в native, и в фолбэк. |
+| `verify-product-catalog-schema-write-port.mjs` | Экспорт проверяется как braced-список: `ProductCatalogSchemaWritePort,` и `scoped_caller_idempotency_key,`. |
+
+**Проверки.**
+- Полный sweep (`/tmp/sweep_now.txt`): 156 PASS, состав совпадает с предыдущим эталоном; падения набора те же, что на `HEAD`.
+- `verify-product-admin-fallback-mutation-error-safety.mjs` — PASS; `verify-product-admin-boundary.test.mjs` — 14/14 (тест `schemaGraphqlSource()` проходит).
+- Изолированный харнесс (`product_schema_graphql.rs` и `schema_retry_identity.rs` с заглушками): 7/7, включая два новых: подтверждение требует явного `true`; ошибка сохраняет ключ, успех освобождает его, а повтор с тем же намерением переиспользует ключ.
+- `rustfmt --check` — чисто для всех изменённых `.rs`, кроме `ui/leptos.rs` (дрейф базы, файл не менялся).
+- Документация и evidence (`admin-fallback-graphql-mutation-error-safety-source.json`, `docs/admin-fallback-graphql-mutation-error-safety.md`) обновлены: остаточный риск native-пути снят; JSON валиден.
+
+**Не сделано и не проверено.**
+- **Компиляция не выполнялась** (нет `cargo`). Не скомпилированы: native `#[server]`-функции (макрос Leptos), `transport.rs`, `catalog.rs` (Commerce), `catalog_schema_write_port.rs`. Проверено статически: сигнатуры `PortContext::new`/`with_*`, `PortActor`, `PortErrorKind`, `TenantContext::default_locale`, совпадение типов возврата сервисных методов и методов порта, совпадение строк `operation` с Commerce.
+- Канал (`with_channel`) в native-контексте не передаётся, в отличие от Commerce. Схемные записи, по исходникам, от канала не зависят, но это не проверено отдельно.
+- Сообщения `PortError` выводятся пользователю как есть (с кодом). Для схемного пути они фиксированные (`schema_receipt_error`, `schema_context_error`), остальные выборочно не проверены.
+- Lifecycle-мутации по-прежнему освобождают ключ при `Ok(false)` — та же семантика, что была у схемных; вне рамок этой волны.
+- Отложенные пункты: сверка lifecycle-документов с поведением сервера по лишним переменным; сверка статусов открытых P2/P3 находок по журналу волн 4–15.
+
+**Коммит и push не выполнены:** ждут подтверждения пользователя.
+
+### Волна 18 — пять находок сквозного аудита `rustok-product` (не закоммичено)
+
+**Источник.** Сквозной аудит `rustok-product` (пункты 1–8: сырой SQL, паники, авторизация, пагинация, утечки ошибок, транзакционность, гонки идемпотентности, миграции). Идентификаторов `PROD-*` у пяти находок в журнале нет; ниже они перечислены по содержанию.
+
+| № | Находка | Статус |
+|---|---|---|
+| 1 | Тенант-широкие списки схемы (`list_attributes`, `list_schemas`, таксономия категорий) читались без `LIMIT`. | Закрыто |
+| 2 | Native-парсеры атрибутов, категорий и схем отдавали `format!("{error:?}")` во внешний ответ. | Закрыто |
+| 3 | Владелец схемных записей не проверял `products:manage`: защита держалась только на транспорте. | Закрыто |
+| 4 | Проверка публикации нового товара шла вне транзакции создания, поэтому правила схемы читались отдельным соединением. | Закрыто с остаточным риском (см. ниже) |
+| 5 | Пустой `down` миграции `m20260725_000002`. | Не дефект: `down` сознательно пуст, с комментарием «canonical tree/closure invariant is part of the target Product schema». Миграцию не меняем. |
+
+**Что сделано.**
+
+1. **Лимит списков (`services/catalog_schema_service.rs`, `attributes.rs`, `schemas.rs`, `categories.rs`).** Константа `MAX_SCHEMA_LIST_ROWS = 1000` и хелпер `ensure_schema_list_within_limit`. Каждый SQL получает `LIMIT`, равный `MAX + 1`. Если строк больше лимита, список завершается ошибкой валидации, а не отдаёт усечённый результат.
+2. **Статические сообщения парсеров (`admin/src/transport/native_server_adapter.rs`).** Четыре парсера (тип значения атрибута, kind категории, schema mode, binding kind) возвращают фиксированные строки; `|_|` вместо `format!("{error:?}")`.
+3. **Проверка `products:manage` у владельца (`catalog_schema_write_port.rs`).** `require_products_manage_claim(context, operation)` вызывается внутри `schema_write_scope` до admission. Ошибка: `PortError::forbidden("product.schema_write_forbidden", …)`. Claims уже передаются из Commerce (`product_schema_write_context` → `product_command_context`) и из native-слоя.
+4. **Публикация внутри транзакции создания (`values.rs`, `services/catalog/commands.rs`).** `validate_new_product_publish_requirements_in<C: ConnectionTrait>(db, …)` использует `load_effective_form_for_category_in` и `load_attribute_codes`. Публичный метод делегирует на `&self.db`. В `create_product` проверка убрана с пути до `begin` и вызывается сразу после `ProductWriteTransaction::begin` через `&txn`, только при `input.publish`.
+5. **Миграция.** Без изменений (см. таблицу).
+
+**Верификаторы.**
+
+- `verify-product-attribute-validation-rules.mjs` искал правило публикации в теле публичного метода. Подогнан под раскладку: тело берётся из `_in`-варианта, плюс проверка делегирования.
+- Новый `scripts/verify/verify-product-audit-wave18-findings.mjs`: лимиты в трёх списках, статические сообщения парсеров без `format!("{error:?}")`, claim-проверка в `schema_write_scope` до admission у всех методов порта, порядок проверки публикации относительно вставки товара.
+- Полный sweep: 157 PASS. Это прежний набор из 156 PASS плюс новый верификатор. Падения набора те же, что на `HEAD`.
+- `rustfmt --check --config skip_children=true` — чисто для всех восьми изменённых `.rs`.
+
+**Не сделано и не проверено.**
+
+- **Компиляция не выполнялась** (нет `cargo`). Проверено статически: сигнатуры, видимость `ensure_schema_list_within_limit` и `MAX_SCHEMA_LIST_ROWS` из дочерних модулей (`super::`), типы `ProductAttributeListRecord` и `ProductAttributeSchemaListRecord`, generic-сигнатуры `load_effective_form_for_category_in` и `load_attribute_codes`, `ConnectionTrait` для `&DatabaseTransaction`.
+- **Остаточный риск пункта 4.** Транзакция работает на READ COMMITTED. Конкурентное изменение схемы категории между проверкой и вставкой не сериализуется. Полная защита требует блокировки строки категории (`FOR SHARE`); в этой волне не сделано.
+- **Пункт 1.** Лимит 1000 — выбранная константа. Список с лимитом отвечает ошибкой; пагинации для этих административных списков нет.
+- **Пункт 3.** Проверка в владельце дублирует транспортную и не покрыта тестом записи через порт: в `rustok-product` тестов с записью через порт нет.
+- UI-слой `ui/*.rs` по-прежнему использует `map_err(|e| e.to_string())`; это отдельная находка, не входящая в пять.
+
+**Коммит и push не выполнены:** ждут подтверждения пользователя.
