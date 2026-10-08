@@ -475,7 +475,7 @@ impl PageBuilderScenarioBaselineService {
                     "Stored Page Builder scenario baseline is invalid: {error}"
                 ))
             })?;
-        if baseline.is_legacy_hash_form() {
+        if baseline.has_legacy_hash() {
             (model, baseline) = self.upgrade_legacy_baseline_hashes(model, baseline).await?;
         }
         let diagnostics = baseline.validate();
@@ -497,15 +497,15 @@ impl PageBuilderScenarioBaselineService {
         }))
     }
 
-    /// Rewrite a stored baseline's retired FNV-1a 64 hashes as sha256 digests, in place.
+    /// Rewrite a stored baseline's retired FNV-1a 64 hash as a sha256 digest, in place.
     ///
     /// Fly accepted `ProjectHash` (FNV-1a 64) fingerprints for release baselines until
     /// 2026-10-08. It still recognises that form so existing rows keep loading, but a 64-bit
     /// non-cryptographic value must not stay the recorded digest of an approved artefact, so the
     /// row is upgraded the first time it is read and never needs a manual re-capture. The
-    /// contents are not touched — only the two hash fields are re-derived from them — and the
-    /// caller only reaches here for a baseline whose contents already matched both fingerprints,
-    /// so this preserves a verification result rather than manufacturing one.
+    /// contents are not touched — only `baseline_hash` is re-derived from them — and the caller
+    /// only reaches here for a baseline that already matched the recorded fingerprint, so this
+    /// preserves a verification result rather than manufacturing one.
     ///
     /// The update is a compare-and-swap on the stored hash: if another writer replaced the row in
     /// the meantime, that writer's row is what gets returned, not this one.
@@ -517,8 +517,8 @@ impl PageBuilderScenarioBaselineService {
         page_builder_scenario_baseline::Model,
         RuntimeScenarioReleaseBaseline,
     )> {
-        // The caller only reaches this helper for a fully legacy form, so it always rewrites.
-        let _ = baseline.upgrade_legacy_hashes();
+        // The caller only reaches this helper for a recorded legacy hash, so it always rewrites.
+        let _ = baseline.upgrade_legacy_hash();
         let upgraded = serde_json::to_value(&baseline).map_err(|error| {
             PagesError::validation(format!(
                 "Unable to encode upgraded Page Builder scenario baseline: {error}"

@@ -1,6 +1,6 @@
 use crate::{
-    ContentDigest, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
-    RuntimeContextScenario, RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
+    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
+    RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
     render_runtime_scenario_matrix,
 };
 use serde::{Deserialize, Serialize};
@@ -88,59 +88,21 @@ impl RuntimeScenarioRenderSnapshot {
 
     /// Whether `snapshot_hash` matches these contents.
     ///
-    /// Accepts the current `sha256:<hex>` digest and, for snapshots captured before 2026-10-08,
-    /// the retired FNV-1a 64 fingerprint — see [`Self::has_legacy_hash`]. Everything newly
-    /// captured is sha256 only, and [`Self::upgrade_legacy_hash`] rewrites the older form.
+    /// This is a self-consistency check on a snapshot that is always carried inside something
+    /// else — a release baseline or a materialization identity. Those envelopes are what actually
+    /// hold an approval anchor, and both digest it with sha256: the release baseline's own
+    /// `baseline_hash` covers this snapshot (and therefore this hash) in its payload, and the
+    /// materialization identity holds `runtime_snapshot_hash` as a sha256 digest of the stored
+    /// snapshot list. The fingerprint here is `ProjectHash` (FNV-1a 64) for a concrete reason:
+    /// snapshots are persisted in `page_static_landing_artifact` and `page_publish_rebuild_source`,
+    /// and the rebuild path requires a rebuild to reproduce them *byte for byte*, so changing this
+    /// algorithm would make every retained artifact fail its own provenance check.
     pub fn has_valid_hash(&self) -> bool {
-        match ContentDigest::parse(&self.snapshot_hash) {
-            Some(stored) => match self.payload_bytes() {
-                Some(bytes) => stored.matches(&ContentDigest::from_bytes(&bytes)),
-                None => false,
-            },
-            None => self.has_legacy_hash(),
-        }
-    }
-
-    /// Whether `snapshot_hash` is the retired FNV-1a 64 fingerprint of these contents.
-    ///
-    /// Fly hashed replay snapshots with [`ProjectHash`] until 2026-10-08. The value is still
-    /// recognised so that persisted snapshots keep loading, but it is never produced again: the
-    /// digest of an approved artefact must not be forgeable with a cheap 64-bit collision.
-    pub fn has_legacy_hash(&self) -> bool {
         let Some(bytes) = self.payload_bytes() else {
             return false;
         };
         !self.snapshot_hash.is_empty()
             && self.snapshot_hash == ProjectHash::from_bytes(&bytes).hex()
-    }
-
-    /// Replace a retired FNV-1a 64 fingerprint with the sha256 digest of the same contents.
-    ///
-    /// Returns whether the hash changed. Contents are never touched, and a hash that matches
-    /// neither form (a tampered or truncated value) is left exactly as it is, so this cannot make
-    /// an invalid snapshot validate.
-    pub fn upgrade_legacy_hash(&mut self) -> bool {
-        if !self.has_legacy_hash() {
-            return false;
-        }
-        self.snapshot_hash = snapshot_hash(
-            &self.format,
-            &self.selection,
-            &self.policy,
-            &self.cases,
-            &self.matrix_diagnostics,
-        );
-        true
-    }
-
-    /// The retired FNV-1a 64 fingerprint of these contents.
-    ///
-    /// Exists so migration fixtures can rebuild the pre-2026-10-08 storage form. Production code
-    /// never produces it, and nothing reads it except tests.
-    #[cfg(test)]
-    pub(crate) fn legacy_hash_for_tests(&self) -> String {
-        self.payload_bytes()
-            .map_or_else(String::new, |bytes| ProjectHash::from_bytes(&bytes).hex())
     }
 
     /// The bytes `snapshot_hash` covers, or `None` when they cannot be encoded.
@@ -396,10 +358,11 @@ fn snapshot_payload(
     serde_json::to_vec(&(format, selection, policy, cases, diagnostics)).ok()
 }
 
-/// Collision-resistant digest of the snapshot's contents, rendered `sha256:<64 hex chars>`.
+/// Fingerprint of the snapshot's contents, rendered as 16 lowercase hex digits.
 ///
-/// An empty string means the snapshot could not be encoded. Empty never parses as a
-/// [`ContentDigest`], so every verification path fails closed instead of comparing a constant.
+/// An empty string means the snapshot could not be encoded. The previous `unwrap_or_default()`
+/// hashed *empty bytes* in that case, so every unencodable snapshot shared one fingerprint; an
+/// empty value never matches [`RuntimeScenarioRenderSnapshot::snapshot_hash`] checks instead.
 fn snapshot_hash(
     format: &str,
     selection: &PageSelection,
@@ -408,7 +371,7 @@ fn snapshot_hash(
     diagnostics: &[ValidationDiagnostic],
 ) -> String {
     match snapshot_payload(format, selection, policy, cases, diagnostics) {
-        Some(bytes) => ContentDigest::from_bytes(&bytes).to_string(),
+        Some(bytes) => ProjectHash::from_bytes(&bytes).hex(),
         None => String::new(),
     }
 }
@@ -449,53 +412,30 @@ mod tests {
     }
 
     #[test]
-    fn captured_snapshot_records_a_sha256_digest() {
-        let snapshot = RuntimeScenarioRenderSnapshot::capture(
-            &document(),
-            &PageSelection::First,
-            &RenderPolicy::default(),
-            &scenario("Welcome"),
-        );
-        assert!(snapshot.snapshot_hash.starts_with("sha256:"));
-        assert_eq!(snapshot.snapshot_hash.len(), "sha256:".len() + 64);
-        assert!(snapshot.has_valid_hash());
-        assert!(!snapshot.has_legacy_hash());
-    }
-
-    #[test]
-    fn legacy_fnv_snapshot_hash_is_recognised_then_upgraded() {
+    fn snapshot_hash_matches_its_contents_and_detects_edits() {
         let mut snapshot = RuntimeScenarioRenderSnapshot::capture(
             &document(),
             &PageSelection::First,
             &RenderPolicy::default(),
             &scenario("Welcome"),
         );
-        let payload = snapshot.payload_bytes().expect("snapshot payload");
-        // The form Fly persisted until 2026-10-08: a bare FNV-1a 64 fingerprint, no algorithm label.
-        snapshot.snapshot_hash = ProjectHash::from_bytes(&payload).hex();
-        assert!(snapshot.has_legacy_hash());
+        assert_eq!(snapshot.snapshot_hash.len(), 16);
         assert!(snapshot.has_valid_hash());
 
-        assert!(snapshot.upgrade_legacy_hash());
-        assert!(!snapshot.has_legacy_hash());
-        assert!(snapshot.has_valid_hash());
-        assert!(snapshot.snapshot_hash.starts_with("sha256:"));
-        assert!(!snapshot.upgrade_legacy_hash(), "upgrade is idempotent");
-    }
-
-    #[test]
-    fn upgrade_leaves_a_hash_that_matches_neither_form_alone() {
-        let mut snapshot = RuntimeScenarioRenderSnapshot::capture(
-            &document(),
-            &PageSelection::First,
-            &RenderPolicy::default(),
-            &scenario("Welcome"),
-        );
-        snapshot.snapshot_hash = "0000000000000000".to_string();
-        assert!(!snapshot.has_legacy_hash());
+        // Any edit to the covered fields invalidates the fingerprint, including another format.
+        snapshot.cases[0].scenario_label = "Renamed".to_string();
         assert!(!snapshot.has_valid_hash());
-        assert!(!snapshot.upgrade_legacy_hash());
-        assert_eq!(snapshot.snapshot_hash, "0000000000000000");
+        snapshot.snapshot_hash = snapshot_hash(
+            &snapshot.format,
+            &snapshot.selection,
+            &snapshot.policy,
+            &snapshot.cases,
+            &snapshot.matrix_diagnostics,
+        );
+        assert!(snapshot.has_valid_hash());
+
+        snapshot.snapshot_hash = String::new();
+        assert!(!snapshot.has_valid_hash());
     }
 
     #[test]

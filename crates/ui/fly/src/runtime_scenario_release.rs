@@ -71,10 +71,10 @@ impl RuntimeScenarioReleaseBaseline {
 
     /// Whether `baseline_hash` is the retired FNV-1a 64 fingerprint of these contents.
     ///
-    /// The baseline gate hashed with [`ProjectHash`] until 2026-10-08, and a 64-bit
+    /// The release gate hashed with [`ProjectHash`] until 2026-10-08, and a 64-bit
     /// non-cryptographic fingerprint can be collided on demand. The form is still recognised so
-    /// that already-persisted baselines keep loading; [`Self::is_legacy_hash_form`] reports it and
-    /// [`Self::upgrade_legacy_hashes`] rewrites it. Nothing captured now produces it.
+    /// that already-persisted baselines keep loading, and [`Self::upgrade_legacy_hash`] rewrites
+    /// it; nothing captured now produces it.
     pub fn has_legacy_hash(&self) -> bool {
         let Some(bytes) = baseline_payload(self) else {
             return false;
@@ -83,34 +83,27 @@ impl RuntimeScenarioReleaseBaseline {
             && self.baseline_hash == ProjectHash::from_bytes(&bytes).hex()
     }
 
-    /// Whether this baseline and its snapshot both still carry a retired FNV-1a 64 hash matching
-    /// their contents.
-    ///
-    /// That is the shape of every baseline persisted before 2026-10-08, and the only shape
-    /// [`Self::upgrade_legacy_hashes`] rewrites.
-    pub fn is_legacy_hash_form(&self) -> bool {
-        self.has_legacy_hash() && self.snapshot.has_legacy_hash()
-    }
-
-    /// Rewrite the retired FNV-1a 64 hashes of a fully legacy baseline as sha256 digests.
+    /// Rewrite a retired FNV-1a 64 `baseline_hash` as the sha256 digest of the same contents.
     ///
     /// Returns whether anything changed. This migrates the storage format of a row whose contents
-    /// already matched *both* recorded fingerprints, so it preserves a verification result
-    /// instead of manufacturing one: contents are never touched, and a row that fails either
-    /// fingerprint — a mixed or altered envelope, which is exactly what the baseline hash exists
-    /// to catch — is left as it is for [`Self::validate`] to reject. `baseline_hash` covers
-    /// `snapshot.snapshot_hash`, so it is recomputed from the rewritten snapshot.
+    /// already matched the recorded fingerprint, so it preserves a verification result instead of
+    /// manufacturing one: contents are never touched, and a value that matches no fingerprint —
+    /// an altered envelope, which is exactly what this hash exists to catch — is left as it is
+    /// for [`Self::validate`] to reject.
     ///
     /// Trust follows the fingerprint, not the algorithm: a row that verified under the retired
-    /// FNV-1a form becomes verified under sha256, which is the same claim the old code made about
-    /// it. The difference is that the claim can no longer be forged with a cheap 64-bit
-    /// collision — rewriting a row already required the write access that this hash exists to
-    /// hold to account.
-    pub fn upgrade_legacy_hashes(&mut self) -> bool {
-        if !self.is_legacy_hash_form() {
+    /// FNV-1a form becomes verified under sha256, which is the same claim the previous code made
+    /// about it. The difference is that the claim can no longer be forged with a cheap 64-bit
+    /// collision — and rewriting the row already required the write access that this hash exists
+    /// to hold to account.
+    ///
+    /// Only this hash moves. `snapshot.snapshot_hash` stays on `ProjectHash` because a snapshot is
+    /// persisted inside materialized artifacts whose rebuild path demands byte-identical
+    /// reproduction; this payload covers it, so an edit to it still breaks the digest below.
+    pub fn upgrade_legacy_hash(&mut self) -> bool {
+        if !self.has_legacy_hash() {
             return false;
         }
-        self.snapshot.upgrade_legacy_hash();
         self.baseline_hash = self.computed_hash();
         true
     }
@@ -494,8 +487,16 @@ mod tests {
         assert!(!strict.allowed);
     }
 
+    /// Rebuild the storage form Fly wrote before 2026-10-08: a bare FNV-1a 64 `baseline_hash`.
+    fn legacy_form(baseline: &mut RuntimeScenarioReleaseBaseline) {
+        let payload = super::baseline_payload(baseline).expect("baseline payload");
+        baseline.baseline_hash = ProjectHash::from_bytes(&payload).hex();
+    }
+
     #[test]
-    fn captured_baseline_records_sha256_digests() {
+    fn captured_baseline_hash_does_not_change_the_snapshot_fingerprint() {
+        // The snapshot stays on `ProjectHash` on purpose: materialized artifacts require a rebuild
+        // to reproduce the stored snapshots byte for byte.
         let baseline = RuntimeScenarioReleaseBaseline::capture(
             "release-1",
             &document(),
@@ -503,19 +504,8 @@ mod tests {
             &RenderPolicy::default(),
             &scenarios("Welcome"),
         );
-        assert!(baseline.baseline_hash.starts_with("sha256:"));
-        assert_eq!(baseline.baseline_hash.len(), "sha256:".len() + 64);
-        assert!(baseline.snapshot.snapshot_hash.starts_with("sha256:"));
-        assert!(!baseline.is_legacy_hash_form());
-        assert!(baseline.is_valid());
-    }
-
-    /// Rebuild the storage form Fly wrote before 2026-10-08: bare FNV-1a 64 fingerprints on both
-    /// the snapshot and the baseline that covers it.
-    fn legacy_form(baseline: &mut RuntimeScenarioReleaseBaseline) {
-        baseline.snapshot.snapshot_hash = baseline.snapshot.legacy_hash_for_tests();
-        let payload = super::baseline_payload(baseline).expect("baseline payload");
-        baseline.baseline_hash = ProjectHash::from_bytes(&payload).hex();
+        assert_eq!(baseline.snapshot.snapshot_hash.len(), 16);
+        assert!(baseline.snapshot.has_valid_hash());
     }
 
     #[test]
@@ -530,8 +520,6 @@ mod tests {
         );
         legacy_form(&mut baseline);
         assert!(baseline.has_legacy_hash());
-        assert!(baseline.snapshot.has_legacy_hash());
-        assert!(baseline.is_legacy_hash_form());
         assert!(baseline.is_valid());
 
         // A baseline stored before the switch still releases; it is not retroactively rejected.
@@ -543,12 +531,11 @@ mod tests {
         assert!(evaluation.allowed);
         assert_eq!(evaluation.status, RuntimeScenarioReleaseStatus::Stable);
 
-        assert!(baseline.upgrade_legacy_hashes());
+        assert!(baseline.upgrade_legacy_hash());
         assert!(!baseline.has_legacy_hash());
-        assert!(!baseline.snapshot.has_legacy_hash());
         assert!(baseline.is_valid());
         assert!(baseline.baseline_hash.starts_with("sha256:"));
-        assert!(!baseline.upgrade_legacy_hashes(), "upgrade is idempotent");
+        assert!(!baseline.upgrade_legacy_hash(), "upgrade is idempotent");
     }
 
     #[test]
@@ -562,17 +549,15 @@ mod tests {
         );
         baseline.baseline_hash = "0000000000000000".to_string();
         assert!(!baseline.has_legacy_hash());
-        assert!(!baseline.is_legacy_hash_form());
-        assert!(!baseline.upgrade_legacy_hashes());
+        assert!(!baseline.upgrade_legacy_hash());
         assert_eq!(baseline.baseline_hash, "0000000000000000");
         assert!(!baseline.is_valid());
     }
 
     #[test]
     fn upgrade_does_not_launder_an_altered_envelope() {
-        // Snapshot left in the legacy form, envelope no longer covered by any recorded hash: the
-        // row is not fully legacy, so migration must leave it broken rather than re-derive the
-        // envelope hash from contents that were never verified against it.
+        // Contents edited under a recorded hash that no longer covers them: migration must leave
+        // the row broken rather than derive a fresh hash from unverified contents.
         let mut baseline = RuntimeScenarioReleaseBaseline::capture(
             "release-1",
             &document(),
@@ -580,11 +565,10 @@ mod tests {
             &RenderPolicy::default(),
             &scenarios("Welcome"),
         );
-        baseline.snapshot.snapshot_hash = baseline.snapshot.legacy_hash_for_tests();
-        assert!(baseline.snapshot.has_legacy_hash());
+        legacy_form(&mut baseline);
+        baseline.scenarios = scenarios("Altered");
         assert!(!baseline.has_legacy_hash());
-        assert!(!baseline.is_legacy_hash_form());
-        assert!(!baseline.upgrade_legacy_hashes());
+        assert!(!baseline.upgrade_legacy_hash());
         assert!(!baseline.has_valid_hash());
         assert!(!baseline.is_valid());
     }

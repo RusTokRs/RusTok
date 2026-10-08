@@ -14,31 +14,31 @@ Engineering audit remediation — see
 
 ### Security
 
-- **Runtime-scenario release baselines and render snapshots are now digested with SHA-256.**
-  `digest.rs` states that every gate answering "is this payload the one that was approved?" uses
-  `ContentDigest`, and names the runtime-scenario release baseline as one of them — but
-  `RuntimeScenarioReleaseBaseline::computed_hash` and the `snapshot_hash` it covers still used
-  `ProjectHash` (FNV-1a 64). FNV-1a's `xor`/`multiply` chain is invertible, so a payload can be
-  constructed to match a chosen 64-bit value, and the baseline hash is what
-  `runtime_scenario_baseline_hash_invalid`, `RuntimeScenarioReleaseMode::BlockBroken` and the
-  `expected_baseline_hash` compare-and-swap rest on. Both now produce `sha256:<64 hex>` digests.
+- **The runtime-scenario release baseline hash is now a SHA-256 digest.** `digest.rs` states that
+  every gate answering "is this payload the one that was approved?" uses `ContentDigest`, and names
+  the runtime-scenario release baseline as one of them — but
+  `RuntimeScenarioReleaseBaseline::computed_hash` still returned a `ProjectHash` (FNV-1a 64)
+  fingerprint. FNV-1a's `xor`/`multiply` chain is invertible, so a payload can be constructed to
+  match a chosen 64-bit value, and this hash is what `runtime_scenario_baseline_hash_invalid`,
+  `RuntimeScenarioReleaseMode::BlockBroken` and the `expected_baseline_hash` compare-and-swap rest
+  on. It now produces `sha256:<64 hex>`, verified with a constant-time comparison.
 
-  The per-case `html_hash`/`css_hash`/`document_hash` deliberately stay FNV-1a: they are a
-  consistency tie between a stored snapshot case and the artifact it was captured from, not an
-  approval gate. Every payload they are compared against is already bound by a sha256 hash —
-  `StaticLandingPage::content_hash` covers `document_html`, and the materialization identity's
-  `runtime_snapshot_hash` covers the stored snapshots — and the snapshot digest added above covers
-  the case list itself. Moving them would also have invalidated every landing artifact persisted
-  before the change, because those rows are re-verified against freshly recomputed case hashes
-  long after they were written.
+  `RuntimeScenarioRenderSnapshot::snapshot_hash` deliberately stays on `ProjectHash`. It is not an
+  approval anchor: a snapshot is always carried inside an envelope that digests it with sha256 (the
+  baseline payload above, and the materialization identity's `runtime_snapshot_hash`), and
+  snapshots are persisted inside `page_static_landing_artifact` and
+  `page_publish_rebuild_source`, where the rebuild path requires a rebuild to reproduce them *byte
+  for byte* — changing the algorithm would fail every retained artifact with "rebuilt runtime
+  evidence does not exactly reproduce retained provenance". The same reasoning kept the per-case
+  `html_hash`/`css_hash`/`document_hash` on FNV-1a.
+
 - **Baselines persisted in the old form keep working and are upgraded on first read.** The legacy
   FNV-1a fingerprint is still recognised, so no row is retroactively rejected and no publishing
-  path breaks on upgrade; `rustok-pages` rewrites the two hash fields of a fully legacy row the
-  first time it is read (contents untouched, compare-and-swap on the old hash, concurrent writers
-  win). A row that fails either fingerprint is left exactly as it was — an alteration the baseline
-  hash exists to catch is never repaired into a valid one. New captures never produce the legacy
+  path breaks on upgrade; `rustok-pages` rewrites `baseline_hash` the first time such a row is read
+  (contents untouched, compare-and-swap on the old hash, a concurrent writer's row wins and is
+  returned instead). A value that matches no recorded fingerprint — an altered envelope, exactly
+  what this hash exists to catch — is never repaired, and new captures never produce the legacy
   form.
-
 - `EditorCommand::RestoreSnapshot` now restores through `restore_verified`. `restore` verifies
   the content digest only when one is present, falling back to `project_hash` — a cheap FNV-1a
   change-detection token that is trivial to forge. Nothing untrusted reaches that path today, but

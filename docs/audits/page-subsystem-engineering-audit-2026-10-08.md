@@ -251,50 +251,30 @@ stored record) but cannot update the stored digest can substitute content that s
 boundary — it removes a layer of tamper evidence behind one — but it is the difference between a
 control and a formality.
 
-**Status: fixed for the two approval gates.** `RuntimeScenarioReleaseBaseline::computed_hash` and
-the `snapshot_hash` it covers now produce `ContentDigest` (`sha256:<64 hex>`) values, verified by
-constant-time comparison in `has_valid_hash` and `RuntimeScenarioRenderSnapshot::has_valid_hash`.
+**Status: fixed for the approval anchor.** `RuntimeScenarioReleaseBaseline::computed_hash` now
+produces `ContentDigest` (`sha256:<64 hex>`) and `has_valid_hash` compares it in constant time. That
+is the value recorded in `page_builder_scenario_baselines.baseline_hash`, exported over GraphQL and
+used as the `expected_baseline_hash` compare-and-swap precondition, so it is the one hash in this
+family whose forgery would let a payload pass as "the approved baseline".
 
-The per-case `html_hash`/`css_hash`/`document_hash` in `runtime_scenario_render.rs` deliberately
-stay FNV-1a, and this was a mid-implementation correction worth recording: changing them looked
-like consistency, but `runtime_snapshots` is **persisted** in
-`page_static_landing_artifact`/`page_publish_rebuild_source` and re-verified later —
-`artifact_integrity_audit.rs` and `page_builder_artifact.rs` rebuild the materialization from the
-stored JSON and compare each case's `document_hash` against a freshly computed value, and
-`artifact_rebuild.rs` compares stored snapshots against a fresh materialization. Switching the
-algorithm would have failed every artifact row written before the deploy with
-"runtime snapshot for static page N does not match the materialized artifact" — a deploy-time
-regression across the serve, audit and rebuild paths. The revert costs nothing in integrity: the
-case hashes are a consistency tie, not an approval gate, and every payload they are compared
-against is already bound by sha256 (`StaticLandingPage::content_hash` over `document_html`, and the
-identity's `runtime_snapshot_hash` over the stored snapshots), while the snapshot digest added here
-covers the case list itself.
+Two neighbouring hashes **deliberately stay FNV-1a**, and reaching that decision took a
+mid-implementation correction worth recording, because "switch everything" was the wrong answer:
 
-Migration, because the old value is persisted in MySQL, exported over GraphQL and used as the
-`expected_baseline_hash` compare-and-swap precondition:
+- `RuntimeScenarioRenderSnapshot::snapshot_hash` is always carried inside an envelope that digests
+  it with sha256 — the baseline payload above, and the materialization identity's
+  `runtime_snapshot_hash`, which is a sha256 digest of the stored snapshot list. Changing it also
+  breaks the pages rebuild path: `artifact_rebuild.rs` requires a rebuild to reproduce
+  `runtime_snapshots` byte for byte ("rebuilt runtime evidence does not exactly reproduce retained
+  provenance"), so every artifact persisted before the deploy would fail its own provenance check.
+- The per-case `html_hash`/`css_hash`/`document_hash` are compared against freshly recomputed
+  values on the serve, audit and rebuild paths (`artifact_integrity_audit.rs`,
+  `page_builder_artifact.rs`), so the same deploy-time failure would appear as "runtime snapshot for
+  static page N does not match the materialized artifact". They lose nothing: the payloads they are
+  compared against are already bound by sha256 (`StaticLandingPage::content_hash` over
+  `document_html`, and the identity's `runtime_snapshot_hash`, a sha256 digest of the whole stored
+  snapshot list including those case fields).
 
-- The retired FNV-1a fingerprint is still **recognised** on verification
-  (`has_valid_hash` falls back to it only when the stored value is not a `sha256:` digest), so no
-  stored baseline is retroactively rejected and no publishing path breaks at deploy time.
-- `RuntimeScenarioReleaseBaseline::upgrade_legacy_hashes` rewrites a baseline that is in the fully
-  legacy form, and `rustok-pages` applies it at the load choke point
-  (`scenario_baseline.rs::load_record_unchecked` → `upgrade_legacy_baseline_hashes`): contents are
-  never touched, only the two hash fields are re-derived, and the `UPDATE` is a compare-and-swap on
-  the old hash so a concurrent writer's row wins and is returned instead.
-- The upgrade refuses anything that is not *fully* legacy, i.e. it only rewrites a row whose
-  contents already matched **both** fingerprints. A mixed or altered envelope — precisely what the
-  baseline hash exists to catch — is left broken for `validate()` to reject. A row that verified
-  under FNV-1a becomes verified under SHA-256, which is the same claim the previous code made about
-  it; the difference is that the claim can no longer be forged with a cheap 64-bit collision.
-- Nothing newly captured produces the legacy form.
-
-The same fail-open pattern was closed in `context_json_schema.rs`, the last member of the family:
-its `x-fly-fields`/`x-fly-computed` mirrors fell back to empty arrays through `unwrap_or_default()`,
-and `contract_hash` hashed *empty bytes*. It is a displayed identity rather than an approval gate,
-so the cheap fingerprint stays (which `digest.rs` explicitly permits for identity), but a failed
-encoding now reports a diagnostic and leaves the hash empty instead of handing every broken schema
-the same constant — and a contract entry that cannot be serialised is reported rather than silently
-flattened to an empty list.
+Migration, because the baseline hash is persisted and compared across the admin/Pages boundary:
 
 Also fixed as part of this: `snapshot_hash()` no longer hashes *empty bytes* on a serialisation
 failure — it returns an empty string, which never parses as a `ContentDigest`, so every
@@ -303,12 +283,12 @@ recommendation below suggested: the field is a plain `String` in a persisted str
 digest is both unreachable in practice and unambiguously invalid where a fallible signature would
 have rippled through the whole capture/baseline API for no additional safety.)
 
-Verification performed: the crate's own rustfmt/tree-sitter checks pass for all five changed files;
-new unit tests cover legacy recognition, in-place upgrade (including idempotence), and the two
-cases that must **not** be repaired (a value matching no recorded content, and a snapshot-legacy /
-envelope-altered row). An independent model of the decision table in `docs/audits/` reproduced the
-intended outcome for all seven states. **Needs toolchain:** `cargo test -p fly -p rustok-pages`,
-which this environment cannot run.
+Verification performed: rustfmt and tree-sitter parsing pass for all changed files; new unit tests
+cover legacy recognition, in-place upgrade (including idempotence), the two states that must **not**
+be repaired (a value matching no recorded content, and an altered envelope), and that a captured
+snapshot fingerprint still matches its contents while the baseline digest is sha256. An independent
+model of the decision table reproduced the intended outcome for every state. **Needs toolchain:**
+`cargo test -p fly -p rustok-pages`, which this environment cannot run.
 
 ## 6. Verified clean (checked, no defect found)
 
