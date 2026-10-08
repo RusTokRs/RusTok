@@ -654,5 +654,6 @@ The three public Pages GraphQL reads (`page`, `pageBySlug`, and `pages`) accepte
 reads did not reject a requested tenant different from `TenantContext.id`. A caller with a known
 foreign tenant UUID could therefore select another tenant's Pages dataset through the read API; the
 public-channel check did not establish tenant ownership. The query root now resolves the optional
-argument through `query_tenant_id`, accepting only the current request tenant and rejecting a
-mismatch before any service/database read.
+argument through `query_tenant_id`, accepting only the current request tenant, rejecting a
+mismatching requested tenant, and rejecting an authenticated actor whose `AuthContext.tenant_id`
+does not match the current tenant before any service/database read.

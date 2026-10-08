@@ -36,7 +36,11 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = query_tenant_id(tenant, tenant_id)?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PageService::new(db.clone(), event_bus.clone());
@@ -82,7 +86,11 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = query_tenant_id(tenant, tenant_id)?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PageService::new(db.clone(), event_bus.clone());
@@ -121,7 +129,11 @@ impl PagesQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = query_tenant_id(tenant, tenant_id)?;
+        let tenant_id = query_tenant_id(
+            tenant,
+            ctx.data_opt::<AuthContext>().map(|auth| auth.tenant_id),
+            tenant_id,
+        )?;
 
         let filter = filter.unwrap_or(ListGqlPagesFilter {
             locale: None,
@@ -182,8 +194,14 @@ impl PagesQuery {
     }
 }
 
-fn query_tenant_id(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
-    if requested.is_some_and(|requested| requested != tenant.id) {
+fn query_tenant_id(
+    tenant: &TenantContext,
+    authenticated_tenant: Option<Uuid>,
+    requested: Option<Uuid>,
+) -> Result<Uuid> {
+    if authenticated_tenant.is_some_and(|authenticated_tenant| authenticated_tenant != tenant.id)
+        || requested.is_some_and(|requested| requested != tenant.id)
+    {
         return Err(async_graphql::Error::new(
             "Pages reads must use the current tenant",
         ));
