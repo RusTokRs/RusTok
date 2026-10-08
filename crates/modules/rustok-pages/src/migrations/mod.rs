@@ -15,6 +15,10 @@ mod m20260806_000013_create_page_publish_rebuild_sources;
 mod m20260806_000014_add_explicit_artifact_rebuild;
 mod m20260806_000014_add_translation_target_support;
 mod m20260807_000015_create_page_artifact_binding_replacements;
+// Renamed from the July slot it was authored in: the file was never registered, and the composed
+// migration plan is name-sorted, so registering the old name would have inserted an entry in the
+// middle of the plan instead of appending one.
+mod m20261008_000001_create_scenario_baseline_revision_history;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -38,6 +42,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260806_000014_add_explicit_artifact_rebuild::Migration),
         Box::new(m20260806_000014_add_translation_target_support::Migration),
         Box::new(m20260807_000015_create_page_artifact_binding_replacements::Migration),
+        Box::new(m20261008_000001_create_scenario_baseline_revision_history::Migration),
     ]
 }
 

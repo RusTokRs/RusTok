@@ -209,7 +209,8 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
 }
 
 #[tokio::test]
-async fn update_and_status_events_advance_projection_cursor_without_count_change() -> TestResult<()> {
+async fn update_and_status_events_advance_projection_cursor_without_count_change() -> TestResult<()>
+{
     let Some(test_db) = PostgresBlogProjectionTestDb::setup("lifecycle_cursor").await? else {
         return Ok(());
     };

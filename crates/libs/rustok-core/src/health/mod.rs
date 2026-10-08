@@ -303,8 +303,13 @@ pub mod checks {
     /// Database connectivity check
     pub struct DatabaseHealthCheck {
         name: String,
-        check_fn:
-            Box<dyn Fn() -> futures::future::BoxFuture<'static, Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + Sync>,
+        check_fn: Box<
+            dyn Fn() -> futures::future::BoxFuture<
+                    'static,
+                    Result<(), Box<dyn std::error::Error + Send + Sync>>,
+                > + Send
+                + Sync,
+        >,
     }
 
     impl DatabaseHealthCheck {

@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use rustok_api::{Action, PortContext, PortError, Resource};
 use rustok_core::SecurityContext;
 use rustok_media::{
-    MediaAssetReferenceListPage, MediaAssetReferenceListRequest, MediaAssetReferenceLookupRequest,
-    MediaAssetReferenceLookupResult, MediaAssetReadPort,
+    MediaAssetReadPort, MediaAssetReferenceListPage, MediaAssetReferenceListRequest,
+    MediaAssetReferenceLookupRequest, MediaAssetReferenceLookupResult,
 };
 use sea_orm::{
     AccessMode, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, IsolationLevel,
@@ -198,25 +198,23 @@ impl ForumAttachmentHoldReconciliationService {
             )
             .await;
 
-        let (relation_media_by_reference, forum_relations) = match (
-            relation_media_by_reference,
-            forum_relations,
-        ) {
-            (Ok(media_refs), Ok(forum_relations)) => {
-                transaction.commit().await?;
-                (media_refs, forum_relations)
-            }
-            (Err(error), _) | (_, Err(error)) => {
-                if let Err(rollback_error) = transaction.rollback().await {
-                    tracing::warn!(
-                        operation = FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION,
-                        error = %rollback_error,
-                        "failed to rollback Forum attachment hold reconciliation transaction"
-                    );
+        let (relation_media_by_reference, forum_relations) =
+            match (relation_media_by_reference, forum_relations) {
+                (Ok(media_refs), Ok(forum_relations)) => {
+                    transaction.commit().await?;
+                    (media_refs, forum_relations)
                 }
-                return Err(error);
-            }
-        };
+                (Err(error), _) | (_, Err(error)) => {
+                    if let Err(rollback_error) = transaction.rollback().await {
+                        tracing::warn!(
+                            operation = FORUM_ATTACHMENT_HOLD_RECONCILIATION_OPERATION,
+                            error = %rollback_error,
+                            "failed to rollback Forum attachment hold reconciliation transaction"
+                        );
+                    }
+                    return Err(error);
+                }
+            };
 
         let reverse_reference_ids = forum_relations
             .iter()
@@ -277,10 +275,8 @@ impl ForumAttachmentHoldReconciliationService {
                 Ok(rows) => rows,
                 Err(err) => return (Err(ForumError::from(err)), Ok(Vec::new())),
             };
-            relation_media_by_reference.extend(
-                rows.into_iter()
-                    .map(|row| (row.reference_id, row.media_id)),
-            );
+            relation_media_by_reference
+                .extend(rows.into_iter().map(|row| (row.reference_id, row.media_id)));
         }
 
         let mut query = forum_attachment_relation::Entity::find()
@@ -288,9 +284,8 @@ impl ForumAttachmentHoldReconciliationService {
             .order_by_asc(forum_attachment_relation::Column::ReferenceId)
             .limit(effective_limit.saturating_add(1));
         if let Some(after_reference_id) = forum_relation_after {
-            query = query.filter(
-                forum_attachment_relation::Column::ReferenceId.gt(after_reference_id),
-            );
+            query =
+                query.filter(forum_attachment_relation::Column::ReferenceId.gt(after_reference_id));
         }
 
         let result = query.all(transaction).await.map_err(ForumError::from);
@@ -321,11 +316,7 @@ impl ForumAttachmentHoldReconciliationService {
         let forum_cursor = forum_relations.last().map(|row| row.reference_id);
         let inspected_forum_relations = forum_relations.len() as u64;
 
-        validate_media_lookup(
-            &reverse_lookup,
-            &forum_relations,
-            tenant_id,
-        )?;
+        validate_media_lookup(&reverse_lookup, &forum_relations, tenant_id)?;
 
         let mut reverse_by_reference = HashMap::with_capacity(reverse_lookup.references.len());
         for reference in reverse_lookup.references {
@@ -371,7 +362,8 @@ impl ForumAttachmentHoldReconciliationService {
                 None if seen_drifts.insert((
                     ForumAttachmentHoldDriftKind::MissingMediaHold,
                     relation.reference_id,
-                )) => {
+                )) =>
+                {
                     drifts.push(ForumAttachmentHoldDrift {
                         kind: ForumAttachmentHoldDriftKind::MissingMediaHold,
                         reference_id: relation.reference_id,
@@ -379,11 +371,13 @@ impl ForumAttachmentHoldReconciliationService {
                         relation_media_id: None,
                     });
                 }
-                Some(reference) if reference.media_id != relation.media_id
-                    && seen_drifts.insert((
-                        ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
-                        relation.reference_id,
-                    )) => {
+                Some(reference)
+                    if reference.media_id != relation.media_id
+                        && seen_drifts.insert((
+                            ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
+                            relation.reference_id,
+                        )) =>
+                {
                     drifts.push(ForumAttachmentHoldDrift {
                         kind: ForumAttachmentHoldDriftKind::MediaReferenceMismatch,
                         reference_id: relation.reference_id,
@@ -504,7 +498,12 @@ fn validate_media_page(
         previous = Some(reference.reference_id);
     }
 
-    if page.next_reference_id != page.references.last().map(|reference| reference.reference_id) {
+    if page.next_reference_id
+        != page
+            .references
+            .last()
+            .map(|reference| reference.reference_id)
+    {
         return Err(ForumError::capability_failure(
             "media.asset_reference_reconciliation",
             "MEDIA_REFERENCE_PAGE_CURSOR_INVALID",
@@ -524,7 +523,8 @@ fn validate_media_reference(
         return Err(ForumError::CapabilityFailure {
             capability: "media.asset_reference_reconciliation",
             source_code: "MEDIA_REFERENCE_TENANT_MISMATCH".to_string(),
-            message: "Media returned an owner reference outside the trusted Forum tenant".to_string(),
+            message: "Media returned an owner reference outside the trusted Forum tenant"
+                .to_string(),
             retryable: false,
         });
     }
@@ -679,7 +679,10 @@ mod tests {
                 reference_id: Uuid::new_v4(),
             }],
         };
-        assert!(validate_media_lookup(&unrequested, std::slice::from_ref(&relation), tenant_id).is_err());
+        assert!(
+            validate_media_lookup(&unrequested, std::slice::from_ref(&relation), tenant_id)
+                .is_err()
+        );
 
         let duplicate = rustok_media::MediaAssetReference {
             media_id: relation.media_id,

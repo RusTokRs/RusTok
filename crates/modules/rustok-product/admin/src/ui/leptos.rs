@@ -9,38 +9,38 @@ use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
+use crate::catalog_transport;
 use crate::core::{
     DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
     ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
     ProductAdminSelectedProductQueryState, ProductAttributeEditorState, SaveMode,
-    SelectedProductSummaryViewModel, StatusOutcome, StatusTarget, build_delete_command,
-    build_delete_result_view_model, build_product_admin_editor_copy,
+    SelectedProductSummaryViewModel, StatusOutcome, StatusTarget, VariantRowViewModel,
+    build_delete_command, build_delete_result_view_model, build_product_admin_editor_copy,
     build_product_admin_editor_form_state, build_product_admin_editor_view_model,
     build_product_admin_error_copy, build_product_admin_list_action_labels,
     build_product_admin_list_controls_view_model, build_product_admin_list_item_view_model,
     build_product_admin_open_product_view_model, build_product_admin_seo_panel_copy,
     build_product_admin_shell_view_model, build_product_admin_summary_panel_copy,
-    build_product_attribute_form_copy, build_product_detached_attribute_value_view_models,
-    build_save_command, build_selected_product_summary_view_model, build_status_command,
-    build_status_result_view_model, empty_product_admin_editor_form_state,
-    parse_product_admin_inventory_quantity_input, pricing_preview_request_from_product,
-    pricing_preview_state_from_result, product_admin_clear_product_query_intent,
-    product_admin_list_actions_disabled, product_admin_open_product_query_intent,
-    product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
-    product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
-    text_or_none, build_product_media_panel_copy, build_product_variants_panel_copy,
-    build_product_image_view_models, build_variant_row_view_models, VariantRowViewModel,
-    build_product_attribute_values_section_copy,
+    build_product_attribute_form_copy, build_product_attribute_values_section_copy,
+    build_product_detached_attribute_value_view_models, build_product_image_view_models,
+    build_product_media_panel_copy, build_product_variants_panel_copy, build_save_command,
+    build_selected_product_summary_view_model, build_status_command,
+    build_status_result_view_model, build_variant_row_view_models,
+    empty_product_admin_editor_form_state, parse_product_admin_inventory_quantity_input,
+    pricing_preview_request_from_product, pricing_preview_state_from_result,
+    product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
+    product_admin_open_product_query_intent, product_admin_products_load_view_from_result,
+    product_admin_saved_product_query_intent, product_admin_selected_product_query_state,
+    shipping_profiles_load_view_from_result, text_or_none,
 };
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategorySummary,
     CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary, ProductAttributeValueItem,
     ProductDetail, ProductEffectiveForm, ProductEffectiveFormAttribute, ProductImageDraft,
-    ProductPricingDetail, SetCategorySchemaModeDraft, SetVariantAxesDraft,
-    UpdateProductImageDraft, VariantAxisDraft, VariantDraft, VariantPriceDraft,
+    ProductPricingDetail, SetCategorySchemaModeDraft, SetVariantAxesDraft, UpdateProductImageDraft,
+    VariantAxisDraft, VariantDraft, VariantPriceDraft,
 };
-use crate::catalog_transport;
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -1776,15 +1776,21 @@ fn ProductVariantsPanel(
             let product_id_val = product_id_val.clone();
 
             let price_val = amount.get_untracked().trim().to_string();
-            let price_val = if price_val.is_empty() { "0.00".to_string() } else { price_val };
+            let price_val = if price_val.is_empty() {
+                "0.00".to_string()
+            } else {
+                price_val
+            };
 
             let axis_values = selected_axis_values
                 .get_untracked()
                 .into_iter()
-                .map(|(attribute_id, option_id)| crate::model::VariantAxisValueDraft {
-                    attribute_id,
-                    option_id,
-                })
+                .map(
+                    |(attribute_id, option_id)| crate::model::VariantAxisValueDraft {
+                        attribute_id,
+                        option_id,
+                    },
+                )
                 .collect();
 
             let draft = VariantDraft {
@@ -3003,7 +3009,6 @@ pub fn ProductAttributeValuesSection(
     }.into_any()
 }
 
-
 /// One editable variant axis row of the mounted editor.
 #[derive(Clone, Debug, PartialEq)]
 struct VariantAxisRow {
@@ -3049,17 +3054,42 @@ pub fn ProductVariantAxesSection(
     let (add_selection, set_add_selection) = signal(String::new());
     let seeded = RwSignal::new(false);
 
-    let title = if is_ru { "Оси вариантов" } else { "Variant axes" }.to_string();
+    let title = if is_ru {
+        "Оси вариантов"
+    } else {
+        "Variant axes"
+    }
+    .to_string();
     let subtitle = if is_ru {
         "Оси задают идентичность комбинаций. Доступны атрибуты схемы категории, для которых политика оси не запрещена."
     } else {
         "Axes define the combination identity. Only category-schema attributes whose axis policy is not forbidden are offered."
     }
     .to_string();
-    let save_label = if is_ru { "Сохранить оси" } else { "Save axes" }.to_string();
-    let saving_label = if is_ru { "Сохранение..." } else { "Saving..." }.to_string();
-    let saved_label = if is_ru { "Оси вариантов сохранены" } else { "Variant axes saved" }.to_string();
-    let cleared_label = if is_ru { "Оси очищены" } else { "Variant axes cleared" }.to_string();
+    let save_label = if is_ru {
+        "Сохранить оси"
+    } else {
+        "Save axes"
+    }
+    .to_string();
+    let saving_label = if is_ru {
+        "Сохранение..."
+    } else {
+        "Saving..."
+    }
+    .to_string();
+    let saved_label = if is_ru {
+        "Оси вариантов сохранены"
+    } else {
+        "Variant axes saved"
+    }
+    .to_string();
+    let cleared_label = if is_ru {
+        "Оси очищены"
+    } else {
+        "Variant axes cleared"
+    }
+    .to_string();
     let empty_label = if is_ru {
         "Оси не заданы. Добавьте атрибут, чтобы включить комбинации вариантов."
     } else {
@@ -3072,9 +3102,19 @@ pub fn ProductVariantAxesSection(
         "The category schema has no option-backed attribute that allows axis use. Configure the category schema."
     }
     .to_string();
-    let add_label = if is_ru { "Добавить ось" } else { "Add axis" }.to_string();
+    let add_label = if is_ru {
+        "Добавить ось"
+    } else {
+        "Add axis"
+    }
+    .to_string();
     let select_attribute_label = if is_ru { "Атрибут" } else { "Attribute" }.to_string();
-    let allowed_values_label = if is_ru { "Допустимые значения" } else { "Allowed values" }.to_string();
+    let allowed_values_label = if is_ru {
+        "Допустимые значения"
+    } else {
+        "Allowed values"
+    }
+    .to_string();
 
     let loaded_product_id = product_id.clone();
     let loaded_locale = locale.clone();
@@ -3247,10 +3287,7 @@ pub fn ProductVariantAxesSection(
 
     let move_axis = move |attribute_id: &str, delta: i32| {
         set_rows.update(|rows| {
-            let Some(index) = rows
-                .iter()
-                .position(|row| row.attribute_id == attribute_id)
-            else {
+            let Some(index) = rows.iter().position(|row| row.attribute_id == attribute_id) else {
                 return;
             };
             let target = index as i32 + delta;
@@ -3267,10 +3304,7 @@ pub fn ProductVariantAxesSection(
 
     let toggle_option = move |attribute_id: &str, option_id: &str| {
         set_rows.update(|rows| {
-            let Some(row) = rows
-                .iter_mut()
-                .find(|row| row.attribute_id == attribute_id)
-            else {
+            let Some(row) = rows.iter_mut().find(|row| row.attribute_id == attribute_id) else {
                 return;
             };
             match row
@@ -3322,7 +3356,10 @@ pub fn ProductVariantAxesSection(
                 .collect(),
         };
         set_rows.update(move |rows| {
-            if rows.iter().any(|existing| existing.attribute_id == row.attribute_id) {
+            if rows
+                .iter()
+                .any(|existing| existing.attribute_id == row.attribute_id)
+            {
                 return;
             }
             rows.push(row);
@@ -3356,7 +3393,8 @@ pub fn ProductVariantAxesSection(
         let save_error = save_error_copy.clone();
         spawn_local(async move {
             let result = async {
-                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+                let bootstrap =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
                 catalog_transport::set_variant_axes(
                     tok,
                     ten,
@@ -3524,7 +3562,6 @@ pub fn ProductVariantAxesSection(
     }.into_any()
 }
 
-
 /// Applies the shared result handling of the mounted schema-authoring commands.
 ///
 /// Every authoring command resolves to `Result<bool, String>` at the facade
@@ -3633,15 +3670,10 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
-            catalog_transport::fetch_catalog_categories(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                loc,
-            )
-            .await
-            .map(|list| list.items)
-            .map_err(|failure| failure.to_string())
+            catalog_transport::fetch_catalog_categories(tok, ten, bootstrap.current_tenant.id, loc)
+                .await
+                .map(|list| list.items)
+                .map_err(|failure| failure.to_string())
         }
     });
 
@@ -3654,15 +3686,10 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
-            catalog_transport::fetch_attribute_schemas(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                loc,
-            )
-            .await
-            .map(|list| list.items)
-            .map_err(|failure| failure.to_string())
+            catalog_transport::fetch_attribute_schemas(tok, ten, bootstrap.current_tenant.id, loc)
+                .await
+                .map(|list| list.items)
+                .map_err(|failure| failure.to_string())
         }
     });
 
@@ -3675,15 +3702,10 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
-            catalog_transport::fetch_product_attributes(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                loc,
-            )
-            .await
-            .map(|list| list.items)
-            .map_err(|failure| failure.to_string())
+            catalog_transport::fetch_product_attributes(tok, ten, bootstrap.current_tenant.id, loc)
+                .await
+                .map(|list| list.items)
+                .map_err(|failure| failure.to_string())
         }
     });
 
@@ -3748,18 +3770,18 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             error_copy_store.get_value(),
             is_ru,
             Box::pin(async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                    .await
+                    .map_err(|failure| failure.to_string())?;
+                catalog_transport::set_category_schema_mode(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    draft,
+                )
                 .await
-                .map_err(|failure| failure.to_string())?;
-            catalog_transport::set_category_schema_mode(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                draft,
-            )
-            .await
-            .map_err(|failure| failure.to_string())
+                .map_err(|failure| failure.to_string())
             }),
         );
     };
@@ -3806,19 +3828,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             error_copy_store.get_value(),
             is_ru,
             Box::pin(async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                    .await
+                    .map_err(|failure| failure.to_string())?;
+                catalog_transport::create_product_attribute_schema_group(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    loc,
+                    draft,
+                )
                 .await
-                .map_err(|failure| failure.to_string())?;
-            catalog_transport::create_product_attribute_schema_group(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                loc,
-                draft,
-            )
-            .await
-            .map_err(|failure| failure.to_string())
+                .map_err(|failure| failure.to_string())
             }),
         );
     };
@@ -3864,18 +3886,18 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             error_copy_store.get_value(),
             is_ru,
             Box::pin(async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                    .await
+                    .map_err(|failure| failure.to_string())?;
+                catalog_transport::bind_schema_attribute(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    draft,
+                )
                 .await
-                .map_err(|failure| failure.to_string())?;
-            catalog_transport::bind_schema_attribute(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                draft,
-            )
-            .await
-            .map_err(|failure| failure.to_string())
+                .map_err(|failure| failure.to_string())
             }),
         );
     };
@@ -3922,19 +3944,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             error_copy_store.get_value(),
             is_ru,
             Box::pin(async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                    .await
+                    .map_err(|failure| failure.to_string())?;
+                catalog_transport::create_category_attribute_group(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    loc,
+                    draft,
+                )
                 .await
-                .map_err(|failure| failure.to_string())?;
-            catalog_transport::create_category_attribute_group(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                loc,
-                draft,
-            )
-            .await
-            .map_err(|failure| failure.to_string())
+                .map_err(|failure| failure.to_string())
             }),
         );
     };
@@ -3983,18 +4005,18 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             error_copy_store.get_value(),
             is_ru,
             Box::pin(async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                    .await
+                    .map_err(|failure| failure.to_string())?;
+                catalog_transport::bind_category_attribute(
+                    tok,
+                    ten,
+                    bootstrap.current_tenant.id,
+                    bootstrap.me.id,
+                    draft,
+                )
                 .await
-                .map_err(|failure| failure.to_string())?;
-            catalog_transport::bind_category_attribute(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                bootstrap.me.id,
-                draft,
-            )
-            .await
-            .map_err(|failure| failure.to_string())
+                .map_err(|failure| failure.to_string())
             }),
         );
     };

@@ -9,9 +9,7 @@ use rustok_core::{Rbac, UserRole, i18n::Locale};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
-use crate::{
-    RbacPresentationResourceKind, RbacPresentationStore, SeaOrmRbacPresentationStore,
-};
+use crate::{RbacPresentationResourceKind, RbacPresentationStore, SeaOrmRbacPresentationStore};
 
 use super::control_plane::{prepare_statement, require_direct_control_plane_user};
 use super::types::{PlatformPermissionItem, RoleInfo};
@@ -97,48 +95,414 @@ async fn role_display_name(
 
 fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
     vec![
-        (Resource::Users, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Tenants, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Modules, vec![Action::Read, Action::List, Action::Manage]),
-        (Resource::Settings, vec![Action::Read, Action::Update, Action::List, Action::Manage]),
-        (Resource::FlexSchemas, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::FlexEntries, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Products, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Categories, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Orders, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Customers, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Profiles, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Groups, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Moderate, Action::Manage]),
-        (Resource::Regions, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Payments, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Fulfillments, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Inventory, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Discounts, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::MarketplaceSellers, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::MarketplaceListings, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Publish, Action::Moderate, Action::Manage]),
-        (Resource::Posts, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Publish, Action::Manage]),
-        (Resource::Pages, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Navigation, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Nodes, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Media, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Seo, vec![Action::Read, Action::Update, Action::Publish, Action::Execute, Action::Manage]),
-        (Resource::Comments, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Moderate, Action::Manage]),
-        (Resource::Tags, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Taxonomy, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::Analytics, vec![Action::Read, Action::Export, Action::Manage]),
-        (Resource::Logs, vec![Action::Read, Action::List, Action::Manage]),
-        (Resource::Webhooks, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::BlogPosts, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Publish, Action::Manage]),
-        (Resource::BlogCategories, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::ForumCategories, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::ForumTopics, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Moderate, Action::Manage]),
-        (Resource::ForumReplies, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Moderate, Action::Manage]),
-        (Resource::ModerationCases, vec![Action::Read, Action::List, Action::Override, Action::Manage]),
-        (Resource::Scripts, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Execute, Action::Manage]),
-        (Resource::Mcp, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
+        (
+            Resource::Users,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Tenants,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Modules,
+            vec![Action::Read, Action::List, Action::Manage],
+        ),
+        (
+            Resource::Settings,
+            vec![Action::Read, Action::Update, Action::List, Action::Manage],
+        ),
+        (
+            Resource::FlexSchemas,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::FlexEntries,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Products,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Categories,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Orders,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Customers,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Profiles,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Groups,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Moderate,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Regions,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Payments,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Fulfillments,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Inventory,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Discounts,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::MarketplaceSellers,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::MarketplaceListings,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Publish,
+                Action::Moderate,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Posts,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Publish,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Pages,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Navigation,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Nodes,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Media,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Seo,
+            vec![
+                Action::Read,
+                Action::Update,
+                Action::Publish,
+                Action::Execute,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Comments,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Moderate,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Tags,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Taxonomy,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Analytics,
+            vec![Action::Read, Action::Export, Action::Manage],
+        ),
+        (
+            Resource::Logs,
+            vec![Action::Read, Action::List, Action::Manage],
+        ),
+        (
+            Resource::Webhooks,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::BlogPosts,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Publish,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::BlogCategories,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::ForumCategories,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::ForumTopics,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Moderate,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::ForumReplies,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Moderate,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::ModerationCases,
+            vec![Action::Read, Action::List, Action::Override, Action::Manage],
+        ),
+        (
+            Resource::Scripts,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Execute,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::Mcp,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
         (Resource::AiProviders, vec![Action::Read, Action::Manage]),
         (Resource::AiTaskProfiles, vec![Action::Read, Action::Manage]),
-        (Resource::AiSessions, vec![Action::Read, Action::Run, Action::Manage]),
+        (
+            Resource::AiSessions,
+            vec![Action::Read, Action::Run, Action::Manage],
+        ),
         (Resource::AiRuns, vec![Action::Cancel, Action::Manage]),
         (Resource::AiApprovals, vec![Action::Resolve, Action::Manage]),
         (Resource::AiRouter, vec![Action::Override, Action::Manage]),
@@ -146,12 +510,59 @@ fn platform_permission_catalog() -> Vec<(Resource, Vec<Action>)> {
         (Resource::AiImageTasks, vec![Action::Run, Action::Manage]),
         (Resource::AiCodeTasks, vec![Action::Run, Action::Manage]),
         (Resource::AiAlloyTasks, vec![Action::Run, Action::Manage]),
-        (Resource::AiMultimodalTasks, vec![Action::Run, Action::Manage]),
-        (Resource::Workflows, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Execute, Action::Manage]),
-        (Resource::WorkflowExecutions, vec![Action::Read, Action::List, Action::Manage]),
-        (Resource::Translations, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::TranslationMemory, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
-        (Resource::TranslationGlossaries, vec![Action::Create, Action::Read, Action::Update, Action::Delete, Action::List, Action::Manage]),
+        (
+            Resource::AiMultimodalTasks,
+            vec![Action::Run, Action::Manage],
+        ),
+        (
+            Resource::Workflows,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Execute,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::WorkflowExecutions,
+            vec![Action::Read, Action::List, Action::Manage],
+        ),
+        (
+            Resource::Translations,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::TranslationMemory,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
+        (
+            Resource::TranslationGlossaries,
+            vec![
+                Action::Create,
+                Action::Read,
+                Action::Update,
+                Action::Delete,
+                Action::List,
+                Action::Manage,
+            ],
+        ),
     ]
 }
 
@@ -187,7 +598,11 @@ impl RbacQuery {
 
         let sql_roles = "SELECT id, name, slug, description, is_system FROM roles WHERE tenant_id = ? ORDER BY is_system DESC, name ASC";
         let mut role_rows = db
-            .query_all_raw(prepare_statement(backend, sql_roles, vec![tenant.id.into()]))
+            .query_all_raw(prepare_statement(
+                backend,
+                sql_roles,
+                vec![tenant.id.into()],
+            ))
             .await
             .map_err(|error| FieldError::new(format!("Failed to query roles: {error}")))?;
 
@@ -202,7 +617,11 @@ impl RbacQuery {
             )
             .await;
             role_rows = db
-                .query_all_raw(prepare_statement(backend, sql_roles, vec![tenant.id.into()]))
+                .query_all_raw(prepare_statement(
+                    backend,
+                    sql_roles,
+                    vec![tenant.id.into()],
+                ))
                 .await
                 .unwrap_or_default();
         }
@@ -210,7 +629,11 @@ impl RbacQuery {
         if !role_rows.is_empty() {
             let sql_perms = "SELECT rp.role_id, p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE p.tenant_id = ?";
             let perm_rows = db
-                .query_all_raw(prepare_statement(backend, sql_perms, vec![tenant.id.into()]))
+                .query_all_raw(prepare_statement(
+                    backend,
+                    sql_perms,
+                    vec![tenant.id.into()],
+                ))
                 .await
                 .unwrap_or_default();
 
@@ -221,15 +644,24 @@ impl RbacQuery {
                     row.try_get::<String>("", "resource"),
                     row.try_get::<String>("", "action"),
                 ) {
-                    perms_by_role.entry(role_id).or_default().push(format!("{res}:{act}"));
+                    perms_by_role
+                        .entry(role_id)
+                        .or_default()
+                        .push(format!("{res}:{act}"));
                 }
             }
 
             let mut roles = Vec::with_capacity(role_rows.len());
             for row in role_rows {
-                let id: Uuid = row.try_get("", "id").map_err(|e| FieldError::new(e.to_string()))?;
-                let name: String = row.try_get("", "name").map_err(|e| FieldError::new(e.to_string()))?;
-                let slug: String = row.try_get("", "slug").map_err(|e| FieldError::new(e.to_string()))?;
+                let id: Uuid = row
+                    .try_get("", "id")
+                    .map_err(|e| FieldError::new(e.to_string()))?;
+                let name: String = row
+                    .try_get("", "name")
+                    .map_err(|e| FieldError::new(e.to_string()))?;
+                let slug: String = row
+                    .try_get("", "slug")
+                    .map_err(|e| FieldError::new(e.to_string()))?;
                 let description: Option<String> = row.try_get("", "description").ok();
                 let is_system: bool = row.try_get("", "is_system").unwrap_or(false);
 
@@ -329,7 +761,11 @@ impl RbacQuery {
         let backend = db.get_database_backend();
         let perm_query_sql = "SELECT DISTINCT resource, action, description FROM permissions WHERE tenant_id = ? ORDER BY resource ASC, action ASC";
         if let Ok(rows) = db
-            .query_all_raw(prepare_statement(backend, perm_query_sql, vec![tenant.id.into()]))
+            .query_all_raw(prepare_statement(
+                backend,
+                perm_query_sql,
+                vec![tenant.id.into()],
+            ))
             .await
         {
             for row in rows {
@@ -337,7 +773,10 @@ impl RbacQuery {
                     row.try_get::<String>("", "resource"),
                     row.try_get::<String>("", "action"),
                 ) {
-                    let desc = row.try_get::<Option<String>>("", "description").ok().flatten();
+                    let desc = row
+                        .try_get::<Option<String>>("", "description")
+                        .ok()
+                        .flatten();
                     let perm_id = format!("{res}:{act}");
                     permissions_map.insert(
                         perm_id.clone(),

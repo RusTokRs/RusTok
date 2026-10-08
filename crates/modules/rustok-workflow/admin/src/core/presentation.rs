@@ -165,7 +165,9 @@ pub fn filter_workflows(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<WorkflowRowViewModel> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
     workflows
         .iter()

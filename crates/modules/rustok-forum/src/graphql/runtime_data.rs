@@ -1,19 +1,21 @@
 use std::sync::Arc;
 
 use rustok_api::{
-    graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader,
-    SharedStaticModuleSettingsTransactionReader,
+    SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+    graphql::GraphqlRuntimeInputs,
 };
 use rustok_media::MediaAssetReadPort;
-use rustok_notifications_api::{NotificationInboxReconciliationInspectPort, NotificationInboxReconciliationInspectPortFactory};
+use rustok_notifications_api::{
+    NotificationInboxReconciliationInspectPort, NotificationInboxReconciliationInspectPortFactory,
+};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
     ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
-    ForumStorefrontReadStateService, ForumTopicAudienceReadService,
+    ForumSettingsProviders, ForumStorefrontReadStateService, ForumTopicAudienceReadService,
     ForumVisibilityScopedReadStateService, ModerationService, ReplyService,
-    SharedForumAudienceFactsPort, TopicService, VoteService, ForumSettingsProviders,
+    SharedForumAudienceFactsPort, TopicService, VoteService,
 };
 
 /// Manifest-attached Forum GraphQL runtime capabilities.
@@ -232,7 +234,10 @@ mod tests {
             .expect("in-memory sqlite should connect");
         let storage = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
             base_dir: std::env::temp_dir()
-                .join(format!("rustok-forum-media-runtime-{}", uuid::Uuid::new_v4()))
+                .join(format!(
+                    "rustok-forum-media-runtime-{}",
+                    uuid::Uuid::new_v4()
+                ))
                 .display()
                 .to_string(),
             base_url: String::new(),

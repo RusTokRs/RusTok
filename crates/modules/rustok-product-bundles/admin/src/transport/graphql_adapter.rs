@@ -265,7 +265,6 @@ where
     .map_err(|error| error.to_string())
 }
 
-
 pub async fn load_directory(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -318,10 +317,9 @@ pub async fn load_detail(
     struct Vars {
         id: String,
     }
-    let data: DetailResponse = request(DETAIL_QUERY, Vars { id: bundle_id }, token, tenant_slug).await?;
-    let record = data
-        .bundle
-        .ok_or_else(|| "Bundle not found".to_string())?;
+    let data: DetailResponse =
+        request(DETAIL_QUERY, Vars { id: bundle_id }, token, tenant_slug).await?;
+    let record = data.bundle.ok_or_else(|| "Bundle not found".to_string())?;
 
     Ok(BundleAdminRecord {
         id: record.id,
@@ -478,7 +476,8 @@ pub async fn execute_command(
             struct Vars {
                 id: String,
             }
-            let data: DeleteResponse = request(DELETE_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: DeleteResponse =
+                request(DELETE_MUTATION, Vars { id }, token, tenant_slug).await?;
             Ok(BundleAdminCommandResult {
                 bundle: None,
                 success: data.success,
@@ -521,17 +520,15 @@ pub async fn execute_command(
                 },
             };
 
-            let _: serde_json::Value = request(ADD_ITEM_MUTATION, vars, token.clone(), tenant_slug.clone()).await?;
+            let _: serde_json::Value =
+                request(ADD_ITEM_MUTATION, vars, token.clone(), tenant_slug.clone()).await?;
             let record = load_detail(token, tenant_slug, bundle_id).await?;
             Ok(BundleAdminCommandResult {
                 bundle: Some(record),
                 success: true,
             })
         }
-        BundleAdminCommand::RemoveItem {
-            bundle_id,
-            item_id,
-        } => {
+        BundleAdminCommand::RemoveItem { bundle_id, item_id } => {
             #[derive(Serialize)]
             struct Vars {
                 #[serde(rename = "bundleId")]
@@ -545,7 +542,13 @@ pub async fn execute_command(
                 item_id,
             };
 
-            let _: serde_json::Value = request(REMOVE_ITEM_MUTATION, vars, token.clone(), tenant_slug.clone()).await?;
+            let _: serde_json::Value = request(
+                REMOVE_ITEM_MUTATION,
+                vars,
+                token.clone(),
+                tenant_slug.clone(),
+            )
+            .await?;
             let record = load_detail(token, tenant_slug, bundle_id).await?;
             Ok(BundleAdminCommandResult {
                 bundle: Some(record),

@@ -78,7 +78,9 @@ async fn create_tag(
                 tenant_id: Set(tenant_id),
                 kind: Set(TaxonomyTermKind::Tag),
                 scope_type: Set(TaxonomyScopeType::Module),
-                scope_value: Set(scope_value.expect("module scope value required").to_string()),
+                scope_value: Set(scope_value
+                    .expect("module scope value required")
+                    .to_string()),
                 locale: Set("en".to_string()),
                 route_key: Set((*alias).to_string()),
                 term_id: Set(term_id),

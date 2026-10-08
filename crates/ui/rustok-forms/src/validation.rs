@@ -7,7 +7,11 @@ pub mod rules {
     use super::FieldError;
 
     /// Validates that a string is not empty or whitespace-only.
-    pub fn required(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn required(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         if value.trim().is_empty() {
             Err(FieldError::new(field, message))
         } else {
@@ -88,7 +92,11 @@ pub mod rules {
     }
 
     /// Validates basic email syntax (non-empty local part and domain, valid domain dots, no whitespace).
-    pub fn email(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn email(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(()); // Use required() to enforce presence
@@ -125,7 +133,11 @@ pub mod rules {
     }
 
     /// Validates web URL syntax (starts with http:// or https://, valid host without whitespace).
-    pub fn url(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn url(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -139,14 +151,15 @@ pub mod rules {
             return Err(FieldError::new(field, message));
         };
 
-        if rest.is_empty() || rest.contains(char::is_whitespace) || rest.starts_with('/') || rest.starts_with(':') {
+        if rest.is_empty()
+            || rest.contains(char::is_whitespace)
+            || rest.starts_with('/')
+            || rest.starts_with(':')
+        {
             return Err(FieldError::new(field, message));
         }
 
-        let host = rest
-            .split(['/', '?', '#'])
-            .next()
-            .unwrap_or("");
+        let host = rest.split(['/', '?', '#']).next().unwrap_or("");
 
         if host.is_empty() || host.starts_with('.') || host.ends_with('.') || host.contains("..") {
             return Err(FieldError::new(field, message));
@@ -156,7 +169,11 @@ pub mod rules {
     }
 
     /// Validates kebab-case slug syntax (e.g. `blog-post-1`, lowercase ASCII, numbers, hyphens, no consecutive hyphens).
-    pub fn slug(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn slug(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -164,7 +181,8 @@ pub mod rules {
         let is_valid = !v.starts_with('-')
             && !v.ends_with('-')
             && !v.contains("--")
-            && v.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            && v.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
 
         if is_valid {
             Ok(())
@@ -260,7 +278,11 @@ pub mod rules {
     }
 
     /// Validates that a string parses as a valid finite number.
-    pub fn numeric(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn numeric(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -274,7 +296,11 @@ pub mod rules {
     }
 
     /// Validates that a string parses as a valid 64-bit integer.
-    pub fn integer(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn integer(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -305,7 +331,11 @@ pub mod rules {
     }
 
     /// Validates that a string contains only alphanumeric characters (unicode-safe).
-    pub fn alphanumeric(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn alphanumeric(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -318,7 +348,11 @@ pub mod rules {
     }
 
     /// Validates that a string contains only alphabetic characters (unicode-safe).
-    pub fn alphabetic(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn alphabetic(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -331,13 +365,19 @@ pub mod rules {
     }
 
     /// Validates standard phone number format (optional leading +, digits, spaces, hyphens, parentheses; at least 7 digits).
-    pub fn tel(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn tel(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
         }
         let digits_count = v.chars().filter(|c| c.is_ascii_digit()).count();
-        let valid_chars = v.chars().all(|c| c.is_ascii_digit() || c == '+' || c == ' ' || c == '-' || c == '(' || c == ')');
+        let valid_chars = v.chars().all(|c| {
+            c.is_ascii_digit() || c == '+' || c == ' ' || c == '-' || c == '(' || c == ')'
+        });
         if valid_chars && digits_count >= 7 {
             Ok(())
         } else {
@@ -374,7 +414,11 @@ pub mod rules {
     }
 
     /// Validates standard 8-4-4-4-12 hex UUID format.
-    pub fn uuid(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn uuid(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -386,7 +430,9 @@ pub mod rules {
             && parts[2].len() == 4
             && parts[3].len() == 4
             && parts[4].len() == 12
-            && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_hexdigit()));
+            && parts
+                .iter()
+                .all(|p| p.chars().all(|c| c.is_ascii_hexdigit()));
 
         if is_valid {
             Ok(())
@@ -396,7 +442,11 @@ pub mod rules {
     }
 
     /// Validates standard YYYY-MM-DD date format with basic calendar validation.
-    pub fn date_ymd(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn date_ymd(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -408,7 +458,10 @@ pub mod rules {
                 parts[1].parse::<u32>(),
                 parts[2].parse::<u32>(),
             ) {
-                if (1..=9999).contains(&year) && (1..=12).contains(&month) && (1..=31).contains(&day) {
+                if (1..=9999).contains(&year)
+                    && (1..=12).contains(&month)
+                    && (1..=31).contains(&day)
+                {
                     return Ok(());
                 }
             }
@@ -417,7 +470,11 @@ pub mod rules {
     }
 
     /// Validates HH:MM or HH:MM:SS 24-hour time format.
-    pub fn time_hhmm(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn time_hhmm(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -442,7 +499,11 @@ pub mod rules {
     }
 
     /// Validates standard IPv4 address format (4 decimal octets 0-255).
-    pub fn ipv4(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn ipv4(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -466,7 +527,11 @@ pub mod rules {
     }
 
     /// Validates hex color code format (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`).
-    pub fn hex_color(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn hex_color(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -482,7 +547,11 @@ pub mod rules {
     }
 
     /// Validates that a string is valid JSON syntax.
-    pub fn json(field: impl Into<String>, value: &str, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn json(
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         let v = value.trim();
         if v.is_empty() {
             return Ok(());
@@ -537,7 +606,12 @@ pub mod rules {
     }
 
     /// Validates that a collection or list has at least `min` items.
-    pub fn min_items(field: impl Into<String>, len: usize, min: usize, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn min_items(
+        field: impl Into<String>,
+        len: usize,
+        min: usize,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         if len < min {
             Err(FieldError::new(field, message))
         } else {
@@ -546,7 +620,12 @@ pub mod rules {
     }
 
     /// Validates that a collection or list has at most `max` items.
-    pub fn max_items(field: impl Into<String>, len: usize, max: usize, message: impl Into<String>) -> Result<(), FieldError> {
+    pub fn max_items(
+        field: impl Into<String>,
+        len: usize,
+        max: usize,
+        message: impl Into<String>,
+    ) -> Result<(), FieldError> {
         if len > max {
             Err(FieldError::new(field, message))
         } else {
@@ -589,7 +668,12 @@ impl FormValidator {
     }
 
     /// Validates required field (non-empty, non-whitespace).
-    pub fn required(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn required(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::required(field, value, message))
     }
 
@@ -688,12 +772,22 @@ impl FormValidator {
     }
 
     /// Validates that string parses to a finite number.
-    pub fn numeric(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn numeric(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::numeric(field, value, message))
     }
 
     /// Validates that string parses to an integer.
-    pub fn integer(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn integer(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::integer(field, value, message))
     }
 
@@ -710,12 +804,22 @@ impl FormValidator {
     }
 
     /// Validates alphanumeric string.
-    pub fn alphanumeric(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn alphanumeric(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::alphanumeric(field, value, message))
     }
 
     /// Validates alphabetic string.
-    pub fn alphabetic(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn alphabetic(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::alphabetic(field, value, message))
     }
 
@@ -752,12 +856,22 @@ impl FormValidator {
     }
 
     /// Validates date YYYY-MM-DD format.
-    pub fn date_ymd(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn date_ymd(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::date_ymd(field, value, message))
     }
 
     /// Validates time HH:MM format.
-    pub fn time_hhmm(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn time_hhmm(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::time_hhmm(field, value, message))
     }
 
@@ -767,7 +881,12 @@ impl FormValidator {
     }
 
     /// Validates hex color code.
-    pub fn hex_color(self, field: impl Into<String>, value: &str, message: impl Into<String>) -> Self {
+    pub fn hex_color(
+        self,
+        field: impl Into<String>,
+        value: &str,
+        message: impl Into<String>,
+    ) -> Self {
         self.check(rules::hex_color(field, value, message))
     }
 
@@ -865,11 +984,7 @@ impl FormValidator {
     where
         F: FnOnce(Self) -> Self,
     {
-        if condition {
-            f(self)
-        } else {
-            self
-        }
+        if condition { f(self) } else { self }
     }
 
     /// Explicitly append an error for a field.
@@ -1029,7 +1144,9 @@ mod tests {
     #[test]
     fn test_string_helpers() {
         assert!(rules::contains("text", "hello world", "world", "Must contain world").is_ok());
-        assert!(rules::starts_with("text", "admin-panel", "admin", "Must start with admin").is_ok());
+        assert!(
+            rules::starts_with("text", "admin-panel", "admin", "Must start with admin").is_ok()
+        );
         assert!(rules::ends_with("file", "image.png", ".png", "Must end with .png").is_ok());
     }
 
@@ -1199,7 +1316,10 @@ mod tests {
             });
 
         assert_eq!(validator.error_count(), 1);
-        assert_eq!(validator.field_error("tax_id"), Some("Tax ID required for companies"));
+        assert_eq!(
+            validator.field_error("tax_id"),
+            Some("Tax ID required for companies")
+        );
 
         let validator2 = FormValidator::new().add_error("general", "System maintenance");
         let merged = validator.merge(validator2);

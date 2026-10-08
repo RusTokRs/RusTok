@@ -32,12 +32,30 @@ const source = Object.fromEntries(
     Object.entries(paths).map(async ([key, path]) => [key, await readFile(path, 'utf8')]),
   ),
 );
+
+// Markers are Rust code fragments, so `rustfmt` decides where they break lines. Comparing raw
+// source text made this gate fail whenever the formatter wrapped a call differently: the shipped
+// `capability_controls.rs` holds `EditorCapability::ALL` and `.into_iter()` on consecutive lines,
+// which is the same program as the required one-liner and a different string. `rustfmt` reformats
+// that very file, so the gate re-broke on every formatting pass and `Verify editor capability
+// policy` failed on `main` from 2026-10-05 until this fix.
+//
+// Rust is whitespace-insensitive between tokens, so markers are matched against a
+// whitespace-free copy of both the file and the marker: a marker is satisfied when its *token
+// sequence* appears in the file, wherever the formatter chose to break lines. Stripping
+// whitespace is monotone over substring containment (a match under the old rule is still a
+// match), and it can only make `rejectMarker` stricter, never weaker.
+const fold = (value) => value.replace(/\s+/g, '');
+const folded = Object.fromEntries(
+  Object.entries(source).map(([key, value]) => [key, fold(value)]),
+);
+
 const failures = [];
 const requireMarker = (key, marker, message) => {
-  if (!source[key].includes(marker)) failures.push(message);
+  if (!folded[key].includes(fold(marker))) failures.push(message);
 };
 const rejectMarker = (key, marker, message) => {
-  if (source[key].includes(marker)) failures.push(message);
+  if (folded[key].includes(fold(marker))) failures.push(message);
 };
 const requireMarkers = (key, markers, label) => {
   for (const marker of markers) requireMarker(key, marker, `${label} is missing ${marker}`);

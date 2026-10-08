@@ -18,15 +18,15 @@ use leptos::prelude::*;
 use rustok_graphql::GraphqlHttpError;
 use rustok_ui_core::UiRouteContext;
 
-use crate::catalog_controls::{build_product_admin_list_input, ProductAdminListInput};
+use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
-    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap,
-    ProductAttributeDraft, ProductAttributeList, ProductAttributeOptionDraft,
-    ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList,
-    ProductAttributeValueItem, ProductAttributeValuePatchDraft, ProductCatalogSearchOptions,
-    ProductDetail, ProductDraft, ProductEffectiveForm, ProductList, ProductPricingDetail,
-    SetCategorySchemaModeDraft, ShippingProfileList,
+    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
+    ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
+    ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
+    ProductAttributeValuePatchDraft, ProductCatalogSearchOptions, ProductDetail, ProductDraft,
+    ProductEffectiveForm, ProductList, ProductPricingDetail, SetCategorySchemaModeDraft,
+    ShippingProfileList,
 };
 use crate::transport as legacy;
 
@@ -185,7 +185,11 @@ pub(crate) async fn fetch_products(
                 controls.status.as_deref(),
             );
             legacy::admin_catalog_graphql::fetch_products(
-                token, tenant_slug, tenant_id, locale, controls,
+                token,
+                tenant_slug,
+                tenant_id,
+                locale,
+                controls,
             )
             .await
             .map_err(|error| context.map_error(error))
@@ -363,7 +367,12 @@ pub(crate) async fn fetch_effective_product_form(
         locale.as_str(),
     );
     legacy::fetch_effective_product_form(
-        token, tenant_slug, tenant_id, product_id, category_id, locale,
+        token,
+        tenant_slug,
+        tenant_id,
+        product_id,
+        category_id,
+        locale,
     )
     .await
     .map_err(|failure| context.map_error(failure))
@@ -577,7 +586,12 @@ pub(crate) async fn create_product_attribute_schema_group(
         user_id.as_str(),
     );
     legacy::create_product_attribute_schema_group(
-        token, tenant_slug, tenant_id, user_id, locale, draft,
+        token,
+        tenant_slug,
+        tenant_id,
+        user_id,
+        locale,
+        draft,
     )
     .await
     .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
@@ -654,7 +668,13 @@ pub(crate) async fn save_product_attribute_values(
         user_id.as_str(),
     );
     legacy::save_product_attribute_values(
-        token, tenant_slug, tenant_id, user_id, product_id, locale, patches,
+        token,
+        tenant_slug,
+        tenant_id,
+        user_id,
+        product_id,
+        locale,
+        patches,
     )
     .await
     .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))

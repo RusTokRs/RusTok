@@ -10,8 +10,8 @@
 
 use leptos::prelude::*;
 use rustok_ui::{
-    Orientation, normalize_progress_max, normalize_progress_value_for_max,
-    progress_classes, progress_value_percentage,
+    Orientation, normalize_progress_max, normalize_progress_value_for_max, progress_classes,
+    progress_value_percentage,
 };
 
 /// Accessible progress primitive with Radix-compatible range and state props.
@@ -42,11 +42,7 @@ pub fn Progress(
         normalize_progress_value_for_max(value_prop.get().unwrap_or(0.0), max_signal.get())
     });
     let percent = move || {
-        progress_value_percentage(
-            value_prop.get().unwrap_or(0.0),
-            max_signal.get(),
-        )
-        .to_string()
+        progress_value_percentage(value_prop.get().unwrap_or(0.0), max_signal.get()).to_string()
     };
     let aria_value = move || value_signal.get().to_string();
     let data_state = move || {

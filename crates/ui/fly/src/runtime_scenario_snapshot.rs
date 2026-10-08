@@ -86,6 +86,36 @@ impl RuntimeScenarioRenderSnapshot {
         self.format == FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT
     }
 
+    /// Whether `snapshot_hash` matches these contents.
+    ///
+    /// This is a self-consistency check on a snapshot that is always carried inside something
+    /// else — a release baseline or a materialization identity. Those envelopes are what actually
+    /// hold an approval anchor, and both digest it with sha256: the release baseline's own
+    /// `baseline_hash` covers this snapshot (and therefore this hash) in its payload, and the
+    /// materialization identity holds `runtime_snapshot_hash` as a sha256 digest of the stored
+    /// snapshot list. The fingerprint here is `ProjectHash` (FNV-1a 64) for a concrete reason:
+    /// snapshots are persisted in `page_static_landing_artifact` and `page_publish_rebuild_source`,
+    /// and the rebuild path requires a rebuild to reproduce them *byte for byte*, so changing this
+    /// algorithm would make every retained artifact fail its own provenance check.
+    pub fn has_valid_hash(&self) -> bool {
+        let Some(bytes) = self.payload_bytes() else {
+            return false;
+        };
+        !self.snapshot_hash.is_empty()
+            && self.snapshot_hash == ProjectHash::from_bytes(&bytes).hex()
+    }
+
+    /// The bytes `snapshot_hash` covers, or `None` when they cannot be encoded.
+    fn payload_bytes(&self) -> Option<Vec<u8>> {
+        snapshot_payload(
+            &self.format,
+            &self.selection,
+            &self.policy,
+            &self.cases,
+            &self.matrix_diagnostics,
+        )
+    }
+
     pub fn is_renderable(&self) -> bool {
         self.matrix_diagnostics
             .iter()
@@ -317,6 +347,22 @@ fn compare_case(
     }
 }
 
+/// Serialize the fields `snapshot_hash` covers, or `None` when they cannot be encoded.
+fn snapshot_payload(
+    format: &str,
+    selection: &PageSelection,
+    policy: &RenderPolicy,
+    cases: &[RuntimeScenarioRenderSnapshotCase],
+    diagnostics: &[ValidationDiagnostic],
+) -> Option<Vec<u8>> {
+    serde_json::to_vec(&(format, selection, policy, cases, diagnostics)).ok()
+}
+
+/// Fingerprint of the snapshot's contents, rendered as 16 lowercase hex digits.
+///
+/// An empty string means the snapshot could not be encoded. The previous `unwrap_or_default()`
+/// hashed *empty bytes* in that case, so every unencodable snapshot shared one fingerprint; an
+/// empty value never matches [`RuntimeScenarioRenderSnapshot::snapshot_hash`] checks instead.
 fn snapshot_hash(
     format: &str,
     selection: &PageSelection,
@@ -324,9 +370,10 @@ fn snapshot_hash(
     cases: &[RuntimeScenarioRenderSnapshotCase],
     diagnostics: &[ValidationDiagnostic],
 ) -> String {
-    let bytes =
-        serde_json::to_vec(&(format, selection, policy, cases, diagnostics)).unwrap_or_default();
-    ProjectHash::from_bytes(&bytes).hex()
+    match snapshot_payload(format, selection, policy, cases, diagnostics) {
+        Some(bytes) => ProjectHash::from_bytes(&bytes).hex(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -362,6 +409,33 @@ mod tests {
             "Default",
             json!({ "page": { "title": title } }),
         )]
+    }
+
+    #[test]
+    fn snapshot_hash_matches_its_contents_and_detects_edits() {
+        let mut snapshot = RuntimeScenarioRenderSnapshot::capture(
+            &document(),
+            &PageSelection::First,
+            &RenderPolicy::default(),
+            &scenario("Welcome"),
+        );
+        assert_eq!(snapshot.snapshot_hash.len(), 16);
+        assert!(snapshot.has_valid_hash());
+
+        // Any edit to the covered fields invalidates the fingerprint, including another format.
+        snapshot.cases[0].scenario_label = "Renamed".to_string();
+        assert!(!snapshot.has_valid_hash());
+        snapshot.snapshot_hash = snapshot_hash(
+            &snapshot.format,
+            &snapshot.selection,
+            &snapshot.policy,
+            &snapshot.cases,
+            &snapshot.matrix_diagnostics,
+        );
+        assert!(snapshot.has_valid_hash());
+
+        snapshot.snapshot_hash = String::new();
+        assert!(!snapshot.has_valid_hash());
     }
 
     #[test]

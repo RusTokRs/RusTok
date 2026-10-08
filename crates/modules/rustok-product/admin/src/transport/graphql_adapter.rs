@@ -371,7 +371,6 @@ struct PriceInput {
     compare_at_amount: Option<String>,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,
@@ -930,7 +929,11 @@ pub(super) async fn update_product(
                     product_type: optional_text(draft.product_type.as_str()),
                     shipping_profile_slug: draft.shipping_profile_slug.clone(),
                     primary_category_id: draft.primary_category_id.clone(),
-                    tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
+                    tags: if draft.tags.is_empty() {
+                        None
+                    } else {
+                        Some(draft.tags.clone())
+                    },
                     status: draft.status.clone(),
                 },
             },
@@ -1028,7 +1031,11 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
         product_type: optional_text(draft.product_type.as_str()),
         shipping_profile_slug: draft.shipping_profile_slug,
         primary_category_id: draft.primary_category_id,
-        tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
+        tags: if draft.tags.is_empty() {
+            None
+        } else {
+            Some(draft.tags.clone())
+        },
         publish: Some(draft.publish_now),
     }
 }

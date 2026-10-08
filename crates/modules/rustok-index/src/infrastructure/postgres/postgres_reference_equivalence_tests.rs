@@ -284,14 +284,7 @@ impl Fixture {
                 c2,
                 &[v3],
             ),
-            product_record(
-                product_schemas,
-                p3,
-                15,
-                IndexValue::Null,
-                c1,
-                &[v4],
-            ),
+            product_record(product_schemas, p3, 15, IndexValue::Null, c1, &[v4]),
             product_record(
                 product_schemas,
                 p4,

@@ -1,5 +1,7 @@
 //! SeaORM entities for forum-owned persistence.
 
+pub mod forum_attachment_relation;
+pub mod forum_attachment_relation_head;
 pub mod forum_audience_mention;
 pub mod forum_category;
 pub mod forum_category_audience_channel;
@@ -27,8 +29,6 @@ pub mod forum_category_topic_create_audience_role;
 pub mod forum_category_topic_create_audience_user;
 pub(crate) mod forum_category_translation;
 pub mod forum_domain_event;
-pub mod forum_attachment_relation;
-pub mod forum_attachment_relation_head;
 pub mod forum_quote;
 pub mod forum_relation_revision;
 pub mod forum_reply;
@@ -68,6 +68,8 @@ pub mod forum_user_stat;
 pub mod forum_user_trust_revision;
 pub mod forum_user_trust_state;
 
+pub use forum_attachment_relation::Entity as ForumAttachmentRelation;
+pub use forum_attachment_relation_head::Entity as ForumAttachmentRelationHead;
 pub use forum_category::Entity as ForumCategory;
 pub use forum_category_audience_policy::Entity as ForumCategoryAudiencePolicyEntity;
 pub use forum_category_lifecycle::Entity as ForumCategoryLifecycle;
@@ -76,8 +78,6 @@ pub use forum_category_policy::Entity as ForumCategoryPolicy;
 pub use forum_category_reply_create_audience_policy::Entity as ForumCategoryReplyCreateAudiencePolicyEntity;
 pub use forum_category_topic_create_audience_policy::Entity as ForumCategoryTopicCreateAudiencePolicyEntity;
 pub use forum_domain_event::Entity as ForumDomainEvent;
-pub use forum_attachment_relation::Entity as ForumAttachmentRelation;
-pub use forum_attachment_relation_head::Entity as ForumAttachmentRelationHead;
 pub use forum_relation_revision::Entity as ForumRelationRevision;
 pub use forum_reply::Entity as ForumReply;
 pub use forum_reply_revision::Entity as ForumReplyRevision;

@@ -5,8 +5,8 @@ use crate::{
     extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
     materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
-    materialize_runtime_locale_context, validate_component_actions,
-    validate_component_public_urls, validate_internal_page_links,
+    materialize_runtime_locale_context, validate_component_actions, validate_component_public_urls,
+    validate_internal_page_links,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

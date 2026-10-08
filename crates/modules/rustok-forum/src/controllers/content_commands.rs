@@ -175,7 +175,8 @@ pub async fn update_reply(
         Permission::FORUM_REPLIES_UPDATE,
         "Permission denied: forum_replies:update required",
     )?;
-    let reply = runtime.reply_service()
+    let reply = runtime
+        .reply_service()
         .update_command(tenant.id, reply_id, forum_security(&auth), input)
         .await
         .map_err(command_error)?;

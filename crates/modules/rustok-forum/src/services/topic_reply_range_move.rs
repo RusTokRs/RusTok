@@ -418,13 +418,7 @@ impl ForumReplyRangeMoveService {
         .insert(&txn)
         .await?;
 
-        insert_operation_in_tx(
-            &txn,
-            tenant_id,
-            &move_params,
-            now,
-        )
-        .await?;
+        insert_operation_in_tx(&txn, tenant_id, &move_params, now).await?;
         insert_reply_audit_in_tx(&txn, tenant_id, prepared.operation_id, &audit, now).await?;
 
         publish_forum_topic_projection_in_tx(

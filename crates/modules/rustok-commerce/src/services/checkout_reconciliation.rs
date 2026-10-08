@@ -8,9 +8,7 @@ use rustok_payment::{
     CreateRefundInput, PaymentAdminCollectionCommandPort, PaymentAdminReadPort,
     PaymentAdminRefundCommandPort, ReadPaymentCollectionProjectionRequest, RefundResponse,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -416,9 +414,7 @@ impl CheckoutReconciliationService {
             }
             CheckoutReconciliationAction::AttestExternal => self.attest_external(request).await,
             CheckoutReconciliationAction::WriteOff => self.write_off(request).await,
-            CheckoutReconciliationAction::RefundFull => {
-                self.refund(request, operation, None).await
-            }
+            CheckoutReconciliationAction::RefundFull => self.refund(request, operation, None).await,
             CheckoutReconciliationAction::RefundPartial => {
                 self.refund(request, operation, request.amount).await
             }
@@ -443,9 +439,7 @@ impl CheckoutReconciliationService {
         let limit = limit.clamp(1, MAX_RECONCILIATION_ACTION_LIST_LIMIT);
         checkout_reconciliation_action::Entity::find()
             .filter(checkout_reconciliation_action::Column::TenantId.eq(tenant_id))
-            .filter(
-                checkout_reconciliation_action::Column::CheckoutOperationId.eq(operation_id),
-            )
+            .filter(checkout_reconciliation_action::Column::CheckoutOperationId.eq(operation_id))
             .order_by_desc(checkout_reconciliation_action::Column::CreatedAt)
             .limit(limit)
             .all(&self.db)
@@ -461,12 +455,8 @@ impl CheckoutReconciliationService {
     ) -> CheckoutReconciliationResult<Option<checkout_reconciliation_action::Model>> {
         checkout_reconciliation_action::Entity::find()
             .filter(checkout_reconciliation_action::Column::TenantId.eq(tenant_id))
-            .filter(
-                checkout_reconciliation_action::Column::CheckoutOperationId.eq(operation_id),
-            )
-            .filter(
-                checkout_reconciliation_action::Column::IdempotencyKey.eq(idempotency_key),
-            )
+            .filter(checkout_reconciliation_action::Column::CheckoutOperationId.eq(operation_id))
+            .filter(checkout_reconciliation_action::Column::IdempotencyKey.eq(idempotency_key))
             .one(&self.db)
             .await
             .map_err(Into::into)
@@ -545,7 +535,12 @@ impl CheckoutReconciliationService {
         }
 
         let refund = self
-            .call_refund_port(request, collection.id, amount, collection.currency_code.as_str())
+            .call_refund_port(
+                request,
+                collection.id,
+                amount,
+                collection.currency_code.as_str(),
+            )
             .await?;
 
         Ok(ActionEffect {
@@ -618,14 +613,12 @@ impl CheckoutReconciliationService {
         request: &CheckoutReconciliationActionRequest,
         operation: &checkout_operation::Model,
     ) -> CheckoutReconciliationResult<rustok_payment::PaymentCollectionResponse> {
-        let collection_id = operation
-            .payment_collection_id
-            .ok_or_else(|| {
-                CheckoutReconciliationError::Conflict(format!(
-                    "checkout operation {} is not bound to a payment collection",
-                    request.operation_id
-                ))
-            })?;
+        let collection_id = operation.payment_collection_id.ok_or_else(|| {
+            CheckoutReconciliationError::Conflict(format!(
+                "checkout operation {} is not bound to a payment collection",
+                request.operation_id
+            ))
+        })?;
         self.payment_read_port
             .read_payment_collection_projection(
                 PortContext::new(
@@ -677,6 +670,7 @@ impl CheckoutReconciliationService {
             .await
             .map_err(|error| payment_owner_error("create_refund", error))
     }
+}
 
 /// Result of one action attempt: the journal row plus whether it was replayed.
 struct ActionOutcome {
@@ -1005,7 +999,10 @@ mod tests {
             CheckoutReconciliationAction::RefundPartial,
             CheckoutReconciliationAction::VoidAuthorization,
         ] {
-            assert_eq!(CheckoutReconciliationAction::parse(action.as_str()), Some(action));
+            assert_eq!(
+                CheckoutReconciliationAction::parse(action.as_str()),
+                Some(action)
+            );
             assert!(!action.required_permissions().is_empty());
         }
         assert!(CheckoutReconciliationAction::RefundFull.moves_money());
@@ -1021,8 +1018,7 @@ mod tests {
 
     #[test]
     fn attest_external_requires_outcome_and_evidence() {
-        let mut missing_outcome =
-            request(CheckoutReconciliationAction::AttestExternal);
+        let mut missing_outcome = request(CheckoutReconciliationAction::AttestExternal);
         missing_outcome.evidence_ref = Some("ticket-42".to_string());
         assert!(validate_request(&mut missing_outcome).is_err());
 

@@ -74,9 +74,9 @@ mod tests {
 
     #[test]
     fn installation_storage_errors_are_generic() {
-        let error = map_artifact_installation_lifecycle_error(
-            ModuleInstallationError::Store("database password=secret".to_string()),
-        );
+        let error = map_artifact_installation_lifecycle_error(ModuleInstallationError::Store(
+            "database password=secret".to_string(),
+        ));
 
         assert_eq!(
             error.message,
@@ -87,14 +87,11 @@ mod tests {
 
     #[test]
     fn tenant_storage_errors_are_generic() {
-        let error = map_artifact_tenant_lifecycle_error(
-            ModuleInstallationError::Outbox("database password=secret".to_string()),
-        );
+        let error = map_artifact_tenant_lifecycle_error(ModuleInstallationError::Outbox(
+            "database password=secret".to_string(),
+        ));
 
-        assert_eq!(
-            error.message,
-            "Artifact tenant lifecycle is unavailable"
-        );
+        assert_eq!(error.message, "Artifact tenant lifecycle is unavailable");
         assert!(!error.message.contains("database password=secret"));
     }
 }

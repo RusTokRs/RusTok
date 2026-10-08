@@ -163,7 +163,8 @@ pub async fn get_topic(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -200,7 +201,8 @@ pub async fn delete_topic(
         "Permission denied: forum_topics:delete required",
     )?;
 
-    runtime.topic_service()
+    runtime
+        .topic_service()
         .delete(tenant.id, id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
@@ -262,12 +264,14 @@ pub async fn set_topic_vote(
         "Permission denied: forum_topics:read required",
     )?;
 
-    runtime.vote_service()
+    runtime
+        .vote_service()
         .set_topic_vote(tenant.id, topic_id, forum_security(&auth), value)
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -304,12 +308,14 @@ pub async fn clear_topic_vote(
         "Permission denied: forum_topics:read required",
     )?;
 
-    runtime.vote_service()
+    runtime
+        .vote_service()
         .clear_topic_vote(tenant.id, topic_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -351,7 +357,8 @@ pub async fn subscribe_topic(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -393,7 +400,8 @@ pub async fn unsubscribe_topic(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),

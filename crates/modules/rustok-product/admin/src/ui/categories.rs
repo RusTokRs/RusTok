@@ -5,12 +5,12 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
+use crate::catalog_transport;
 use crate::core::{
-    build_category_tree, build_category_tree_row_view_models, filter_product_categories,
-    flatten_category_tree, product_category_grid_columns, slugify, CategoryTreeRowViewModel,
+    CategoryTreeRowViewModel, build_category_tree, build_category_tree_row_view_models,
+    filter_product_categories, flatten_category_tree, product_category_grid_columns, slugify,
 };
 use crate::model::{CatalogCategoryDraft, CatalogCategorySummary};
-use crate::catalog_transport;
 
 #[component]
 fn CategoryTreeGrid(
@@ -21,7 +21,10 @@ fn CategoryTreeGrid(
     on_add_child: Callback<String>,
     on_clone: Callback<CatalogCategorySummary>,
 ) -> impl IntoView {
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = product_category_grid_columns(locale.as_deref());
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
@@ -37,11 +40,7 @@ fn CategoryTreeGrid(
         let rows = tree_rows.get();
         let q = search.get();
         let f = filters.get();
-        filter_product_categories(
-            &rows,
-            &f,
-            if q.trim().is_empty() { None } else { Some(&q) },
-        )
+        filter_product_categories(&rows, &f, if q.trim().is_empty() { None } else { Some(&q) })
     });
 
     Effect::new(move |_| {
@@ -53,7 +52,10 @@ fn CategoryTreeGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -222,7 +224,14 @@ pub fn CategoriesPage() -> impl IntoView {
     let on_save_category = move |_| {
         let name = cat_name.get_untracked().trim().to_string();
         if name.is_empty() {
-            set_error_msg.set(Some(if is_ru { "Введите название категории" } else { "Enter category name" }.to_string()));
+            set_error_msg.set(Some(
+                if is_ru {
+                    "Введите название категории"
+                } else {
+                    "Enter category name"
+                }
+                .to_string(),
+            ));
             return;
         }
 
@@ -237,7 +246,11 @@ pub fn CategoriesPage() -> impl IntoView {
         }
 
         let parent_id_val = cat_parent_id.get_untracked().trim().to_string();
-        let parent_id = if parent_id_val.is_empty() { None } else { Some(parent_id_val) };
+        let parent_id = if parent_id_val.is_empty() {
+            None
+        } else {
+            Some(parent_id_val)
+        };
 
         let kind = cat_kind.get_untracked();
         let desc = cat_description.get_untracked().trim().to_string();
@@ -261,7 +274,8 @@ pub fn CategoriesPage() -> impl IntoView {
         };
 
         spawn_local(async move {
-            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+            else {
                 set_is_busy.set(false);
                 set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                 return;
@@ -280,7 +294,14 @@ pub fn CategoriesPage() -> impl IntoView {
             set_is_busy.set(false);
             match res {
                 Ok(_) => {
-                    set_success_msg.set(Some(if is_ru { "Категория успешно сохранена" } else { "Category saved successfully" }.to_string()));
+                    set_success_msg.set(Some(
+                        if is_ru {
+                            "Категория успешно сохранена"
+                        } else {
+                            "Category saved successfully"
+                        }
+                        .to_string(),
+                    ));
                     reset_form();
                     set_refresh_nonce.update(|n| *n += 1);
                 }

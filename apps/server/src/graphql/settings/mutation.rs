@@ -1,6 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use std::fmt::Display;
 use rustok_outbox::TransactionalEventBus;
+use std::fmt::Display;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -14,10 +14,7 @@ use super::types::{
 };
 use super::{require_host_actor, require_host_authority, require_tenant_settings_scope};
 
-fn graphql_settings_internal_error(
-    message: &'static str,
-    error: impl Display,
-) -> FieldError {
+fn graphql_settings_internal_error(message: &'static str, error: impl Display) -> FieldError {
     tracing::error!(%error, message, "GraphQL settings mutation failed");
     <FieldError as GraphQLError>::internal_error(message)
 }
@@ -65,12 +62,9 @@ fn map_platform_settings_update_error(error: SettingsError) -> FieldError {
         SettingsError::InvalidCategory(_) => {
             <FieldError as GraphQLError>::bad_user_input("Invalid settings category")
         }
-        SettingsError::ValidationFailed(errors) => {
-            <FieldError as GraphQLError>::bad_user_input(&format!(
-                "Settings validation failed: {}",
-                errors.join("; ")
-            ))
-        }
+        SettingsError::ValidationFailed(errors) => <FieldError as GraphQLError>::bad_user_input(
+            &format!("Settings validation failed: {}", errors.join("; ")),
+        ),
         error => graphql_settings_internal_error("Unable to update platform settings", error),
     }
 }
@@ -116,9 +110,11 @@ impl SettingsMutation {
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
         let profile = crate::common::settings::EventDeliveryProfile::parse(&input.profile)
-            .ok_or_else(|| <FieldError as GraphQLError>::bad_user_input(
-                "Event delivery profile must be one of: outbox, outbox_iggy",
-            ))?;
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Event delivery profile must be one of: outbox, outbox_iggy",
+                )
+            })?;
         crate::services::event_delivery_settings_service::EventDeliverySettingsService::save_profile(
             runtime_ctx,
             profile,
@@ -157,8 +153,10 @@ impl SettingsMutation {
             ));
         }
 
-        let settings_json: serde_json::Value = serde_json::from_str(&input.settings)
-            .map_err(|_| <FieldError as GraphQLError>::bad_user_input("Invalid JSON in settings"))?;
+        let settings_json: serde_json::Value =
+            serde_json::from_str(&input.settings).map_err(|_| {
+                <FieldError as GraphQLError>::bad_user_input("Invalid JSON in settings")
+            })?;
 
         let validators = ValidatorRegistry::default();
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -175,8 +173,9 @@ impl SettingsMutation {
         .await
         .map_err(map_platform_settings_update_error)?;
 
-        let settings_str = serde_json::to_string(&stored)
-            .map_err(|error| graphql_settings_internal_error("Unable to serialize platform settings", error))?;
+        let settings_str = serde_json::to_string(&stored).map_err(|error| {
+            graphql_settings_internal_error("Unable to serialize platform settings", error)
+        })?;
 
         Ok(UpdatePlatformSettingsPayload {
             success: true,
@@ -219,19 +218,15 @@ mod tests {
         let error = map_iggy_settings_error(IggyConnectorSettingsError::InvalidConfiguration(
             "external Iggy password secret cannot be resolved: secret/path".to_string(),
         ));
-        assert_eq!(
-            error.message,
-            "Invalid Iggy connector configuration"
-        );
+        assert_eq!(error.message, "Invalid Iggy connector configuration");
     }
 
     #[test]
     fn invalid_event_delivery_configuration_is_bad_user_input() {
-        let error = map_event_delivery_settings_error(
-            EventDeliverySettingsError::IggyNotConfigured(
+        let error =
+            map_event_delivery_settings_error(EventDeliverySettingsError::IggyNotConfigured(
                 "secret resolver exposed path=/run/secrets/iggy".to_string(),
-            ),
-        );
+            ));
         assert_eq!(
             error.message,
             "Iggy connector must be configured before selecting outbox_iggy"

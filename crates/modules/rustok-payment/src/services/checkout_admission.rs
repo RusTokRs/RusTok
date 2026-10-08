@@ -4,7 +4,7 @@ use rustok_events::{
     CHECKOUT_OPERATION_ADMISSION_CLOSED, CHECKOUT_OPERATION_ADMISSION_OPEN,
     CHECKOUT_OPERATION_ADMISSION_SETTLING,
 };
-use sea_orm::{ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::payment_collection;
@@ -169,7 +169,9 @@ impl CheckoutAdmissionRefusal {
     /// vocabulary is read from [`Self::as_str`] so a new refusal cannot be added
     /// to one direction only.
     pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|refusal| refusal.as_str() == value)
+        Self::ALL
+            .into_iter()
+            .find(|refusal| refusal.as_str() == value)
     }
 
     /// Bounded owner error code surfaced to the caller of the claim gate.
@@ -205,10 +207,7 @@ pub enum CheckoutAdmissionDecision {
     Unfenced,
     /// Admitted extending execution under `epoch`; `adopt_legacy` marks a row
     /// that predates the contract (generation `0`) and is stamped on success.
-    Admitted {
-        epoch: i64,
-        adopt_legacy: bool,
-    },
+    Admitted { epoch: i64, adopt_legacy: bool },
     /// Refused; the caller records the bounded reason and increments the metric.
     Refused(CheckoutAdmissionRefusal),
 }
@@ -261,9 +260,7 @@ pub fn decide_checkout_admission_claim(
                             adopt_legacy: false,
                         }
                     } else {
-                        CheckoutAdmissionDecision::Refused(
-                            CheckoutAdmissionRefusal::EpochMismatch,
-                        )
+                        CheckoutAdmissionDecision::Refused(CheckoutAdmissionRefusal::EpochMismatch)
                     }
                 }
             },
@@ -324,7 +321,10 @@ mod tests {
             ProviderExecutionAdmission::Settling,
             ProviderExecutionAdmission::Closed,
         ] {
-            assert_eq!(ProviderExecutionAdmission::parse(level.as_str()), Some(level));
+            assert_eq!(
+                ProviderExecutionAdmission::parse(level.as_str()),
+                Some(level)
+            );
         }
         assert_eq!(ProviderExecutionAdmission::parse("frozen"), None);
     }
@@ -444,19 +444,11 @@ mod tests {
             CheckoutAdmissionDecision::Refused(CheckoutAdmissionRefusal::Unavailable)
         );
         assert_eq!(
-            decide_checkout_admission_claim(
-                CheckoutAdmissionLinkState::Unavailable,
-                None,
-                1
-            ),
+            decide_checkout_admission_claim(CheckoutAdmissionLinkState::Unavailable, None, 1),
             CheckoutAdmissionDecision::Refused(CheckoutAdmissionRefusal::EffectUnknown)
         );
         assert_eq!(
-            decide_checkout_admission_claim(
-                record(ProviderExecutionAdmission::Open, 1),
-                None,
-                1
-            ),
+            decide_checkout_admission_claim(record(ProviderExecutionAdmission::Open, 1), None, 1),
             CheckoutAdmissionDecision::Refused(CheckoutAdmissionRefusal::EffectUnknown)
         );
     }
@@ -465,8 +457,15 @@ mod tests {
     fn refusal_vocabulary_is_bounded() {
         for refusal in CheckoutAdmissionRefusal::ALL {
             assert!(refusal.as_str().starts_with("checkout_admission_"));
-            assert!(refusal.error_code().starts_with("payment.checkout_admission_"));
-            assert_eq!(CheckoutAdmissionRefusal::parse(refusal.as_str()), Some(refusal));
+            assert!(
+                refusal
+                    .error_code()
+                    .starts_with("payment.checkout_admission_")
+            );
+            assert_eq!(
+                CheckoutAdmissionRefusal::parse(refusal.as_str()),
+                Some(refusal)
+            );
         }
         // The refusal codes the database `CHECK` and the metric label use are the
         // same five strings, in the same order.
@@ -497,6 +496,9 @@ mod tests {
             })),
             None
         );
-        assert_eq!(checkout_operation_id_from_metadata(&serde_json::json!({})), None);
+        assert_eq!(
+            checkout_operation_id_from_metadata(&serde_json::json!({})),
+            None
+        );
     }
 }

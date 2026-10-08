@@ -190,11 +190,16 @@ async fn batched_handle_reader_uses_one_owner_lookup_contract() {
         .unwrap();
 
     assert_eq!(profiles.len(), 1);
-    let profile = profiles.get("creator-one").expect("creator-one should resolve");
+    let profile = profiles
+        .get("creator-one")
+        .expect("creator-one should resolve");
     assert_eq!(profile.user_id, user_id);
     assert_eq!(profile.handle, "creator-one");
     assert_eq!(profile.display_name, "Creator One");
-    assert_eq!(profile.tags, vec!["rust".to_string(), "creator".to_string()]);
+    assert_eq!(
+        profile.tags,
+        vec!["rust".to_string(), "creator".to_string()]
+    );
 }
 
 #[tokio::test]

@@ -48,9 +48,7 @@ WHERE post.id IS NULL
         ))
         .await?
         .ok_or_else(|| {
-            DbErr::Custom(
-                "failed to validate Blog channel-visibility tenant integrity".to_string(),
-            )
+            DbErr::Custom("failed to validate Blog channel-visibility tenant integrity".to_string())
         })?;
     let invalid_count: i64 = row.try_get("", "invalid_count")?;
     if invalid_count != 0 {

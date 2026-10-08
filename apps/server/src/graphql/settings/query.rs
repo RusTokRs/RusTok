@@ -11,10 +11,7 @@ use super::types::{
 };
 use super::{require_host_authority, require_tenant_settings_scope};
 
-fn graphql_settings_internal_error(
-    message: &'static str,
-    error: impl Display,
-) -> FieldError {
+fn graphql_settings_internal_error(message: &'static str, error: impl Display) -> FieldError {
     tracing::error!(%error, message, "GraphQL settings query failed");
     <FieldError as GraphQLError>::internal_error(message)
 }
@@ -98,8 +95,9 @@ impl SettingsQuery {
             .await
             .map_err(map_platform_settings_error)?;
 
-        let settings = serde_json::to_string(&value)
-            .map_err(|error| graphql_settings_internal_error("Platform settings are unavailable", error))?;
+        let settings = serde_json::to_string(&value).map_err(|error| {
+            graphql_settings_internal_error("Platform settings are unavailable", error)
+        })?;
 
         Ok(PlatformSettingsPayload { category, settings })
     }
@@ -125,13 +123,16 @@ impl SettingsQuery {
 
         let categories = SettingsService::get_all(runtime_ctx, tenant.id)
             .await
-            .map_err(|error| graphql_settings_internal_error("Platform settings are unavailable", error))?;
+            .map_err(|error| {
+                graphql_settings_internal_error("Platform settings are unavailable", error)
+            })?;
 
         categories
             .into_iter()
             .map(|(category, value)| {
-                let settings = serde_json::to_string(&value)
-                    .map_err(|error| graphql_settings_internal_error("Platform settings are unavailable", error))?;
+                let settings = serde_json::to_string(&value).map_err(|error| {
+                    graphql_settings_internal_error("Platform settings are unavailable", error)
+                })?;
                 Ok(PlatformSettingsPayload { category, settings })
             })
             .collect()
@@ -146,9 +147,8 @@ mod tests {
     #[test]
     fn invalid_settings_category_is_bad_user_input_without_echoing_input() {
         let attacker_input = "email\nDROP TABLE platform_settings";
-        let error = map_platform_settings_error(SettingsError::InvalidCategory(
-            attacker_input.to_string(),
-        ));
+        let error =
+            map_platform_settings_error(SettingsError::InvalidCategory(attacker_input.to_string()));
 
         assert_eq!(error.message, "Invalid settings category");
         assert!(!error.message.contains(attacker_input));

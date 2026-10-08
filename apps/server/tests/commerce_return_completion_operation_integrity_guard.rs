@@ -42,15 +42,12 @@ fn return_completion_operation_persistence_invariants_are_registered() {
         "return completion integrity migration must be declared"
     );
     assert!(
-        migrations.contains(
-            "m20260930_000009_harden_return_completion_operation_identity::Migration"
-        ),
+        migrations
+            .contains("m20260930_000009_harden_return_completion_operation_identity::Migration"),
         "return completion integrity migration must be registered"
     );
     assert!(
-        migrations.contains(
-            "m20260930_000009_harden_return_completion_operation_identity"
-        ),
+        migrations.contains("m20260930_000009_harden_return_completion_operation_identity"),
         "return completion integrity migration must be present in dependency descriptors"
     );
 }

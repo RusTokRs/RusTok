@@ -236,7 +236,8 @@ impl StaticDistributionWorker {
         &self,
         work_item: &ModuleStaticDistributionWorkItem,
         generated: &rustok_distribution::GeneratedStaticDistributionFiles,
-    ) -> Result<(StaticDistributionJobRequest, Vec<u8>), ModuleStaticDistributionExecutorError> {
+    ) -> Result<(StaticDistributionJobRequest, Vec<u8>), ModuleStaticDistributionExecutorError>
+    {
         let request = StaticDistributionJobRequest {
             contract: "rustok.static_distribution.job".to_string(),
             distribution_build_id: work_item.build.distribution_build_id,

@@ -46,3 +46,4 @@ node_modules
 build
 dist
 ico
+src/types/i18n.d.ts

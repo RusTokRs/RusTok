@@ -5,26 +5,26 @@ use sea_orm::{ActiveValue, EntityTrait, QueryFilter, QueryOrder, TransactionTrai
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    validate_candidate_parent_release, validate_transition, AlloyImportedDraftCommand,
-    AlloyImportedDraftResult, ReviewStatus, RustComponentCandidate, RustComponentCandidateBuild,
-    RustComponentCandidateBuildError, RustComponentCandidateBuildExecution,
-    RustComponentCandidateCommand, RustComponentCandidateError,
-    RustComponentCandidateExecutionError, RustComponentCandidateReview,
-    RustComponentCandidateReviewCommand,
+    AlloyImportedDraftCommand, AlloyImportedDraftResult, ReviewStatus, RustComponentCandidate,
+    RustComponentCandidateBuild, RustComponentCandidateBuildError,
+    RustComponentCandidateBuildExecution, RustComponentCandidateCommand,
+    RustComponentCandidateError, RustComponentCandidateExecutionError,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand,
+    validate_candidate_parent_release, validate_transition,
 };
 use crate::storage::ScriptRegistry;
 
+use super::SeaOrmStorage;
 use super::entities::{
-    component_candidate, component_candidate_build, component_candidate_build_execution,
-    component_candidate_review, draft_revision, draft_review, draft_tombstone, release_import,
-    Column, Entity,
+    Column, Entity, component_candidate, component_candidate_build,
+    component_candidate_build_execution, component_candidate_review, draft_review, draft_revision,
+    draft_tombstone, release_import,
 };
 use super::mapping::{
     model_to_component_candidate, model_to_component_candidate_build,
     model_to_component_candidate_build_execution, model_to_component_candidate_review,
     model_to_review_decision, model_to_script, model_to_source_revision, new_script_active_model,
 };
-use super::SeaOrmStorage;
 
 impl SeaOrmStorage {
     pub(crate) async fn import_published_release_impl(
@@ -35,15 +35,11 @@ impl SeaOrmStorage {
             .validate()
             .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
         self.ensure_script_scope(&command.script)?;
-        let parent_release = command
-            .script
-            .parent_release
-            .clone()
-            .ok_or_else(|| {
-                ScriptError::InvalidLineage(
-                    "validated imported draft must have a parent release".into(),
-                )
-            })?;
+        let parent_release = command.script.parent_release.clone().ok_or_else(|| {
+            ScriptError::InvalidLineage(
+                "validated imported draft must have a parent release".into(),
+            )
+        })?;
         let now = Utc::now();
         command.script.version = 1;
         command.script.created_at = now;
@@ -486,7 +482,9 @@ impl SeaOrmStorage {
         &self,
         build: RustComponentCandidateBuild,
     ) -> ScriptResult<RustComponentCandidateBuild> {
-        let candidate = self.get_component_candidate_impl(build.candidate_id).await?;
+        let candidate = self
+            .get_component_candidate_impl(build.candidate_id)
+            .await?;
         build.validate_against(&candidate)?;
         let transaction = self
             .db
@@ -619,7 +617,9 @@ impl SeaOrmStorage {
         &self,
         execution: RustComponentCandidateBuildExecution,
     ) -> ScriptResult<RustComponentCandidateBuildExecution> {
-        let candidate = self.get_component_candidate_impl(execution.candidate_id).await?;
+        let candidate = self
+            .get_component_candidate_impl(execution.candidate_id)
+            .await?;
         let build = self
             .get_component_candidate_build_by_request_impl(candidate.id, execution.build_request_id)
             .await?

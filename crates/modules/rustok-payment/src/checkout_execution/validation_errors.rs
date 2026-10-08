@@ -58,7 +58,11 @@ pub(super) fn persisted_provider_result(
     })
 }
 
-pub(super) fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Result<(), PortError> {
+pub(super) fn insert_metadata_string(
+    metadata: &mut Value,
+    key: &str,
+    value: String,
+) -> Result<(), PortError> {
     if metadata.is_null() {
         *metadata = serde_json::json!({});
     }

@@ -4,16 +4,16 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rustok_api::context::{
-    AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
-};
-use rustok_api::AuthPrincipalKind;
-use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
-use rustok_core::SecurityActorKind;
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use rustok_api::AuthPrincipalKind;
+use rustok_api::context::{
+    AuthContext, AuthContextExtension, AuthPrincipalContext, AuthPrincipalContextExtension,
+};
+use rustok_api::{HOST_AUTHORITY_REQUIRED, Permission, has_effective_permission};
+use rustok_core::SecurityActorKind;
 
 use crate::auth::decode_access_token;
 use crate::extractors::auth::{resolve_current_user, resolve_current_user_from_access_token};
@@ -383,9 +383,8 @@ mod tests {
         auth_can_resolve_without_tenant_context, is_direct_user_self_service_path,
         is_direct_user_self_service_principal, is_human_user_self_service_path,
         is_observability_auth_path, is_pages_inline_authoring_server_fn,
-        is_pages_inline_authoring_surface,
-        pages_inline_authoring_response, service_forum_boundary_violation,
-        verified_tenant_id_from_access_token,
+        is_pages_inline_authoring_surface, pages_inline_authoring_response,
+        service_forum_boundary_violation, verified_tenant_id_from_access_token,
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
@@ -468,7 +467,8 @@ mod tests {
         ] {
             assert!(!is_observability_auth_path(path), "{path}");
         }
-    }    #[test]
+    }
+    #[test]
     fn authorization_presence_distinguishes_anonymous_from_invalid_credentials() {
         let mut headers = HeaderMap::new();
         assert!(!headers.contains_key(AUTHORIZATION));

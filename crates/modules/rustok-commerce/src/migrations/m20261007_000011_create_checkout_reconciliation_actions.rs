@@ -54,19 +54,13 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(CheckoutReconciliationActions::Amount).decimal())
-                    .col(
-                        ColumnDef::new(CheckoutReconciliationActions::CurrencyCode)
-                            .string_len(8),
-                    )
+                    .col(ColumnDef::new(CheckoutReconciliationActions::CurrencyCode).string_len(8))
                     .col(
                         ColumnDef::new(CheckoutReconciliationActions::Reason)
                             .string_len(1500)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(CheckoutReconciliationActions::EvidenceRef)
-                            .string_len(500),
-                    )
+                    .col(ColumnDef::new(CheckoutReconciliationActions::EvidenceRef).string_len(500))
                     .col(
                         ColumnDef::new(CheckoutReconciliationActions::OperatorId)
                             .uuid()
@@ -84,10 +78,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(CheckoutReconciliationActions::RefundId).uuid())
-                    .col(
-                        ColumnDef::new(CheckoutReconciliationActions::RefundStatus)
-                            .string_len(64),
-                    )
+                    .col(ColumnDef::new(CheckoutReconciliationActions::RefundStatus).string_len(64))
                     .col(
                         ColumnDef::new(CheckoutReconciliationActions::CreatedAt)
                             .timestamp_with_time_zone()

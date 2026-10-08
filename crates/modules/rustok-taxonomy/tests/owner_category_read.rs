@@ -2,8 +2,8 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
     ModuleTermCreateInput, ModuleTermUpdateInput, SetTaxonomyCategoryPlacementInput,
     SetTaxonomyCategoryPresentationInput, TaxonomyModule, TaxonomyOwnerCategoryReader,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    entities::taxonomy_term_translation, update_module_term_in_tx,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_term_translation,
+    update_module_term_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};

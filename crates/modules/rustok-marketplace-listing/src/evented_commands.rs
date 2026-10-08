@@ -16,8 +16,8 @@ use crate::dto::{
 use crate::entities::listing;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{
-    append_listing_event, list_listing_events, normalize_listing_event_locale,
-    AppendListingEventParams,
+    AppendListingEventParams, append_listing_event, list_listing_events,
+    normalize_listing_event_locale,
 };
 use crate::service::{find_listing, load_response_for_model};
 
@@ -170,7 +170,12 @@ async fn review_in_transaction(
     if current.status != MarketplaceListingStatus::PendingReview.as_str() {
         return Err(MarketplaceListingError::InvalidTransition {
             from: format!("{}:{}", current.status, current.approval_status),
-            to: if params.approved { "approved" } else { "rejected" }.to_string(),
+            to: if params.approved {
+                "approved"
+            } else {
+                "rejected"
+            }
+            .to_string(),
         });
     }
 
@@ -184,7 +189,11 @@ async fn review_in_transaction(
     }
     .as_str()
     .to_string());
-    active.approved_at = Set(if params.approved { Some(now.into()) } else { None });
+    active.approved_at = Set(if params.approved {
+        Some(now.into())
+    } else {
+        None
+    });
     active.updated_at = Set(now.into());
     let model = active.update(&receipt.transaction).await?;
 

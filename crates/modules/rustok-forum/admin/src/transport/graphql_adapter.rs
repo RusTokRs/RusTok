@@ -18,12 +18,9 @@ const CREATE_CATEGORY_MUTATION: &str = "mutation ForumAdminCreateCategory($input
 const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: UUID!, $input: UpdateForumCategoryInput!) { updateForumCategory(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
 #[allow(dead_code)]
-const SET_CATEGORY_TOPIC_POLICY_MUTATION: &str =
-    "mutation ForumAdminSetCategoryTopicPolicy($categoryId: UUID!, $input: UpdateForumCategoryTopicPolicyInput!) { setForumCategoryTopicPolicy(categoryId: $categoryId, input: $input) { category_id allows_topics } }";
-const ARCHIVE_CATEGORY_SUBTREE_MUTATION: &str =
-    "mutation ForumAdminArchiveCategorySubtree($categoryId: UUID!) { archiveForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
-const RESTORE_CATEGORY_SUBTREE_MUTATION: &str =
-    "mutation ForumAdminRestoreCategorySubtree($categoryId: UUID!) { restoreForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
+const SET_CATEGORY_TOPIC_POLICY_MUTATION: &str = "mutation ForumAdminSetCategoryTopicPolicy($categoryId: UUID!, $input: UpdateForumCategoryTopicPolicyInput!) { setForumCategoryTopicPolicy(categoryId: $categoryId, input: $input) { category_id allows_topics } }";
+const ARCHIVE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminArchiveCategorySubtree($categoryId: UUID!) { archiveForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
+const RESTORE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminRestoreCategorySubtree($categoryId: UUID!) { restoreForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
 const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_deleted: isDeleted is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
@@ -36,20 +33,16 @@ const RESTORE_TOPIC_MUTATION: &str =
     "mutation ForumAdminRestoreTopic($id: UUID!) { restoreForumTopic(id: $id) }";
 const RESTORE_REPLY_MUTATION: &str =
     "mutation ForumAdminRestoreReply($id: UUID!) { restoreForumReply(id: $id) }";
-const PIN_TOPIC_MUTATION: &str =
-    "mutation ForumAdminPinTopic($id: UUID!, $pinned: Boolean!) { pinForumTopic(id: $id, pinned: $pinned) }";
-const LOCK_TOPIC_MUTATION: &str =
-    "mutation ForumAdminLockTopic($id: UUID!, $locked: Boolean!) { lockForumTopic(id: $id, locked: $locked) }";
+const PIN_TOPIC_MUTATION: &str = "mutation ForumAdminPinTopic($id: UUID!, $pinned: Boolean!) { pinForumTopic(id: $id, pinned: $pinned) }";
+const LOCK_TOPIC_MUTATION: &str = "mutation ForumAdminLockTopic($id: UUID!, $locked: Boolean!) { lockForumTopic(id: $id, locked: $locked) }";
 const CLOSE_TOPIC_MUTATION: &str =
     "mutation ForumAdminCloseTopic($id: UUID!) { closeForumTopic(id: $id) }";
 const REOPEN_TOPIC_MUTATION: &str =
     "mutation ForumAdminReopenTopic($id: UUID!) { reopenForumTopic(id: $id) }";
 const DELETE_REPLY_MUTATION: &str =
     "mutation ForumAdminDeleteReply($id: UUID!) { deleteForumReply(id: $id) }";
-const APPROVE_REPLY_MUTATION: &str =
-    "mutation ForumAdminApproveReply($replyId: UUID!, $topicId: UUID!) { approveForumReply(replyId: $replyId, topicId: $topicId) }";
-const REJECT_REPLY_MUTATION: &str =
-    "mutation ForumAdminRejectReply($replyId: UUID!, $topicId: UUID!) { rejectForumReply(replyId: $replyId, topicId: $topicId) }";
+const APPROVE_REPLY_MUTATION: &str = "mutation ForumAdminApproveReply($replyId: UUID!, $topicId: UUID!) { approveForumReply(replyId: $replyId, topicId: $topicId) }";
+const REJECT_REPLY_MUTATION: &str = "mutation ForumAdminRejectReply($replyId: UUID!, $topicId: UUID!) { rejectForumReply(replyId: $replyId, topicId: $topicId) }";
 const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } } }";
 const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status is_deleted: isDeleted parent_reply_id: parentReplyId created_at: createdAt } }";
 
@@ -363,7 +356,6 @@ struct CreateReplyInput {
     #[serde(rename = "parentReplyId")]
     parent_reply_id: Option<String>,
 }
-
 
 async fn request<V, T>(
     query: &str,
@@ -729,13 +721,8 @@ pub async fn close_topic(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    let response: CloseTopicResponse = request(
-        CLOSE_TOPIC_MUTATION,
-        IdVariables { id },
-        token,
-        tenant_slug,
-    )
-    .await?;
+    let response: CloseTopicResponse =
+        request(CLOSE_TOPIC_MUTATION, IdVariables { id }, token, tenant_slug).await?;
     if response.close_forum_topic {
         Ok(())
     } else {

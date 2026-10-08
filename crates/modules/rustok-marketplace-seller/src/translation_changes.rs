@@ -165,9 +165,7 @@ pub(crate) fn translation_lifecycle_for_status(
     status: &str,
 ) -> MarketplaceSellerResult<MarketplaceSellerTranslationChangeLifecycle> {
     match status {
-        "draft" | "active" | "suspended" => {
-            Ok(MarketplaceSellerTranslationChangeLifecycle::Active)
-        }
+        "draft" | "active" | "suspended" => Ok(MarketplaceSellerTranslationChangeLifecycle::Active),
         "closed" => Ok(MarketplaceSellerTranslationChangeLifecycle::Archived),
         _ => Err(MarketplaceSellerError::Validation(format!(
             "unknown marketplace seller status `{status}`"

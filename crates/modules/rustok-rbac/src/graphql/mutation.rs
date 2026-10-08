@@ -70,14 +70,19 @@ impl RbacMutation {
         let name = input.name.trim();
         let slug = input.slug.trim().to_lowercase();
         if name.is_empty() {
-            return Err(<FieldError as GraphQLError>::bad_user_input("Role name cannot be empty"));
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Role name cannot be empty",
+            ));
         }
         if slug.len() < 2 || slug.len() > 64 {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Role slug must be between 2 and 64 characters",
             ));
         }
-        if !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        if !slug
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
             return Err(<FieldError as GraphQLError>::bad_user_input(
                 "Role slug must contain only lowercase letters, numbers, underscores or hyphens",
             ));
@@ -95,7 +100,11 @@ impl RbacMutation {
 
         let check_sql = "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
         let existing = db
-            .query_one_raw(prepare_statement(backend, check_sql, vec![tenant.id.into(), slug.clone().into()]))
+            .query_one_raw(prepare_statement(
+                backend,
+                check_sql,
+                vec![tenant.id.into(), slug.clone().into()],
+            ))
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
         if existing.is_some() {
@@ -105,7 +114,10 @@ impl RbacMutation {
         }
 
         let role_id = rustok_core::generate_id();
-        let tx = db.begin().await.map_err(|e| FieldError::new(e.to_string()))?;
+        let tx = db
+            .begin()
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         let insert_role_sql = "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?, ?, ?, ?, ?, FALSE)";
         tx.execute_raw(prepare_statement(
@@ -144,14 +156,21 @@ impl RbacMutation {
                 .map_err(|e| FieldError::new(e.to_string()))?;
 
             let perm_id = match perm_row {
-                Some(row) => row.try_get::<Uuid>("", "id").map_err(|e| FieldError::new(e.to_string()))?,
+                Some(row) => row
+                    .try_get::<Uuid>("", "id")
+                    .map_err(|e| FieldError::new(e.to_string()))?,
                 None => {
                     let new_perm_id = rustok_core::generate_id();
                     let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
                     tx.execute_raw(prepare_statement(
                         backend,
                         ins_perm_sql,
-                        vec![new_perm_id.into(), tenant.id.into(), resource.into(), action.into()],
+                        vec![
+                            new_perm_id.into(),
+                            tenant.id.into(),
+                            resource.into(),
+                            action.into(),
+                        ],
                     ))
                     .await
                     .map_err(|e| FieldError::new(e.to_string()))?;
@@ -172,7 +191,9 @@ impl RbacMutation {
             granted_permissions.push(format!("{resource}:{action}"));
         }
 
-        tx.commit().await.map_err(|e| FieldError::new(e.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         granted_permissions.sort();
         granted_permissions.dedup();
@@ -222,13 +243,23 @@ impl RbacMutation {
 
         let find_role_sql = "SELECT id, name, description, is_system FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
         let existing = db
-            .query_one_raw(prepare_statement(backend, find_role_sql, vec![tenant.id.into(), slug.clone().into()]))
+            .query_one_raw(prepare_statement(
+                backend,
+                find_role_sql,
+                vec![tenant.id.into(), slug.clone().into()],
+            ))
             .await
             .map_err(|e| FieldError::new(e.to_string()))?
-            .ok_or_else(|| <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")))?;
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found"))
+            })?;
 
-        let role_id: Uuid = existing.try_get("", "id").map_err(|e| FieldError::new(e.to_string()))?;
-        let current_name: String = existing.try_get("", "name").map_err(|e| FieldError::new(e.to_string()))?;
+        let role_id: Uuid = existing
+            .try_get("", "id")
+            .map_err(|e| FieldError::new(e.to_string()))?;
+        let current_name: String = existing
+            .try_get("", "name")
+            .map_err(|e| FieldError::new(e.to_string()))?;
         let current_desc: Option<String> = existing.try_get("", "description").ok();
         let is_system: bool = existing.try_get("", "is_system").unwrap_or(false);
 
@@ -239,7 +270,10 @@ impl RbacMutation {
             ));
         }
 
-        let tx = db.begin().await.map_err(|e| FieldError::new(e.to_string()))?;
+        let tx = db
+            .begin()
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         let new_name = input
             .name
@@ -252,7 +286,11 @@ impl RbacMutation {
         tx.execute_raw(prepare_statement(
             backend,
             update_role_sql,
-            vec![new_name.clone().into(), new_desc.clone().into(), role_id.into()],
+            vec![
+                new_name.clone().into(),
+                new_desc.clone().into(),
+                role_id.into(),
+            ],
         ))
         .await
         .map_err(|e| FieldError::new(e.to_string()))?;
@@ -260,9 +298,13 @@ impl RbacMutation {
         let mut final_permissions = Vec::new();
         if let Some(new_permissions) = input.permissions {
             let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
-            tx.execute_raw(prepare_statement(backend, del_links_sql, vec![role_id.into()]))
-                .await
-                .map_err(|e| FieldError::new(e.to_string()))?;
+            tx.execute_raw(prepare_statement(
+                backend,
+                del_links_sql,
+                vec![role_id.into()],
+            ))
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
             for perm_str in &new_permissions {
                 let parts: Vec<&str> = perm_str.split(':').collect();
@@ -285,14 +327,21 @@ impl RbacMutation {
                     .map_err(|e| FieldError::new(e.to_string()))?;
 
                 let perm_id = match perm_row {
-                    Some(row) => row.try_get::<Uuid>("", "id").map_err(|e| FieldError::new(e.to_string()))?,
+                    Some(row) => row
+                        .try_get::<Uuid>("", "id")
+                        .map_err(|e| FieldError::new(e.to_string()))?,
                     None => {
                         let new_perm_id = rustok_core::generate_id();
                         let ins_perm_sql = "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING";
                         tx.execute_raw(prepare_statement(
                             backend,
                             ins_perm_sql,
-                            vec![new_perm_id.into(), tenant.id.into(), resource.into(), action.into()],
+                            vec![
+                                new_perm_id.into(),
+                                tenant.id.into(),
+                                resource.into(),
+                                action.into(),
+                            ],
                         ))
                         .await
                         .map_err(|e| FieldError::new(e.to_string()))?;
@@ -315,7 +364,11 @@ impl RbacMutation {
         } else {
             let cur_perms_sql = "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?";
             let rows = tx
-                .query_all_raw(prepare_statement(backend, cur_perms_sql, vec![role_id.into()]))
+                .query_all_raw(prepare_statement(
+                    backend,
+                    cur_perms_sql,
+                    vec![role_id.into()],
+                ))
                 .await
                 .map_err(|e| FieldError::new(e.to_string()))?;
             for row in rows {
@@ -328,7 +381,9 @@ impl RbacMutation {
             }
         }
 
-        tx.commit().await.map_err(|e| FieldError::new(e.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         final_permissions.sort();
         final_permissions.dedup();
@@ -372,14 +427,23 @@ impl RbacMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let backend = db.get_database_backend();
 
-        let find_role_sql = "SELECT id, is_system FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
+        let find_role_sql =
+            "SELECT id, is_system FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1";
         let existing = db
-            .query_one_raw(prepare_statement(backend, find_role_sql, vec![tenant.id.into(), slug.clone().into()]))
+            .query_one_raw(prepare_statement(
+                backend,
+                find_role_sql,
+                vec![tenant.id.into(), slug.clone().into()],
+            ))
             .await
             .map_err(|e| FieldError::new(e.to_string()))?
-            .ok_or_else(|| <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found")))?;
+            .ok_or_else(|| {
+                <FieldError as GraphQLError>::not_found(&format!("Role '{slug}' not found"))
+            })?;
 
-        let role_id: Uuid = existing.try_get("", "id").map_err(|e| FieldError::new(e.to_string()))?;
+        let role_id: Uuid = existing
+            .try_get("", "id")
+            .map_err(|e| FieldError::new(e.to_string()))?;
         let is_system: bool = existing.try_get("", "is_system").unwrap_or(false);
 
         // Core platform invariant: Built-in system roles must NEVER be deleted
@@ -396,28 +460,46 @@ impl RbacMutation {
             .query_one_raw(prepare_statement(backend, count_sql, vec![role_id.into()]))
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
-        let count: i64 = count_row.and_then(|r| r.try_get("", "cnt").ok()).unwrap_or(0);
+        let count: i64 = count_row
+            .and_then(|r| r.try_get("", "cnt").ok())
+            .unwrap_or(0);
         if count > 0 {
             return Err(<FieldError as GraphQLError>::bad_user_input(&format!(
                 "Cannot delete role '{slug}' because it is currently assigned to {count} user(s). Reassign them first."
             )));
         }
 
-        let tx = db.begin().await.map_err(|e| FieldError::new(e.to_string()))?;
+        let tx = db
+            .begin()
+            .await
+            .map_err(|e| FieldError::new(e.to_string()))?;
 
         let del_links_sql = "DELETE FROM role_permissions WHERE role_id = ?";
-        tx.execute_raw(prepare_statement(backend, del_links_sql, vec![role_id.into()]))
-            .await
-            .map_err(|e| FieldError::new(e.to_string()))?;
+        tx.execute_raw(prepare_statement(
+            backend,
+            del_links_sql,
+            vec![role_id.into()],
+        ))
+        .await
+        .map_err(|e| FieldError::new(e.to_string()))?;
 
         let del_role_sql = "DELETE FROM roles WHERE id = ?";
-        tx.execute_raw(prepare_statement(backend, del_role_sql, vec![role_id.into()]))
+        tx.execute_raw(prepare_statement(
+            backend,
+            del_role_sql,
+            vec![role_id.into()],
+        ))
+        .await
+        .map_err(|e| FieldError::new(e.to_string()))?;
+
+        tx.commit()
             .await
             .map_err(|e| FieldError::new(e.to_string()))?;
 
-        tx.commit().await.map_err(|e| FieldError::new(e.to_string()))?;
-
-        Ok(DeleteRolePayload { success: true, slug })
+        Ok(DeleteRolePayload {
+            success: true,
+            slug,
+        })
     }
 
     /// Assign a role to a user (replaces the current role).

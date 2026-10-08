@@ -66,4 +66,3 @@ pub struct CategoryListItem {
     pub reply_count: i32,
     pub is_subscribed: bool,
 }
-

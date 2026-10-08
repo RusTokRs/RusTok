@@ -200,7 +200,9 @@ impl InventoryService {
         if input.adjustment < 0 && !inventory_policy_allows_backorder(&variant.inventory_policy) {
             level_update = level_update.filter(
                 Expr::col(entities::inventory_level::Column::StockedQuantity)
-                    .sub(Expr::col(entities::inventory_level::Column::ReservedQuantity))
+                    .sub(Expr::col(
+                        entities::inventory_level::Column::ReservedQuantity,
+                    ))
                     .gte(-input.adjustment),
             );
         }
@@ -488,7 +490,9 @@ impl InventoryService {
         if !inventory_policy_allows_backorder(&variant.inventory_policy) {
             level_update = level_update.filter(
                 Expr::col(entities::inventory_level::Column::StockedQuantity)
-                    .sub(Expr::col(entities::inventory_level::Column::ReservedQuantity))
+                    .sub(Expr::col(
+                        entities::inventory_level::Column::ReservedQuantity,
+                    ))
                     .gte(quantity),
             );
         }

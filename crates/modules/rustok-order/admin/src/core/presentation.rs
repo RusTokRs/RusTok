@@ -313,4 +313,3 @@ mod tests {
         assert!(caption_ru.contains("создан 2026-10-02"));
     }
 }
-

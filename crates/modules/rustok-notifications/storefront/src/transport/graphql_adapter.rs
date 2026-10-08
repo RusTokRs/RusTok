@@ -492,7 +492,6 @@ fn map_state_to_wire(state: NotificationStorefrontItemState) -> GroupItemStateWi
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{

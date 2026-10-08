@@ -1,6 +1,4 @@
-use crate::dto::{
-    ProductResponse, ProductTranslationInput, ProductTranslationResponse,
-};
+use crate::dto::{ProductResponse, ProductTranslationInput, ProductTranslationResponse};
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
@@ -246,7 +244,6 @@ pub fn normalize_update_product_metadata(
     }
 }
 
-
 pub async fn load_product_custom_fields_schema<C>(
     db: &C,
     tenant_id: Uuid,
@@ -367,7 +364,8 @@ where
 {
     reject_reserved_tag_metadata(&payload)?;
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    flex::prepare_donor_attached_values_create(schema, &payload, locale).map_err(CommerceError::from)
+    flex::prepare_donor_attached_values_create(schema, &payload, locale)
+        .map_err(CommerceError::from)
 }
 
 pub async fn prepare_product_custom_fields_for_update<C>(
@@ -803,13 +801,7 @@ mod product_metadata_tests {
         });
 
         let resolved = resolve_product_metadata_with_schema(
-            &db,
-            tenant_id,
-            product_id,
-            &metadata,
-            "en",
-            "en",
-            &schema,
+            &db, tenant_id, product_id, &metadata, "en", "en", &schema,
         )
         .await
         .expect("resolve with schema");

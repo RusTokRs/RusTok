@@ -630,4 +630,3 @@ pub struct BindCategoryAttributeDraft {
     pub is_disabled: bool,
     pub position: Option<i32>,
 }
-

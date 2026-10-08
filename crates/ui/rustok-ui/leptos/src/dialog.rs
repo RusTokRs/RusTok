@@ -14,8 +14,8 @@ use leptos::portal::Portal;
 use leptos::prelude::*;
 use rustok_ui::{
     dialog_backdrop_classes, dialog_close_classes, dialog_content_classes,
-    dialog_description_classes, dialog_footer_classes, dialog_header_classes,
-    dialog_title_classes, merge_classes,
+    dialog_description_classes, dialog_footer_classes, dialog_header_classes, dialog_title_classes,
+    merge_classes,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -79,7 +79,11 @@ fn dialog_tab_target_index(
     }
 
     let Some(active_index) = active_index.filter(|index| *index < focusable_count) else {
-        return Some(if shift_pressed { focusable_count - 1 } else { 0 });
+        return Some(if shift_pressed {
+            focusable_count - 1
+        } else {
+            0
+        });
     };
 
     if shift_pressed {
@@ -102,7 +106,9 @@ fn is_visible_focus_target(element: &web_sys::HtmlElement) -> bool {
     use leptos::wasm_bindgen::JsCast;
 
     let element = element.unchecked_ref::<web_sys::Element>();
-    if element.matches(":disabled, input[type='hidden']").unwrap_or(false)
+    if element
+        .matches(":disabled, input[type='hidden']")
+        .unwrap_or(false)
         || element.get_client_rects().length() == 0
         || element
             .closest("[hidden], [inert], [aria-hidden='true']")
@@ -457,7 +463,9 @@ pub fn DialogContent(
     let dialog_ref = NodeRef::<html::Div>::new();
 
     Effect::new(move |_| {
-        if context.open.get() && let Some(element) = dialog_ref.get() {
+        if context.open.get()
+            && let Some(element) = dialog_ref.get()
+        {
             let _ = element.focus();
         }
     });

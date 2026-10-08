@@ -71,11 +71,9 @@ impl StarterMutation {
             ));
         }
 
-        let tenant = ctx
-            .data::<TenantContext>()
-            .map_err(|_| {
-                <FieldError as GraphQLError>::internal_error("Starter import is not configured")
-            })?;
+        let tenant = ctx.data::<TenantContext>().map_err(|_| {
+            <FieldError as GraphQLError>::internal_error("Starter import is not configured")
+        })?;
         let db = ctx
             .data::<DatabaseConnection>()
             .map_err(|_| {
@@ -178,4 +176,3 @@ mod tests {
         assert_eq!(payload.duration_ms, 123);
     }
 }
-

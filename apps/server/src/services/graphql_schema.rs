@@ -160,9 +160,7 @@ fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
 }
 
 #[cfg(feature = "mod-alloy")]
-fn alloy_runtime_from_context(
-    ctx: &ServerRuntimeContext,
-) -> Option<alloy::SharedAlloyRuntime> {
+fn alloy_runtime_from_context(ctx: &ServerRuntimeContext) -> Option<alloy::SharedAlloyRuntime> {
     ctx.shared_get::<alloy::SharedAlloyRuntime>()
 }
 
@@ -332,9 +330,7 @@ mod storage_runtime_boundary_tests {
 }
 
 #[cfg(feature = "mod-media")]
-fn storage_from_ctx(
-    ctx: &ServerRuntimeContext,
-) -> Option<rustok_storage::StorageRuntime> {
+fn storage_from_ctx(ctx: &ServerRuntimeContext) -> Option<rustok_storage::StorageRuntime> {
     ctx.shared_get::<rustok_storage::StorageRuntime>()
 }
 

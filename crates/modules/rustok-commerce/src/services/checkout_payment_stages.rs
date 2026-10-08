@@ -317,8 +317,7 @@ mod rustok_payment_shim {
             db: sea_orm::DatabaseConnection,
             payment_provider_registry: PaymentProviderRegistry,
         ) -> Self {
-            let checkout_admission =
-                checkout_execution_admission_port(db.clone());
+            let checkout_admission = checkout_execution_admission_port(db.clone());
             Self {
                 inner: wrap_checkout_payment_execution_port(Arc::new(
                     ::rustok_payment::InProcessCheckoutPaymentExecutionPort::with_provider_registry(

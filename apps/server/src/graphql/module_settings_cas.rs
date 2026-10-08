@@ -24,7 +24,6 @@ fn graphql_module_settings_internal_error(
     <FieldError as GraphQLError>::internal_error(message)
 }
 
-
 /// Conditional module-settings write surface for reviewed/control-plane automation.
 ///
 /// This mutation is deliberately not an approval authority. Callers that require a
@@ -181,23 +180,15 @@ fn map_settings_error(error: UpdateModuleSettingsError) -> FieldError {
         .extend_with(|_, extensions| {
             extensions.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
         }),
-        UpdateModuleSettingsError::Manifest(error) => {
-            graphql_module_settings_internal_error(
-                "Module settings definition is unavailable",
-                error,
-            )
-        }
+        UpdateModuleSettingsError::Manifest(error) => graphql_module_settings_internal_error(
+            "Module settings definition is unavailable",
+            error,
+        ),
         UpdateModuleSettingsError::Policy(error) => {
-            graphql_module_settings_internal_error(
-                "Module settings policy is unavailable",
-                error,
-            )
+            graphql_module_settings_internal_error("Module settings policy is unavailable", error)
         }
         UpdateModuleSettingsError::Database(error) => {
-            graphql_module_settings_internal_error(
-                "Module settings storage is unavailable",
-                error,
-            )
+            graphql_module_settings_internal_error("Module settings storage is unavailable", error)
         }
     }
 }
@@ -219,7 +210,6 @@ mod tests {
             .and_then(|value| value.into_json().ok())
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
     }
-
 
     #[test]
     fn owner_diagnostics_are_redacted_from_module_settings_cas_errors() {

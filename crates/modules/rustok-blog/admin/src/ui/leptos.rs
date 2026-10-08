@@ -8,11 +8,11 @@ use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use super::richtext::BlogRichTextEditor;
 use super::components::{
     BlogEditBanner, BlogPostFormSetters, BlogPostsTable, apply_post_to_form,
     blog_form_copy_view_model, blog_form_view_model, reset_form,
 };
+use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
 use crate::{core, transport};
 
@@ -198,7 +198,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                         publish_now: set_publish_now,
                                     },
                                     &post,
-                                    );
+                                );
                             }
                         }
                         (Ok(view_model), None) => {
@@ -314,7 +314,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 publish_now: set_publish_now,
                             },
                             &post,
-                            );
+                        );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
@@ -392,7 +392,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     publish_now: set_publish_now,
                                 },
                                 &post,
-                                );
+                            );
                         }
                         if result_view.refresh_posts {
                             set_refresh_nonce.update(|value| *value += 1);
@@ -452,7 +452,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 publish_now: set_publish_now,
                             },
                             &post,
-                            );
+                        );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
@@ -511,7 +511,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 publish_now: set_publish_now,
                             },
                             &post,
-                            );
+                        );
                     }
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);

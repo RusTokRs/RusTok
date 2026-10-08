@@ -99,7 +99,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
 
     // Subscribe before any transport can publish a generation. This also restores shared
     // generations before middleware and authorization paths construct or read their caches.
-    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(ctx, cache.clone()).await;
+    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
+        ctx,
+        cache.clone(),
+    )
+    .await;
     start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
     start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
@@ -173,7 +177,8 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 }),
             };
 
-            let outbox_retention = resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+            let outbox_retention =
+                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
 
             EventRuntime {
                 delivery_profile,
@@ -224,15 +229,15 @@ fn resolve_outbox_retention(
     }
 
     let retention = rustok_outbox::OutboxRetentionConfig {
-        retention: chrono::Duration::days(
-            i64::try_from(settings.retention_days).map_err(|_| {
-                Error::BadRequest("outbox retention window is out of range".to_string())
-            })?,
-        ),
+        retention: chrono::Duration::days(i64::try_from(settings.retention_days).map_err(
+            |_| Error::BadRequest("outbox retention window is out of range".to_string()),
+        )?),
         batch_size: settings.batch_size,
     };
     retention.validate().map_err(|error| {
-        Error::BadRequest(format!("outbox retention configuration is invalid: {error}"))
+        Error::BadRequest(format!(
+            "outbox retention configuration is invalid: {error}"
+        ))
     })?;
 
     Ok(Some(OutboxRetentionRuntimeConfig {

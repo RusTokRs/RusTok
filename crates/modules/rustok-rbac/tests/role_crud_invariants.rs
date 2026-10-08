@@ -278,7 +278,11 @@ async fn test_custom_role_lifecycle_and_system_role_invariants() {
 
     // 4. Assign custom role to a user and try to delete -> MUST FAIL
     let target_user = Uuid::new_v4();
-    let custom_role_id: Uuid = role["id"].as_str().expect("role id").parse().expect("parse uuid");
+    let custom_role_id: Uuid = role["id"]
+        .as_str()
+        .expect("role id")
+        .parse()
+        .expect("parse uuid");
     db.execute_raw(sea_orm::Statement::from_sql_and_values(
         sea_orm::DbBackend::Sqlite,
         "INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)",

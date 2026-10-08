@@ -147,8 +147,8 @@ fn slug_normalization_is_stable() {
 
 #[test]
 fn unknown_persisted_post_status_is_an_invariant_failure() {
-    let error = storage_to_status("corrupt-status")
-        .expect_err("unknown persisted status must fail closed");
+    let error =
+        storage_to_status("corrupt-status").expect_err("unknown persisted status must fail closed");
     assert!(matches!(error, BlogError::Invariant(_)));
 }
 
@@ -447,7 +447,6 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
     assert!(slugs.contains(&"global".to_string()));
     assert!(!slugs.contains(&"mobile-only".to_string()));
 }
-
 
 #[test]
 fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {

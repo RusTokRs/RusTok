@@ -49,9 +49,7 @@ export interface AttributesPageProps {
   onCreateCategoryGroup: (
     payload: CreateCategoryAttributeGroupPayload
   ) => Promise<void>;
-  onBindSchemaAttribute: (
-    payload: BindSchemaAttributePayload
-  ) => Promise<void>;
+  onBindSchemaAttribute: (payload: BindSchemaAttributePayload) => Promise<void>;
   onBindCategoryAttribute: (
     payload: BindCategoryAttributePayload
   ) => Promise<void>;

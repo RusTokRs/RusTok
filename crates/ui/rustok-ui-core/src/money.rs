@@ -59,7 +59,10 @@ mod tests {
 
     #[test]
     fn test_format_ui_discount_badge() {
-        assert_eq!(format_ui_discount_badge(1000, 800), Some("-20%".to_string()));
+        assert_eq!(
+            format_ui_discount_badge(1000, 800),
+            Some("-20%".to_string())
+        );
         assert_eq!(format_ui_discount_badge(1000, 1000), None);
         assert_eq!(format_ui_discount_badge(1000, 1200), None);
         assert_eq!(format_ui_discount_badge(0, 0), None);

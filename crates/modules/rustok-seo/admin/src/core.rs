@@ -679,14 +679,10 @@ impl SeoSettingsForm {
         let template_overrides = self.parse_template_overrides()?;
         target.default_robots = normalize_robot_directives(self.default_robots.as_slice());
         target.sitemap_enabled = self.sitemap_enabled;
-        target.allowed_redirect_hosts = normalize_multiline_values(
-            self.allowed_redirect_hosts_text.as_str(),
-            true,
-        );
-        target.allowed_canonical_hosts = normalize_multiline_values(
-            self.allowed_canonical_hosts_text.as_str(),
-            true,
-        );
+        target.allowed_redirect_hosts =
+            normalize_multiline_values(self.allowed_redirect_hosts_text.as_str(), true);
+        target.allowed_canonical_hosts =
+            normalize_multiline_values(self.allowed_canonical_hosts_text.as_str(), true);
         target.x_default_locale = trim_to_option(self.x_default_locale.as_str());
         target.template_defaults = SeoTemplateRuleSet {
             title: trim_to_option(self.template_title.as_str()),
@@ -695,9 +691,7 @@ impl SeoSettingsForm {
             keywords: trim_to_option(self.template_keywords.as_str()),
             robots: trim_to_option(self.template_robots.as_str()),
             open_graph_title: trim_to_option(self.template_open_graph_title.as_str()),
-            open_graph_description: trim_to_option(
-                self.template_open_graph_description.as_str(),
-            ),
+            open_graph_description: trim_to_option(self.template_open_graph_description.as_str()),
             twitter_title: trim_to_option(self.template_twitter_title.as_str()),
             twitter_description: trim_to_option(self.template_twitter_description.as_str()),
         };

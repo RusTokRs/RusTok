@@ -1,11 +1,11 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::application_model::GroupsAdminApplicationPolicyRevision;
 use crate::application_model::{
     GroupsAdminApplicationPolicyRevisionConnection, GroupsAdminApplicationPolicyRevisionQuery,
 };
-#[cfg(feature = "ssr")]
-use crate::application_model::GroupsAdminApplicationPolicyRevision;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsPolicyHistoryError(pub String);

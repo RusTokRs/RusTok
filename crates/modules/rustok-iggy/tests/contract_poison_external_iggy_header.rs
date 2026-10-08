@@ -35,9 +35,7 @@ async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_pa
     let probe_group = unique_name("header-probe");
     let transport = IggyTransport::new(config.clone()).await?;
     let client = connect_sdk_probe(&config).await?;
-    let mut probe = client
-        .consumer_group(&probe_group, &stream, "dlq")?
-        .build();
+    let mut probe = client.consumer_group(&probe_group, &stream, "dlq")?.build();
     probe.init().await?;
 
     let payload = vec![0xff, 0x00, 0x7f, 0x22, 0x01];

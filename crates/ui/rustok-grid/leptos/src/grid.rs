@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 
-use crate::{header::GridHeader, pagination::GridPaginationBar, row::GridRow, toolbar::GridToolbar};
+use crate::{
+    header::GridHeader, pagination::GridPaginationBar, row::GridRow, toolbar::GridToolbar,
+};
 use rustok_grid::{
     ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, GridPagination, PaginationMode,
     RowSelection, SortState, visible_column_count,
@@ -60,7 +62,8 @@ where
     let local_selection = selection.unwrap_or_else(|| RwSignal::new(RowSelection::new()));
     let local_pagination = pagination.unwrap_or_else(|| RwSignal::new(GridPagination::default()));
 
-    let empty_msg = StoredValue::new(empty_message.unwrap_or_else(|| "No records found.".to_string()));
+    let empty_msg =
+        StoredValue::new(empty_message.unwrap_or_else(|| "No records found.".to_string()));
     let table_label = aria_label.unwrap_or_else(|| "Data grid".to_string());
     let loading_signal = is_loading.unwrap_or_else(|| Signal::derive(|| false));
 
@@ -196,7 +199,8 @@ where
         notify_selection();
     });
 
-    let all_selected = Signal::derive(move || local_selection.get().is_all_selected(page_row_ids()));
+    let all_selected =
+        Signal::derive(move || local_selection.get().is_all_selected(page_row_ids()));
     let some_selected =
         Signal::derive(move || local_selection.get().is_partially_selected(page_row_ids()));
 

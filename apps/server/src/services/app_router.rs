@@ -282,8 +282,8 @@ pub fn compose_application_router(
                 rate_limit_for_paths,
             ));
         // Security headers wrap the complete edge stack so timeout/CORS short-circuits receive
-    // the same response security baseline as normal application responses.
-    let router = middleware::http_stack::apply_http_edge_stack(
+        // the same response security baseline as normal application responses.
+        let router = middleware::http_stack::apply_http_edge_stack(
             router,
             is_production,
             allowed_origins.as_deref(),
@@ -568,8 +568,7 @@ mod tests {
 
     #[tokio::test]
     async fn embedded_admin_fallback_does_not_conflict_with_existing_admin_routes() {
-        let api_router =
-            AxumRouter::new().route("/admin/orders", get(|| async { "commerce" }));
+        let api_router = AxumRouter::new().route("/admin/orders", get(|| async { "commerce" }));
         let admin_router = AxumRouter::new().fallback(|| async { "admin-ui" });
 
         let app = mount_application_shell(api_router, Some(admin_router), None);

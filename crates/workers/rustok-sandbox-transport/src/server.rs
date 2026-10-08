@@ -98,7 +98,9 @@ impl SandboxWorkerGrpcService {
                 ));
             }
         };
-        let sandbox_request = self.validate_sandbox_request(payload, &execution_id).await?;
+        let sandbox_request = self
+            .validate_sandbox_request(payload, &execution_id)
+            .await?;
         Ok((execution_id, sandbox_request))
     }
 
@@ -410,7 +412,9 @@ fn decode_capability_result(
                 ))),
             }
         }
-        None => Err(SandboxError::Aborted("capability result is empty".to_string())),
+        None => Err(SandboxError::Aborted(
+            "capability result is empty".to_string(),
+        )),
     }
 }
 

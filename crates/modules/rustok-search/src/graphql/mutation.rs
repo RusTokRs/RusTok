@@ -383,4 +383,3 @@ fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid
         _ => Ok(tenant.id),
     }
 }
-

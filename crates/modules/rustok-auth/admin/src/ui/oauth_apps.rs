@@ -55,7 +55,10 @@ pub fn OAuthAppsList(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = oauth_app_grid_columns(locale.as_deref());
 
     let search = RwSignal::new(String::new());
@@ -63,7 +66,8 @@ pub fn OAuthAppsList(
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, apps.len() as u64));
 
-    let view_items: Vec<OAuthAppListItemViewModel> = apps.into_iter().map(oauth_app_list_item_view).collect();
+    let view_items: Vec<OAuthAppListItemViewModel> =
+        apps.into_iter().map(oauth_app_list_item_view).collect();
 
     let filtered_items = Memo::new({
         let view_items = view_items.clone();
@@ -84,7 +88,10 @@ pub fn OAuthAppsList(
         let list = filtered_items.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -95,8 +102,8 @@ pub fn OAuthAppsList(
     let cell_on_rotate = on_rotate_secret;
     let cell_on_revoke = on_revoke_app;
 
-    let cell_renderer = Callback::new(move |(item, col_id): (OAuthAppListItemViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(item, col_id): (OAuthAppListItemViewModel, String)| match col_id.as_str() {
             "name" => {
                 let name = item.app.name.clone();
                 let slug = item.app.slug.clone();
@@ -201,8 +208,8 @@ pub fn OAuthAppsList(
                 .into_any()
             }
             _ => ().into_any(),
-        }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-4">

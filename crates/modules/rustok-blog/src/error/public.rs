@@ -51,7 +51,9 @@ impl From<BlogError> for BlogPublicError {
                 ErrorKind::Database | ErrorKind::Internal => {
                     "The Blog operation could not be completed".to_string()
                 }
-                ErrorKind::ExternalService => "A required Blog dependency is unavailable".to_string(),
+                ErrorKind::ExternalService => {
+                    "A required Blog dependency is unavailable".to_string()
+                }
                 ErrorKind::Timeout => "A required Blog dependency timed out".to_string(),
                 ErrorKind::BusinessLogic => "The Blog operation is not allowed".to_string(),
             })

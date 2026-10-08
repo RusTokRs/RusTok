@@ -604,7 +604,7 @@ async fn execute_remote_scaffold_tool(
                         "scaffold_stage_failed",
                         "MCP scaffold stage request was invalid",
                     ))
-                },
+                }
             }
         }
         TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
@@ -617,7 +617,7 @@ async fn execute_remote_scaffold_tool(
                         "scaffold_review_failed",
                         "MCP scaffold review request failed",
                     ))
-                },
+                }
             }
         }
         TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
@@ -630,7 +630,7 @@ async fn execute_remote_scaffold_tool(
                         "scaffold_apply_failed",
                         "MCP scaffold apply failed",
                     ))
-                },
+                }
             }
         }
         _ => envelope_value(McpToolResponse::<()>::error(
@@ -950,9 +950,7 @@ fn map_mcp_authority_error(
 
     match error {
         McpManagementAuthorityError::Invalid(message) => crate::error::Error::BadRequest(message),
-        McpManagementAuthorityError::Forbidden(message) => {
-            crate::error::Error::Forbidden(message)
-        }
+        McpManagementAuthorityError::Forbidden(message) => crate::error::Error::Forbidden(message),
         McpManagementAuthorityError::NotFound(_) => crate::error::Error::NotFound,
         McpManagementAuthorityError::Internal(error) => {
             tracing::error!(error = %error, "MCP management authority validation failed");

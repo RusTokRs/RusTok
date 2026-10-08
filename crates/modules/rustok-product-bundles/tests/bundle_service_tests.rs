@@ -110,7 +110,9 @@ async fn insert_test_product(db: &DatabaseConnection, tenant_id: Uuid, product_i
         revision: Set(1),
         ..Default::default()
     };
-    prod.insert(db).await.expect("Failed to insert test product");
+    prod.insert(db)
+        .await
+        .expect("Failed to insert test product");
 }
 
 #[tokio::test]
@@ -301,7 +303,11 @@ async fn updates_bundle_and_upserts_translations() {
     assert_eq!(updated.discount_type, "fixed_amount");
     assert_eq!(updated.translations.len(), 2);
 
-    let en_trans = updated.translations.iter().find(|t| t.locale == "en").unwrap();
+    let en_trans = updated
+        .translations
+        .iter()
+        .find(|t| t.locale == "en")
+        .unwrap();
     assert_eq!(en_trans.name, "Holiday Gift Set");
 }
 
@@ -354,7 +360,10 @@ async fn adds_and_removes_bundle_items() {
     assert!(added_item.is_optional);
 
     // Verify bundle has item
-    let fetched = service.get_bundle(tenant_id, bundle.id, None).await.unwrap();
+    let fetched = service
+        .get_bundle(tenant_id, bundle.id, None)
+        .await
+        .unwrap();
     assert_eq!(fetched.items.len(), 1);
 
     // Remove item
@@ -363,7 +372,10 @@ async fn adds_and_removes_bundle_items() {
         .await
         .unwrap();
 
-    let fetched_empty = service.get_bundle(tenant_id, bundle.id, None).await.unwrap();
+    let fetched_empty = service
+        .get_bundle(tenant_id, bundle.id, None)
+        .await
+        .unwrap();
     assert_eq!(fetched_empty.items.len(), 0);
 }
 

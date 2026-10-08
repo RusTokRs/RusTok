@@ -216,4 +216,3 @@ impl From<InvitationWire> for GroupsAdminInvitation {
         }
     }
 }
-

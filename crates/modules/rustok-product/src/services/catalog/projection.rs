@@ -272,7 +272,12 @@ impl CatalogService {
         )?;
 
         let variant_ids: Vec<Uuid> = variants.iter().map(|v| v.id).collect();
-        let (all_prices, variant_translations, available_inventory_by_variant, mut axis_values_by_variant) = tokio::try_join!(
+        let (
+            all_prices,
+            variant_translations,
+            available_inventory_by_variant,
+            mut axis_values_by_variant,
+        ) = tokio::try_join!(
             async {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(Vec::new())
@@ -404,9 +409,8 @@ impl CatalogService {
                 .push(translation);
         }
 
-        let fulfillment_requirement = ProductFulfillmentRequirement::from_product_type(
-            product.product_type.as_deref(),
-        );
+        let fulfillment_requirement =
+            ProductFulfillmentRequirement::from_product_type(product.product_type.as_deref());
 
         let response = ProductResponse {
             id: product.id,

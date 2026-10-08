@@ -231,7 +231,6 @@ fn map_privacy_error(error: PortError) -> ProfileError {
     ProfileError::PresentationUnavailable
 }
 
-
 #[async_trait]
 impl ProfileSummaryReader for ProfilePresentationService {
     async fn find_profile_summaries(
@@ -244,12 +243,7 @@ impl ProfileSummaryReader for ProfilePresentationService {
     ) -> Result<HashMap<Uuid, ApiProfileSummary>, ProfileSummaryReadError> {
         let reader = Self::for_audience(self.db.clone(), audience);
         reader
-            .find_profile_summaries(
-                tenant_id,
-                user_ids,
-                requested_locale,
-                tenant_default_locale,
-            )
+            .find_profile_summaries(tenant_id, user_ids, requested_locale, tenant_default_locale)
             .await
             .map(|summaries| {
                 summaries

@@ -36,9 +36,7 @@ pub use alert::Alert;
 pub use avatar::Avatar;
 pub use badge::Badge;
 pub use button::Button;
-pub use card::{
-    Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
-};
+pub use card::{Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle};
 pub use checkbox::Checkbox;
 pub use dialog::{
     Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader,
@@ -64,6 +62,11 @@ pub use alert::Alert as ui_alert;
 pub use avatar::Avatar as ui_avatar;
 pub use badge::Badge as ui_badge;
 pub use button::Button as ui_button;
+pub use card::{
+    Card as ui_card, CardAction as ui_card_action, CardContent as ui_card_content,
+    CardDescription as ui_card_description, CardFooter as ui_card_footer,
+    CardHeader as ui_card_header, CardTitle as ui_card_title,
+};
 pub use checkbox::Checkbox as ui_checkbox;
 pub use dialog::{
     Dialog as ui_dialog, DialogClose as ui_dialog_close, DialogContent as ui_dialog_content,
@@ -79,11 +82,6 @@ pub use select::Select as ui_select;
 pub use separator::Separator as ui_separator;
 pub use skeleton::Skeleton as ui_skeleton;
 pub use spinner::Spinner as ui_spinner;
-pub use card::{
-    Card as ui_card, CardAction as ui_card_action, CardContent as ui_card_content,
-    CardDescription as ui_card_description, CardFooter as ui_card_footer,
-    CardHeader as ui_card_header, CardTitle as ui_card_title,
-};
 pub use switch::Switch as ui_switch;
 pub use tabs::{
     Tabs as ui_tabs, TabsContent as ui_tabs_content, TabsList as ui_tabs_list,
@@ -91,4 +89,3 @@ pub use tabs::{
 };
 pub use textarea::Textarea as ui_textarea;
 pub use toc::TableOfContents as ui_table_of_contents;
-

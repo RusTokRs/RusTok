@@ -122,4 +122,3 @@ fn search_attribute_filter_inputs(
         })
         .collect()
 }
-

@@ -2,20 +2,20 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction,
-    EntityTrait, QueryFilter, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    sea_query::Expr,
 };
 use uuid::Uuid;
 
 use crate::{
     MAX_TAXONOMY_CATEGORY_DEPTH, TaxonomyError, TaxonomyResult, TaxonomyScopeType,
-    TaxonomyTermKind, lock_category_hierarchy_writer_in_tx,
+    TaxonomyTermKind,
     entities::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
         taxonomy_term_alias, taxonomy_term_translation,
     },
-    normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key, normalize_term_locale,
-    normalize_term_route_key,
+    lock_category_hierarchy_writer_in_tx, normalize_taxonomy_category_color,
+    normalize_taxonomy_category_icon_key, normalize_term_locale, normalize_term_route_key,
     route_key_registry::{ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx},
     translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx},
 };

@@ -127,9 +127,9 @@ impl DataCapabilityConstraints {
         let mut keys = BTreeSet::new();
         let mut idempotency_keys = BTreeSet::new();
         for write in writes {
-            let write = write.as_object().ok_or_else(|| {
-                data_constraint_error(call, "data batch entry must be an object")
-            })?;
+            let write = write
+                .as_object()
+                .ok_or_else(|| data_constraint_error(call, "data batch entry must be an object"))?;
             let (key, idempotency_key) = self.validate_write(call, write)?;
             if !keys.insert(key) || !idempotency_keys.insert(idempotency_key) {
                 return Err(data_constraint_error(
@@ -219,9 +219,9 @@ impl DataCapabilityConstraints {
             return Err(data_constraint_error(call, "data prefix is not allowed"));
         }
         if let Some(after_key) = input.get("after_key") {
-            let after_key = after_key.as_str().ok_or_else(|| {
-                data_constraint_error(call, "data after_key must be a string")
-            })?;
+            let after_key = after_key
+                .as_str()
+                .ok_or_else(|| data_constraint_error(call, "data after_key must be a string"))?;
             if !valid_data_key(after_key) || !after_key.starts_with(prefix) {
                 return Err(data_constraint_error(
                     call,

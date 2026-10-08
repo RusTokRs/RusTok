@@ -287,7 +287,9 @@ impl SettingsService {
                 },
             )
             .await
-            .map_err(|e| sea_orm::DbErr::Custom(format!("Failed to publish settings event to outbox: {e}")))?;
+            .map_err(|e| {
+                sea_orm::DbErr::Custom(format!("Failed to publish settings event to outbox: {e}"))
+            })?;
 
         tx.commit().await?;
 

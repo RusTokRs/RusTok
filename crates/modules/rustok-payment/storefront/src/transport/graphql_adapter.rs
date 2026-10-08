@@ -236,7 +236,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

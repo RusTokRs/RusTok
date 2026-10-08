@@ -251,10 +251,8 @@ fn load_and_validate_workspace_artifacts(
     workspace: &Path,
     request: &StaticDistributionPublisherRequest,
 ) -> Result<Vec<u8>, StaticDistributionPublisherError> {
-    let manifest_bytes = read_bounded_regular(
-        &workspace.join(GENERATED_MANIFEST_PATH),
-        MAX_MANIFEST_BYTES,
-    )?;
+    let manifest_bytes =
+        read_bounded_regular(&workspace.join(GENERATED_MANIFEST_PATH), MAX_MANIFEST_BYTES)?;
     let manifest: GeneratedStaticDistributionManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| {
             StaticDistributionPublisherError::InvalidInput(format!(
@@ -263,8 +261,7 @@ fn load_and_validate_workspace_artifacts(
         })?;
     validate_manifest(&manifest, request)?;
 
-    let lock_bytes =
-        read_bounded_regular(&workspace.join(WORKSPACE_LOCK_PATH), MAX_LOCK_BYTES)?;
+    let lock_bytes = read_bounded_regular(&workspace.join(WORKSPACE_LOCK_PATH), MAX_LOCK_BYTES)?;
     if digest_bytes(&lock_bytes) != request.resolved_lock_digest {
         return Err(StaticDistributionPublisherError::InvalidInput(
             "resolved workspace lock does not match the publisher request".to_string(),
@@ -699,8 +696,6 @@ fn validate_manifest(
     }
     Ok(())
 }
-
-
 
 fn publication_blob(media_type: &str, bytes: Vec<u8>) -> OciBuildPublicationBlob {
     OciBuildPublicationBlob {

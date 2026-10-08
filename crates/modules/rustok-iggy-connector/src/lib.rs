@@ -869,11 +869,7 @@ impl IggyConnector for ExternalConnector {
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?
                 .partitioning(Partitioning::partition_id(partition))
                 .create_stream_if_not_exists()
-                .create_topic_if_not_exists(
-                    partitions,
-                    Default::default(),
-                    Default::default(),
-                )
+                .create_topic_if_not_exists(partitions, Default::default(), Default::default())
                 .build();
 
             producer
@@ -1014,11 +1010,7 @@ impl IggyConnector for ExternalConnector {
                     .producer(stream, topic)
                     .map_err(|error: IggyError| ConnectorError::Topology(error.to_string()))?
                     .create_stream_if_not_exists()
-                    .create_topic_if_not_exists(
-                        partitions,
-                        Default::default(),
-                        Default::default(),
-                    )
+                    .create_topic_if_not_exists(partitions, Default::default(), Default::default())
                     .build();
                 producer
                     .init()

@@ -399,7 +399,10 @@ mod tests {
     fn min_greater_than_max_pushes_the_upper_bound() {
         let col = GridColumnDef::new("t", "T").max_width(120).min_width(200);
         assert!(col.width.min <= col.width.max);
-        assert_eq!((col.width.min, col.width.max, col.width.current), (200, 200, 200));
+        assert_eq!(
+            (col.width.min, col.width.max, col.width.current),
+            (200, 200, 200)
+        );
     }
 
     #[test]

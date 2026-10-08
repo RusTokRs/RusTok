@@ -9,8 +9,8 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 use crate::core::{
     InventoryHealthState, apply_variant_quantity_update, apply_variant_reservation_release_update,
     apply_variant_reservation_update, filter_inventory_products, inventory_grid_columns,
-    inventory_health_state, parse_availability_quantity, parse_reserve_quantity, parse_set_quantity,
-    status_badge, summarize_inventory,
+    inventory_health_state, parse_availability_quantity, parse_reserve_quantity,
+    parse_set_quantity, status_badge, summarize_inventory,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -212,7 +212,11 @@ pub fn InventoryAdmin() -> impl IntoView {
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
     let filtered_products = Memo::new(move |_| {
-        let raw = products.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let raw = products
+            .get()
+            .and_then(Result::ok)
+            .map(|l| l.items)
+            .unwrap_or_default();
         let current_filters = filters.get();
         filter_inventory_products(&raw, &current_filters)
     });
@@ -274,7 +278,10 @@ pub fn InventoryAdmin() -> impl IntoView {
                 .into_any()
             }
             "shipping_profile_slug" => {
-                let profile_str = item.shipping_profile_slug.clone().unwrap_or_else(|| "—".to_string());
+                let profile_str = item
+                    .shipping_profile_slug
+                    .clone()
+                    .unwrap_or_else(|| "—".to_string());
                 view! {
                     <span class="text-xs text-muted-foreground truncate">
                         {profile_str}
@@ -283,7 +290,11 @@ pub fn InventoryAdmin() -> impl IntoView {
                 .into_any()
             }
             "created_at" => {
-                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
+                let date_str = item
+                    .created_at
+                    .split('T')
+                    .next()
+                    .unwrap_or(&item.created_at);
                 view! {
                     <span class="text-xs text-muted-foreground whitespace-nowrap">
                         {date_str.to_string()}
@@ -959,7 +970,6 @@ fn format_variant_identity(locale: Option<&str>, variant: &InventoryVariant) -> 
     )
 }
 
-
 fn format_variant_price(locale: Option<&str>, variant: &InventoryVariant) -> String {
     if variant.prices.is_empty() {
         t(locale, "inventory.common.noPricing", "no pricing")
@@ -1375,7 +1385,10 @@ mod tests {
         assert_eq!(meta_en, "handle: t-shirt | vendor: Acme | type: apparel");
 
         let meta_ru = format_product_meta(Some("ru"), &product);
-        assert_eq!(meta_ru, "handle: t-shirt | производитель: Acme | тип: apparel");
+        assert_eq!(
+            meta_ru,
+            "handle: t-shirt | производитель: Acme | тип: apparel"
+        );
 
         let variant = InventoryVariant {
             id: "v1".to_string(),
@@ -1397,4 +1410,3 @@ mod tests {
         assert_eq!(id_ru, "артикул: TSHIRT-M | штрихкод: 12345678");
     }
 }
-

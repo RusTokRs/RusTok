@@ -6,7 +6,6 @@ use rustok_api::{
     SharedStaticModuleSettingsReader,
 };
 use rustok_core::SecurityContext;
-use serde::Deserialize;
 use rustok_reactions_api::{
     ReactionCatalog, ReactionKey, ReactionProviderError, ReactionProviderResult,
     ReactionSelectionPolicy, ReactionSourceSlug, ReactionSubjectAccess,
@@ -16,6 +15,7 @@ use rustok_reactions_api::{
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
@@ -86,20 +86,12 @@ impl ForumReactionSubjectProvider {
         }
     }
 
-    async fn reactions_enabled(
-        &self,
-        tenant_id: Uuid,
-    ) -> ReactionProviderResult<bool> {
+    async fn reactions_enabled(&self, tenant_id: Uuid) -> ReactionProviderResult<bool> {
         let Some(settings_reader) = self.settings_reader.as_ref() else {
-            return Err(ReactionProviderError::CapabilityUnavailable {
-                retryable: false,
-            });
+            return Err(ReactionProviderError::CapabilityUnavailable { retryable: false });
         };
         let Some(snapshot) = settings_reader
-            .settings(
-                tenant_id,
-                crate::services::FORUM_MODULE_SLUG,
-            )
+            .settings(tenant_id, crate::services::FORUM_MODULE_SLUG)
             .await
             .map_err(|error| match error.kind {
                 PortErrorKind::Timeout | PortErrorKind::Unavailable => {

@@ -5,8 +5,8 @@ use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use std::sync::Arc;
@@ -105,12 +105,8 @@ impl BlogCommentProjectionHandler {
             // retry loop forever. Drop stale Blog-owned projection state as part of
             // acknowledging the obsolete event.
             blog_comment_projection_delivery::Entity::delete_many()
-                .filter(
-                    blog_comment_projection_delivery::Column::TenantId.eq(envelope.tenant_id),
-                )
-                .filter(
-                    blog_comment_projection_delivery::Column::PostId.eq(change.post_id),
-                )
+                .filter(blog_comment_projection_delivery::Column::TenantId.eq(envelope.tenant_id))
+                .filter(blog_comment_projection_delivery::Column::PostId.eq(change.post_id))
                 .exec(&txn)
                 .await?;
             txn.commit().await?;
@@ -153,19 +149,16 @@ impl BlogCommentProjectionHandler {
             .await?
             .map(|delivery| delivery.projection_revision)
             .unwrap_or(0);
-        let next_projection_revision = latest_projection_revision
-            .checked_add(1)
-            .ok_or_else(|| {
+        let next_projection_revision =
+            latest_projection_revision.checked_add(1).ok_or_else(|| {
                 Error::Internal(format!(
                     "blog comment projection revision exhausted for post {}",
                     change.post_id
                 ))
             })?;
 
-        let applied_delta = projection_applied_delta(
-            latest.as_ref().map(|delivery| delivery.delta),
-            change.delta,
-        );
+        let applied_delta =
+            projection_applied_delta(latest.as_ref().map(|delivery| delivery.delta), change.delta);
 
         let next_comment_count = next_comment_count(post.comment_count, applied_delta);
         let post_updated = if applied_delta == 0 {

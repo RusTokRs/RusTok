@@ -1,12 +1,12 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::GroupsStorefrontMembership;
 use crate::model::{
     AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
     GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
 };
-#[cfg(feature = "ssr")]
-use crate::model::GroupsStorefrontMembership;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsStorefrontError(pub String);

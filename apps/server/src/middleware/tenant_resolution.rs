@@ -9,9 +9,7 @@ use uuid::Uuid;
 
 use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
-    settings::{
-        RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile,
-    },
+    settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -518,9 +516,10 @@ mod tests {
         request
             .headers_mut()
             .append("X-Tenant-ID", axum::http::HeaderValue::from_static("first"));
-        request
-            .headers_mut()
-            .append("X-Tenant-ID", axum::http::HeaderValue::from_static("second"));
+        request.headers_mut().append(
+            "X-Tenant-ID",
+            axum::http::HeaderValue::from_static("second"),
+        );
 
         let error = resolve_request(&request, &RustokSettings::default())
             .expect_err("duplicate tenant header values must fail closed");
@@ -534,12 +533,14 @@ mod tests {
     #[test]
     fn duplicate_compatibility_tenant_header_values_are_rejected() {
         let mut request = request("/api/users");
-        request
-            .headers_mut()
-            .append("X-Tenant-Slug", axum::http::HeaderValue::from_static("first"));
-        request
-            .headers_mut()
-            .append("X-Tenant-Slug", axum::http::HeaderValue::from_static("second"));
+        request.headers_mut().append(
+            "X-Tenant-Slug",
+            axum::http::HeaderValue::from_static("first"),
+        );
+        request.headers_mut().append(
+            "X-Tenant-Slug",
+            axum::http::HeaderValue::from_static("second"),
+        );
 
         let error = resolve_request(&request, &RustokSettings::default())
             .expect_err("duplicate compatibility header values must fail closed");

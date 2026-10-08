@@ -1,4 +1,5 @@
-use fly_browser::FLY_BROWSER_ADAPTER_JS;
+mod support;
+use support::contains;
 
 #[test]
 fn adapter_lifecycle_is_one_shot_and_idempotent() {
@@ -10,14 +11,14 @@ fn adapter_lifecycle_is_one_shot_and_idempotent() {
         "if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return this",
         "FlyBrowserLifecycleError",
     ] {
-        assert!(FLY_BROWSER_ADAPTER_JS.contains(marker), "missing {marker}");
+        assert!(contains(marker), "missing {marker}");
     }
 }
 
 #[test]
 fn transport_options_expose_only_abort_signal() {
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("IntentTransportOptions"));
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("signal?: AbortSignal"));
-    assert!(!FLY_BROWSER_ADAPTER_JS.contains("abort?: IntentAbortMetadata"));
-    assert!(!FLY_BROWSER_ADAPTER_JS.contains("transport.abort"));
+    assert!(contains("IntentTransportOptions"));
+    assert!(contains("signal?: AbortSignal"));
+    assert!(!contains("abort?: IntentAbortMetadata"));
+    assert!(!contains("transport.abort"));
 }

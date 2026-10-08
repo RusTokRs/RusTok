@@ -41,10 +41,7 @@ pub enum ForumEngagementMode {
 }
 
 impl ForumEngagementMode {
-    pub async fn resolve(
-        providers: &ForumSettingsProviders,
-        tenant_id: Uuid,
-    ) -> ForumResult<Self> {
+    pub async fn resolve(providers: &ForumSettingsProviders, tenant_id: Uuid) -> ForumResult<Self> {
         let Some(reader) = providers.static_reader.as_ref() else {
             return Ok(Self::InternalVotes);
         };
@@ -54,7 +51,10 @@ impl ForumEngagementMode {
             .await
             .map_err(map_port_error)?;
 
-        let forum_settings = if forum_snapshot.as_ref().is_some_and(|snapshot| snapshot.enabled) {
+        let forum_settings = if forum_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.enabled)
+        {
             forum_snapshot
                 .as_ref()
                 .map(|snapshot| parse_forum_settings(&snapshot.settings))
@@ -92,7 +92,10 @@ impl ForumEngagementMode {
             .await
             .map_err(map_port_error)?;
 
-        let forum_settings = if forum_snapshot.as_ref().is_some_and(|snapshot| snapshot.enabled) {
+        let forum_settings = if forum_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.enabled)
+        {
             forum_snapshot
                 .as_ref()
                 .map(|snapshot| parse_forum_settings(&snapshot.settings))
@@ -163,11 +166,9 @@ fn map_port_error(error: PortError) -> ForumError {
             "Static module settings are temporarily unavailable",
             true,
         ),
-        PortErrorKind::InvariantViolation => {
-            ForumError::Internal(rustok_core::Error::Internal(
-                "Static module settings violated an owner invariant".to_string(),
-            ))
-        }
+        PortErrorKind::InvariantViolation => ForumError::Internal(rustok_core::Error::Internal(
+            "Static module settings violated an owner invariant".to_string(),
+        )),
         PortErrorKind::Validation
         | PortErrorKind::NotFound
         | PortErrorKind::Conflict
@@ -183,14 +184,14 @@ mod tests {
 
     use async_trait::async_trait;
     use rustok_api::{
-        PortError, SharedStaticModuleSettingsReader,
-        SharedStaticModuleSettingsTransactionReader, StaticModuleSettingsReader,
-        StaticModuleSettingsSnapshot, StaticModuleSettingsTransactionReader,
+        PortError, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
+        StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
+        StaticModuleSettingsTransactionReader,
     };
     use sea_orm::DatabaseTransaction;
     use uuid::Uuid;
 
-    use super::{ForumEngagementMode, ForumSettingsProviders, FORUM_USE_REACTIONS_SETTING};
+    use super::{FORUM_USE_REACTIONS_SETTING, ForumEngagementMode, ForumSettingsProviders};
 
     struct EmptySettingsReader;
 

@@ -19,8 +19,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_category, forum_domain_event, forum_reply, forum_solution,
-    forum_topic, forum_topic_channel_access, forum_topic_translation,
+    forum_category, forum_domain_event, forum_reply, forum_solution, forum_topic,
+    forum_topic_channel_access, forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::serialize_discussion;

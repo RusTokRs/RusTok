@@ -2,8 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
@@ -92,9 +94,8 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let require_usage_projection =
-            term.scope_type == TaxonomyScopeType::Module
-                && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
+        let require_usage_projection = term.scope_type == TaxonomyScopeType::Module
+            && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
         let use_count = self
             .load_tag_usage_count(tenant_id, tag_id, require_usage_projection)
             .await?;
@@ -114,7 +115,8 @@ impl TagService {
         let locale = normalize_locale(&input.locale)?;
         validate_tag_name_if_present(input.name.as_deref())?;
         validate_optional_tag_slug(input.slug.as_deref())?;
-        self.ensure_blog_owned_tag(tenant_id, tag_id, &locale).await?;
+        self.ensure_blog_owned_tag(tenant_id, tag_id, &locale)
+            .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let term = update_module_term_in_tx(
             &txn,
@@ -133,9 +135,7 @@ impl TagService {
         publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
-        let use_count = self
-            .load_tag_usage_count(tenant_id, tag_id, true)
-            .await?;
+        let use_count = self.load_tag_usage_count(tenant_id, tag_id, true).await?;
 
         Ok(to_tag_mutation_response(term, use_count))
     }
@@ -200,9 +200,7 @@ impl TagService {
             txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), 0));
         }
-        let last_page = total
-            .saturating_add(per_page.saturating_sub(1))
-            / per_page;
+        let last_page = total.saturating_add(per_page.saturating_sub(1)) / per_page;
         if page > last_page {
             txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), total));
@@ -385,10 +383,7 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
             blog_post::Column::Version,
             Expr::col(blog_post::Column::Version).add(1),
         )
-        .col_expr(
-            blog_post::Column::UpdatedAt,
-            Expr::value(now),
-        )
+        .col_expr(blog_post::Column::UpdatedAt, Expr::value(now))
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Id.in_subquery(relation_filter))
         .filter(blog_post::Column::Version.gt(0))
@@ -598,7 +593,9 @@ async fn decrement_tag_usage_in_tx(
 ) -> BlogResult<()> {
     use sea_orm::ExprTrait;
 
-    if tag_ids.is_empty() { return Ok(()); }
+    if tag_ids.is_empty() {
+        return Ok(());
+    }
     let mut unique_ids = tag_ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
@@ -875,7 +872,7 @@ fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> T
 #[cfg(test)]
 mod pagination_tests {
     use super::{
-        bounded_tag_page_size, validate_optional_tag_slug, validate_tag_name, MAX_TAGS_PER_PAGE,
+        MAX_TAGS_PER_PAGE, bounded_tag_page_size, validate_optional_tag_slug, validate_tag_name,
     };
 
     #[test]

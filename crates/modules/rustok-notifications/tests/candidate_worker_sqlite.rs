@@ -471,9 +471,12 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES (X'{}')", tenant_id.simple()))
-        .await
-        .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!(
+        "INSERT INTO tenants (id) VALUES (X'{}')",
+        tenant_id.simple()
+    ))
+    .await
+    .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {

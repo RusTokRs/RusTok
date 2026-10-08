@@ -75,7 +75,6 @@ struct PublishSeoRevisionVariables {
     note: Option<String>,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: V,

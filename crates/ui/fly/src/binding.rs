@@ -1,7 +1,7 @@
 use crate::ComponentIndex;
 use crate::{
-    ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity,
-    is_valid_runtime_context_path, resolve_context_path,
+    ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic,
+    ValidationSeverity, is_valid_runtime_context_path, resolve_context_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -249,7 +249,10 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
                 "runtime_binding_target_invalid",
-                format!("runtime binding `{}` has an invalid target: {error}", binding.id),
+                format!(
+                    "runtime binding `{}` has an invalid target: {error}",
+                    binding.id
+                ),
             ));
         }
         if !components.contains(&binding.component_id) {
@@ -448,10 +451,8 @@ mod tests {
             },
         )
         .expect("binding");
-        let materialized = materialize_bindings(
-            &document,
-            &json!({ "items": [{ "title": "First" }] }),
-        );
+        let materialized =
+            materialize_bindings(&document, &json!({ "items": [{ "title": "First" }] }));
         assert_eq!(materialized.applied_bindings, 1);
         assert_eq!(
             materialized

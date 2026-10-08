@@ -681,8 +681,7 @@ impl std::error::Error for NotificationNavigationError {}
 fn navigate_to_route(route: &str) -> Result<(), NotificationNavigationError> {
     #[cfg(target_arch = "wasm32")]
     {
-        let window =
-            web_sys::window().ok_or(NotificationNavigationError::BrowserUnavailable)?;
+        let window = web_sys::window().ok_or(NotificationNavigationError::BrowserUnavailable)?;
         window
             .location()
             .set_href(route)

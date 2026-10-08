@@ -556,15 +556,9 @@ fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bo
     safe_url::url_allowed(value, kind, &policy.url_policy())
 }
 
-
-
 /// Properties that can execute script regardless of their value.
-const DENIED_STYLE_PROPERTIES: &[&str] = &[
-    "behavior",
-    "-moz-binding",
-    "-ms-behavior",
-    "expression",
-];
+const DENIED_STYLE_PROPERTIES: &[&str] =
+    &["behavior", "-moz-binding", "-ms-behavior", "expression"];
 
 /// Decide whether a single CSS declaration may be emitted.
 ///
@@ -1108,8 +1102,12 @@ mod tests {
             "url(data:image/png;base64,iVBORw0KGgo=)",
         ] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy)
-                    .is_some(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_some(),
                 "rejected legitimate {value}"
             );
         }
@@ -1127,8 +1125,12 @@ mod tests {
             "url(/unterminated.png",
         ] {
             assert!(
-                safe_style("background-image", &Value::String(value.to_string()), &policy)
-                    .is_none(),
+                safe_style(
+                    "background-image",
+                    &Value::String(value.to_string()),
+                    &policy
+                )
+                .is_none(),
                 "accepted hostile {value}"
             );
         }
@@ -1234,7 +1236,11 @@ mod tests {
     #[test]
     fn fragment_attributes_must_point_inside_the_document() {
         let policy = RenderPolicy::default();
-        assert!(url_allowed("#hero-map", UrlAttributeKind::Fragment, &policy));
+        assert!(url_allowed(
+            "#hero-map",
+            UrlAttributeKind::Fragment,
+            &policy
+        ));
         for value in [
             "https://evil.example/map",
             "/local/map",
@@ -1252,7 +1258,15 @@ mod tests {
     fn every_url_attribute_the_publish_policy_classifies_is_classified_here_too() {
         // The two layers must agree on *what counts as a URL*. Where they disagreed, an
         // attribute was validated at publish and emitted unchecked by the renderer.
-        for attribute in ["href", "src", "poster", "action", "formaction", "cite", "usemap"] {
+        for attribute in [
+            "href",
+            "src",
+            "poster",
+            "action",
+            "formaction",
+            "cite",
+            "usemap",
+        ] {
             assert!(
                 UrlAttributeKind::for_attribute(attribute).is_some(),
                 "`{attribute}` carries a URL but the renderer does not classify it"
@@ -1324,4 +1338,3 @@ mod tests {
         assert!(rendered.html.contains("#hero-map"), "{}", rendered.html);
     }
 }
-

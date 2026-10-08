@@ -138,9 +138,11 @@ impl StockLocationTranslationService {
         let target_locale = canonical_locale(target_locale)?;
         validate_locale_pair(&source_locale, &target_locale)?;
         if limit == 0 || limit > MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE {
-            return Err(StockLocationTranslationExactLocaleError::Validation(format!(
-                "Inventory translation resource page size must be between 1 and {MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE}"
-            )));
+            return Err(StockLocationTranslationExactLocaleError::Validation(
+                format!(
+                    "Inventory translation resource page size must be between 1 and {MAX_STOCK_LOCATION_TRANSLATION_RESOURCE_PAGE}"
+                ),
+            ));
         }
 
         let source_stock_location_ids = sea_orm::sea_query::Query::select()
@@ -166,7 +168,11 @@ impl StockLocationTranslationService {
             stock_locations.truncate(usize::from(limit));
         }
         let next_after = has_more
-            .then(|| stock_locations.last().map(|stock_location| stock_location.id))
+            .then(|| {
+                stock_locations
+                    .last()
+                    .map(|stock_location| stock_location.id)
+            })
             .flatten();
         if stock_locations.is_empty() {
             return Ok((Vec::new(), None));
@@ -245,13 +251,8 @@ impl StockLocationTranslationService {
         operation_lease: idempotency::Lease,
     ) -> StockLocationTranslationExactLocaleResult<StockLocationTranslationExactLocaleApplyReceipt>
     {
-        self.apply_exact_locale_inner(
-            tenant_id,
-            stock_location_id,
-            request,
-            Some(operation_lease),
-        )
-        .await
+        self.apply_exact_locale_inner(tenant_id, stock_location_id, request, Some(operation_lease))
+            .await
     }
 
     async fn apply_exact_locale_inner(

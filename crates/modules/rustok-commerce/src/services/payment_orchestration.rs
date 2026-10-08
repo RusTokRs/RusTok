@@ -522,7 +522,7 @@ impl PaymentOrchestrationService {
                 existing.id,
                 operation,
             )
-                .await?;
+            .await?;
         }
         Ok(())
     }

@@ -327,4 +327,3 @@ impl From<RuleWire> for GroupsAdminApplicationRule {
         }
     }
 }
-

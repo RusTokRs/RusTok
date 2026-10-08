@@ -24,8 +24,16 @@ pub fn order_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .width(140)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
-                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+                from_placeholder: Some(if is_ru {
+                    "С".to_string()
+                } else {
+                    "From".to_string()
+                }),
+                to_placeholder: Some(if is_ru {
+                    "По".to_string()
+                } else {
+                    "To".to_string()
+                }),
             }),
         GridColumnDef::new("customer", if is_ru { "Клиент" } else { "Customer" })
             .width(180)
@@ -124,11 +132,7 @@ pub fn order_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
 }
 
 /// Evaluates if a single order satisfies the filter condition on the given column.
-pub fn matches_order_filter(
-    item: &OrderListItem,
-    col_id: &str,
-    filter_val: &FilterValue,
-) -> bool {
+pub fn matches_order_filter(item: &OrderListItem, col_id: &str, filter_val: &FilterValue) -> bool {
     match (col_id, filter_val) {
         ("id", FilterValue::Text(query)) => {
             let q = query.trim().to_lowercase();
@@ -195,7 +199,12 @@ pub fn filter_orders(items: &[OrderListItem], filters: &ColumnFilters) -> Vec<Or
 mod tests {
     use super::*;
 
-    fn create_test_order(id: &str, status: &str, customer_id: Option<&str>, created_at: &str) -> OrderListItem {
+    fn create_test_order(
+        id: &str,
+        status: &str,
+        customer_id: Option<&str>,
+        created_at: &str,
+    ) -> OrderListItem {
         OrderListItem {
             id: id.to_string(),
             customer_id: customer_id.map(String::from),
@@ -231,7 +240,12 @@ mod tests {
         let orders = vec![
             create_test_order("ord-101", "paid", Some("cust-1"), "2026-05-10T12:00:00Z"),
             create_test_order("ord-102", "pending", Some("cust-2"), "2026-05-11T12:00:00Z"),
-            create_test_order("ord-201", "delivered", Some("cust-1"), "2026-05-12T12:00:00Z"),
+            create_test_order(
+                "ord-201",
+                "delivered",
+                Some("cust-1"),
+                "2026-05-12T12:00:00Z",
+            ),
         ];
 
         let mut filters = ColumnFilters::new();
@@ -250,17 +264,35 @@ mod tests {
     #[test]
     fn test_filter_orders_by_customer_and_date() {
         let orders = vec![
-            create_test_order("ord-101", "paid", Some("cust-alpha"), "2026-05-01T12:00:00Z"),
-            create_test_order("ord-102", "pending", Some("cust-beta"), "2026-05-15T12:00:00Z"),
-            create_test_order("ord-103", "delivered", Some("cust-alpha"), "2026-05-20T12:00:00Z"),
+            create_test_order(
+                "ord-101",
+                "paid",
+                Some("cust-alpha"),
+                "2026-05-01T12:00:00Z",
+            ),
+            create_test_order(
+                "ord-102",
+                "pending",
+                Some("cust-beta"),
+                "2026-05-15T12:00:00Z",
+            ),
+            create_test_order(
+                "ord-103",
+                "delivered",
+                Some("cust-alpha"),
+                "2026-05-20T12:00:00Z",
+            ),
         ];
 
         let mut filters = ColumnFilters::new();
         filters.set("customer", FilterValue::Text("alpha".to_string()));
-        filters.set("created_at", FilterValue::DateRange {
-            from: Some("2026-05-10".to_string()),
-            to: None,
-        });
+        filters.set(
+            "created_at",
+            FilterValue::DateRange {
+                from: Some("2026-05-10".to_string()),
+                to: None,
+            },
+        );
         let filtered = filter_orders(&orders, &filters);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "ord-103");

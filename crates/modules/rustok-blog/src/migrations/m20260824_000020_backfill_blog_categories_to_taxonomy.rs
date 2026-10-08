@@ -38,7 +38,6 @@ mod migration_blog_category_translation {
 }
 use migration_blog_category_translation as blog_category_translation;
 
-
 mod migration_blog_category_taxonomy_binding {
     use sea_orm::entity::prelude::*;
     use uuid::Uuid;

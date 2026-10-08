@@ -160,7 +160,14 @@ mod tests {
         let document = document();
         let index = ComponentIndex::build(&document);
 
-        for id in ["root", "hero", "title", "footer", "about-root", "about-hero"] {
+        for id in [
+            "root",
+            "hero",
+            "title",
+            "footer",
+            "about-root",
+            "about-hero",
+        ] {
             assert_eq!(
                 index.location(id),
                 document.component_location(id).as_ref(),
@@ -198,7 +205,10 @@ mod tests {
         assert_eq!(index.duplicate_ids().collect::<Vec<_>>(), vec!["dup"]);
         // First in pre-order wins, matching `component_location`.
         assert_eq!(index.location("dup").map(|l| l.index), Some(0));
-        assert_eq!(index.location("dup"), document.component_location("dup").as_ref());
+        assert_eq!(
+            index.location("dup"),
+            document.component_location("dup").as_ref()
+        );
     }
 
     #[test]
@@ -209,7 +219,14 @@ mod tests {
         assert!(!index.is_empty());
         assert_eq!(
             index.ids().collect::<Vec<_>>(),
-            vec!["about-hero", "about-root", "footer", "hero", "root", "title"]
+            vec![
+                "about-hero",
+                "about-root",
+                "footer",
+                "hero",
+                "root",
+                "title"
+            ]
         );
     }
 }

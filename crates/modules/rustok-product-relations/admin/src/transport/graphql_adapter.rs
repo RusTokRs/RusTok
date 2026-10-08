@@ -115,7 +115,6 @@ where
     .map_err(|error| error.to_string())
 }
 
-
 pub async fn load_relations(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -135,7 +134,11 @@ pub async fn load_relations(
 
     let vars = Vars {
         product_id,
-        relation_type: filters.relation_type.as_deref().map(relation_type_to_gql).map(str::to_string),
+        relation_type: filters
+            .relation_type
+            .as_deref()
+            .map(relation_type_to_gql)
+            .map(str::to_string),
     };
 
     let data: FetchResponse = request(FETCH_RELATIONS_QUERY, vars, token, tenant_slug).await?;
@@ -178,7 +181,8 @@ pub async fn execute_command(
                 },
             };
 
-            let data: AddResponse = request(ADD_RELATION_MUTATION, vars, token, tenant_slug).await?;
+            let data: AddResponse =
+                request(ADD_RELATION_MUTATION, vars, token, tenant_slug).await?;
             Ok(ProductRelationsAdminCommandResult {
                 item: Some(data.add_product_relation),
                 items: vec![],
@@ -190,7 +194,8 @@ pub async fn execute_command(
             struct Vars {
                 id: String,
             }
-            let data: RemoveResponse = request(REMOVE_RELATION_MUTATION, Vars { id }, token, tenant_slug).await?;
+            let data: RemoveResponse =
+                request(REMOVE_RELATION_MUTATION, Vars { id }, token, tenant_slug).await?;
             Ok(ProductRelationsAdminCommandResult {
                 item: None,
                 items: vec![],
@@ -218,7 +223,8 @@ pub async fn execute_command(
                 ordered_relation_ids: ordered_ids,
             };
 
-            let data: ReorderResponse = request(REORDER_RELATIONS_MUTATION, vars, token, tenant_slug).await?;
+            let data: ReorderResponse =
+                request(REORDER_RELATIONS_MUTATION, vars, token, tenant_slug).await?;
             Ok(ProductRelationsAdminCommandResult {
                 item: None,
                 items: data.reorder_product_relations,

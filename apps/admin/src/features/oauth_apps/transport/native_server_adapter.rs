@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
-use crate::entities::oauth_app::model::OAuthApp;
 #[cfg(feature = "ssr")]
 use crate::entities::oauth_app::model::AppType;
+use crate::entities::oauth_app::model::OAuthApp;
 
 #[cfg(feature = "ssr")]
 fn map_app_type(value: rustok_auth_admin::model::AppType) -> AppType {

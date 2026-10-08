@@ -125,7 +125,10 @@ mod tests {
         let module = BlogModule;
         assert_eq!(module.slug(), "blog");
         assert_eq!(module.name(), "Blog");
-        assert_eq!(module.description(), "Posts, Categories, Tags, and optional Comments integration");
+        assert_eq!(
+            module.description(),
+            "Posts, Categories, Tags, and optional Comments integration"
+        );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
         assert_eq!(
             module.dependencies(),

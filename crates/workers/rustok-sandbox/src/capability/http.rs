@@ -127,13 +127,13 @@ impl HttpCapabilityConstraints {
 }
 
 fn parse_http_call_inputs(call: &CapabilityCall) -> SandboxResult<(&str, Url)> {
-    let input =
-        call.input
-            .as_object()
-            .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
-                capability: call.capability.clone(),
-                reason: "HTTP input must be an object".to_string(),
-            })?;
+    let input = call
+        .input
+        .as_object()
+        .ok_or_else(|| SandboxError::CapabilityConstraintDenied {
+            capability: call.capability.clone(),
+            reason: "HTTP input must be an object".to_string(),
+        })?;
     let method = input.get("method").and_then(Value::as_str).ok_or_else(|| {
         SandboxError::CapabilityConstraintDenied {
             capability: call.capability.clone(),

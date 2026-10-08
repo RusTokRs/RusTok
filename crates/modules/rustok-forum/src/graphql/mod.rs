@@ -59,10 +59,9 @@ pub use quote_commands::{
 };
 pub use read_state::*;
 pub use reconciliation_query::{
-    GqlForumAttachmentHoldDrift, GqlForumAttachmentHoldReconciliationReport,
-    GqlForumCounterDrift, GqlForumCounterReconciliationReport,
-    GqlForumNotificationReconciliationStatus, GqlForumSolutionDrift,
-    GqlForumSolutionReconciliationReport,
+    GqlForumAttachmentHoldDrift, GqlForumAttachmentHoldReconciliationReport, GqlForumCounterDrift,
+    GqlForumCounterReconciliationReport, GqlForumNotificationReconciliationStatus,
+    GqlForumSolutionDrift, GqlForumSolutionReconciliationReport,
 };
 pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
 pub use storefront_read_state::*;
@@ -122,9 +121,7 @@ pub struct ForumMutation(
     topic_split_mutation::ForumTopicSplitMutation,
 );
 
-pub(crate) fn forum_graphql_runtime(
-    ctx: &async_graphql::Context<'_>,
-) -> ForumGraphqlRuntimeData {
+pub(crate) fn forum_graphql_runtime(ctx: &async_graphql::Context<'_>) -> ForumGraphqlRuntimeData {
     ctx.data_opt::<ForumGraphqlRuntimeData>()
         .cloned()
         .unwrap_or_default()

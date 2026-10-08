@@ -445,7 +445,6 @@ impl MutationErrorContext {
     }
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: V,
@@ -527,7 +526,11 @@ pub(crate) async fn update_product(
                 product_type: optional_text(draft.product_type.as_str()),
                 shipping_profile_slug: draft.shipping_profile_slug.clone(),
                 primary_category_id: draft.primary_category_id.clone(),
-                tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
+                tags: if draft.tags.is_empty() {
+                    None
+                } else {
+                    Some(draft.tags.clone())
+                },
                 status: draft.status.clone(),
             },
         },
@@ -665,7 +668,10 @@ pub(crate) async fn create_product_variant(
     let input = CreateVariantInput {
         sku: draft.sku.as_deref().and_then(optional_text),
         barcode: draft.barcode.as_deref().and_then(optional_text),
-        shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
+        shipping_profile_slug: draft
+            .shipping_profile_slug
+            .as_deref()
+            .and_then(optional_text),
         axis_values: if draft.axis_values.is_empty() {
             None
         } else {
@@ -745,7 +751,10 @@ pub(crate) async fn update_product_variant(
     let input = UpdateVariantInput {
         sku: draft.sku.as_deref().and_then(optional_text),
         barcode: draft.barcode.as_deref().and_then(optional_text),
-        shipping_profile_slug: draft.shipping_profile_slug.as_deref().and_then(optional_text),
+        shipping_profile_slug: draft
+            .shipping_profile_slug
+            .as_deref()
+            .and_then(optional_text),
         axis_values: if draft.axis_values.is_empty() {
             None
         } else {
@@ -993,7 +1002,11 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
         product_type: optional_text(draft.product_type.as_str()),
         shipping_profile_slug: draft.shipping_profile_slug,
         primary_category_id: draft.primary_category_id,
-        tags: if draft.tags.is_empty() { None } else { Some(draft.tags.clone()) },
+        tags: if draft.tags.is_empty() {
+            None
+        } else {
+            Some(draft.tags.clone())
+        },
         publish: Some(draft.publish_now),
     }
 }

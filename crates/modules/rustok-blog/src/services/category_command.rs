@@ -60,18 +60,17 @@ impl CategoryCommandService {
         // Taxonomy remains the storage owner; validate the complete canonical Category projection
         // through its storage-encapsulating owner reader before mutating the hierarchy.
         let category_ids = blog_ids.iter().copied().collect::<Vec<_>>();
-        let canonical_terms =
-            TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-                &txn,
-                tenant_id,
-                TaxonomyScopeType::Module,
-                Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-                Some(&category_ids),
-                rustok_api::PLATFORM_FALLBACK_LOCALE,
-                None,
-            )
-            .await
-            .map_err(BlogError::from)?;
+        let canonical_terms = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+            &txn,
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+            Some(&category_ids),
+            rustok_api::PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await
+        .map_err(BlogError::from)?;
         if canonical_terms.len() != blog_ids.len() {
             return Err(BlogError::invariant(
                 "Blog category Taxonomy ownership coverage is incomplete during move",
@@ -92,8 +91,8 @@ impl CategoryCommandService {
             .iter()
             .map(|(id, (parent, _))| (*id, *parent))
             .collect::<HashMap<_, _>>();
-        let old_depths = validate_and_compute_depths(&parent_by_id)
-            .map_err(storage_category_tree_error)?;
+        let old_depths =
+            validate_and_compute_depths(&parent_by_id).map_err(storage_category_tree_error)?;
         parent_by_id.insert(category_id, input.parent_id);
         let desired_depths = validate_and_compute_depths(&parent_by_id)?;
 
@@ -425,9 +424,8 @@ mod tests {
 
     #[test]
     fn persisted_hierarchy_validation_is_reclassified_as_invariant() {
-        let error = storage_category_tree_error(BlogError::validation(
-            "Blog category hierarchy cycle",
-        ));
+        let error =
+            storage_category_tree_error(BlogError::validation("Blog category hierarchy cycle"));
         assert!(matches!(error, BlogError::Invariant(_)));
     }
 

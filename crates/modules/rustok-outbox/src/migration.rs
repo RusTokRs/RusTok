@@ -213,7 +213,10 @@ pub async fn create_sys_events_superseded_indexes(
 /// Both drops are `if_exists`: a fresh schema never creates the pair, while a
 /// schema that predates the claim index still carries it.
 pub async fn drop_sys_events_superseded_indexes(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    for index in ["idx_sys_events_pending_next_attempt", "idx_sys_events_claimed_at"] {
+    for index in [
+        "idx_sys_events_pending_next_attempt",
+        "idx_sys_events_claimed_at",
+    ] {
         manager
             .drop_index(
                 Index::drop()

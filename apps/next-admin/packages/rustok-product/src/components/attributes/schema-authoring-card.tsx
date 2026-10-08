@@ -43,9 +43,7 @@ interface SchemaAuthoringCardProps {
   onCreateCategoryGroup: (
     payload: CreateCategoryAttributeGroupPayload
   ) => Promise<void>;
-  onBindSchemaAttribute: (
-    payload: BindSchemaAttributePayload
-  ) => Promise<void>;
+  onBindSchemaAttribute: (payload: BindSchemaAttributePayload) => Promise<void>;
   onBindCategoryAttribute: (
     payload: BindCategoryAttributePayload
   ) => Promise<void>;
@@ -138,9 +136,9 @@ export function SchemaAuthoringCard({
       <CardHeader className='pb-3'>
         <CardTitle className='text-base'>Category Schema Authoring</CardTitle>
         <CardDescription>
-          Schema mode, attribute groups and attribute bindings for categories and
-          schema templates. Owner rejections surface as errors instead of silent
-          no-ops.
+          Schema mode, attribute groups and attribute bindings for categories
+          and schema templates. Owner rejections surface as errors instead of
+          silent no-ops.
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
@@ -345,9 +343,7 @@ export function SchemaAuthoringCard({
                 id='schema-bind-attribute'
                 className={selectClassName}
                 value={bindSchemaAttribute}
-                onChange={(event) =>
-                  setBindSchemaAttribute(event.target.value)
-                }
+                onChange={(event) => setBindSchemaAttribute(event.target.value)}
               >
                 <option value=''>Select an attribute</option>
                 {attributes.map((attribute) => (
@@ -576,7 +572,9 @@ export function SchemaAuthoringCard({
                 id='category-bind-position'
                 type='number'
                 value={bindCategoryPosition}
-                onChange={(event) => setBindCategoryPosition(event.target.value)}
+                onChange={(event) =>
+                  setBindCategoryPosition(event.target.value)
+                }
               />
             </div>
             <label className='flex items-end gap-2 text-sm'>

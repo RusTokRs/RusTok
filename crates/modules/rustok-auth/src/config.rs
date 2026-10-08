@@ -48,7 +48,6 @@ pub struct AuthConfig {
     pub rsa_public_key_pem: Option<String>,
 }
 
-
 impl std::fmt::Debug for AuthConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -125,7 +124,6 @@ pub struct AuthSettingsOverrides {
     pub rsa_private_key_env: Option<String>,
     pub rsa_public_key_env: Option<String>,
 }
-
 
 impl std::fmt::Debug for AuthSettingsOverrides {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

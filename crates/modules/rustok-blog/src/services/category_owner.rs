@@ -10,7 +10,9 @@ use rustok_taxonomy::{
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use super::category::{CategoryService as CategoryCommandCore, validate_persisted_category_settings};
+use super::category::{
+    CategoryService as CategoryCommandCore, validate_persisted_category_settings,
+};
 use super::category_delete::BlogCategoryDeleteCleanup;
 use super::rbac::enforce_scope;
 use crate::dto::{
@@ -336,9 +338,9 @@ fn hierarchical_category_order(
         });
     }
 
-    let roots = children_by_parent.remove(&None).ok_or_else(|| {
-        BlogError::invariant("Blog Category hierarchy has no root category")
-    })?;
+    let roots = children_by_parent
+        .remove(&None)
+        .ok_or_else(|| BlogError::invariant("Blog Category hierarchy has no root category"))?;
 
     let mut stack = roots.into_iter().rev().collect::<Vec<_>>();
     let mut ordered = Vec::with_capacity(hierarchy.len());
@@ -398,7 +400,10 @@ mod tests {
 
         let ordered = hierarchical_category_order(&hierarchy)
             .expect("valid hierarchy should have a deterministic order");
-        assert_eq!(ordered, vec![root_a, child_a, root_b, child_b, grandchild_b]);
+        assert_eq!(
+            ordered,
+            vec![root_a, child_a, root_b, child_b, grandchild_b]
+        );
     }
 
     #[test]

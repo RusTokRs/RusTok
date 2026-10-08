@@ -769,9 +769,9 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_composition_headers, build_seo_head, normalize_storefront_locale,
-        not_modified_composition_response, pages_route_response_from_decision,
-        resolve_storefront_locale, ResolvedSeoPageContext,
+        ResolvedSeoPageContext, apply_composition_headers, build_seo_head,
+        normalize_storefront_locale, not_modified_composition_response,
+        pages_route_response_from_decision, resolve_storefront_locale,
     };
     use axum::http::{
         StatusCode,
@@ -966,22 +966,28 @@ mod tests {
         context.document.description = Some("Great item description".to_string());
         context.document.robots.index = true;
         context.document.robots.follow = false;
-        context.document.open_graph = Some(crate::shared::context::seo_page_context::ResolvedSeoOpenGraph {
-            title: Some("OG Title".to_string()),
-            description: Some("OG Description".to_string()),
-            kind: Some("article".to_string()),
-            ..Default::default()
-        });
-        context.document.twitter = Some(crate::shared::context::seo_page_context::ResolvedSeoTwitterCard {
-            card: Some("summary_large_image".to_string()),
-            title: Some("Twitter Title".to_string()),
-            site: Some("@rustok".to_string()),
-            ..Default::default()
-        });
-        context.document.verification = Some(crate::shared::context::seo_page_context::ResolvedSeoVerification {
-            google: vec!["google-token-123".to_string()],
-            ..Default::default()
-        });
+        context.document.open_graph = Some(
+            crate::shared::context::seo_page_context::ResolvedSeoOpenGraph {
+                title: Some("OG Title".to_string()),
+                description: Some("OG Description".to_string()),
+                kind: Some("article".to_string()),
+                ..Default::default()
+            },
+        );
+        context.document.twitter = Some(
+            crate::shared::context::seo_page_context::ResolvedSeoTwitterCard {
+                card: Some("summary_large_image".to_string()),
+                title: Some("Twitter Title".to_string()),
+                site: Some("@rustok".to_string()),
+                ..Default::default()
+            },
+        );
+        context.document.verification = Some(
+            crate::shared::context::seo_page_context::ResolvedSeoVerification {
+                google: vec!["google-token-123".to_string()],
+                ..Default::default()
+            },
+        );
         context.document.meta_tags = vec![
             crate::shared::context::seo_page_context::ResolvedSeoMetaTag {
                 name: Some("custom-meta".to_string()),
@@ -996,13 +1002,17 @@ mod tests {
         assert!(head.contains(r#"<meta name="description" content="Great item description" />"#));
         assert!(head.contains(r#"<link rel="canonical" href="https://example.com/item" />"#));
         assert!(head.contains(r#"<meta name="robots" content="index, nofollow" />"#));
-        assert!(head.contains(r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en/item" />"#));
+        assert!(head.contains(
+            r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en/item" />"#
+        ));
         assert!(head.contains(r#"<meta property="og:title" content="OG Title" />"#));
         assert!(head.contains(r#"<meta property="og:description" content="OG Description" />"#));
         assert!(head.contains(r#"<meta name="twitter:card" content="summary_large_image" />"#));
         assert!(head.contains(r#"<meta name="twitter:title" content="Twitter Title" />"#));
         assert!(head.contains(r#"<meta name="twitter:site" content="@rustok" />"#));
-        assert!(head.contains(r#"<meta name="google-site-verification" content="google-token-123" />"#));
+        assert!(
+            head.contains(r#"<meta name="google-site-verification" content="google-token-123" />"#)
+        );
         assert!(head.contains(r#"<meta name="custom-meta" content="custom-value" />"#));
     }
 }

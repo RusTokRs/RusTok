@@ -553,25 +553,49 @@ pub fn customer_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                 options: vec![
                     FilterOption {
                         value: "".to_string(),
-                        label: if is_ru { "Все аккаунты".to_string() } else { "All accounts".to_string() },
+                        label: if is_ru {
+                            "Все аккаунты".to_string()
+                        } else {
+                            "All accounts".to_string()
+                        },
                     },
                     FilterOption {
                         value: "linked".to_string(),
-                        label: if is_ru { "Привязан".to_string() } else { "Linked".to_string() },
+                        label: if is_ru {
+                            "Привязан".to_string()
+                        } else {
+                            "Linked".to_string()
+                        },
                     },
                     FilterOption {
                         value: "guest".to_string(),
-                        label: if is_ru { "Гость".to_string() } else { "Guest".to_string() },
+                        label: if is_ru {
+                            "Гость".to_string()
+                        } else {
+                            "Guest".to_string()
+                        },
                     },
                 ],
-                placeholder: Some(if is_ru { "Все аккаунты".to_string() } else { "All accounts".to_string() }),
+                placeholder: Some(if is_ru {
+                    "Все аккаунты".to_string()
+                } else {
+                    "All accounts".to_string()
+                }),
             }),
         GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
             .width(130)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
-                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+                from_placeholder: Some(if is_ru {
+                    "С".to_string()
+                } else {
+                    "From".to_string()
+                }),
+                to_placeholder: Some(if is_ru {
+                    "По".to_string()
+                } else {
+                    "To".to_string()
+                }),
             }),
         GridColumnDef::new("actions", "")
             .width(90)
@@ -638,7 +662,10 @@ pub fn matches_customer_filter(
     }
 }
 
-pub fn filter_customers(items: &[CustomerListItem], filters: &ColumnFilters) -> Vec<CustomerListItem> {
+pub fn filter_customers(
+    items: &[CustomerListItem],
+    filters: &ColumnFilters,
+) -> Vec<CustomerListItem> {
     if filters.is_empty() {
         return items.to_vec();
     }

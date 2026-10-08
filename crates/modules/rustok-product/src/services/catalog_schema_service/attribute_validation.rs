@@ -161,7 +161,10 @@ pub(crate) fn parse_product_attribute_validation(
     let max_length = bounded_rule(object, "maxLength")?;
     if let (Some(min), Some(max)) = (min_length, max_length) {
         if min > max {
-            return Err(schema_failure("minLength", "must not exceed maxLength".to_string()));
+            return Err(schema_failure(
+                "minLength",
+                "must not exceed maxLength".to_string(),
+            ));
         }
     }
 
@@ -177,7 +180,10 @@ pub(crate) fn parse_product_attribute_validation(
     let max_date = date_rule(object, "maxDate")?;
     if let (Some(min), Some(max)) = (min_date, max_date) {
         if min > max {
-            return Err(schema_failure("minDate", "must not be later than maxDate".to_string()));
+            return Err(schema_failure(
+                "minDate",
+                "must not be later than maxDate".to_string(),
+            ));
         }
     }
 
@@ -254,7 +260,7 @@ pub(crate) fn parse_product_attribute_validation(
             return Err(schema_failure(
                 "options",
                 "must be an array of option identifiers".to_string(),
-            ))
+            ));
         }
     };
 
@@ -298,7 +304,7 @@ pub(crate) fn parse_product_attribute_validation(
             return Err(schema_failure(
                 "requiredLocales",
                 "must be an array of locale codes".to_string(),
-            ))
+            ));
         }
     };
 
@@ -334,10 +340,16 @@ fn bounded_rule(
         return Ok(None);
     }
     let Some(number) = value.as_u64() else {
-        return Err(schema_failure(rule, "must be a non-negative integer".to_string()));
+        return Err(schema_failure(
+            rule,
+            "must be a non-negative integer".to_string(),
+        ));
     };
     if number > MAX_RULE_BOUND {
-        return Err(schema_failure(rule, format!("must not exceed {MAX_RULE_BOUND}")));
+        return Err(schema_failure(
+            rule,
+            format!("must not exceed {MAX_RULE_BOUND}"),
+        ));
     }
     Ok(Some(number as u32))
 }
@@ -373,13 +385,14 @@ fn date_rule(
         return Ok(None);
     }
     let Some(raw) = value.as_str() else {
-        return Err(schema_failure(rule, "must be a date string in YYYY-MM-DD".to_string()));
+        return Err(schema_failure(
+            rule,
+            "must be a date string in YYYY-MM-DD".to_string(),
+        ));
     };
     NaiveDate::parse_from_str(raw, "%Y-%m-%d")
         .map(Some)
-        .map_err(|_| {
-            schema_failure(rule, "must be a date string in YYYY-MM-DD".to_string())
-        })
+        .map_err(|_| schema_failure(rule, "must be a date string in YYYY-MM-DD".to_string()))
 }
 
 fn datetime_rule(
@@ -393,7 +406,10 @@ fn datetime_rule(
         return Ok(None);
     }
     let Some(raw) = value.as_str() else {
-        return Err(schema_failure(rule, "must be an RFC 3339 timestamp".to_string()));
+        return Err(schema_failure(
+            rule,
+            "must be an RFC 3339 timestamp".to_string(),
+        ));
     };
     DateTime::parse_from_rfc3339(raw)
         .map(|value| Some(value.with_timezone(&Utc)))
@@ -602,8 +618,7 @@ pub(crate) fn attribute_validation_rule_of(message: &str) -> Option<&str> {
     let rest = message.strip_prefix(ATTRIBUTE_VALIDATION_RULE_PREFIX)?;
     let rest = rest.strip_prefix(" `")?;
     let (rule, rest) = rest.split_once('`')?;
-    rest.starts_with(" failed for attribute ")
-        .then_some(rule)
+    rest.starts_with(" failed for attribute ").then_some(rule)
 }
 
 /// Bounded public copy for one failing rule.
@@ -731,7 +746,11 @@ mod tests {
         assert_rules_fail(&declared, value_type, &text("A"));
         assert_rules_fail(&declared, value_type, &text("ABCDE"));
         assert_rules_fail(&declared, value_type, &text("abc"));
-        assert_rules_pass(&declared, value_type, &ProductAttributeValuePatchValue::Clear);
+        assert_rules_pass(
+            &declared,
+            value_type,
+            &ProductAttributeValuePatchValue::Clear,
+        );
     }
 
     #[test]
@@ -873,7 +892,10 @@ mod tests {
         }));
 
         assert!(declared.required);
-        assert_eq!(declared.required_locales, vec!["ru".to_string(), "en".to_string()]);
+        assert_eq!(
+            declared.required_locales,
+            vec!["ru".to_string(), "en".to_string()]
+        );
         assert!(!declared.declares_value_rules());
         assert!(!declared.is_empty());
 

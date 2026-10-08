@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use rustok_product::entities::product;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait,
 };
 use uuid::Uuid;
-use rustok_product::entities::product;
 
 use crate::dto::{
     CreateProductRelationInput, ProductRelationDto, RelationType, ReorderProductRelationsInput,
@@ -26,10 +26,12 @@ async fn lock_product_for_update(
     tenant_id: Uuid,
     product_id: Uuid,
 ) -> ProductRelationResult<product::Model> {
-    let query = product::Entity::find_by_id(product_id)
-        .filter(product::Column::TenantId.eq(tenant_id));
+    let query =
+        product::Entity::find_by_id(product_id).filter(product::Column::TenantId.eq(tenant_id));
     let model = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
@@ -51,7 +53,9 @@ async fn lock_products_in_order(
     second_product_id: Uuid,
 ) -> ProductRelationResult<()> {
     if first_product_id == second_product_id {
-        return Err(ProductRelationError::SelfRelationNotAllowed(first_product_id));
+        return Err(ProductRelationError::SelfRelationNotAllowed(
+            first_product_id,
+        ));
     }
     let (left, right) = if first_product_id < second_product_id {
         (first_product_id, second_product_id)
@@ -83,17 +87,13 @@ pub(crate) async fn create_relation_in_tx(
     input: CreateProductRelationInput,
 ) -> ProductRelationResult<ProductRelationDto> {
     if input.product_id == input.related_product_id {
-        return Err(ProductRelationError::SelfRelationNotAllowed(input.product_id));
+        return Err(ProductRelationError::SelfRelationNotAllowed(
+            input.product_id,
+        ));
     }
 
     let rel_type_str = input.relation_type.as_str().to_owned();
-    lock_products_in_order(
-        txn,
-        tenant_id,
-        input.product_id,
-        input.related_product_id,
-    )
-    .await?;
+    lock_products_in_order(txn, tenant_id, input.product_id, input.related_product_id).await?;
 
     let exists = ProductRelation::find()
         .filter(Column::TenantId.eq(tenant_id))
@@ -288,9 +288,7 @@ impl ProductRelationsPort for ProductRelationService {
             .ok_or(ProductRelationError::RelationNotFound(relation_id))?;
         lock_product_for_update(&txn, tenant_id, model.product_id).await?;
 
-        ProductRelation::delete_by_id(model.id)
-            .exec(&txn)
-            .await?;
+        ProductRelation::delete_by_id(model.id).exec(&txn).await?;
         txn.commit().await?;
         Ok(())
     }

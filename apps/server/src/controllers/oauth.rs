@@ -7,7 +7,9 @@ use axum::{
     extract::{ConnectInfo, Form, FromRequest, Query, Request, State},
     http::{
         HeaderMap, StatusCode,
-        header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, PRAGMA, SET_COOKIE},
+        header::{
+            AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, LOCATION, PRAGMA, SET_COOKIE,
+        },
     },
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -59,10 +61,9 @@ fn oauth_token_http_response(
         CACHE_CONTROL,
         axum::http::HeaderValue::from_static("no-store"),
     );
-    response.headers_mut().insert(
-        PRAGMA,
-        axum::http::HeaderValue::from_static("no-cache"),
-    );
+    response
+        .headers_mut()
+        .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
     response
 }
 
@@ -1035,9 +1036,7 @@ pub(crate) async fn userinfo_handler(
         (status = 401, description = "Authentication required", body = TokenErrorResponse)
     )
 )]
-pub(crate) async fn userinfo_post_handler(
-    current_user: CurrentUser,
-) -> axum::response::Response {
+pub(crate) async fn userinfo_post_handler(current_user: CurrentUser) -> axum::response::Response {
     userinfo_handler(current_user).await
 }
 
@@ -1168,17 +1167,25 @@ mod tests {
         );
 
         assert_eq!(
-            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
             Some("no-store"),
         );
         assert_eq!(
-            response.headers().get(PRAGMA).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(PRAGMA)
+                .and_then(|value| value.to_str().ok()),
             Some("no-cache"),
         );
     }
     #[test]
     fn token_form_content_type_accepts_optional_parameters() {
-        assert!(is_form_encoded_content_type("application/x-www-form-urlencoded"));
+        assert!(is_form_encoded_content_type(
+            "application/x-www-form-urlencoded"
+        ));
         assert!(is_form_encoded_content_type(
             "Application/X-WWW-Form-Urlencoded; charset=UTF-8",
         ));
@@ -1193,10 +1200,7 @@ mod tests {
         headers.insert(AUTHORIZATION, HeaderValue::from_static("BEARER token-2"));
         assert_eq!(extract_bearer_token(&headers).as_deref(), Some("token-2"));
 
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Basic token-3"),
-        );
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Basic token-3"));
         assert!(extract_bearer_token(&headers).is_none());
 
         headers.insert(

@@ -42,7 +42,11 @@ pub fn localized_order_change_status(locale: Option<&str>, status: &str) -> Stri
     match status {
         "pending" => crate::i18n::t(locale, "commerce.orderChanges.status.pending", "Pending"),
         "applied" => crate::i18n::t(locale, "commerce.orderChanges.status.applied", "Applied"),
-        "cancelled" => crate::i18n::t(locale, "commerce.orderChanges.status.cancelled", "Cancelled"),
+        "cancelled" => crate::i18n::t(
+            locale,
+            "commerce.orderChanges.status.cancelled",
+            "Cancelled",
+        ),
         "all" => crate::i18n::t(locale, "commerce.orderChanges.status.all", "All"),
         _ => status.to_string(),
     }
@@ -92,14 +96,31 @@ mod tests {
 
     #[test]
     fn localized_order_change_status_resolves_expected_labels() {
-        assert_eq!(localized_order_change_status(Some("en"), "pending"), "Pending");
-        assert_eq!(localized_order_change_status(Some("ru"), "pending"), "В ожидании");
-        assert_eq!(localized_order_change_status(Some("en"), "applied"), "Applied");
-        assert_eq!(localized_order_change_status(Some("ru"), "applied"), "Применён");
-        assert_eq!(localized_order_change_status(Some("en"), "cancelled"), "Cancelled");
-        assert_eq!(localized_order_change_status(Some("ru"), "cancelled"), "Отменён");
+        assert_eq!(
+            localized_order_change_status(Some("en"), "pending"),
+            "Pending"
+        );
+        assert_eq!(
+            localized_order_change_status(Some("ru"), "pending"),
+            "В ожидании"
+        );
+        assert_eq!(
+            localized_order_change_status(Some("en"), "applied"),
+            "Applied"
+        );
+        assert_eq!(
+            localized_order_change_status(Some("ru"), "applied"),
+            "Применён"
+        );
+        assert_eq!(
+            localized_order_change_status(Some("en"), "cancelled"),
+            "Cancelled"
+        );
+        assert_eq!(
+            localized_order_change_status(Some("ru"), "cancelled"),
+            "Отменён"
+        );
         assert_eq!(localized_order_change_status(Some("en"), "all"), "All");
         assert_eq!(localized_order_change_status(Some("ru"), "all"), "Все");
     }
 }
-

@@ -168,11 +168,8 @@ pub fn prepare_donor_attached_values_create(
     locale: &str,
 ) -> Result<PreparedAttachedValuesWrite, FlexError> {
     let (reserved, flex_payload) = split_donor_metadata(&schema, donor_payload);
-    let mut prepared = prepare_attached_values_create(
-        schema,
-        Some(Value::Object(flex_payload)),
-        locale,
-    )?;
+    let mut prepared =
+        prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)?;
     prepared.metadata = Some(merge_reserved_donor_metadata(reserved, prepared.metadata));
     Ok(prepared)
 }
@@ -211,7 +208,10 @@ where
         flex_patch,
     )
     .await?;
-    prepared.metadata = Some(merge_reserved_donor_metadata(merged_reserved, prepared.metadata));
+    prepared.metadata = Some(merge_reserved_donor_metadata(
+        merged_reserved,
+        prepared.metadata,
+    ));
     Ok(prepared)
 }
 
@@ -263,12 +263,18 @@ where
 
     if schema.active_definitions().is_empty() {
         for input in inputs {
-            resolved.insert(input.entity_id, normalize_owner_payload(input.shared_metadata)?);
+            resolved.insert(
+                input.entity_id,
+                normalize_owner_payload(input.shared_metadata)?,
+            );
         }
         return Ok(resolved);
     }
 
-    let entity_ids = inputs.iter().map(|input| input.entity_id).collect::<Vec<_>>();
+    let entity_ids = inputs
+        .iter()
+        .map(|input| input.entity_id)
+        .collect::<Vec<_>>();
     let localized_by_entity =
         crate::attached_translation_storage::load_attached_translation_localized_values(
             db,
@@ -291,11 +297,12 @@ where
     for input in inputs {
         let (mut shared_values, legacy_localized) =
             split_existing_metadata(input.shared_metadata, &localized_keys);
-        let resolved_localized = localized_by_entity
-            .get(&input.entity_id)
-            .and_then(|localized_by_locale| {
-                resolve_localized_values(localized_by_locale, &candidates)
-            });
+        let resolved_localized =
+            localized_by_entity
+                .get(&input.entity_id)
+                .and_then(|localized_by_locale| {
+                    resolve_localized_values(localized_by_locale, &candidates)
+                });
 
         if let Some(localized) = resolved_localized {
             for (key, value) in localized {
@@ -685,10 +692,9 @@ mod tests {
     use super::{
         ActiveModel, AttachedEntityRef, AttachedPayloadResolutionInput, Entity,
         delete_attached_localized_values, merge_reserved_donor_metadata,
-        prepare_attached_values_create,
-        prepare_attached_values_update, prepare_donor_attached_values_create,
-        prepare_donor_attached_values_update, resolve_attached_payloads, split_donor_metadata,
-        split_existing_metadata,
+        prepare_attached_values_create, prepare_attached_values_update,
+        prepare_donor_attached_values_create, prepare_donor_attached_values_update,
+        resolve_attached_payloads, split_donor_metadata, split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -891,10 +897,8 @@ mod tests {
 
     #[test]
     fn split_donor_metadata_routes_only_known_flex_keys() {
-        let schema = CustomFieldsSchema::new(vec![
-            definition("fit", false),
-            definition("material", true),
-        ]);
+        let schema =
+            CustomFieldsSchema::new(vec![definition("fit", false), definition("material", true)]);
         let payload = json!({
             "fit": "regular",
             "material": "linen",
@@ -1042,17 +1046,10 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_attached_payloads(
-            &db,
-            tenant_id,
-            "topic",
-            schema,
-            &inputs,
-            "fr",
-            "en",
-        )
-        .await
-        .expect("batch attached payload resolution should succeed");
+        let resolved =
+            resolve_attached_payloads(&db, tenant_id, "topic", schema, &inputs, "fr", "en")
+                .await
+                .expect("batch attached payload resolution should succeed");
 
         assert_eq!(
             resolved.get(&first_id),
@@ -1060,7 +1057,9 @@ mod tests {
         );
         assert_eq!(
             resolved.get(&second_id),
-            Some(&Some(json!({"nickname": "trinity", "bio": "Second English bio"})))
+            Some(&Some(
+                json!({"nickname": "trinity", "bio": "Second English bio"})
+            ))
         );
     }
 
@@ -1150,4 +1149,3 @@ mod tests {
         assert_eq!(prepared.metadata, None);
     }
 }
-

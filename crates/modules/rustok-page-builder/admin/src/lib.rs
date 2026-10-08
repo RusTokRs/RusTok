@@ -54,9 +54,7 @@ pub use contribution_host::{
     PageBuilderContributionPropertyValidation, PageBuilderContributionPropertyValidationFuture,
     PageBuilderContributionPropertyValidationRequest, PageBuilderRegistryInstaller,
 };
-pub use core::{
-    EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message,
-};
+pub use core::{EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message};
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
     SsrDraftSessionStore,

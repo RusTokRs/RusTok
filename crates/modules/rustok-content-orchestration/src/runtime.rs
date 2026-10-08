@@ -7,10 +7,10 @@
     feature = "mod-comments"
 ))]
 mod enabled {
-    use std::sync::Arc;
-    use sea_orm::DatabaseConnection;
     use rustok_content::ContentOrchestrationService;
     use rustok_outbox::TransactionalEventBus;
+    use sea_orm::DatabaseConnection;
+    use std::sync::Arc;
 
     use crate::bridge::ServerContentOrchestrationBridge;
 

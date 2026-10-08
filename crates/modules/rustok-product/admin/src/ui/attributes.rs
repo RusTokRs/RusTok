@@ -5,12 +5,12 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
+use super::leptos::ProductSchemaAuthoringCard;
+use crate::catalog_transport;
 use crate::model::{
     ProductAttributeDraft, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary,
 };
-use super::leptos::ProductSchemaAuthoringCard;
-use crate::catalog_transport;
 
 #[component]
 fn AttributeSchemasGrid(
@@ -38,24 +38,29 @@ fn AttributeSchemasGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(s, col_id): (ProductAttributeSchemaSummary, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(s, col_id): (ProductAttributeSchemaSummary, String)| match col_id.as_str() {
             "name" => view! {
                 <span class="font-medium text-foreground">{s.name}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "code" => view! {
                 <span class="font-mono text-[11px] text-muted-foreground">{s.code}</span>
-            }.into_any(),
+            }
+            .into_any(),
             _ => ().into_any(),
-        }
-    });
+        },
+    );
 
     view! {
         <DataGrid
@@ -83,7 +88,10 @@ fn ProductAttributesGrid(
     search_query: ReadSignal<String>,
     on_add_option: Callback<ProductAttributeSummary>,
 ) -> impl IntoView {
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = crate::core::product_attribute_grid_columns(locale.as_deref());
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
@@ -108,7 +116,10 @@ fn ProductAttributesGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {

@@ -43,7 +43,10 @@ impl FormStepTracker {
         S: Into<String>,
     {
         let steps_vec: Vec<String> = steps.into_iter().map(Into::into).collect();
-        assert!(!steps_vec.is_empty(), "FormStepTracker requires at least one step");
+        assert!(
+            !steps_vec.is_empty(),
+            "FormStepTracker requires at least one step"
+        );
         let count = steps_vec.len();
         Self {
             steps: steps_vec,

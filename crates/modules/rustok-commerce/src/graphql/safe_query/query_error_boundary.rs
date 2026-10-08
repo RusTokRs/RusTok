@@ -74,10 +74,7 @@ impl ShippingOptionGraphqlMessage {
     }
 }
 
-pub(crate) fn shipping_option_port_error(
-    context: &PortContext,
-    error: PortError,
-) -> BoundaryError {
+pub(crate) fn shipping_option_port_error(context: &PortContext, error: PortError) -> BoundaryError {
     BoundaryError::new(ShippingOptionGraphqlMessage::new(context, error))
 }
 

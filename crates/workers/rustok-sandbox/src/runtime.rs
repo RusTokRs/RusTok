@@ -81,8 +81,9 @@ impl SandboxRuntime {
         cancellation: SandboxCancellation,
     ) -> SandboxResult<SandboxOutcome> {
         let queue_timer = Instant::now();
-        let (executor, _permit, started_at) =
-            self.prepare_and_observe_execution(&request, &cancellation).await?;
+        let (executor, _permit, started_at) = self
+            .prepare_and_observe_execution(&request, &cancellation)
+            .await?;
         let queue_time_ms = elapsed_millis(queue_timer);
         let (result, duration_ms, calls) =
             self.run_executor(executor, &request, cancellation).await;
@@ -132,7 +133,8 @@ impl SandboxRuntime {
         let executor = self.executors.get(request.payload.executor)?;
         let permit = self.admission.admit(request)?;
         let started_at = Utc::now();
-        self.observe_started(request, &request.context, started_at).await;
+        self.observe_started(request, &request.context, started_at)
+            .await;
         Ok((executor, permit, started_at))
     }
 

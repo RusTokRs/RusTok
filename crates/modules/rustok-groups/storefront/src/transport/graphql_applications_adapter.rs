@@ -280,4 +280,3 @@ impl From<PolicyWire> for GroupsStorefrontApplicationPolicy {
         }
     }
 }
-

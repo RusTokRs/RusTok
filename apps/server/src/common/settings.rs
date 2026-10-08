@@ -2025,5 +2025,4 @@ mod tests {
         assert!(super::is_production_environment());
         assert!(!super::demo_mode_token_exposure_enabled());
     }
-
 }

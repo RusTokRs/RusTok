@@ -1,6 +1,4 @@
-use rustok_brand::dto::{
-    BrandFilter, BrandTranslationInput, CreateBrandInput, UpdateBrandInput,
-};
+use rustok_brand::dto::{BrandFilter, BrandTranslationInput, CreateBrandInput, UpdateBrandInput};
 use rustok_brand::error::BrandError;
 use rustok_brand::ports::BrandPort;
 use rustok_brand::services::BrandService;
@@ -99,7 +97,10 @@ async fn creates_and_queries_brand_with_translations() {
         .await
         .expect("Failed to fetch brand in ru");
     assert_eq!(fetched_ru.name, "АКМЕ Корп");
-    assert_eq!(fetched_ru.description.as_deref(), Some("Наковальни и ракеты"));
+    assert_eq!(
+        fetched_ru.description.as_deref(),
+        Some("Наковальни и ракеты")
+    );
 
     // Query by slug with locale "en"
     let fetched_slug = service
@@ -235,13 +236,24 @@ async fn updates_brand_and_upserts_translations() {
         .unwrap();
 
     assert_eq!(updated.slug, "apple-inc");
-    assert_eq!(updated.website_url.as_deref(), Some("https://www.apple.com"));
+    assert_eq!(
+        updated.website_url.as_deref(),
+        Some("https://www.apple.com")
+    );
     assert_eq!(updated.translations.len(), 2);
 
-    let en_trans = updated.translations.iter().find(|t| t.locale == "en").unwrap();
+    let en_trans = updated
+        .translations
+        .iter()
+        .find(|t| t.locale == "en")
+        .unwrap();
     assert_eq!(en_trans.name, "Apple Inc.");
 
-    let ru_trans = updated.translations.iter().find(|t| t.locale == "ru").unwrap();
+    let ru_trans = updated
+        .translations
+        .iter()
+        .find(|t| t.locale == "ru")
+        .unwrap();
     assert_eq!(ru_trans.name, "Эппл");
 }
 

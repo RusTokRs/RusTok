@@ -801,7 +801,9 @@ impl DirectTaskHandler for BlogDraftHandler {
                             Some(tags.clone())
                         },
                         category_id: rustok_api::Patch::from(input.category_id),
-                        featured_image_url: rustok_api::Patch::from(input.featured_image_url.clone()),
+                        featured_image_url: rustok_api::Patch::from(
+                            input.featured_image_url.clone(),
+                        ),
                         seo_title: rustok_api::Patch::from(seo_title.clone()),
                         seo_description: rustok_api::Patch::from(seo_description.clone()),
                         channel_slugs: None,

@@ -64,9 +64,8 @@ where
 mod tests {
     use super::*;
     use rustok_modules::{
-        ModuleArtifactDescriptor, OciArtifactReference, TrustEvidenceKind,
-        TrustEvidenceReference, TrustVerificationDecision, TrustVerificationRequest,
-        TrustVerifier,
+        ModuleArtifactDescriptor, OciArtifactReference, TrustEvidenceKind, TrustEvidenceReference,
+        TrustVerificationDecision, TrustVerificationRequest, TrustVerifier,
     };
 
     struct MockVerifier {

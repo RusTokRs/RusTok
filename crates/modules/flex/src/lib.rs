@@ -48,10 +48,9 @@ pub struct FlexModule;
 
 pub use attached::{
     AttachedEntityRef, AttachedPayloadResolutionInput, PreparedAttachedValuesWrite,
-    delete_attached_localized_values,
-    load_exact_locale_values, load_localized_values_by_locale, merge_donor_flex_metadata,
-    merge_reserved_donor_metadata, merge_reserved_donor_patch, persist_localized_values,
-    prepare_attached_values_create, prepare_attached_values_update,
+    delete_attached_localized_values, load_exact_locale_values, load_localized_values_by_locale,
+    merge_donor_flex_metadata, merge_reserved_donor_metadata, merge_reserved_donor_patch,
+    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
     prepare_donor_attached_values_create, prepare_donor_attached_values_update,
     resolve_attached_payload, resolve_attached_payloads, split_donor_metadata,
 };
@@ -105,8 +104,8 @@ pub use attached_translation_storage::{
 pub use attached_translation_target::FlexAttachedTranslationTargetProvider;
 pub use entity_type::{
     MAX_FLEX_ENTITY_TYPE_BYTES, ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE,
-    TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE,
-    is_valid_flex_entity_type, normalize_flex_entity_type,
+    TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE, is_valid_flex_entity_type,
+    normalize_flex_entity_type,
 };
 pub use errors::{FlexMappedError, FlexMappedErrorKind, map_flex_error};
 pub use orchestration::{

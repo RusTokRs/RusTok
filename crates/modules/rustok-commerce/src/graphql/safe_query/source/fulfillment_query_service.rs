@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use super::fulfillment_query_boundary::{fulfillment_query_context, map_fulfillment_port_error};
 use super::FulfillmentResult;
+use super::fulfillment_query_boundary::{fulfillment_query_context, map_fulfillment_port_error};
 use ::rustok_fulfillment::{
     FindLatestFulfillmentByOrderProjectionRequest, FulfillmentReadPort, FulfillmentResponse,
     ListFulfillmentProjectionsRequest, ListFulfillmentsInput, ReadFulfillmentProjectionRequest,

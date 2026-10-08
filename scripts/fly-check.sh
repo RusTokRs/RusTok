@@ -106,6 +106,9 @@ run_gates() {
     step "$gate" node "scripts/verify/$gate.mjs"
   done
   step 'fly-browser.js parses' check_browser_asset
+  # Crate-local Page Builder gate: the scenario-baseline journal contract lives with the
+  # module it guards, so it is invoked by path rather than from scripts/verify.
+  step 'pages-scenario-baseline-promotion' node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-scenario-promotion.mjs
 }
 
 # --------------------------------------------------------------------------------------------

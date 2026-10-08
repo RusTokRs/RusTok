@@ -15,8 +15,8 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{
-    forum_category, forum_domain_event, forum_reply, forum_solution,
-    forum_topic, forum_topic_move_operation,
+    forum_category, forum_domain_event, forum_reply, forum_solution, forum_topic,
+    forum_topic_move_operation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};

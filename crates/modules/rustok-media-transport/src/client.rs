@@ -3,9 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetReference, MediaAssetReferenceAdmission, MediaAssetReferenceInput,
-    MediaAssetWritePort, MediaImageDescriptor,
-    MediaItem,
+    MediaAssetReadPort, MediaAssetReference, MediaAssetReferenceAdmission,
+    MediaAssetReferenceInput, MediaAssetWritePort, MediaImageDescriptor, MediaItem,
     MediaPublicImageAsset, MediaPublicImageReadPort, MediaReconciliationReport,
     MediaReconciliationRequest, MediaTranslationItem, MediaUploadRequest, MediaUploadTarget,
     UpsertTranslationInput,

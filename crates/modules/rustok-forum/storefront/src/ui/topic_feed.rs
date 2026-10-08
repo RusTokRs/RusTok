@@ -4,9 +4,7 @@ use rustok_ui_core::UiRouteContext;
 
 use super::composer::ComposerSignal;
 use super::member_card::ForumAuthorBadge;
-use crate::core::{
-    forum_storefront_count_label, forum_storefront_topic_card_view_model,
-};
+use crate::core::{forum_storefront_count_label, forum_storefront_topic_card_view_model};
 use crate::i18n::t;
 use crate::model::ForumTopicListItem;
 
@@ -118,7 +116,9 @@ pub fn ForumTopicFeed(
                     list.sort_by(|a, b| b.reply_count.cmp(&a.reply_count));
                 }
                 TopicFilterMode::Unread => {
-                    list.retain(|t| t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0);
+                    list.retain(|t| {
+                        t.is_unread.unwrap_or(false) || t.unread_count.unwrap_or(0) > 0
+                    });
                 }
                 TopicFilterMode::Solved => {
                     list.retain(|t| t.solution_reply_id.is_some());

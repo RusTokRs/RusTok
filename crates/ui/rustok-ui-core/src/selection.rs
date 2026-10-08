@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 /// Framework-agnostic row and item selection state for table and list views.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,7 +130,11 @@ pub struct UiFilterRule {
 }
 
 impl UiFilterRule {
-    pub fn new(field: impl Into<String>, operator: UiFilterOperator, value: impl Into<String>) -> Self {
+    pub fn new(
+        field: impl Into<String>,
+        operator: UiFilterOperator,
+        value: impl Into<String>,
+    ) -> Self {
         Self {
             field: field.into(),
             operator,

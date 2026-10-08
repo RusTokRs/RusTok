@@ -1,11 +1,11 @@
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use uuid::Uuid;
 
+use crate::localized_sellers::normalize_seller_locale;
 use crate::{
     MarketplaceSellerTranslationExactLocaleError, MarketplaceSellerTranslationExactLocaleResult,
     MarketplaceSellerTranslationService,
 };
-use crate::localized_sellers::normalize_seller_locale;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MarketplaceSellerTranslationExactProgressFacts {

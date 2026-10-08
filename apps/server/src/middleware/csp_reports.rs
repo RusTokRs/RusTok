@@ -177,7 +177,12 @@ fn record_invalid_report(reason: &'static str) {
 }
 
 fn normalized_disposition(value: Option<&str>) -> &'static str {
-    match value.unwrap_or_default().trim().to_ascii_lowercase().as_str() {
+    match value
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "enforce" => "enforce",
         "report" => "report",
         _ => "other",

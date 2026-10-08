@@ -5,8 +5,8 @@ use sea_orm::{
     DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait,
 };
-use uuid::Uuid;
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use crate::dto::{
     CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput, UpdateWorkflowStepInput,
@@ -441,8 +441,9 @@ impl WorkflowService {
             }
         }
 
-        let payload: serde_json::Value = serde_json::from_slice(body)
-            .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(body).into_owned()));
+        let payload: serde_json::Value = serde_json::from_slice(body).unwrap_or_else(|_| {
+            serde_json::Value::String(String::from_utf8_lossy(body).into_owned())
+        });
         let engine = std::sync::Arc::new(crate::services::WorkflowEngine::new(self.db.clone()));
         let initial_context = serde_json::json!({
             "webhook": { "slug": webhook_slug, "payload": payload }
@@ -636,11 +637,10 @@ impl WorkflowService {
             model.trigger_config = Set(tc);
         }
         if let Some(slug) = snapshot.get("webhook_slug") {
-            model.webhook_slug = Set(
-                slug.as_str()
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string),
-            );
+            model.webhook_slug = Set(slug
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .map(str::to_string));
         }
         model.updated_at = Set(Utc::now().fixed_offset());
         model.update(&transaction).await?;
@@ -846,11 +846,13 @@ async fn lock_workflow_for_update(
     tenant_id: Uuid,
     workflow_id: Uuid,
 ) -> WorkflowResult<crate::entities::Workflow> {
-    let query = WorkflowEntity::find_by_id(workflow_id)
-        .filter(workflow::Column::TenantId.eq(tenant_id));
+    let query =
+        WorkflowEntity::find_by_id(workflow_id).filter(workflow::Column::TenantId.eq(tenant_id));
 
     let workflow = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,

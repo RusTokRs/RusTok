@@ -210,7 +210,6 @@ struct PageBuilderScenarioBaselineVariables {
     page_id: String,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: V,

@@ -1253,10 +1253,7 @@ mod tests {
             "u r l(https://cdn.example/a.png)",
             "blurl(https://cdn.example/a.png)",
         ] {
-            assert!(
-                !safe_css_value(value, &policy),
-                "accepted hostile {value}"
-            );
+            assert!(!safe_css_value(value, &policy), "accepted hostile {value}");
         }
     }
 
@@ -1265,14 +1262,22 @@ mod tests {
         // Explicit configuration outranks the coherent default.
         let mut policy = PageBuilderStaticPublishPolicy::default();
         policy.forbidden_css_tokens.push("url(".to_string());
-        assert!(!safe_css_value("url(https://cdn.example/hero.png)", &policy));
+        assert!(!safe_css_value(
+            "url(https://cdn.example/hero.png)",
+            &policy
+        ));
         assert!(safe_css_value("#ffffff", &policy));
     }
 
     #[test]
     fn ordinary_declarations_are_unaffected() {
         let policy = PageBuilderStaticPublishPolicy::default();
-        for value in ["#ffffff", "12px", "1px solid #333", "linear-gradient(red, blue)"] {
+        for value in [
+            "#ffffff",
+            "12px",
+            "1px solid #333",
+            "linear-gradient(red, blue)",
+        ] {
             assert!(safe_css_value(value, &policy), "rejected {value}");
         }
         for value in ["expression(alert(1))", "@import 'x'", "color:red;}", "a<b"] {
@@ -1280,4 +1285,3 @@ mod tests {
         }
     }
 }
-

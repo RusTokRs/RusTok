@@ -1,4 +1,3 @@
-
 use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
@@ -16,7 +15,6 @@ use crate::entities::seller_event;
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
 
 const MAX_EVENTS_PER_READ: u64 = 200;
-
 
 pub(crate) async fn list_seller_events<C: ConnectionTrait>(
     connection: &C,
@@ -36,7 +34,6 @@ pub(crate) async fn list_seller_events<C: ConnectionTrait>(
         .map(map_seller_event)
         .collect()
 }
-
 
 pub(crate) async fn append_receipted_seller_event<C: ConnectionTrait>(
     connection: &C,

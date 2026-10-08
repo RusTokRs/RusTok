@@ -203,4 +203,3 @@ impl From<MembershipWire> for GroupsStorefrontMembership {
         }
     }
 }
-

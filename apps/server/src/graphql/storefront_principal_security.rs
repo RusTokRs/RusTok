@@ -19,30 +19,31 @@ fn selection_contains_storefront(
     document: &ExecutableDocument,
     visited_fragments: &mut BTreeSet<String>,
 ) -> bool {
-    selection_set.items.iter().any(|selection| match &selection.node {
-        Selection::Field(field) => is_storefront_field(field.node.name.node.as_str()),
-        Selection::FragmentSpread(fragment) => {
-            let name = fragment.node.fragment_name.node.as_str();
-            let Some(definition) = document.fragments.get(name) else {
-                return false;
-            };
-            if !visited_fragments.insert(name.to_owned()) {
-                return false;
+    selection_set
+        .items
+        .iter()
+        .any(|selection| match &selection.node {
+            Selection::Field(field) => is_storefront_field(field.node.name.node.as_str()),
+            Selection::FragmentSpread(fragment) => {
+                let name = fragment.node.fragment_name.node.as_str();
+                let Some(definition) = document.fragments.get(name) else {
+                    return false;
+                };
+                if !visited_fragments.insert(name.to_owned()) {
+                    return false;
+                }
+                selection_contains_storefront(
+                    &definition.node.selection_set.node,
+                    document,
+                    visited_fragments,
+                )
             }
-            selection_contains_storefront(
-                &definition.node.selection_set.node,
-                document,
-                visited_fragments,
-            )
-        }
-        Selection::InlineFragment(fragment) => {
-            selection_contains_storefront(
+            Selection::InlineFragment(fragment) => selection_contains_storefront(
                 &fragment.node.selection_set.node,
                 document,
                 visited_fragments,
-            )
-        }
-    })
+            ),
+        })
 }
 
 fn document_contains_storefront(document: &ExecutableDocument) -> bool {

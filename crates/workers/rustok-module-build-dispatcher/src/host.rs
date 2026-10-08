@@ -108,11 +108,10 @@ pub async fn run_dispatcher(config: ModuleBuildDispatcherConfig) -> Result<(), S
     let db = Database::connect(options)
         .await
         .map_err(|error| format!("module-build dispatcher database connection failed: {error}"))?;
-    let transport = Arc::new(
-        IggyTransport::new(config.iggy)
-            .await
-            .map_err(|error| format!("module-build dispatcher broker connection failed: {error}"))?,
-    );
+    let transport =
+        Arc::new(IggyTransport::new(config.iggy).await.map_err(|error| {
+            format!("module-build dispatcher broker connection failed: {error}")
+        })?);
     let source = IggyModuleBuildDeliverySource::open(Arc::clone(&transport)).await?;
     let tls = MutualTlsClientConfig::from_env_prefix("RUSTOK_MODULE_BUILD")?;
     let endpoint = Endpoint::from_shared(config.worker_endpoint.clone())

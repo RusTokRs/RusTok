@@ -713,18 +713,16 @@ fn order_change_owner_error_facts(
             core_cause_present: true,
         },
         rustok_order::error::OrderError::IdempotencyConflict
-        | rustok_order::error::OrderError::CommandReceiptCorrupt => {
-            OrderChangeOwnerErrorFacts {
-                validation_detail_present: false,
-                validation_detail_length: None,
-                resource_id_present: false,
-                resource_id_non_nil: None,
-                transition_from_length: None,
-                transition_to_length: None,
-                database_cause_present: false,
-                core_cause_present: false,
-            }
-        }
+        | rustok_order::error::OrderError::CommandReceiptCorrupt => OrderChangeOwnerErrorFacts {
+            validation_detail_present: false,
+            validation_detail_length: None,
+            resource_id_present: false,
+            resource_id_non_nil: None,
+            transition_from_length: None,
+            transition_to_length: None,
+            database_cause_present: false,
+            core_cause_present: false,
+        },
     }
 }
 
@@ -1111,7 +1109,8 @@ async fn apply_order_change_native_with_context(
     let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
     let metadata = parse_metadata_json(&draft.metadata_json)?;
 
-    let idempotency_key = format!("commerce-admin:{APPLY_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}");
+    let idempotency_key =
+        format!("commerce-admin:{APPLY_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}");
     let change = order_service_from_context(
         app_ctx,
         APPLY_ORDER_CHANGE_OPERATION,
@@ -1172,7 +1171,9 @@ async fn cancel_order_change_native_with_context(
     let order_change_id = parse_uuid(id.as_str(), "order_change_id")?;
     let metadata = parse_metadata_json(&draft.metadata_json)?;
 
-    let idempotency_key = format!("commerce-admin:{CANCEL_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}");
+    let idempotency_key = format!(
+        "commerce-admin:{CANCEL_ORDER_CHANGE_OPERATION}:{correlation_id}:{order_change_id}"
+    );
     let change = order_service_from_context(
         app_ctx,
         CANCEL_ORDER_CHANGE_OPERATION,

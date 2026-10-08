@@ -17,9 +17,7 @@ use crate::reply_create_transport::{
 use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
-use crate::{
-    CategoryResponse, CategoryService, SubscriptionService,
-};
+use crate::{CategoryResponse, CategoryService, SubscriptionService};
 
 use super::{ForumGraphqlRuntimeData, require_forum_permission, resolve_tenant_scope, types::*};
 
@@ -109,7 +107,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
+        let service =
+            super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         let topic = service
             .update(
                 tenant_id,
@@ -157,7 +156,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
+        let service =
+            super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone());
         service
             .delete(
                 tenant_id,
@@ -189,7 +189,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .restore(
                 tenant_id,
                 id,
@@ -232,11 +233,16 @@ impl ForumContentMutation {
             Some(auth.user_id),
             &auth.permissions,
         );
-        let service = super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
+        let service =
+            super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
         if pinned {
-            service.pin_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+            service
+                .pin_topic_with_audience_context(tenant_id, id, security, audience_context)
+                .await?;
         } else {
-            service.unpin_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+            service
+                .unpin_topic_with_audience_context(tenant_id, id, security, audience_context)
+                .await?;
         }
 
         Ok(true)
@@ -271,11 +277,16 @@ impl ForumContentMutation {
             Some(auth.user_id),
             &auth.permissions,
         );
-        let service = super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
+        let service =
+            super::forum_graphql_runtime(ctx).moderation_service(db.clone(), event_bus.clone());
         if locked {
-            service.lock_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+            service
+                .lock_topic_with_audience_context(tenant_id, id, security, audience_context)
+                .await?;
         } else {
-            service.unlock_topic_with_audience_context(tenant_id, id, security, audience_context).await?;
+            service
+                .unlock_topic_with_audience_context(tenant_id, id, security, audience_context)
+                .await?;
         }
 
         Ok(true)
@@ -370,7 +381,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
+        super::forum_graphql_runtime(ctx)
+            .reply_service(db.clone(), event_bus.clone())
             .delete(
                 tenant_id,
                 id,
@@ -401,7 +413,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
+        super::forum_graphql_runtime(ctx)
+            .reply_service(db.clone(), event_bus.clone())
             .restore(
                 tenant_id,
                 id,
@@ -446,7 +459,13 @@ impl ForumContentMutation {
         );
         super::forum_graphql_runtime(ctx)
             .moderation_service(db.clone(), event_bus.clone())
-            .approve_reply_with_audience_context(tenant_id, reply_id, topic_id, security, audience_context)
+            .approve_reply_with_audience_context(
+                tenant_id,
+                reply_id,
+                topic_id,
+                security,
+                audience_context,
+            )
             .await?;
 
         Ok(true)
@@ -483,7 +502,13 @@ impl ForumContentMutation {
         );
         super::forum_graphql_runtime(ctx)
             .moderation_service(db.clone(), event_bus.clone())
-            .reject_reply_with_audience_context(tenant_id, reply_id, topic_id, security, audience_context)
+            .reject_reply_with_audience_context(
+                tenant_id,
+                reply_id,
+                topic_id,
+                security,
+                audience_context,
+            )
             .await?;
 
         Ok(true)
@@ -602,7 +627,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -655,7 +681,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -790,7 +817,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -846,7 +874,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -904,7 +933,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let reply = super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
+        let reply = super::forum_graphql_runtime(ctx)
+            .reply_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -979,7 +1009,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let reply = super::forum_graphql_runtime(ctx).reply_service(db.clone(), event_bus.clone())
+        let reply = super::forum_graphql_runtime(ctx)
+            .reply_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -1066,7 +1097,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(
@@ -1132,7 +1164,8 @@ impl ForumContentMutation {
             )
             .await?;
 
-        let topic = super::forum_graphql_runtime(ctx).topic_service(db.clone(), event_bus.clone())
+        let topic = super::forum_graphql_runtime(ctx)
+            .topic_service(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(

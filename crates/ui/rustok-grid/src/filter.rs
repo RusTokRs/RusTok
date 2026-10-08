@@ -371,7 +371,10 @@ mod tests {
     fn values_are_normalized_before_being_stored() {
         let mut filters = ColumnFilters::new();
         assert!(filters.set("title", FilterValue::Text("  hello  ".into())));
-        assert_eq!(filters.get("title"), Some(&FilterValue::Text("hello".into())));
+        assert_eq!(
+            filters.get("title"),
+            Some(&FilterValue::Text("hello".into()))
+        );
 
         // Same semantic value -> no change reported, no duplicate entry.
         assert!(!filters.set("title", FilterValue::Text("hello".into())));

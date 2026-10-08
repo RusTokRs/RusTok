@@ -76,7 +76,6 @@ struct SplitInput {
     reason: String,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: V,

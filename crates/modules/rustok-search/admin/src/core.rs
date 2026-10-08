@@ -1,7 +1,5 @@
+pub use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
 use rustok_ui_core::{UiRouteQueryUpdate, route_query_update_for_text};
-pub use rustok_grid::{
-    ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType,
-};
 pub use rustok_ui_core::{normalize_ui_text as optional_text, parse_ui_csv as parse_csv};
 
 use crate::model::{
@@ -1531,32 +1529,70 @@ pub fn search_analytics_query_grid_columns(locale: Option<&str>) -> Vec<GridColu
             .min_width(200)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр запроса..."
+                    } else {
+                        "Filter query..."
+                    }
+                    .into(),
+                ),
             }),
         GridColumnDef::new("hits", if is_ru { "Попадания" } else { "Hits" })
             .width(100)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("zero_result_hits", if is_ru { "Нулевые" } else { "Zero hits" })
-            .width(100)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "zero_result_hits",
+            if is_ru { "Нулевые" } else { "Zero hits" },
+        )
+        .width(100)
+        .align(ColumnAlign::Right),
         GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
             .width(90)
             .align(ColumnAlign::Right),
         GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("abandonment", if is_ru { "Без клика" } else { "Abandonment" })
-            .width(110)
-            .align(ColumnAlign::Right),
-        GridColumnDef::new("avg_latency", if is_ru { "Задержка" } else { "Avg latency" })
-            .width(110)
-            .align(ColumnAlign::Right),
-        GridColumnDef::new("avg_results", if is_ru { "Ср. результаты" } else { "Avg results" })
-            .width(110)
-            .align(ColumnAlign::Right),
-        GridColumnDef::new("last_seen", if is_ru { "Последний раз" } else { "Last seen" })
-            .min_width(140)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "abandonment",
+            if is_ru {
+                "Без клика"
+            } else {
+                "Abandonment"
+            },
+        )
+        .width(110)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "avg_latency",
+            if is_ru {
+                "Задержка"
+            } else {
+                "Avg latency"
+            },
+        )
+        .width(110)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "avg_results",
+            if is_ru {
+                "Ср. результаты"
+            } else {
+                "Avg results"
+            },
+        )
+        .width(110)
+        .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "last_seen",
+            if is_ru {
+                "Последний раз"
+            } else {
+                "Last seen"
+            },
+        )
+        .min_width(140)
+        .align(ColumnAlign::Right),
     ]
 }
 
@@ -1567,7 +1603,11 @@ pub fn matches_search_analytics_query_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("query", FilterValue::Text(q)) => {
-                if !row.query.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .query
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1603,26 +1643,50 @@ pub fn search_analytics_insight_grid_columns(locale: Option<&str>) -> Vec<GridCo
             .min_width(180)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр запроса..."
+                    } else {
+                        "Filter query..."
+                    }
+                    .into(),
+                ),
             }),
         GridColumnDef::new("hits", if is_ru { "Попадания" } else { "Hits" })
             .width(100)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("zero_result_hits", if is_ru { "Нулевые" } else { "Zero hits" })
-            .width(100)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "zero_result_hits",
+            if is_ru { "Нулевые" } else { "Zero hits" },
+        )
+        .width(100)
+        .align(ColumnAlign::Right),
         GridColumnDef::new("clicks", if is_ru { "Клики" } else { "Clicks" })
             .width(90)
             .align(ColumnAlign::Right),
         GridColumnDef::new("ctr", if is_ru { "CTR" } else { "CTR" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("recommendation", if is_ru { "Рекомендация" } else { "Recommendation" })
-            .min_width(200)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр рекомендации..." } else { "Filter recommendation..." }.into()),
-            }),
+        GridColumnDef::new(
+            "recommendation",
+            if is_ru {
+                "Рекомендация"
+            } else {
+                "Recommendation"
+            },
+        )
+        .min_width(200)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр рекомендации..."
+                } else {
+                    "Filter recommendation..."
+                }
+                .into(),
+            ),
+        }),
     ]
 }
 
@@ -1633,12 +1697,20 @@ pub fn matches_search_analytics_insight_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("query", FilterValue::Text(q)) => {
-                if !row.query.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .query
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("recommendation", FilterValue::Text(q)) => {
-                if !row.recommendation.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .recommendation
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1673,30 +1745,72 @@ pub fn filter_search_analytics_insights(
 pub fn lagging_search_document_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("title", if is_ru { "Заголовок / Ключ" } else { "Title / Key" })
-            .min_width(220)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр документа..." } else { "Filter document..." }.into()),
-            }),
-        GridColumnDef::new("source", if is_ru { "Источник / Статус" } else { "Source / Status" })
-            .min_width(180)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр источника..." } else { "Filter source..." }.into()),
-            }),
+        GridColumnDef::new(
+            "title",
+            if is_ru {
+                "Заголовок / Ключ"
+            } else {
+                "Title / Key"
+            },
+        )
+        .min_width(220)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр документа..."
+                } else {
+                    "Filter document..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new(
+            "source",
+            if is_ru {
+                "Источник / Статус"
+            } else {
+                "Source / Status"
+            },
+        )
+        .min_width(180)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр источника..."
+                } else {
+                    "Filter source..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("locale", if is_ru { "Локаль" } else { "Locale" })
             .width(90)
             .align(ColumnAlign::Center),
         GridColumnDef::new("lag", if is_ru { "Лаг" } else { "Lag" })
             .width(100)
             .align(ColumnAlign::Center),
-        GridColumnDef::new("indexed_at", if is_ru { "Индексировано" } else { "Indexed" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "indexed_at",
+            if is_ru {
+                "Индексировано"
+            } else {
+                "Indexed"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
     ]
 }
 
@@ -1715,12 +1829,20 @@ pub fn matches_lagging_search_document_filter(
                 }
             }
             ("source", FilterValue::Text(q)) => {
-                if !row.source_status_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .source_status_label
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("locale", FilterValue::Text(q)) => {
-                if !row.locale.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .locale
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1761,29 +1883,78 @@ pub fn search_consistency_issue_grid_columns(locale: Option<&str>) -> Vec<GridCo
             .width(130)
             .align(ColumnAlign::Center)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр проблемы..." } else { "Filter issue..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр проблемы..."
+                    } else {
+                        "Filter issue..."
+                    }
+                    .into(),
+                ),
             }),
-        GridColumnDef::new("title", if is_ru { "Заголовок / Ключ" } else { "Title / Key" })
-            .min_width(220)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр документа..." } else { "Filter document..." }.into()),
-            }),
-        GridColumnDef::new("source", if is_ru { "Источник / Статус" } else { "Source / Status" })
-            .min_width(180)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр источника..." } else { "Filter source..." }.into()),
-            }),
+        GridColumnDef::new(
+            "title",
+            if is_ru {
+                "Заголовок / Ключ"
+            } else {
+                "Title / Key"
+            },
+        )
+        .min_width(220)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр документа..."
+                } else {
+                    "Filter document..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new(
+            "source",
+            if is_ru {
+                "Источник / Статус"
+            } else {
+                "Source / Status"
+            },
+        )
+        .min_width(180)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр источника..."
+                } else {
+                    "Filter source..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("locale", if is_ru { "Локаль" } else { "Locale" })
             .width(90)
             .align(ColumnAlign::Center),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
-        GridColumnDef::new("indexed_at", if is_ru { "Индексировано" } else { "Indexed" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "indexed_at",
+            if is_ru {
+                "Индексировано"
+            } else {
+                "Indexed"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
     ]
 }
 
@@ -1794,7 +1965,11 @@ pub fn matches_search_consistency_issue_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("issue", FilterValue::Text(q)) => {
-                if !row.issue_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .issue_label
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1807,12 +1982,20 @@ pub fn matches_search_consistency_issue_filter(
                 }
             }
             ("source", FilterValue::Text(q)) => {
-                if !row.source_status_label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .source_status_label
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("locale", FilterValue::Text(q)) => {
-                if !row.locale.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .locale
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1854,17 +2037,45 @@ pub fn search_synonym_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .min_width(180)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр термина..." } else { "Filter term..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр термина..."
+                    } else {
+                        "Filter term..."
+                    }
+                    .into(),
+                ),
             }),
-        GridColumnDef::new("synonyms", if is_ru { "Синонимы" } else { "Synonyms" })
-            .min_width(240)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр синонимов..." } else { "Filter synonyms..." }.into()),
-            }),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "synonyms",
+            if is_ru {
+                "Синонимы"
+            } else {
+                "Synonyms"
+            },
+        )
+        .min_width(240)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр синонимов..."
+                } else {
+                    "Filter synonyms..."
+                }
+                .into(),
+            ),
+        }),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(110)
             .not_sortable()
@@ -1879,12 +2090,20 @@ pub fn matches_search_synonym_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("term", FilterValue::Text(q)) => {
-                if !row.term.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .term
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("synonyms", FilterValue::Text(q)) => {
-                if !row.synonyms_summary.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .synonyms_summary
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1923,11 +2142,25 @@ pub fn search_stop_word_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef>
             .min_width(200)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр значения..." } else { "Filter value..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр значения..."
+                    } else {
+                        "Filter value..."
+                    }
+                    .into(),
+                ),
             }),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(110)
             .not_sortable()
@@ -1942,7 +2175,11 @@ pub fn matches_search_stop_word_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("value", FilterValue::Text(q)) => {
-                if !row.value.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .value
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -1978,20 +2215,48 @@ pub fn search_query_rule_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef
             .min_width(200)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр запроса..." } else { "Filter query..." }.into()),
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр запроса..."
+                    } else {
+                        "Filter query..."
+                    }
+                    .into(),
+                ),
             }),
-        GridColumnDef::new("target", if is_ru { "Целевой документ" } else { "Target Document" })
-            .min_width(220)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru { "Фильтр цели..." } else { "Filter target..." }.into()),
-            }),
+        GridColumnDef::new(
+            "target",
+            if is_ru {
+                "Целевой документ"
+            } else {
+                "Target Document"
+            },
+        )
+        .min_width(220)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр цели..."
+                } else {
+                    "Filter target..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("position", if is_ru { "Позиция" } else { "Position" })
             .width(100)
             .align(ColumnAlign::Center),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .min_width(150)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .min_width(150)
+        .align(ColumnAlign::Left),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(110)
             .not_sortable()
@@ -2050,4 +2315,3 @@ pub fn filter_search_query_rules(
         .cloned()
         .collect()
 }
-

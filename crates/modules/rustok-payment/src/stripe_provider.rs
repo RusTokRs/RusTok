@@ -834,10 +834,7 @@ mod tests {
     fn stripe_rejects_fractional_isk_amounts() {
         // Stripe charges ISK as a two-decimal value whose fraction is always `00`.
         assert_eq!(to_minor_units(Decimal::from(5), "ISK").unwrap(), 500);
-        assert_eq!(
-            from_minor_units(500, "ISK").unwrap(),
-            Decimal::from(5)
-        );
+        assert_eq!(from_minor_units(500, "ISK").unwrap(), Decimal::from(5));
         assert!(to_minor_units(Decimal::new(55, 1), "ISK").is_err());
     }
 

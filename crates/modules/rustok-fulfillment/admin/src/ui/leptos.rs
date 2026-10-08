@@ -7,8 +7,8 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{shipping_option_list_request, shipping_profile_list_request};
 use crate::core::{filter_shipping_options, shipping_option_grid_columns};
+use crate::core::{shipping_option_list_request, shipping_profile_list_request};
 use crate::i18n::t;
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingProfile,
@@ -402,7 +402,10 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         });
     });
 
-    let is_ru = ui_locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = ui_locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = shipping_option_grid_columns(ui_locale.as_deref());
     let filters = RwSignal::new(ColumnFilters::new());
     let selection = RwSignal::new(RowSelection::new());
@@ -439,79 +442,95 @@ pub fn FulfillmentAdmin() -> impl IntoView {
     let cell_toggle_option = toggle_option;
     let cell_busy = busy;
 
-    let cell_renderer = Callback::new(move |(item, col_id): (ShippingOption, String)| {
-        match col_id.as_str() {
-            "name" => {
-                let name = item.name.clone();
-                let id = item.id.clone();
-                view! {
-                    <div class="flex flex-col min-w-0">
-                        <span class="text-xs font-semibold text-foreground truncate">{name}</span>
-                        <span class="text-[10px] font-mono text-muted-foreground truncate">{id}</span>
-                    </div>
-                }
-                .into_any()
+    let cell_renderer = Callback::new(move |(item, col_id): (ShippingOption, String)| match col_id
+        .as_str()
+    {
+        "name" => {
+            let name = item.name.clone();
+            let id = item.id.clone();
+            view! {
+                <div class="flex flex-col min-w-0">
+                    <span class="text-xs font-semibold text-foreground truncate">{name}</span>
+                    <span class="text-[10px] font-mono text-muted-foreground truncate">{id}</span>
+                </div>
             }
-            "provider_id" => {
-                let provider = item.provider_id.clone();
-                view! {
+            .into_any()
+        }
+        "provider_id" => {
+            let provider = item.provider_id.clone();
+            view! {
                     <span class="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                         {provider}
                     </span>
                 }
                 .into_any()
+        }
+        "price" => {
+            let price_str = format!("{} {}", item.currency_code, item.amount);
+            view! {
+                <span class="text-xs font-medium text-foreground whitespace-nowrap text-right">
+                    {price_str}
+                </span>
             }
-            "price" => {
-                let price_str = format!("{} {}", item.currency_code, item.amount);
-                view! {
-                    <span class="text-xs font-medium text-foreground whitespace-nowrap text-right">
-                        {price_str}
-                    </span>
-                }
-                .into_any()
+            .into_any()
+        }
+        "profiles" => {
+            let profiles_str = format_allowed_profiles(
+                cell_locale.as_deref(),
+                item.allowed_shipping_profile_slugs.as_ref(),
+            );
+            let title_str = profiles_str.clone();
+            view! {
+                <span class="text-xs text-muted-foreground truncate" title=title_str>
+                    {profiles_str}
+                </span>
             }
-            "profiles" => {
-                let profiles_str = format_allowed_profiles(cell_locale.as_deref(), item.allowed_shipping_profile_slugs.as_ref());
-                let title_str = profiles_str.clone();
-                view! {
-                    <span class="text-xs text-muted-foreground truncate" title=title_str>
-                        {profiles_str}
-                    </span>
-                }
-                .into_any()
-            }
-            "status" => {
-                let badge_cls = active_badge(item.active);
-                let label = localized_active_label(cell_locale.as_deref(), item.active);
-                view! {
+            .into_any()
+        }
+        "status" => {
+            let badge_cls = active_badge(item.active);
+            let label = localized_active_label(cell_locale.as_deref(), item.active);
+            view! {
                     <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
                         {label}
                     </span>
                 }
                 .into_any()
+        }
+        "updated_at" => {
+            let date_str = item
+                .updated_at
+                .split('T')
+                .next()
+                .unwrap_or(&item.updated_at);
+            view! {
+                <span class="text-xs text-muted-foreground whitespace-nowrap">
+                    {date_str.to_string()}
+                </span>
             }
-            "updated_at" => {
-                let date_str = item.updated_at.split('T').next().unwrap_or(&item.updated_at);
-                view! {
-                    <span class="text-xs text-muted-foreground whitespace-nowrap">
-                        {date_str.to_string()}
-                    </span>
-                }
-                .into_any()
-            }
-            "actions" => {
-                let edit_id = item.id.clone();
-                let toggle_item = item.clone();
-                let item_writer = cell_action_writer.clone();
-                let edit_btn_label = cell_edit_label.clone();
-                let toggle_btn_label = if item.active {
-                    t(cell_locale.as_deref(), "fulfillment.action.deactivate", "Deactivate")
-                } else {
-                    t(cell_locale.as_deref(), "fulfillment.action.reactivate", "Reactivate")
-                };
-                let toggle_fn = cell_toggle_option;
-                let is_busy = cell_busy;
-                view! {
+            .into_any()
+        }
+        "actions" => {
+            let edit_id = item.id.clone();
+            let toggle_item = item.clone();
+            let item_writer = cell_action_writer.clone();
+            let edit_btn_label = cell_edit_label.clone();
+            let toggle_btn_label = if item.active {
+                t(
+                    cell_locale.as_deref(),
+                    "fulfillment.action.deactivate",
+                    "Deactivate",
+                )
+            } else {
+                t(
+                    cell_locale.as_deref(),
+                    "fulfillment.action.reactivate",
+                    "Reactivate",
+                )
+            };
+            let toggle_fn = cell_toggle_option;
+            let is_busy = cell_busy;
+            view! {
                     <div class="flex items-center justify-center gap-1.5">
                         <button
                             type="button"
@@ -538,9 +557,8 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                     </div>
                 }
                 .into_any()
-            }
-            _ => ().into_any(),
         }
+        _ => ().into_any(),
     });
 
     let ui_locale_for_profiles = ui_locale.clone();

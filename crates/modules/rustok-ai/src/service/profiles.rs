@@ -1,12 +1,11 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use rustok_api::Permission;
 use crate::engine::inference_for_slug;
 use crate::entities::{
     ai_chat_runs, ai_chat_sessions, ai_provider_profiles, ai_structured_budgets,
@@ -16,11 +15,12 @@ use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{ProviderCapability, ProviderTestResult};
 use crate::streaming::{AiRunStreamEvent, ai_run_stream_hub};
 use crate::{AiError, AiResult};
+use rustok_api::Permission;
 
+use super::AiManagementService;
 use super::helpers::*;
 use super::mapping::*;
 use super::types::*;
-use super::AiManagementService;
 
 fn ensure_structured_accounting_manage(
     operator: &AiOperatorContext,

@@ -28,8 +28,7 @@ use crate::{
     MarketplaceSellerError, MarketplaceSellerTranslationChangeLifecycle,
     MarketplaceSellerTranslationExactLocaleApply,
     MarketplaceSellerTranslationExactLocaleApplyReceipt,
-    MarketplaceSellerTranslationExactLocaleError,
-    MarketplaceSellerTranslationExactLocaleRecord,
+    MarketplaceSellerTranslationExactLocaleError, MarketplaceSellerTranslationExactLocaleRecord,
     MarketplaceSellerTranslationExactLocaleSnapshot, MarketplaceSellerTranslationService,
 };
 

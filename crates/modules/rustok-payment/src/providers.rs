@@ -279,14 +279,10 @@ impl PaymentProviderRegistry {
                 "payment provider `{provider_id}` {operation} currency_code must be a 3-letter code"
             )));
         }
-        if request
-            .idempotency_key
-            .as_deref()
-            .is_some_and(|key| {
-                let key = key.trim();
-                key.is_empty() || key.len() > MAX_WEBHOOK_IDENTITY_LENGTH
-            })
-        {
+        if request.idempotency_key.as_deref().is_some_and(|key| {
+            let key = key.trim();
+            key.is_empty() || key.len() > MAX_WEBHOOK_IDENTITY_LENGTH
+        }) {
             return Err(PaymentError::Validation(format!(
                 "payment provider `{provider_id}` {operation} idempotency_key must contain 1 to {MAX_WEBHOOK_IDENTITY_LENGTH} bytes"
             )));
@@ -310,9 +306,7 @@ impl PaymentProviderRegistry {
             .external_reference
             .as_deref()
             .map(str::trim)
-            .is_none_or(|value| {
-                !value.is_empty() && value.len() <= MAX_EXTERNAL_REFERENCE_LENGTH
-            });
+            .is_none_or(|value| !value.is_empty() && value.len() <= MAX_EXTERNAL_REFERENCE_LENGTH);
         let invalid = result.provider_id != provider_id
             || result.authorized_amount < Decimal::ZERO
             || result.captured_amount < Decimal::ZERO
@@ -330,9 +324,8 @@ impl PaymentProviderRegistry {
                 operation,
             ));
         }
-        let result_payload = serde_json::to_value(result).map_err(|_| {
-            PaymentError::provider_invalid_response(provider_id, operation)
-        })?;
+        let result_payload = serde_json::to_value(result)
+            .map_err(|_| PaymentError::provider_invalid_response(provider_id, operation))?;
         validate_provider_operation_payload(&result_payload, "result")
             .map_err(|_| PaymentError::provider_invalid_response(provider_id, operation))?;
         Ok(())
@@ -461,10 +454,7 @@ impl PaymentProviderRegistry {
     }
 }
 
-pub(crate) fn validate_provider_operation_payload(
-    value: &Value,
-    field: &str,
-) -> PaymentResult<()> {
+pub(crate) fn validate_provider_operation_payload(value: &Value, field: &str) -> PaymentResult<()> {
     if provider_operation_payload_exceeds_depth(value) {
         return Err(PaymentError::Validation(format!(
             "payment provider {field} exceeds maximum JSON depth of {MAX_PROVIDER_OPERATION_PAYLOAD_DEPTH}"
@@ -472,9 +462,7 @@ pub(crate) fn validate_provider_operation_payload(
     }
 
     let encoded = serde_json::to_vec(value).map_err(|_| {
-        PaymentError::Validation(format!(
-            "payment provider {field} could not be encoded"
-        ))
+        PaymentError::Validation(format!("payment provider {field} could not be encoded"))
     })?;
     if encoded.len() > MAX_PROVIDER_OPERATION_PAYLOAD_BYTES {
         return Err(PaymentError::Validation(format!(

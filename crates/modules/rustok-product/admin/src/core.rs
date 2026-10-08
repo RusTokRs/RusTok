@@ -534,9 +534,17 @@ pub(crate) fn build_product_attribute_values_section_copy(
             "product.attributes.valuesSubtitle",
             "Values validated against the effective category schema.",
         ),
-        save: t(locale, "product.attributes.valuesSave", "Save attribute values"),
+        save: t(
+            locale,
+            "product.attributes.valuesSave",
+            "Save attribute values",
+        ),
         saving: t(locale, "product.attributes.valuesSaving", "Saving..."),
-        saved: t(locale, "product.attributes.valuesSaved", "Attribute values saved"),
+        saved: t(
+            locale,
+            "product.attributes.valuesSaved",
+            "Attribute values saved",
+        ),
         nothing_dirty: t(
             locale,
             "product.attributes.valuesNothingDirty",
@@ -2333,12 +2341,14 @@ pub fn matches_product_filter(
                 .next()
                 .unwrap_or(&item.created_at);
             if let Some(f) = from
-                && !f.trim().is_empty() && item_date < f.as_str()
+                && !f.trim().is_empty()
+                && item_date < f.as_str()
             {
                 return false;
             }
             if let Some(t) = to
-                && !t.trim().is_empty() && item_date > t.as_str()
+                && !t.trim().is_empty()
+                && item_date > t.as_str()
             {
                 return false;
             }
@@ -2468,12 +2478,20 @@ pub fn matches_attribute_schema_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("name", FilterValue::Text(q)) => {
-                if !item.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !item
+                    .name
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("code", FilterValue::Text(q)) => {
-                if !item.code.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !item
+                    .code
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -2548,13 +2566,10 @@ pub fn product_attribute_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef
                     .into(),
                 ),
             }),
-        GridColumnDef::new(
-            "is_filterable",
-            if is_ru { "Фильтр" } else { "Filterable" },
-        )
-        .min_width(100)
-        .not_sortable()
-        .align(ColumnAlign::Center),
+        GridColumnDef::new("is_filterable", if is_ru { "Фильтр" } else { "Filterable" })
+            .min_width(100)
+            .not_sortable()
+            .align(ColumnAlign::Center),
         GridColumnDef::new("actions", if is_ru { "Опции" } else { "Actions" })
             .width(110)
             .not_sortable()
@@ -2569,12 +2584,20 @@ pub fn matches_product_attribute_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("label", FilterValue::Text(q)) => {
-                if !item.label.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !item
+                    .label
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("code", FilterValue::Text(q)) => {
-                if !item.code.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !item
+                    .code
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -2622,7 +2645,11 @@ pub fn product_category_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef>
     vec![
         GridColumnDef::new(
             "category",
-            if is_ru { "Категория" } else { "Category" },
+            if is_ru {
+                "Категория"
+            } else {
+                "Category"
+            },
         )
         .min_width(260)
         .align(ColumnAlign::Left)
@@ -2790,14 +2817,15 @@ pub fn product_variant_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
     ]
 }
 
-pub fn matches_product_variant_filter(
-    item: &VariantRowViewModel,
-    filters: &ColumnFilters,
-) -> bool {
+pub fn matches_product_variant_filter(item: &VariantRowViewModel, filters: &ColumnFilters) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("sku", FilterValue::Text(q)) => {
-                if !item.sku.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !item
+                    .sku
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -3480,8 +3508,11 @@ mod tests {
         );
         assert_eq!(
             without_bidi_isolates(
-                &build_product_admin_profile_panel_ready_view_model(Some("en"), &[active, inactive])
-                    .into_message()
+                &build_product_admin_profile_panel_ready_view_model(
+                    Some("en"),
+                    &[active, inactive]
+                )
+                .into_message()
             ),
             "Known profiles: standard"
         );

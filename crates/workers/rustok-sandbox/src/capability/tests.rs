@@ -195,8 +195,7 @@ fn object_data_constraints_reject_physical_identity_and_ungranted_names() {
             "idempotency_key": Uuid::new_v4().to_string(),
         }),
     );
-    object_call.capability =
-        CapabilityName::new("platform.data.objects").expect("capability name");
+    object_call.capability = CapabilityName::new("platform.data.objects").expect("capability name");
     assert!(constraints.validate(&object_call).is_ok());
 
     object_call.operation = "begin_upload".to_string();
@@ -247,8 +246,7 @@ fn mcp_constraints_allow_only_declared_server_tool_pairs() {
             "operations": ["call"]
         }),
     };
-    let constraints =
-        McpCapabilityConstraints::from_grant(&grant).expect("valid MCP constraints");
+    let constraints = McpCapabilityConstraints::from_grant(&grant).expect("valid MCP constraints");
     let mut mcp_call = call(
         "call",
         json!({

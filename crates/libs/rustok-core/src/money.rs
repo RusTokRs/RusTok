@@ -140,10 +140,7 @@ pub fn round_to_currency(amount: Decimal, currency_code: &str) -> MoneyResult<De
 /// Rounds `amount` to an explicit minor-unit exponent.
 pub fn round_to_fixed(amount: Decimal, exponent: u8) -> MoneyResult<Decimal> {
     minor_unit_factor(exponent)?;
-    Ok(amount.round_dp_with_strategy(
-        u32::from(exponent),
-        RoundingStrategy::MidpointAwayFromZero,
-    ))
+    Ok(amount.round_dp_with_strategy(u32::from(exponent), RoundingStrategy::MidpointAwayFromZero))
 }
 
 /// Converts a major-unit amount into the currency's minor units.
@@ -248,8 +245,14 @@ mod tests {
 
     #[test]
     fn minor_units_use_the_currency_exponent() {
-        assert_eq!(to_minor_units(Decimal::new(2500, 2), "USD").expect("USD"), 2500);
-        assert_eq!(to_minor_units(Decimal::new(2500, 2), "JPY").expect("JPY"), 25);
+        assert_eq!(
+            to_minor_units(Decimal::new(2500, 2), "USD").expect("USD"),
+            2500
+        );
+        assert_eq!(
+            to_minor_units(Decimal::new(2500, 2), "JPY").expect("JPY"),
+            25
+        );
         assert_eq!(
             to_minor_units(Decimal::new(15778, 3), "KWD").expect("KWD"),
             15778

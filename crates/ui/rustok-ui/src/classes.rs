@@ -21,12 +21,12 @@
 //! stylesheet order, not by the order inside the `class` attribute.
 
 use crate::tokens::{
-    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES,
-    INPUT_FOCUS_RING_CLASSES, TRANSITION_COLORS_CLASSES, radius, shadow,
+    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES, INPUT_FOCUS_RING_CLASSES,
+    TRANSITION_COLORS_CLASSES, radius, shadow,
 };
 use crate::types::{
-    AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, Orientation,
-    SkeletonVariant, Size, SwitchSize,
+    AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, Orientation, Size,
+    SkeletonVariant, SwitchSize,
 };
 
 /// Joins class fragments into a single space-separated class list.
@@ -218,7 +218,11 @@ pub fn switch_classes(checked: bool, size: SwitchSize, custom: Option<&str>) -> 
     };
 
     let track_bg = if checked { "bg-primary" } else { "bg-input" };
-    let thumb_trans = if checked { thumb_offset } else { "translate-x-0" };
+    let thumb_trans = if checked {
+        thumb_offset
+    } else {
+        "translate-x-0"
+    };
 
     let track = merge_classes(&[
         "peer inline-flex shrink-0 cursor-pointer items-center border-2 border-transparent",
@@ -473,7 +477,11 @@ pub fn label_classes(disabled: bool, custom: Option<&str>) -> String {
         "peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
     };
 
-    merge_classes(&["text-sm font-medium leading-none", disabled_cls, custom.unwrap_or("")])
+    merge_classes(&[
+        "text-sm font-medium leading-none",
+        disabled_cls,
+        custom.unwrap_or(""),
+    ])
 }
 
 /// Generates a CSS class string for horizontal/vertical separators.
@@ -609,7 +617,12 @@ pub fn tabs_trigger_classes(active: bool, disabled: bool, custom: Option<&str>) 
 pub fn tabs_content_classes(active: bool, custom: Option<&str>) -> String {
     let display_cls = if active { "block" } else { "hidden" };
 
-    merge_classes(&["mt-2", FOCUS_RING_CLASSES, display_cls, custom.unwrap_or("")])
+    merge_classes(&[
+        "mt-2",
+        FOCUS_RING_CLASSES,
+        display_cls,
+        custom.unwrap_or(""),
+    ])
 }
 
 /// Generates a CSS class string for the Table of Contents container navigation.
@@ -658,4 +671,3 @@ pub fn toc_item_classes(level: u8, active: bool) -> String {
         state_cls,
     ])
 }
-

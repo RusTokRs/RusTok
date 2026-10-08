@@ -31,9 +31,7 @@ pub async fn load_directory(
     brand_directory_native(filters).await.map_err(Into::into)
 }
 
-pub async fn load_detail(
-    brand_id: String,
-) -> Result<BrandAdminRecord, NativeBrandAdminError> {
+pub async fn load_detail(brand_id: String) -> Result<BrandAdminRecord, NativeBrandAdminError> {
     brand_detail_native(brand_id).await.map_err(Into::into)
 }
 
@@ -118,9 +116,7 @@ async fn brand_directory_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "brand/detail")]
-async fn brand_detail_native(
-    brand_id: String,
-) -> Result<BrandAdminRecord, ServerFnError> {
+async fn brand_detail_native(brand_id: String) -> Result<BrandAdminRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -187,9 +183,7 @@ async fn brand_command_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
-        use rustok_brand::{
-            BrandPort, BrandService, CreateBrandInput, UpdateBrandInput,
-        };
+        use rustok_brand::{BrandPort, BrandService, CreateBrandInput, UpdateBrandInput};
 
         let _ = idempotency_key;
         let runtime = expect_context::<HostRuntimeContext>();
@@ -213,7 +207,12 @@ async fn brand_command_native(
                             slug: draft.slug,
                             logo_media_id: None,
                             banner_media_id: None,
-                            website_url: if draft.website_url.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+                            website_url: if draft
+                                .website_url
+                                .as_ref()
+                                .map(|s| s.trim().is_empty())
+                                .unwrap_or(true)
+                            {
                                 None
                             } else {
                                 draft.website_url

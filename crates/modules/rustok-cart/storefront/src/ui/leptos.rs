@@ -480,13 +480,13 @@ fn MetricCard(title: String, value: String) -> impl IntoView {
 pub fn CartCheckoutHandoffCard(
     cart_id: String,
     status: String,
-    #[prop(default = Vec::new())]
-    delivery_groups: Vec<crate::model::StorefrontCartDeliveryGroup>,
+    #[prop(default = Vec::new())] delivery_groups: Vec<crate::model::StorefrontCartDeliveryGroup>,
     labels: crate::core::CartCheckoutHandoffLabels,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let view_model = crate::core::cart_checkout_handoff_view_model(cart_id.clone(), status, &labels);
+    let view_model =
+        crate::core::cart_checkout_handoff_view_model(cart_id.clone(), status, &labels);
 
     let (customer_name, set_customer_name) = signal(String::new());
     let (customer_email, set_customer_email) = signal(String::new());
@@ -498,13 +498,21 @@ pub fn CartCheckoutHandoffCard(
     let (order_completed_id, set_order_completed_id) = signal(Option::<String>::None);
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
 
-    let title = t(locale.as_deref(), "cart-handoff-title", "Checkout & Delivery");
+    let title = t(
+        locale.as_deref(),
+        "cart-handoff-title",
+        "Checkout & Delivery",
+    );
     let subtitle = t(
         locale.as_deref(),
         "cart-handoff-subtitle",
         "Select shipping method and enter contact information",
     );
-    let shipping_title = t(locale.as_deref(), "cart-handoff-shipping", "Shipping Method");
+    let shipping_title = t(
+        locale.as_deref(),
+        "cart-handoff-shipping",
+        "Shipping Method",
+    );
     let standard_shipping = t(
         locale.as_deref(),
         "cart-handoff-standard",
@@ -524,24 +532,37 @@ pub fn CartCheckoutHandoffCard(
         "cart-handoff-payment-card",
         "Credit or Debit Card",
     );
-    let cod_label = t(locale.as_deref(), "cart-handoff-payment-cod", "Cash on Delivery");
+    let cod_label = t(
+        locale.as_deref(),
+        "cart-handoff-payment-cod",
+        "Cash on Delivery",
+    );
     let transfer_label = t(
         locale.as_deref(),
         "cart-handoff-payment-transfer",
         "Bank Transfer",
     );
-    let submit_label = t(locale.as_deref(), "cart-handoff-submit", "Complete Checkout");
-    let submitting_label = t(locale.as_deref(), "cart-handoff-submitting", "Processing...");
+    let submit_label = t(
+        locale.as_deref(),
+        "cart-handoff-submit",
+        "Complete Checkout",
+    );
+    let submitting_label = t(
+        locale.as_deref(),
+        "cart-handoff-submitting",
+        "Processing...",
+    );
     let success_prefix = t(
         locale.as_deref(),
         "cart-handoff-success",
         "Order placed successfully! Order reference:",
     );
 
-    let available_shipping_options: Vec<crate::model::StorefrontCartShippingOption> = delivery_groups
-        .iter()
-        .flat_map(|g| g.available_shipping_options.clone())
-        .collect();
+    let available_shipping_options: Vec<crate::model::StorefrontCartShippingOption> =
+        delivery_groups
+            .iter()
+            .flat_map(|g| g.available_shipping_options.clone())
+            .collect();
 
     let submit_cart_id = cart_id.clone();
     let on_submit_click = Callback::new(move |()| {
@@ -840,8 +861,7 @@ pub fn CartDrawer() -> impl IntoView {
             set_mutation_busy.set(true);
             set_mutation_error.set(None);
             spawn_local(async move {
-                let request =
-                    build_decrement_line_item_request(cart_id, line_item_id, quantity);
+                let request = build_decrement_line_item_request(cart_id, line_item_id, quantity);
                 match transport::decrement_line_item(request).await {
                     Ok(()) => state.refresh(),
                     Err(err) => set_mutation_error.set(Some(err.to_string())),

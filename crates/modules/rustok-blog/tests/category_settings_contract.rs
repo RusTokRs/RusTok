@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use rustok_blog::BlogModule;
 use rustok_blog::dto::CreateCategoryInput;
 use rustok_blog::services::CategoryService;
-use rustok_blog::BlogModule;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -137,5 +137,9 @@ async fn settings_contract_fails_preflight_on_dirty_rows_and_retries_cleanly() {
     let oversized_error = write_settings(&db, category_id, oversized)
         .await
         .expect_err("database guard must reject oversized settings");
-    assert!(oversized_error.to_string().contains("blog category settings"));
+    assert!(
+        oversized_error
+            .to_string()
+            .contains("blog category settings")
+    );
 }

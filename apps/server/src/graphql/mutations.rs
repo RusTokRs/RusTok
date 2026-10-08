@@ -50,9 +50,9 @@ use rustok_auth::{
 use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
-    ArtifactActivationRequest, ArtifactDeactivationRequest,
-    ArtifactTenantDisableRequest, ArtifactTenantEnableRequest, ArtifactUninstallRequest,
-    ModuleCommandContext, ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
+    ArtifactActivationRequest, ArtifactDeactivationRequest, ArtifactTenantDisableRequest,
+    ArtifactTenantEnableRequest, ArtifactUninstallRequest, ModuleCommandContext,
+    ModuleCompositionError, ModuleControlPlane, ModuleInstallationScope,
 };
 use rustok_modules::{
     ArtifactDataError, ArtifactDataPurgeRequest, ArtifactSettingsPurgeRequest,
@@ -2030,11 +2030,9 @@ mod tests {
 
     #[test]
     fn platform_composition_build_error_redacts_owner_diagnostics() {
-        let error = map_platform_composition_build_error(
-            PlatformCompositionBuildError::Build(
-                "cargo stderr: database password=secret".to_string(),
-            ),
-        );
+        let error = map_platform_composition_build_error(PlatformCompositionBuildError::Build(
+            "cargo stderr: database password=secret".to_string(),
+        ));
 
         assert_eq!(error.message, "Module composition build is unavailable");
         assert!(!error.message.contains("database password=secret"));
@@ -2047,18 +2045,15 @@ mod tests {
     #[test]
     fn module_recovery_errors_redact_owner_diagnostics() {
         let not_retryable = map_module_operation_recovery_error(
-            ModuleOperationRecoveryError::NotRetryable(
-                "database password=secret".to_string(),
-            ),
+            ModuleOperationRecoveryError::NotRetryable("database password=secret".to_string()),
         );
         assert_eq!(not_retryable.message, "Module operation is not retryable");
         assert!(!not_retryable.message.contains("database password=secret"));
 
-        let post_hook = map_module_operation_recovery_error(
-            ModuleOperationRecoveryError::PostHookFailed(
+        let post_hook =
+            map_module_operation_recovery_error(ModuleOperationRecoveryError::PostHookFailed(
                 "post-hook database password=secret".to_string(),
-            ),
-        );
+            ));
         assert_eq!(post_hook.message, "Module hook failed");
         assert!(!post_hook.message.contains("database password=secret"));
     }

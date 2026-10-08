@@ -123,7 +123,9 @@ fn media_error(error: MediaError) -> HttpError {
         MediaError::AssetReferenceConflict(id) => HttpError::new(
             StatusCode::CONFLICT,
             "media_asset_reference_conflict",
-            format!("Media asset reference identity {id} is already bound to another asset or owner"),
+            format!(
+                "Media asset reference identity {id} is already bound to another asset or owner"
+            ),
         ),
         MediaError::RenditionInProgress(id) => HttpError::new(
             StatusCode::CONFLICT,

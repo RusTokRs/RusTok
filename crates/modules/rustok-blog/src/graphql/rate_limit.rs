@@ -436,8 +436,7 @@ mod tests {
             grant_type: "client_credentials".to_string(),
         };
 
-        let key =
-            build_rate_limit_key(&tenant, Some(&auth), None, BlogGraphqlSurface::Posts);
+        let key = build_rate_limit_key(&tenant, Some(&auth), None, BlogGraphqlSurface::Posts);
 
         assert_eq!(
             key,
