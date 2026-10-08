@@ -20,6 +20,7 @@ ssr = [
 
 [dependencies]
 rustok-ui-core.workspace = true
+rustok-grid.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true

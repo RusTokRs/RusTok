@@ -7,6 +7,7 @@
   "license": "BUSL-1.1",
   "dependencies": {
     "@rustok/cart-frontend": "file:../rustok-cart",
+    "@rustok/ui-grid": "file:../../../../packages/rustok-ui-grid",
     "lucide-react": "^1.48.0"
   },
   "peerDependencies": {

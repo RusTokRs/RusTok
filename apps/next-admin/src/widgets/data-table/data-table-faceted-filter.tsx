@@ -27,6 +27,11 @@ import {
 } from '@/shared/ui/shadcn/popover';
 import { Separator } from '@/shared/ui/shadcn/separator';
 import { cn } from '@/shared/lib/utils';
+import {
+  hasSelectionForKey,
+  selectionAfterClear,
+  selectionAfterToggle
+} from '@rustok/ui-grid';
 import * as React from 'react';
 import { CheckIcon } from '@radix-ui/react-icons';
 
@@ -52,6 +57,8 @@ export function DataTableFacetedFilter<
   const [open, setOpen] = React.useState(false);
 
   const columnFilterValue = column?.getFilterValue();
+  // This filter selects option values of exactly one facet, so the column id is the facet key.
+  const facetKey = column?.id ?? '';
   const selectedValues = React.useMemo(
     () => new Set(Array.isArray(columnFilterValue) ? columnFilterValue : []),
     [columnFilterValue]
@@ -62,13 +69,13 @@ export function DataTableFacetedFilter<
       if (!column) return;
 
       if (multiple) {
-        const newSelectedValues = new Set(selectedValues);
-        if (isSelected) {
-          newSelectedValues.delete(option.value);
-        } else {
-          newSelectedValues.add(option.value);
-        }
-        const filterValues = Array.from(newSelectedValues);
+        // One column, several accepted values: the shared transition owns the order-preserving
+        // toggle, so this filter and the counted facet panels behave identically.
+        const filterValues = selectionAfterToggle(
+          Array.from(selectedValues),
+          facetKey,
+          option.value
+        );
         column.setFilterValue(filterValues.length ? filterValues : undefined);
       } else {
         column.setFilterValue(isSelected ? undefined : [option.value]);
@@ -81,7 +88,9 @@ export function DataTableFacetedFilter<
   const onReset = React.useCallback(
     (event?: React.MouseEvent) => {
       event?.stopPropagation();
-      column?.setFilterValue(undefined);
+      // Shared transition: clearing a facet leaves the other facets' selections alone.
+      const cleared = selectionAfterClear();
+      column?.setFilterValue(cleared.length ? cleared : undefined);
     },
     [column]
   );
@@ -90,7 +99,10 @@ export function DataTableFacetedFilter<
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant='outline' size='sm' className='border-dashed'>
-          {selectedValues?.size > 0 ? (
+          {hasSelectionForKey(
+            Array.from(selectedValues),
+            facetKey
+          ) ? (
             <div
               role='button'
               aria-label={`Clear ${title} filter`}

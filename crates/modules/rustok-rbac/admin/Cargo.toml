@@ -27,7 +27,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-grid.workspace = true
-rustok-grid-leptos.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }
 
 rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }

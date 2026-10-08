@@ -21,16 +21,18 @@ import {
   Minus,
   Package,
   Plus,
-  ShieldCheck,
   ShoppingCart,
   Sparkles,
-  Truck,
 } from "lucide-react";
 import { useCart } from "@rustok/cart-frontend";
 import type {
   StorefrontProductDetail,
   StorefrontProductVariant,
 } from "../api/types";
+import {
+  buildProductSpecificationLabels,
+  buildProductSpecifications,
+} from "../catalog/specifications";
 
 interface ProductDetailViewProps {
   product: StorefrontProductDetail;
@@ -70,6 +72,17 @@ export function ProductDetailView({
   const [isAdding, setIsAdding] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+
+  // Owner-resolved specifications: localized labels and values, service attributes already
+  // filtered out by the Product module; the storefront only phrases the boolean vocabulary.
+  const specificationLabels = useMemo(
+    () => buildProductSpecificationLabels(locale),
+    [locale],
+  );
+  const specifications = useMemo(
+    () => buildProductSpecifications(product, specificationLabels),
+    [product, specificationLabels],
+  );
 
   // Owner-resolved product gallery (locale-resolved by the Product module).
   const gallery = useMemo(
@@ -223,17 +236,27 @@ export function ProductDetailView({
             </div>
           )}
 
-          {/* Features highlight */}
-          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 text-xs">
-            <div className="flex items-center gap-2.5 text-muted-foreground">
-              <Truck className="h-4 w-4 text-primary shrink-0" />
-              <span>{isRu ? "Быстрая доставка" : "Fast delivery"}</span>
-            </div>
-            <div className="flex items-center gap-2.5 text-muted-foreground">
-              <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>{isRu ? "Гарантия качества" : "Original quality"}</span>
-            </div>
-          </div>
+          {/* Specifications filled by the Product owner (localized labels and values). */}
+          {specifications.length > 0 && (
+            <section className="rounded-2xl border border-border bg-card p-4 text-xs">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {specificationLabels.title}
+              </h2>
+              <dl className="mt-3 divide-y divide-border">
+                {specifications.map((row) => (
+                  <div
+                    key={row.code}
+                    className="flex items-baseline justify-between gap-4 py-2"
+                  >
+                    <dt className="text-muted-foreground">{row.label}</dt>
+                    <dd className="text-right font-medium text-foreground">
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
         </div>
 
         {/* Right Column: Details, Variants & Purchase Actions (7 cols) */}

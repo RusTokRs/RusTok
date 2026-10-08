@@ -9,6 +9,7 @@ import {
   CardTitle
 } from '@/shared/ui/shadcn/card';
 import { Button } from '@/shared/ui/shadcn/button';
+import { DataTablePaginationBar } from '@/widgets/data-table/data-table-static';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Badge } from '@/shared/ui/shadcn/badge';
 import {
@@ -400,24 +401,11 @@ export function ShippingProfilesTemplate({ opts }: { opts: GqlOpts }) {
               </div>
             )}
 
-            <div className='mt-4 flex items-center justify-end gap-2'>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={!hasNext}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
+            <DataTablePaginationBar
+              page={page}
+              pageCount={hasNext ? page + 1 : page}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       </div>

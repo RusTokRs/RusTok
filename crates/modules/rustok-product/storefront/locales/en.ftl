@@ -8,6 +8,14 @@ product-list-attributeFiltersLabel = Attribute filters
 product-list-attributeFiltersPlaceholder = color=red;weight=12.5
 product-list-categoryLabel = Category
 product-list-empty = No published products are available yet.
+product-list-facetsClear = Clear filters
+# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
+product-list-facetsEmpty = No filters are available for this catalog yet.
+product-list-facetsLabel = Filters
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = More values are available than shown.
+product-list-facetsUnbounded = Enter a value in the filter field above.
+product-list-facetsUnselected = [ ]
 product-list-open = Open
 product-list-searchLabel = Search catalog
 product-list-searchPlaceholder = Search published products
@@ -42,6 +50,9 @@ product-selected-pricingPreview = Pricing module preview
 product-selected-quantity = qty
 product-selected-region = region
 product-selected-unscheduled = scheduled later
+product-selected-attributes = Specifications
+product-selected-attributeYes = Yes
+product-selected-attributeNo = No
 product-selected-untitled = Untitled product
 product-selected-vendorFallback = independent label
 product-subtitle = This storefront route reads product-owned catalog data and shows resolved pricing through a separate pricing-module hook, with GraphQL kept as a fallback path.

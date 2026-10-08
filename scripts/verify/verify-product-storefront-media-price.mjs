@@ -32,6 +32,10 @@ function assertContains(text, pattern, description) {
   }
 }
 
+function assertMatch(text, pattern, description) {
+  if (!pattern.test(text)) failures.push(description);
+}
+
 function assertNotContains(text, pattern, description) {
   const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
   if (found) {
@@ -408,9 +412,10 @@ assertContains(
   "if runtime.media_asset_read_port().is_some() {",
   `${hostAdapterPath}: an outer host composition must stay authoritative`
 );
-assertContains(
+// rustfmt wraps the binding as soon as the call grows, so the rule is the composition itself.
+assertMatch(
   hostComposition,
-  "let runtime = compose_product_catalog_media_asset_validation(runtime, server, &host);",
+  /let runtime =\s*compose_product_catalog_media_asset_validation\(runtime, server, &host\);/,
   `${hostCompositionPath}: Product command composition must attach media asset validation`
 );
 assertContains(

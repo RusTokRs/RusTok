@@ -52,6 +52,19 @@ pub struct StorefrontCatalogFacetsRequest {
     pub facet_codes: Vec<String>,
 }
 
+/// Request for the admin catalog facet projection.
+///
+/// Facets are counted for the whole filtered admin catalog — every lifecycle status unless the
+/// query narrows it — so the pagination fields of `query` are ignored by the owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminCatalogFacetsRequest {
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
+    pub query: AdminProductListQuery,
+    /// Attribute codes to count, in display order; empty means "no facets".
+    pub facet_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorefrontProductProjectionSubject {
     ProductId { product_id: Uuid },

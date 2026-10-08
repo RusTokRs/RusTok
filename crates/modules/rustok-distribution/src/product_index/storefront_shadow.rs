@@ -9,7 +9,7 @@ use rustok_index::{
 use rustok_product::{
     ProductAttributeTermExpr, ProductResolvedAttributeFilter, StorefrontProductListQuery,
     StorefrontProductSortBy, StorefrontProductSortDirection, entities::product::ProductStatus,
-    services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
+    group_product_attribute_filters, services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
 };
 
 use super::PRODUCT_SCHEMA_ROUTING_KEY;
@@ -187,14 +187,18 @@ fn resolved_attribute_filters_to_index(
     owner: &StorefrontProductListQuery,
     resolved: Vec<ProductResolvedAttributeFilter>,
 ) -> Result<Vec<FilterExpr>, ProductStorefrontIndexShadowError> {
-    if owner.attribute_filters.len() > MAX_STOREFRONT_ATTRIBUTE_FILTERS
-        || resolved.len() != owner.attribute_filters.len()
-        || owner
-            .attribute_filters
-            .iter()
-            .zip(&resolved)
-            .any(|(owner, resolved)| !owner.code.eq_ignore_ascii_case(resolved.code.as_str()))
-    {
+    // The owner groups one selection per attribute code (`group_product_attribute_filters`), so a
+    // repeated code such as `color=red;color=blue` is one OR predicate per attribute instead of two
+    // AND-ed predicates. The resolution must answer with exactly those codes, in the same order.
+    let selections = group_product_attribute_filters(owner.attribute_filters.as_slice());
+    if selections.len() > MAX_STOREFRONT_ATTRIBUTE_FILTERS || resolved.len() != selections.len() {
+        return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
+    }
+    let codes_match = selections
+        .iter()
+        .zip(&resolved)
+        .all(|(selection, resolved)| selection.code.eq_ignore_ascii_case(resolved.code.as_str()));
+    if !codes_match {
         return Err(ProductStorefrontIndexShadowError::AttributeFilterResolutionMismatch);
     }
 

@@ -12,7 +12,7 @@ use crate::services::catalog_schema::AttributeValueType;
 
 use super::ProductAttributeFilter;
 use super::helpers::sql_placeholder;
-use super::types::validate_product_attribute_filters;
+use super::types::{group_product_attribute_filters, validate_product_attribute_filters};
 
 #[derive(Debug, FromQueryResult)]
 struct CatalogAttributeFilterDefinitionRow {
@@ -22,6 +22,12 @@ struct CatalogAttributeFilterDefinitionRow {
     is_localized: bool,
 }
 
+/// Resolves the list-query attribute selection into one condition per attribute.
+///
+/// The returned conditions are AND-ed by every caller, so the shape is: several values of one
+/// attribute are an OR *inside* one condition, several attributes are an AND between conditions.
+/// That mirrors the panel vocabulary (`color=red;size=m` selects any red product with size m) and the
+/// term grammar used by the index shadow.
 pub(super) async fn load_catalog_attribute_filter_conditions(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -30,18 +36,18 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
     filters: &[ProductAttributeFilter],
 ) -> CommerceResult<Vec<Condition>> {
     validate_product_attribute_filters(filters)?;
-    if filters.is_empty() {
+    let selections = group_product_attribute_filters(filters);
+    if selections.is_empty() {
         return Ok(Vec::new());
     }
 
     let backend = db.get_database_backend();
     let mut values = vec![tenant_id.into()];
-    let placeholders = filters
+    let placeholders = selections
         .iter()
-        .enumerate()
-        .map(|(index, filter)| {
-            values.push(filter.code.to_ascii_lowercase().into());
-            sql_placeholder(backend, index + 2)
+        .map(|selection| {
+            values.push(selection.code.to_ascii_lowercase().into());
+            sql_placeholder(backend, values.len())
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -68,14 +74,14 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
         .map(|definition| (definition.code.to_ascii_lowercase(), definition))
         .collect::<HashMap<_, _>>();
 
-    let mut conditions = Vec::with_capacity(filters.len());
-    for filter in filters {
+    let mut conditions = Vec::with_capacity(selections.len());
+    for selection in &selections {
         let definition = definitions
-            .get(&filter.code.to_ascii_lowercase())
+            .get(&selection.code.to_ascii_lowercase())
             .ok_or_else(|| {
                 CommerceError::Validation(format!(
                     "attribute {} is not available as a product filter",
-                    filter.code
+                    selection.code
                 ))
             })?;
         let value_type =
@@ -92,15 +98,22 @@ pub(super) async fn load_catalog_attribute_filter_conditions(
                 value_type.as_str()
             )));
         }
-        conditions.push(build_attribute_filter_condition(
-            backend,
-            tenant_id,
-            definition,
-            value_type,
-            filter.value.as_str(),
-            locale,
-            fallback_locale,
-        )?);
+
+        // `Condition::any()` is the OR of every selected value of this attribute; a single selected
+        // value stays a single branch, so the previous one-value behavior is unchanged.
+        let mut attribute_condition = Condition::any();
+        for raw_value in &selection.values {
+            attribute_condition = attribute_condition.add(build_attribute_filter_condition(
+                backend,
+                tenant_id,
+                definition,
+                value_type,
+                raw_value.as_str(),
+                locale,
+                fallback_locale,
+            )?);
+        }
+        conditions.push(attribute_condition);
     }
     Ok(conditions)
 }

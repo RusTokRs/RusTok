@@ -15,10 +15,14 @@ import { getStorefrontTenantSlug } from "@/shared/api/modules";
 import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
+  buildCatalogFacetCodes,
   fetchCatalogSearchOptions,
+  fetchStorefrontCatalogFacets,
   fetchStorefrontProducts,
+  parseAttributeFilters,
   ProductGrid,
 } from "../../../../packages/rustok-product/src";
+import type { ProductCatalogFacet } from "../../../../packages/rustok-product/src";
 
 interface ProductsPageProps {
   params: Promise<{ locale: string }>;
@@ -72,6 +76,11 @@ export default async function ProductsCatalogPage({
     typeof query.currency === "string"
       ? query.currency.trim().toUpperCase()
       : undefined;
+  const attributeFilters = parseAttributeFilters(
+    typeof query.attribute_filters === "string"
+      ? query.attribute_filters
+      : undefined
+  );
 
   let productsResult;
   let searchOptions;
@@ -87,6 +96,8 @@ export default async function ProductsCatalogPage({
           sortBy,
           sortDirection,
           currencyCode,
+          attributeFilters:
+            attributeFilters.length > 0 ? attributeFilters : undefined,
           page,
           perPage,
         },
@@ -106,6 +117,30 @@ export default async function ProductsCatalogPage({
       categoryOptions: [],
       attributeOptions: [],
     };
+  }
+
+  // Facets describe the whole filtered catalog, so they are requested once per page render with
+  // the same controls the grid uses — minus pagination. Counting is optional: an owner without the
+  // facet capability must not take the catalog page down with it.
+  let facets: ProductCatalogFacet[] = [];
+  try {
+    facets = await fetchStorefrontCatalogFacets(
+      storefrontGraphql,
+      locale,
+      {
+        search,
+        categoryId,
+        sortBy,
+        sortDirection,
+        currencyCode,
+        attributeFilters:
+          attributeFilters.length > 0 ? attributeFilters : undefined,
+      },
+      buildCatalogFacetCodes(searchOptions),
+      tenantSlug
+    );
+  } catch {
+    facets = [];
   }
 
   return (
@@ -136,6 +171,9 @@ export default async function ProductsCatalogPage({
           currentCategory={categoryId}
           currentSortBy={sortBy}
           currentSortDirection={sortDirection}
+          currentAttributeFilters={attributeFilters}
+          facets={facets}
+          currencyCode={currencyCode}
         />
       </div>
     </main>

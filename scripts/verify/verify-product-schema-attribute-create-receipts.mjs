@@ -148,13 +148,20 @@ for (const required of [
   requireText(values, required, "transaction-local Product attribute-value projection");
 }
 for (const required of [
-  "pub(super) async fn load_effective_form_for_product_in<C>",
   "async fn load_effective_form_for_category_in<C>",
   "async fn load_category_schema_map<C>",
   "async fn load_attribute_schema_map<C>",
   "C: ConnectionTrait",
 ]) {
   requireText(effectiveForms, required, "connection-neutral Product effective-form projection");
+}
+// The product projection is reused by the shared storefront attribute projection
+// (`services/catalog/storefront_attributes.rs`), so its visibility is crate-internal rather than
+// module-private. What the guard pins is that the projection stays connection-neutral and internal.
+if (!/pub\((?:super|crate)\) async fn load_effective_form_for_product_in<C>/.test(effectiveForms)) {
+  failures.push(
+    "connection-neutral Product effective-form projection: missing pub(super|crate) async fn load_effective_form_for_product_in<C>",
+  );
 }
 
 const saveValues = functionSlice(values, "save_product_attribute_values", "clear_detached_product_attribute_values");

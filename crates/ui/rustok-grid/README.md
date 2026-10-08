@@ -10,6 +10,7 @@ Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure 
 - **Resize**: column resizing math with min/max clamps (pointer and keyboard).
 - **Filters**: column filter specifications (Text, Select, NumberRange, DateRange, Boolean).
 - **Facets**: server-computed facet descriptors (buckets with counts), the enumerable/open domain split, truncation, and the drill-down rule that excludes a facet's own selection while counting it.
+- **Facet panel**: framework-free panel state built from those descriptors — selection markers, rendered counts, bounded/unbounded hints, and the toggle/clear rules every adapter shares.
 - **Sorting**: deterministic single-column sort state machine (the adapter can delegate actual ordering to the server).
 - **Selection**: row selection, bulk action tracking, all/partial helpers.
 - **Pagination**: dual pagination models (classic paged vs infinite scroll), with overflow-safe bounds and one-based display indexes.
@@ -28,6 +29,7 @@ Every type repairs its own state, so no renderer and no server handler has to de
 | `GridPagination` | `page ∈ 1..=total_pages()`, `page_size >= 1`, `total_pages() >= 1`; all arithmetic is integer and overflow-safe (`u64` totals, `saturating_*`, no `f64` rounding on large data sets). `go_to_page` returns the *effective* page. |
 | `RowSelection` | Ordered (deterministic serialization); `is_all_selected` on an empty page is `false`, `retain_ids` prunes rows that left the data set. |
 | `GridFacet` | Bucket lists are cut at `MAX_GRID_FACET_VALUES` with `is_truncated` reporting it; open domains never carry buckets; `other_selection` never returns the facet's own entries. |
+| `FacetPanel` | Renders at most `MAX_GRID_FACETS` facets, keeps selection order on toggle, and never owns UI copy: labels and markers always come from the adapter. |
 
 `GridState` composes all of the above and offers `normalize()`, `set_filter()`, `toggle_sort()` and `clamp_widths()` so that a filter or sort change always resets pagination to page 1.
 
@@ -49,7 +51,13 @@ domain module never renders. The contract in between is this crate:
   choosing a bucket instead of what is already selected;
 - `FacetValue::to_filter_option` / `GridFacet::filter_options` turn buckets into the same
   `FilterOption` vocabulary the filter row already uses, so an adapter renders counts without a
-  second code path.
+  second code path;
+- `FacetPanel::build` turns descriptors plus the active selection into the panel an adapter draws:
+  selection markers, rendered counts, the unbounded-domain hint, the truncation hint, and the
+  per-facet and panel-wide clear actions. `FacetPanel::toggle` / `clear_key` / `clear` return the
+  selection the adapter must persist, so no adapter re-implements the `key=value` vocabulary.
+  Copy lives in `FacetPanelLabels` and is supplied per locale by the adapter — this crate ships
+  English defaults only as a neutral fallback.
 
 ## Adapters
 

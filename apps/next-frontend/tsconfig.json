@@ -72,6 +72,12 @@
       "@rustok/product-frontend": [
         "./packages/rustok-product/src/index.tsx"
       ],
+      "@rustok/ui-grid": [
+        "../../packages/rustok-ui-grid/src/index.ts"
+      ],
+      "@rustok/ui-grid/*": [
+        "../../packages/rustok-ui-grid/src/*"
+      ],
       "@rustok/search-frontend": [
         "./packages/search/src/index.tsx"
       ],
