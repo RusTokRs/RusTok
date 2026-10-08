@@ -28,8 +28,10 @@ impl MigrationTrait for Migration {
 }
 
 async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.get_connection().execute_unprepared(
-        r#"
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 CREATE TABLE forum_reply_delete_snapshots (
     tenant_id UUID NOT NULL,
     reply_id UUID NOT NULL,
@@ -97,7 +99,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-"#).await?;
+"#,
+        )
+        .await?;
     Ok(())
 }
 

@@ -41,13 +41,12 @@ async fn storage_with_script_parent(
 }
 
 fn component_workspace() -> RustComponentWorkspace {
-    let rendered =
-        rustok_module_template::render(&rustok_module_template::ModuleTemplateInput {
-            slug: "sample_module".to_string(),
-            version: "1.1.0".to_string(),
-            display_name: "Sample Module".to_string(),
-        })
-        .expect("rendered Component template");
+    let rendered = rustok_module_template::render(&rustok_module_template::ModuleTemplateInput {
+        slug: "sample_module".to_string(),
+        version: "1.1.0".to_string(),
+        display_name: "Sample Module".to_string(),
+    })
+    .expect("rendered Component template");
     let mut files = rendered
         .files()
         .iter()

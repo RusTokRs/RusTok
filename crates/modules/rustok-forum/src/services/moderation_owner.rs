@@ -565,8 +565,7 @@ impl ModerationService {
         let txn = self.db.begin().await?;
         TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        let reply =
-            ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
+        let reply = ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
             return Err(ForumError::Validation(
                 "Reply belongs to another topic".to_string(),
@@ -717,13 +716,8 @@ impl ModerationService {
                 .await?;
 
             if solution_removed.rows_affected > 0 {
-                UserStatsService::adjust_solution_count_in_tx(
-                    &txn,
-                    tenant_id,
-                    reply.author_id,
-                    -1,
-                )
-                .await?;
+                UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
+                    .await?;
             }
         }
 

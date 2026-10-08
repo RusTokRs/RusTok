@@ -444,7 +444,11 @@ mod tests {
             .await;
 
         assert_eq!(response.errors.len(), 1);
-        assert!(!response.errors[0].message.contains("secret=should-not-be-reflected"));
+        assert!(
+            !response.errors[0]
+                .message
+                .contains("secret=should-not-be-reflected")
+        );
         assert!(response.errors[0].message.contains("valid UUID"));
     }
 

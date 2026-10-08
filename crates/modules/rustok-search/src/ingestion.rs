@@ -250,7 +250,9 @@ impl EventHandler for SearchIngestionHandler {
                 DomainEvent::UserUpdated { .. } | DomainEvent::UserDeleted { .. }
             ) {
                 let user_id = match &envelope.event {
-                    DomainEvent::UserUpdated { user_id } | DomainEvent::UserDeleted { user_id } => *user_id,
+                    DomainEvent::UserUpdated { user_id } | DomainEvent::UserDeleted { user_id } => {
+                        *user_id
+                    }
                     _ => unreachable!(),
                 };
                 self.blog_projector

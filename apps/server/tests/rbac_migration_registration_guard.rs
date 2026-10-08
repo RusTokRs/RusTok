@@ -52,9 +52,8 @@ fn rbac_integrity_migration_is_registered_once_through_auth_module() {
 fn durable_rbac_generation_migration_is_registered_once_through_auth_module() {
     let root = repo_root();
     let registry = source("crates/modules/rustok-rbac/src/lib.rs");
-    let migration = source(
-        "crates/modules/rustok-rbac/src/m20260714_900002_create_rbac_invalidation_state.rs",
-    );
+    let migration =
+        source("crates/modules/rustok-rbac/src/m20260714_900002_create_rbac_invalidation_state.rs");
 
     assert!(registry.contains("mod m20260714_900002_create_rbac_invalidation_state;"));
     assert!(

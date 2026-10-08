@@ -46,13 +46,21 @@ pub fn rbac_role_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .align(ColumnAlign::Center),
         GridColumnDef::new(
             "permissions_count",
-            if is_ru { "Разрешения" } else { "Permissions" },
+            if is_ru {
+                "Разрешения"
+            } else {
+                "Permissions"
+            },
         )
         .width(130)
         .align(ColumnAlign::Center),
         GridColumnDef::new(
             "preview",
-            if is_ru { "Список прав" } else { "Permission List" },
+            if is_ru {
+                "Список прав"
+            } else {
+                "Permission List"
+            },
         )
         .width(400)
         .align(ColumnAlign::Left)
@@ -66,13 +74,27 @@ pub fn rbac_permission_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
         GridColumnDef::new("module", if is_ru { "Модуль" } else { "Module" })
             .width(150)
             .align(ColumnAlign::Left),
-        GridColumnDef::new("permission", if is_ru { "Ключ права" } else { "Permission Key" })
-            .width(260)
-            .align(ColumnAlign::Left),
-        GridColumnDef::new("roles", if is_ru { "Назначено ролям" } else { "Granted to Roles" })
-            .width(350)
-            .align(ColumnAlign::Left)
-            .not_sortable(),
+        GridColumnDef::new(
+            "permission",
+            if is_ru {
+                "Ключ права"
+            } else {
+                "Permission Key"
+            },
+        )
+        .width(260)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "roles",
+            if is_ru {
+                "Назначено ролям"
+            } else {
+                "Granted to Roles"
+            },
+        )
+        .width(350)
+        .align(ColumnAlign::Left)
+        .not_sortable(),
     ]
 }
 
@@ -110,7 +132,10 @@ pub fn filter_rbac_roles(roles: &[RbacRoleInfo], search: &str) -> Vec<RbacRoleIn
         .filter(|role| {
             role.display_name.to_lowercase().contains(&query)
                 || role.slug.to_lowercase().contains(&query)
-                || role.permissions.iter().any(|p| p.to_lowercase().contains(&query))
+                || role
+                    .permissions
+                    .iter()
+                    .any(|p| p.to_lowercase().contains(&query))
         })
         .cloned()
         .collect()
@@ -274,7 +299,10 @@ mod tests {
         assert_eq!(en_err, "Failed to load RBAC bootstrap: forbidden");
 
         let ru_err = format_rbac_admin_bootstrap_error(Some("ru"), "отказано в доступе");
-        assert_eq!(ru_err, "Не удалось загрузить RBAC bootstrap: отказано в доступе");
+        assert_eq!(
+            ru_err,
+            "Не удалось загрузить RBAC bootstrap: отказано в доступе"
+        );
     }
 
     #[test]
@@ -316,16 +344,14 @@ mod tests {
                 permissions: vec!["catalog:read".to_string()],
             },
         ];
-        let roles = vec![
-            RbacRoleInfo {
-                id: None,
-                slug: "admin".to_string(),
-                display_name: "Admin".to_string(),
-                description: None,
-                is_system: true,
-                permissions: vec!["users:create".to_string(), "catalog:read".to_string()],
-            },
-        ];
+        let roles = vec![RbacRoleInfo {
+            id: None,
+            slug: "admin".to_string(),
+            display_name: "Admin".to_string(),
+            description: None,
+            is_system: true,
+            permissions: vec!["users:create".to_string(), "catalog:read".to_string()],
+        }];
 
         let rows = build_rbac_permission_rows(&groups, &roles);
         assert_eq!(rows.len(), 3);

@@ -68,8 +68,10 @@ mod tests {
         );
 
         assert_eq!(error.message, "Tenant name lookup failed");
-        assert!(!error
-            .message
-            .contains("database password=secret table=tenants"));
+        assert!(
+            !error
+                .message
+                .contains("database password=secret table=tenants")
+        );
     }
 }

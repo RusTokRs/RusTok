@@ -13,7 +13,7 @@ pub mod model;
 pub mod transport;
 pub mod ui;
 
-pub use core::{product_grid_columns, ProductKind};
+pub use core::{ProductKind, product_grid_columns};
 pub use model::{
     AxisAllowedValue, ProductCatalogSearchOption, ProductCatalogSearchOptions, SetVariantAxesDraft,
     VariantAxisConfig, VariantAxisDraft, VariantAxisValue, VariantAxisValueDraft,

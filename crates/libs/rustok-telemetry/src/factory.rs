@@ -11,8 +11,7 @@ pub(crate) fn create_counter_vec(name: &str, help: &str, label_names: &[&str]) -
 
 pub(crate) fn create_int_counter(name: &str, help: &str) -> IntCounter {
     // INVARIANT: Static Prometheus metric configuration with constant name.
-    IntCounter::new(name, help)
-        .expect("static Prometheus integer counter must configure cleanly")
+    IntCounter::new(name, help).expect("static Prometheus integer counter must configure cleanly")
 }
 
 pub(crate) fn create_int_counter_vec(
@@ -27,8 +26,7 @@ pub(crate) fn create_int_counter_vec(
 
 pub(crate) fn create_int_gauge(name: &str, help: &str) -> IntGauge {
     // INVARIANT: Static Prometheus metric configuration with constant name.
-    IntGauge::new(name, help)
-        .expect("static Prometheus integer gauge must configure cleanly")
+    IntGauge::new(name, help).expect("static Prometheus integer gauge must configure cleanly")
 }
 
 pub(crate) fn create_int_gauge_vec(name: &str, help: &str, label_names: &[&str]) -> IntGaugeVec {

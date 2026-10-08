@@ -11,8 +11,8 @@
 use crate::classes::*;
 use crate::contracts::*;
 use crate::tokens::{
-    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES,
-    INPUT_FOCUS_RING_CLASSES, TRANSITION_COLORS_CLASSES, radius, shadow,
+    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES, INPUT_FOCUS_RING_CLASSES,
+    TRANSITION_COLORS_CLASSES, radius, shadow,
 };
 use crate::types::*;
 
@@ -25,8 +25,7 @@ fn button_classes_cover_variants_sizes_and_custom_classes() {
     assert!(default_cls.contains("focus-visible:ring-2"));
     assert!(default_cls.contains("disabled:pointer-events-none disabled:opacity-50"));
 
-    let destructive =
-        button_classes(ButtonVariant::Destructive, Size::Sm, Some("custom-btn"));
+    let destructive = button_classes(ButtonVariant::Destructive, Size::Sm, Some("custom-btn"));
     assert!(destructive.contains("bg-destructive"));
     assert!(destructive.contains("h-8"));
     assert!(destructive.contains("custom-btn"));
@@ -318,12 +317,26 @@ fn every_resolver_returns_a_well_formed_class_list() {
     ];
 
     let mut all = lists;
-    all.extend([track_off, thumb_off, track_on, thumb_on, avatar, avatar_fallback]);
+    all.extend([
+        track_off,
+        thumb_off,
+        track_on,
+        thumb_on,
+        avatar,
+        avatar_fallback,
+    ]);
 
     for class_list in all {
         assert!(!class_list.is_empty());
-        assert_eq!(class_list, class_list.trim(), "untrimmed class list: {class_list:?}");
-        assert!(!class_list.contains("  "), "doubled separator in: {class_list:?}");
+        assert_eq!(
+            class_list,
+            class_list.trim(),
+            "untrimmed class list: {class_list:?}"
+        );
+        assert!(
+            !class_list.contains("  "),
+            "doubled separator in: {class_list:?}"
+        );
     }
 }
 
@@ -342,13 +355,19 @@ fn variant_and_size_matrices_are_non_empty_and_distinct() {
     ] {
         let resolved = button_classes(variant, Size::Md, None);
         assert!(!resolved.is_empty());
-        assert!(button_variants.insert(resolved), "duplicate button variant styles");
+        assert!(
+            button_variants.insert(resolved),
+            "duplicate button variant styles"
+        );
     }
 
     let mut button_sizes = BTreeSet::new();
     for size in [Size::Xs, Size::Sm, Size::Md, Size::Lg, Size::Xl, Size::Icon] {
         let resolved = button_classes(ButtonVariant::Default, size, None);
-        assert!(button_sizes.insert(resolved), "duplicate button size styles");
+        assert!(
+            button_sizes.insert(resolved),
+            "duplicate button size styles"
+        );
     }
 
     let mut badge_variants = BTreeSet::new();
@@ -386,7 +405,13 @@ fn variant_and_size_matrices_are_non_empty_and_distinct() {
     }
 
     let mut avatar_sizes = BTreeSet::new();
-    for size in [AvatarSize::Xs, AvatarSize::Sm, AvatarSize::Md, AvatarSize::Lg, AvatarSize::Xl] {
+    for size in [
+        AvatarSize::Xs,
+        AvatarSize::Sm,
+        AvatarSize::Md,
+        AvatarSize::Lg,
+        AvatarSize::Xl,
+    ] {
         assert!(avatar_sizes.insert(avatar_classes(size, None).0));
     }
 
@@ -469,4 +494,3 @@ fn toc_item_and_heading_extraction() {
     assert!(!item_inactive_cls.contains("pl-3"));
     assert!(item_inactive_cls.contains("text-muted-foreground"));
 }
-

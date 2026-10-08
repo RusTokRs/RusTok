@@ -211,7 +211,6 @@ where
     .map_err(|error| error.to_string())
 }
 
-
 pub async fn load_directory(
     access_token: Option<String>,
     tenant_slug: Option<String>,
@@ -266,7 +265,9 @@ pub async fn load_detail(
     )
     .await?;
 
-    let item = response.brand.ok_or_else(|| "Brand not found".to_string())?;
+    let item = response
+        .brand
+        .ok_or_else(|| "Brand not found".to_string())?;
 
     Ok(BrandAdminRecord {
         id: item.id,

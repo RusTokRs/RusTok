@@ -237,4 +237,3 @@ pub struct RevokeAllSessionsPayload {
     #[serde(rename = "revokedCount")]
     pub revoked_count: i32,
 }
-

@@ -22,12 +22,12 @@ use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError};
 use uuid::Uuid;
 
+use crate::ProductCatalogCommandPort;
 use crate::dto::{
     AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
     ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
     UpdateVariantInput, VariantAxisConfigResponse, VariantResponse,
 };
-use crate::ProductCatalogCommandPort;
 
 /// Owner operation name reported to the Media provider for asset validation reads.
 pub const ENSURE_PRODUCT_IMAGE_MEDIA_ASSET_OPERATION: &str = "ensure_product_image_media_asset";
@@ -166,7 +166,9 @@ impl ProductCatalogCommandPort for ProductMediaValidatedCommandPort {
         product_id: Uuid,
         input: SetVariantAxesInput,
     ) -> Result<Vec<VariantAxisConfigResponse>, PortError> {
-        self.inner.set_variant_axes(context, product_id, input).await
+        self.inner
+            .set_variant_axes(context, product_id, input)
+            .await
     }
 
     async fn update_product(
@@ -244,7 +246,9 @@ impl ProductCatalogCommandPort for ProductMediaValidatedCommandPort {
     ) -> Result<ProductImageResponse, PortError> {
         self.ensure_media_asset(&context, product_id, input.media_id)
             .await?;
-        self.inner.add_product_image(context, product_id, input).await
+        self.inner
+            .add_product_image(context, product_id, input)
+            .await
     }
 
     async fn update_product_image(

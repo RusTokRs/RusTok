@@ -408,15 +408,13 @@ fn mutation_error(error: ServerError) -> McpManagementMutationError {
         ServerError::NotFound => {
             McpManagementMutationError::NotFound("MCP management resource not found".to_string())
         }
-        ServerError::InternalServerError => McpManagementMutationError::Internal(
-            "MCP management operation failed".to_string(),
-        ),
+        ServerError::InternalServerError => {
+            McpManagementMutationError::Internal("MCP management operation failed".to_string())
+        }
         ServerError::Message(message) => McpManagementMutationError::Internal(message),
         other => {
             tracing::error!(error = %other, "Unexpected MCP management provider error");
-            McpManagementMutationError::Internal(
-                "MCP management operation failed".to_string(),
-            )
+            McpManagementMutationError::Internal("MCP management operation failed".to_string())
         }
     }
 }

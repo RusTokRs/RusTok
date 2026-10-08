@@ -390,4 +390,3 @@ impl From<DeleteTranslationWire> for GroupsAdminDeleteTranslationResult {
 fn normalize_enum(value: String) -> String {
     value.to_ascii_lowercase()
 }
-

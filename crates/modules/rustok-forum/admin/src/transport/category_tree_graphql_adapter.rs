@@ -55,7 +55,6 @@ fn category_node_selection(remaining_depth: u8) -> String {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{MAX_CATEGORY_TREE_DEPTH, category_node_selection};

@@ -23,7 +23,5 @@ pub use richtext::{
 };
 pub use success_message::SuccessMessage as ui_success_message;
 pub use toc::{
-    TableOfContents, TableOfContents as ui_table_of_contents, TocItem,
-    extract_headings_from_html,
+    TableOfContents, TableOfContents as ui_table_of_contents, TocItem, extract_headings_from_html,
 };
-

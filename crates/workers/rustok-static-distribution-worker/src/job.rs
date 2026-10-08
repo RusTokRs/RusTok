@@ -342,13 +342,8 @@ pub async fn run_static_distribution_job(
         return Ok(());
     };
 
-    publish_and_write_success_receipt(
-        &inputs,
-        &paths.job_receipt,
-        &prepared.workspace,
-        &pipeline,
-    )
-    .await
+    publish_and_write_success_receipt(&inputs, &paths.job_receipt, &prepared.workspace, &pipeline)
+        .await
 }
 
 fn write_test_evidence(
@@ -458,7 +453,10 @@ pub(super) fn create_directory_path(path: &Path) -> Result<(), StaticDistributio
     validate_directory(path, "generated directory")
 }
 
-pub(super) fn validate_directory(path: &Path, label: &str) -> Result<(), StaticDistributionJobError> {
+pub(super) fn validate_directory(
+    path: &Path,
+    label: &str,
+) -> Result<(), StaticDistributionJobError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(StaticDistributionJobError::InvalidInput(format!(

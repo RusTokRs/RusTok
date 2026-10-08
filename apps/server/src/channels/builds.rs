@@ -197,7 +197,6 @@ pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new().route("/ws/builds", get(ws_builds))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{BUILD_STREAM_PERMISSIONS, Permission, has_any_effective_permission};

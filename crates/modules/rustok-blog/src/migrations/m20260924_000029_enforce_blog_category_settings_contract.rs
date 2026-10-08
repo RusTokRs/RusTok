@@ -176,15 +176,11 @@ END;
 async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
-        .execute_unprepared(&format!(
-            "DROP TRIGGER IF EXISTS {SETTINGS_UPDATE_TRIGGER}"
-        ))
+        .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SETTINGS_UPDATE_TRIGGER}"))
         .await?;
     manager
         .get_connection()
-        .execute_unprepared(&format!(
-            "DROP TRIGGER IF EXISTS {SETTINGS_INSERT_TRIGGER}"
-        ))
+        .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {SETTINGS_INSERT_TRIGGER}"))
         .await?;
     Ok(())
 }

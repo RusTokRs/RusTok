@@ -262,16 +262,16 @@ impl From<rustok_taxonomy::TaxonomyError> for BlogError {
         use rustok_taxonomy::TaxonomyError;
         match value {
             TaxonomyError::Database(err) => Self::Database(err),
-            TaxonomyError::Internal(message) => Self::Invariant(format!("Taxonomy dependency failed: {message}")),
+            TaxonomyError::Internal(message) => {
+                Self::Invariant(format!("Taxonomy dependency failed: {message}"))
+            }
             TaxonomyError::Forbidden(message) => Self::Forbidden(message),
             TaxonomyError::Validation(message) => Self::Validation(message),
             TaxonomyError::DuplicateCanonicalKey(message)
             | TaxonomyError::DuplicateSlug(message)
             | TaxonomyError::DuplicateAlias(message)
             | TaxonomyError::Conflict(message) => Self::Conflict(message),
-            TaxonomyError::TermNotFound(term_id) => {
-                Self::TaxonomyTermNotFound(term_id)
-            }
+            TaxonomyError::TermNotFound(term_id) => Self::TaxonomyTermNotFound(term_id),
             TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
                 Self::Conflict(format!(
                     "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"

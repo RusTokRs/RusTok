@@ -99,9 +99,7 @@ fn materialize_component(
                 "runtime_action_invalid",
                 path,
                 component_id,
-                format!(
-                    "component cannot define both `{FLY_FORM_FIELD}` and `{FLY_ACTION_FIELD}`"
-                ),
+                format!("component cannot define both `{FLY_FORM_FIELD}` and `{FLY_ACTION_FIELD}`"),
             ));
         }
         return;
@@ -143,11 +141,9 @@ fn materialize_component(
         clear_interaction_materialization(component);
         match serde_json::from_value::<ComponentAction>(raw) {
             Ok(action) => {
-                if let Err(error) = validate_action_contract(
-                    &action,
-                    resolution.routes,
-                    resolution.form_ids,
-                ) {
+                if let Err(error) =
+                    validate_action_contract(&action, resolution.routes, resolution.form_ids)
+                {
                     counters.unresolved = counters.unresolved.saturating_add(1);
                     diagnostics.push(action_diagnostic(
                         ValidationSeverity::Warning,
@@ -292,10 +288,9 @@ fn apply_action(
                     Some(href) => {
                         mark_action_kind(component, action);
                         component.tag_name = Some("a".to_string());
-                        component.attributes.insert(
-                            "href".to_string(),
-                            Value::String(href.trim().to_string()),
-                        );
+                        component
+                            .attributes
+                            .insert("href".to_string(), Value::String(href.trim().to_string()));
                         return AppliedAction::Fallback(format!(
                             "target page `{page_id}` has no localized slug; fallback_href was used"
                         ));

@@ -146,7 +146,8 @@ pub fn RichTextEditorFrame(
         fn is_richtext_js_ready() -> bool {
             web_sys::window()
                 .and_then(|win| {
-                    js_sys::Reflect::get(&win, &wasm_bindgen::JsValue::from_str("RustokRichText")).ok()
+                    js_sys::Reflect::get(&win, &wasm_bindgen::JsValue::from_str("RustokRichText"))
+                        .ok()
                 })
                 .is_some_and(|val| !val.is_undefined() && !val.is_null())
         }
@@ -258,7 +259,9 @@ pub fn RichTextEditorFrame(
                     });
                 }
                 Err(err) => {
-                    let code = err.as_string().unwrap_or_else(|| "mount_failed".to_string());
+                    let code = err
+                        .as_string()
+                        .unwrap_or_else(|| "mount_failed".to_string());
                     editor_error.set(Some(format!("{frame_error} ({code})")));
                 }
             }

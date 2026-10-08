@@ -20,6 +20,7 @@ mod catalog_schema_write_port;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod fulfillment;
 mod image_translation_progress_target;
 mod image_translation_target;
 mod media_asset_read_port;
@@ -27,7 +28,6 @@ pub mod migrations;
 pub mod ports;
 mod public_error;
 mod runtime;
-pub mod fulfillment;
 mod seo_targets;
 pub mod services;
 mod storefront_http_read_port;
@@ -37,7 +37,6 @@ mod variant_translation_progress_target;
 mod variant_translation_target;
 
 pub use catalog_command_port::ProductCatalogCommandPort;
-pub use fulfillment::ProductFulfillmentRequirement;
 pub use catalog_schema_read_port::{
     ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
     ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,
@@ -46,6 +45,7 @@ pub use catalog_schema_read_port::{
 };
 pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
 pub use error::{CommerceError, CommerceResult};
+pub use fulfillment::ProductFulfillmentRequirement;
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;
 pub use media_asset_read_port::{
     ENSURE_PRODUCT_IMAGE_MEDIA_ASSET_OPERATION, PRODUCT_MEDIA_ASSET_VALIDATION_DEADLINE,

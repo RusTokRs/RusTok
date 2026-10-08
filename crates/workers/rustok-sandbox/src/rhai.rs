@@ -279,7 +279,11 @@ fn register_http_functions(engine: &mut Engine, host: SandboxHost, context: Rhai
     );
 }
 
-fn register_http_get_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
+fn register_http_get_functions(
+    engine: &mut Engine,
+    host: SandboxHost,
+    context: RhaiCapabilityContext,
+) {
     let get_host = host.clone();
     let get_context = context.clone();
     engine.register_fn("http_get", move |url: &str| {
@@ -287,18 +291,15 @@ fn register_http_get_functions(engine: &mut Engine, host: SandboxHost, context: 
     });
 
     engine.register_fn("http_get", move |url: &str, headers: Map| {
-        invoke_http(
-            &host,
-            &context,
-            "GET",
-            url,
-            Value::Null,
-            headers,
-        )
+        invoke_http(&host, &context, "GET", url, Value::Null, headers)
     });
 }
 
-fn register_http_post_functions(engine: &mut Engine, host: SandboxHost, context: RhaiCapabilityContext) {
+fn register_http_post_functions(
+    engine: &mut Engine,
+    host: SandboxHost,
+    context: RhaiCapabilityContext,
+) {
     let post_host = host.clone();
     let post_context = context.clone();
     engine.register_fn("http_post", move |url: &str, body: Dynamic| {
@@ -315,14 +316,7 @@ fn register_http_post_functions(engine: &mut Engine, host: SandboxHost, context:
     engine.register_fn(
         "http_post",
         move |url: &str, body: Dynamic, headers: Map| {
-            invoke_http(
-                &host,
-                &context,
-                "POST",
-                url,
-                dynamic_to_json(body),
-                headers,
-            )
+            invoke_http(&host, &context, "POST", url, dynamic_to_json(body), headers)
         },
     );
 }
@@ -723,8 +717,7 @@ fn extract_payload_source(
                 .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
             if workspace_digest != payload_digest {
                 return Err(SandboxError::InvalidRequest(
-                    "Rhai workspace digest does not match the artifact payload digest"
-                        .to_string(),
+                    "Rhai workspace digest does not match the artifact payload digest".to_string(),
                 ));
             }
             workspace

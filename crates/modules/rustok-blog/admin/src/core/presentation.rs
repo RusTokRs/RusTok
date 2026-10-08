@@ -713,23 +713,30 @@ pub fn submit_action_label(
 pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new(
-            "title",
-            if is_ru { "Заголовок" } else { "Title" },
-        )
-        .min_width(260)
-        .align(ColumnAlign::Left)
-        .filter(GridFilterType::Text {
-            placeholder: Some(
-                if is_ru { "Фильтр заголовка..." } else { "Filter title..." }.into(),
-            ),
-        }),
+        GridColumnDef::new("title", if is_ru { "Заголовок" } else { "Title" })
+            .min_width(260)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр заголовка..."
+                    } else {
+                        "Filter title..."
+                    }
+                    .into(),
+                ),
+            }),
         GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
             .min_width(160)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
                 placeholder: Some(
-                    if is_ru { "Фильтр слага..." } else { "Filter slug..." }.into(),
+                    if is_ru {
+                        "Фильтр слага..."
+                    } else {
+                        "Filter slug..."
+                    }
+                    .into(),
                 ),
             }),
         GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
@@ -737,7 +744,12 @@ pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
                 placeholder: Some(
-                    if is_ru { "Фильтр статуса..." } else { "Filter status..." }.into(),
+                    if is_ru {
+                        "Фильтр статуса..."
+                    } else {
+                        "Filter status..."
+                    }
+                    .into(),
                 ),
             }),
         GridColumnDef::new("locale", if is_ru { "Язык" } else { "Locale" })
@@ -745,7 +757,12 @@ pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .align(ColumnAlign::Left)
             .filter(GridFilterType::Text {
                 placeholder: Some(
-                    if is_ru { "Фильтр языка..." } else { "Filter locale..." }.into(),
+                    if is_ru {
+                        "Фильтр языка..."
+                    } else {
+                        "Filter locale..."
+                    }
+                    .into(),
                 ),
             }),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
@@ -762,24 +779,42 @@ pub fn matches_blog_post_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("title", FilterValue::Text(q)) => {
-                if !row.title.to_ascii_lowercase().contains(&q.to_ascii_lowercase())
-                    && !row.excerpt.to_ascii_lowercase().contains(&q.to_ascii_lowercase())
+                if !row
+                    .title
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                    && !row
+                        .excerpt
+                        .to_ascii_lowercase()
+                        .contains(&q.to_ascii_lowercase())
                 {
                     return false;
                 }
             }
             ("slug", FilterValue::Text(q)) => {
-                if !row.slug.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .slug
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("status", FilterValue::Text(q)) => {
-                if !row.status.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .status
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("locale", FilterValue::Text(q)) => {
-                if !row.locale.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !row
+                    .locale
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }

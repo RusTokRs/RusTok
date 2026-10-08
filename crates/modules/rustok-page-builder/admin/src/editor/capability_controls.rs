@@ -176,7 +176,10 @@ pub(crate) fn CapabilityPolicyPanel(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let title = t(
         locale.as_deref(),
         "page_builder.capabilityPolicy.title",
@@ -268,7 +271,11 @@ pub(crate) fn CapabilityPolicyPanel(
         "page_builder.capabilityPolicy.empty",
         "No capabilities found",
     );
-    let filter_placeholder = if is_ru { "Фильтр..." } else { "Filter..." };
+    let filter_placeholder = if is_ru {
+        "Фильтр..."
+    } else {
+        "Filter..."
+    };
 
     let evaluation = runtime.editor_capability_evaluation.clone();
     let host_provider = evaluation
@@ -341,7 +348,11 @@ pub(crate) fn CapabilityPolicyPanel(
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
-    let pagination = RwSignal::new(GridPagination::new(1, 10, EditorCapability::ALL.len() as u64));
+    let pagination = RwSignal::new(GridPagination::new(
+        1,
+        10,
+        EditorCapability::ALL.len() as u64,
+    ));
 
     let rows = Memo::new({
         let runtime = runtime.clone();
@@ -385,11 +396,7 @@ pub(crate) fn CapabilityPolicyPanel(
         let all = rows.get();
         let q = search.get();
         let f = filters.get();
-        filter_capability_policy_rows(
-            &all,
-            &f,
-            if q.trim().is_empty() { None } else { Some(&q) },
-        )
+        filter_capability_policy_rows(&all, &f, if q.trim().is_empty() { None } else { Some(&q) })
     });
 
     Effect::new(move |_| {
@@ -401,7 +408,10 @@ pub(crate) fn CapabilityPolicyPanel(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {

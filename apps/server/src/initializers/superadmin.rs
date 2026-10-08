@@ -49,8 +49,7 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
     let tenant_name = env_first("SUPERADMIN_TENANT_NAME", "SEED_TENANT_NAME")
         .unwrap_or_else(|| "Default".to_string());
 
-    let tenant =
-        tenants::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
+    let tenant = tenants::find_or_create(ctx.db(), &tenant_name, &tenant_slug, None).await?;
 
     if let Some(user) = users::Entity::find_by_email(ctx.db(), tenant.id, &email).await? {
         RbacService::replace_user_role_committed(

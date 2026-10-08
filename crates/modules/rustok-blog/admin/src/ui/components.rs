@@ -26,7 +26,9 @@ pub(super) fn blog_form_view_model(
     )
 }
 
-pub(super) fn blog_form_copy_view_model(locale: Option<&str>) -> core::BlogPostAdminEditorFormCopyViewModel {
+pub(super) fn blog_form_copy_view_model(
+    locale: Option<&str>,
+) -> core::BlogPostAdminEditorFormCopyViewModel {
     core::blog_post_admin_editor_form_copy_view(core::BlogPostAdminEditorFormCopyLabels {
         subtitle: t(
             locale,
@@ -111,7 +113,10 @@ pub(super) fn BlogPostsTable(
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
     let pagination = RwSignal::new(GridPagination::new(1, 10, total));
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
 
     let rows_store = StoredValue::new(table.rows);
 
@@ -119,11 +124,7 @@ pub(super) fn BlogPostsTable(
         let rows = rows_store.get_value();
         let q = search.get();
         let f = filters.get();
-        core::filter_blog_posts(
-            &rows,
-            &f,
-            if q.trim().is_empty() { None } else { Some(&q) },
-        )
+        core::filter_blog_posts(&rows, &f, if q.trim().is_empty() { None } else { Some(&q) })
     });
 
     Effect::new(move |_| {
@@ -135,7 +136,10 @@ pub(super) fn BlogPostsTable(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -144,18 +148,19 @@ pub(super) fn BlogPostsTable(
 
     let cell_renderer = {
         let tc = table_classes.clone();
-        Callback::new(move |(row, col_id): (core::BlogPostAdminTableRowViewModel, String)| {
-            let post_id_edit = row.post_id.clone();
-            let post_id_publish = row.post_id.clone();
-            let post_id_archive = row.post_id.clone();
-            let post_id_restore = row.post_id.clone();
-            let post_id_delete = row.post_id.clone();
-            let post_locale_edit = row.locale.clone();
-            let post_locale_publish = row.locale.clone();
-            let post_locale_archive = row.locale.clone();
-            let post_locale_restore = row.locale.clone();
+        Callback::new(
+            move |(row, col_id): (core::BlogPostAdminTableRowViewModel, String)| {
+                let post_id_edit = row.post_id.clone();
+                let post_id_publish = row.post_id.clone();
+                let post_id_archive = row.post_id.clone();
+                let post_id_restore = row.post_id.clone();
+                let post_id_delete = row.post_id.clone();
+                let post_locale_edit = row.locale.clone();
+                let post_locale_publish = row.locale.clone();
+                let post_locale_archive = row.locale.clone();
+                let post_locale_restore = row.locale.clone();
 
-            match col_id.as_str() {
+                match col_id.as_str() {
                 "title" => view! {
                     <div class="space-y-0.5">
                         <div class=tc.title_text>{row.title.clone()}</div>
@@ -252,7 +257,8 @@ pub(super) fn BlogPostsTable(
                 }.into_any(),
                 _ => ().into_any(),
             }
-        })
+            },
+        )
     };
 
     view! {
@@ -311,10 +317,7 @@ pub(super) struct BlogPostFormSetters {
 }
 
 pub(super) fn apply_post_to_form(setters: BlogPostFormSetters, post: &BlogPostDetail) {
-    apply_form_state(
-        setters,
-        core::BlogPostEditorFormState::from_post(post),
-    );
+    apply_form_state(setters, core::BlogPostEditorFormState::from_post(post));
 }
 
 pub(super) fn reset_form(setters: BlogPostFormSetters, default_locale: &str) {

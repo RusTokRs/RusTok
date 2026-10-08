@@ -1,8 +1,8 @@
 //! Field-level and form-level validation error contracts.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::Hash;
-use serde::{Deserialize, Serialize};
 
 /// A validation error attached to a specific field.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -292,7 +292,10 @@ mod tests {
     #[test]
     fn parse_field_path_variants() {
         assert_eq!(parse_field_path("a.b.c"), vec!["a", "b", "c"]);
-        assert_eq!(parse_field_path("items[0].title"), vec!["items", "0", "title"]);
+        assert_eq!(
+            parse_field_path("items[0].title"),
+            vec!["items", "0", "title"]
+        );
         assert_eq!(parse_field_path("matrix[0][1]"), vec!["matrix", "0", "1"]);
         assert_eq!(parse_field_path("name"), vec!["name"]);
         assert_eq!(parse_field_path(""), Vec::<String>::new());

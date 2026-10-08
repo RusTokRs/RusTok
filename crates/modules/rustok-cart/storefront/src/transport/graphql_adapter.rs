@@ -183,7 +183,6 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
-
 async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,

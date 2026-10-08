@@ -5,9 +5,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
-use super::{
-    CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse,
-};
+use super::{CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse};
 use crate::entities::product::ProductStatus;
 use crate::fulfillment::ProductFulfillmentRequirement;
 

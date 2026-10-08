@@ -324,10 +324,14 @@ impl HttpSsrSwitchingCoordinator {
         candidate_digest: &str,
     ) -> Result<PreSwitchFailureReceipt, SlotSupervisorError> {
         let standby_slot = self.supervisor.standby_slot();
-        validate_standby_digest(self.supervisor.get_slot_state(standby_slot), candidate_digest)?;
+        validate_standby_digest(
+            self.supervisor.get_slot_state(standby_slot),
+            candidate_digest,
+        )?;
 
         // Demote standby slot back to Empty
-        self.supervisor.set_slot_state(standby_slot, SlotState::Empty);
+        self.supervisor
+            .set_slot_state(standby_slot, SlotState::Empty);
 
         Ok(PreSwitchFailureReceipt {
             candidate_digest: candidate_digest.to_string(),

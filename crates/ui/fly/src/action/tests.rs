@@ -389,12 +389,10 @@ fn form_action_url_matches_renderer_policy() {
     .expect("document");
     let diagnostics = validate_component_actions(&document);
     assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "form_definition_invalid"
-            && diagnostic.path == "component:mailto-form"
+        diagnostic.code == "form_definition_invalid" && diagnostic.path == "component:mailto-form"
     }));
     assert!(!diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "form_definition_invalid"
-            && diagnostic.path == "component:absolute-form"
+        diagnostic.code == "form_definition_invalid" && diagnostic.path == "component:absolute-form"
     }));
 }
 

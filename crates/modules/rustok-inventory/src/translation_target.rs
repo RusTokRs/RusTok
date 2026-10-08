@@ -51,8 +51,9 @@ impl StockLocationTranslationTargetProvider {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Inventory owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Stock Location Copy resource kind must satisfy the target contract"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Stock Location Copy resource kind must satisfy the target contract",
+            ),
             display_name: "Stock Locations".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -103,9 +104,9 @@ pub fn register_stock_location_translation_target_provider(
 ) -> Result<(), TranslationTargetRegistryError> {
     register_translation_target_provider(
         extensions,
-        StockLocationTranslationTargetProvider::new(Arc::new(StockLocationTranslationService::new(
-            db,
-        ))),
+        StockLocationTranslationTargetProvider::new(Arc::new(
+            StockLocationTranslationService::new(db),
+        )),
     )
 }
 

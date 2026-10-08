@@ -1,5 +1,7 @@
 use chrono::Utc;
-use rustok_installer::{InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan};
+use rustok_installer::{
+    InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan,
+};
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
     DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder, TransactionTrait,
@@ -259,9 +261,9 @@ impl InstallerPersistenceService {
 
     pub async fn has_completed_session(&self) -> Result<bool, sea_orm::DbErr> {
         install_session::Entity::find()
-            .filter(install_session::Column::Status.eq(install_state_value(
-                InstallState::Completed,
-            )))
+            .filter(
+                install_session::Column::Status.eq(install_state_value(InstallState::Completed)),
+            )
             .one(&self.db)
             .await
             .map(|session| session.is_some())
@@ -393,7 +395,6 @@ fn serde_name<T: serde::Serialize>(value: T) -> String {
         .to_string()
 }
 
-
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
@@ -517,12 +518,7 @@ mod tests {
 
         let output = sample_output(Uuid::new_v4(), Uuid::new_v4());
         writer
-            .finish_http_job_succeeded(
-                job_id,
-                output.session_id,
-                output.tenant_id,
-                &output,
-            )
+            .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
             .await
             .expect("job should finish");
 
@@ -569,14 +565,14 @@ mod tests {
             .expect("job should exist");
         assert_eq!(
             stored.error_message.as_deref(),
-            Some(
-                "installer apply failed; inspect durable installer receipts for recovery details"
-            )
+            Some("installer apply failed; inspect durable installer receipts for recovery details")
         );
-        assert!(!stored
-            .error_message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("super-secret-password"));
+        assert!(
+            !stored
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("super-secret-password")
+        );
     }
 }

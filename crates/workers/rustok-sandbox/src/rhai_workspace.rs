@@ -323,9 +323,7 @@ fn check_reserved_fn_helper(
     index: usize,
 ) -> Result<(), RhaiWorkspaceCapabilityError> {
     let reserved = match tokens.get(index + 1) {
-        Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => {
-            Some(helper.clone())
-        }
+        Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => Some(helper.clone()),
         _ => None,
     };
     if let Some(helper) = reserved {

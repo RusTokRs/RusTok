@@ -69,23 +69,17 @@ static SQL_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 static XSS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // INVARIANT: Verified static XSS script tag regex
-        Regex::new(r"(?i)<script[^>]*>.*?</script>")
-            .expect("valid XSS regex"),
+        Regex::new(r"(?i)<script[^>]*>.*?</script>").expect("valid XSS regex"),
         // INVARIANT: Verified static javascript URI regex
-        Regex::new(r"(?i)javascript:")
-            .expect("valid XSS regex"),
+        Regex::new(r"(?i)javascript:").expect("valid XSS regex"),
         // INVARIANT: Verified static event handler regex
-        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#)
-            .expect("valid XSS regex"),
+        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#).expect("valid XSS regex"),
         // INVARIANT: Verified static iframe regex
-        Regex::new(r"(?i)<\s*iframe")
-            .expect("valid XSS regex"),
+        Regex::new(r"(?i)<\s*iframe").expect("valid XSS regex"),
         // INVARIANT: Verified static object regex
-        Regex::new(r"(?i)<\s*object")
-            .expect("valid XSS regex"),
+        Regex::new(r"(?i)<\s*object").expect("valid XSS regex"),
         // INVARIANT: Verified static embed regex
-        Regex::new(r"(?i)<\s*embed")
-            .expect("valid XSS regex"),
+        Regex::new(r"(?i)<\s*embed").expect("valid XSS regex"),
     ]
 });
 
@@ -93,14 +87,11 @@ static XSS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 static CMD_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // INVARIANT: Verified static shell metacharacter regex
-        Regex::new(r"[;&|`]\s*\w+")
-            .expect("valid CMD regex"),
+        Regex::new(r"[;&|`]\s*\w+").expect("valid CMD regex"),
         // INVARIANT: Verified static command substitution regex
-        Regex::new(r"\$\(.*\)")
-            .expect("valid CMD regex"),
+        Regex::new(r"\$\(.*\)").expect("valid CMD regex"),
         // INVARIANT: Verified static backtick substitution regex
-        Regex::new(r"`.*`")
-            .expect("valid CMD regex"),
+        Regex::new(r"`.*`").expect("valid CMD regex"),
     ]
 });
 
@@ -108,17 +99,13 @@ static CMD_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 static PATH_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // INVARIANT: Verified static unix path traversal regex
-        Regex::new(r"\.\./")
-            .expect("valid path traversal regex"),
+        Regex::new(r"\.\./").expect("valid path traversal regex"),
         // INVARIANT: Verified static windows path traversal regex
-        Regex::new(r"\.\.\\")
-            .expect("valid path traversal regex"),
+        Regex::new(r"\.\.\\").expect("valid path traversal regex"),
         // INVARIANT: Verified static URL-encoded path traversal regex
-        Regex::new(r"%2e%2e[/\\]")
-            .expect("valid path traversal regex"),
+        Regex::new(r"%2e%2e[/\\]").expect("valid path traversal regex"),
         // INVARIANT: Verified static hex-encoded path traversal regex
-        Regex::new(r"\x2e\x2e[/\\]")
-            .expect("valid path traversal regex"),
+        Regex::new(r"\x2e\x2e[/\\]").expect("valid path traversal regex"),
     ]
 });
 

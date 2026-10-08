@@ -38,8 +38,8 @@ const GRAPHQL_QUERY_FULFILLMENT_BOUNDARY: &str = "commerce_graphql_query_fulfill
 mod fulfillment_query_boundary;
 mod fulfillment_query_service;
 
-pub(crate) use fulfillment_query_service::FulfillmentService;
 pub(crate) use ::rustok_fulfillment::{
     ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
     ReadShippingOptionProjectionRequest,
 };
+pub(crate) use fulfillment_query_service::FulfillmentService;

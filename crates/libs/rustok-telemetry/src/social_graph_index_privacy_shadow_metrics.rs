@@ -91,8 +91,7 @@ impl SocialGraphIndexPrivacyShadowMetrics {
                 "rustok_social_graph_index_privacy_shadow_comparison_duration_seconds",
                 "Duration of the non-authoritative Index comparison after the owner privacy read",
                 vec![
-                    0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5,
-                    1.0, 2.5, 5.0,
+                    0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
                 ],
                 &["operation", "outcome"],
             ),

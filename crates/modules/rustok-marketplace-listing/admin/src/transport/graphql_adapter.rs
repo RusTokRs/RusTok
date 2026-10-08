@@ -299,7 +299,6 @@ where
     .map_err(|error| error.to_string())
 }
 
-
 impl From<ListingWire> for MarketplaceListingAdminRecord {
     fn from(value: ListingWire) -> Self {
         Self {

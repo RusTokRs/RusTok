@@ -40,13 +40,15 @@ pub use observability::{
     ProfileOperationTimer,
 };
 pub use presentation::ProfilePresentationService;
-pub use rustok_profiles_api::{ProfileSummaryAudience, ProfileSummaryReadError, ProfileSummaryReader};
 pub use privacy::{
     ProfileAccessAudience, ProfilePrivacyDecision, ProfilePrivacyReadPort,
     ProfilePrivacyReadRequest, ProfilePrivacyRuntime, ProfilePrivacyService,
     evaluate_profile_access,
 };
 pub use reader::ProfilesReader;
+pub use rustok_profiles_api::{
+    ProfileSummaryAudience, ProfileSummaryReadError, ProfileSummaryReader,
+};
 pub use services::{MAX_PROFILE_HANDLE_BATCH, ProfileBackfillResult, ProfileService};
 
 pub struct ProfilesModule;

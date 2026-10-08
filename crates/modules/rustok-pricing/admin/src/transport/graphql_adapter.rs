@@ -106,7 +106,6 @@ struct ProductsFilter {
     per_page: Option<u64>,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,

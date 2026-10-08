@@ -79,9 +79,7 @@ fn order_port_context_facts(context: &PortContext) -> OrderPortContextFacts {
     }
 }
 
-fn order_checkout_identity_error_facts(
-    error: &OrderCheckoutIdentityError,
-) -> OrderPortErrorFacts {
+fn order_checkout_identity_error_facts(error: &OrderCheckoutIdentityError) -> OrderPortErrorFacts {
     match error {
         OrderCheckoutIdentityError::Validation(message)
         | OrderCheckoutIdentityError::Conflict(message) => OrderPortErrorFacts {
@@ -291,7 +289,6 @@ fn log_order_context_rejection(
     );
 }
 
-
 /// Transport-neutral order-owner boundary for durable checkout identity.
 #[async_trait]
 pub trait CheckoutOrderIdentityPort: Send + Sync {
@@ -457,10 +454,9 @@ fn order_checkout_identity_error_to_port_error(
         OrderCheckoutIdentityError::OrderNotFound(_) => {
             ("order.checkout_identity_order_not_found", false)
         }
-        OrderCheckoutIdentityError::Database(_) => (
-            "order.checkout_identity_storage_unavailable",
-            true,
-        ),
+        OrderCheckoutIdentityError::Database(_) => {
+            ("order.checkout_identity_storage_unavailable", true)
+        }
     };
     log_order_port_failure(context, owner_operation, code, &facts, technical_failure);
     match error {
@@ -484,7 +480,6 @@ fn order_checkout_identity_error_to_port_error(
         ),
     }
 }
-
 
 /// Transport-neutral owner boundary for checkout completion and recovery reads.
 #[async_trait]
@@ -987,7 +982,6 @@ fn parse_port_tenant_id(
     })
 }
 
-
 fn parse_port_actor_id(
     context: &PortContext,
     owner_operation: &'static str,
@@ -1002,7 +996,6 @@ fn parse_port_actor_id(
         PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
-
 
 fn parse_checkout_operation_id(
     context: &PortContext,
@@ -1033,7 +1026,6 @@ fn parse_checkout_operation_id(
         )
     })
 }
-
 
 fn checkout_request_hashes(
     context: &PortContext,
@@ -1079,7 +1071,6 @@ fn checkout_request_hashes(
     ))
 }
 
-
 fn hash_json(
     context: &PortContext,
     owner_operation: &'static str,
@@ -1111,7 +1102,6 @@ fn hash_json(
     hasher.update(bytes);
     Ok(hex::encode(hasher.finalize()))
 }
-
 
 fn canonicalize_json(value: Value) -> Value {
     match value {
@@ -1282,4 +1272,3 @@ fn order_error_to_port_error(
         ),
     }
 }
-

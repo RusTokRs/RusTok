@@ -15,8 +15,7 @@ const COUNTER_AND_SOLUTION_GRAPHQL: &str = include_str!("../src/graphql/reconcil
 const SUBSCRIPTION_GRAPHQL: &str =
     include_str!("../src/graphql/subscription_reconciliation_query.rs");
 const MENTION_GRAPHQL: &str = include_str!("../src/graphql/mention_reconciliation_query.rs");
-const ATTACHMENT_HOLD_GRAPHQL: &str =
-    include_str!("../src/graphql/reconciliation_query.rs");
+const ATTACHMENT_HOLD_GRAPHQL: &str = include_str!("../src/graphql/reconciliation_query.rs");
 
 #[test]
 fn graphql_schema_exposes_all_reconciliation_reports() {
@@ -106,7 +105,10 @@ fn graphql_reconciliation_adapters_enforce_security_scope_and_isolation() {
 
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumCounterReconciliationService::new(db)"));
     assert!(COUNTER_AND_SOLUTION_GRAPHQL.contains("ForumSolutionReconciliationService::new(db)"));
-    assert!(ATTACHMENT_HOLD_GRAPHQL.contains("ForumAttachmentHoldReconciliationService::new(db, media)"));
+    assert!(
+        ATTACHMENT_HOLD_GRAPHQL
+            .contains("ForumAttachmentHoldReconciliationService::new(db, media)")
+    );
     assert!(ATTACHMENT_HOLD_GRAPHQL.contains("attachment_hold_reconciliation_media()"));
     assert!(ATTACHMENT_HOLD_GRAPHQL.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE"));
     assert!(SUBSCRIPTION_GRAPHQL.contains("ForumSubscriptionReconciliationService::new(db)"));
@@ -301,12 +303,12 @@ async fn attachment_hold_reconciliation_execution_fails_closed_without_media_pro
         }
     "#;
 
-    let req = Request::new(query)
-        .data(tenant)
-        .data(auth)
-        .data(db);
+    let req = Request::new(query).data(tenant).data(auth).data(db);
     let res = schema.execute(req).await;
-    assert!(!res.errors.is_empty(), "missing Media provider must fail closed");
+    assert!(
+        !res.errors.is_empty(),
+        "missing Media provider must fail closed"
+    );
     let error = res.errors[0].message.as_str();
     assert!(
         error.contains("FORUM_MEDIA_REFERENCE_LIST_CAPABILITY_UNAVAILABLE")

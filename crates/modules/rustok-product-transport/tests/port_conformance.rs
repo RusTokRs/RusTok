@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontProductList, StorefrontProductListItem, VariantProductProjectionRequest,
-    dto::ProductResponse, entities::product::ProductStatus, ProductFulfillmentRequirement,
+    ProductCatalogReadPort, ProductFulfillmentRequirement, ProductProjectionRequest,
+    PublishedProductsRequest, StorefrontProductList, StorefrontProductListItem,
+    VariantProductProjectionRequest, dto::ProductResponse, entities::product::ProductStatus,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,

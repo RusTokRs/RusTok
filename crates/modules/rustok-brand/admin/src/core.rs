@@ -78,10 +78,10 @@ pub fn validate_brand_name(name: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+use crate::model::BrandAdminListItem;
 use rustok_grid::{
     ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
 };
-use crate::model::BrandAdminListItem;
 
 pub fn brand_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
@@ -192,7 +192,9 @@ pub fn filter_brands(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<BrandAdminListItem> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
     brands
         .iter()
@@ -296,4 +298,3 @@ mod tests {
         assert_eq!(inactive[0].slug, "panasonic");
     }
 }
-

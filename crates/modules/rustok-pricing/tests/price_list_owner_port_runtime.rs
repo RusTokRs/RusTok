@@ -18,12 +18,7 @@ fn input() -> CreatePriceListOwnerInput {
 }
 
 fn context(tenant_id: impl Into<String>, correlation_id: &str) -> PortContext {
-    PortContext::new(
-        tenant_id,
-        PortActor::system(),
-        "en",
-        correlation_id,
-    )
+    PortContext::new(tenant_id, PortActor::system(), "en", correlation_id)
 }
 
 #[tokio::test]

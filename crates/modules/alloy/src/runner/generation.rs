@@ -183,7 +183,9 @@ fn indent_body(body: &str) -> String {
         .join("\n")
 }
 
-fn source_digest(files: &[RustComponentSourceFile]) -> Result<String, RustComponentGenerationError> {
+fn source_digest(
+    files: &[RustComponentSourceFile],
+) -> Result<String, RustComponentGenerationError> {
     let mut canonical = files.to_vec();
     canonical.sort_by(|left, right| left.path.cmp(&right.path));
     let bytes = serde_json::to_vec(&canonical)
@@ -195,7 +197,9 @@ fn source_digest(files: &[RustComponentSourceFile]) -> Result<String, RustCompon
 pub enum RustComponentGenerationError {
     #[error("Rust Component generation input is invalid")]
     InvalidInput,
-    #[error("Rust Component generation WIT contract does not match the approved SDK/build identity")]
+    #[error(
+        "Rust Component generation WIT contract does not match the approved SDK/build identity"
+    )]
     WitContractMismatch,
     #[error("Rust Component implementation already declares the WIT ABI surface")]
     DuplicateAbiSurface,
@@ -232,14 +236,27 @@ mod tests {
             .iter()
             .find(|file| file.path == "src/lib.rs")
             .expect("generated lib");
-        assert!(source.contents.contains("impl rustok_module_sdk::Guest for Module"));
-        assert!(source.contents.contains("rustok_module_sdk::export!(Module);"));
+        assert!(
+            source
+                .contents
+                .contains("impl rustok_module_sdk::Guest for Module")
+        );
+        assert!(
+            source
+                .contents
+                .contains("rustok_module_sdk::export!(Module);")
+        );
         assert!(source.contents.contains(WIT_PACKAGE));
         assert!(source.contents.contains(WIT_WORLD));
         assert!(source.contents.contains("let _ = input;"));
         assert_eq!(generated.runtime_abi, MODULE_BUILD_RUNTIME_ABI);
         assert_eq!(generated.component_target, MODULE_BUILD_COMPONENT_TARGET);
-        assert!(generated.files().iter().all(|file| !file.path.contains("Cargo.lock")));
+        assert!(
+            generated
+                .files()
+                .iter()
+                .all(|file| !file.path.contains("Cargo.lock"))
+        );
         assert_eq!(
             generated.generated_source_digest,
             source_digest(generated.files()).expect("source digest")
@@ -285,17 +302,23 @@ mod tests {
         let generated = generate_rust_component(&request()).expect("generate Component source");
         let serialized = serde_json::to_string(&request()).expect("request serializes");
         assert!(!serialized.contains("Rhai"));
-        assert!(!generated.files().iter().any(|file| {
-            file.path.contains("..") || file.path.starts_with("/")
-        }));
-        assert!(generated
-            .files()
-            .iter()
-            .any(|file| file.path == "src/lib.rs"));
-        assert!(generated
-            .files()
-            .iter()
-            .any(|file| file.path == "module-build-policy.toml"));
-
+        assert!(
+            !generated
+                .files()
+                .iter()
+                .any(|file| { file.path.contains("..") || file.path.starts_with("/") })
+        );
+        assert!(
+            generated
+                .files()
+                .iter()
+                .any(|file| file.path == "src/lib.rs")
+        );
+        assert!(
+            generated
+                .files()
+                .iter()
+                .any(|file| file.path == "module-build-policy.toml")
+        );
     }
 }

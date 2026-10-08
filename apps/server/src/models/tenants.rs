@@ -22,16 +22,10 @@ pub async fn find_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<Mode
 }
 
 pub async fn find_by_slug(db: &DatabaseConnection, slug: &str) -> Result<Option<Model>, DbErr> {
-    Entity::find()
-        .filter(Column::Slug.eq(slug))
-        .one(db)
-        .await
+    Entity::find().filter(Column::Slug.eq(slug)).one(db).await
 }
 
-pub async fn find_by_domain(
-    db: &DatabaseConnection,
-    domain: &str,
-) -> Result<Option<Model>, DbErr> {
+pub async fn find_by_domain(db: &DatabaseConnection, domain: &str) -> Result<Option<Model>, DbErr> {
     Entity::find()
         .filter(Column::Domain.eq(domain))
         .one(db)

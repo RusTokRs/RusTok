@@ -4,8 +4,8 @@
 //! coordinates, identifiers, payload facts, credentials, raw errors, threshold values, source
 //! counts, timestamps, or arbitrary label text.
 
-use lazy_static::lazy_static;
 use crate::factory::*;
+use lazy_static::lazy_static;
 use prometheus::{IntCounterVec, IntGaugeVec, Registry};
 
 const HEALTH_STATE_LABELS: [&str; 6] = [

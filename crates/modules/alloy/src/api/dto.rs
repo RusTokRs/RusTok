@@ -618,7 +618,10 @@ mod tests {
         );
         if let Ok(create) = create {
             assert_eq!(
-                create.description_locale.as_ref().map(RuntimeLocale::as_str),
+                create
+                    .description_locale
+                    .as_ref()
+                    .map(RuntimeLocale::as_str),
                 Some("pt-BR")
             );
         }

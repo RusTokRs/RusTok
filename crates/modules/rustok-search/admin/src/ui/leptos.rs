@@ -1251,15 +1251,19 @@ fn analytics_rows_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchAnalyticsQueryRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchAnalyticsQueryRowViewModel, String)| {
+            match col_id.as_str() {
             "query" => view! { <span class="font-medium text-card-foreground">{row.query}</span> }.into_any(),
             "hits" => view! { <span class="text-xs text-muted-foreground">{row.hits}</span> }.into_any(),
             "zero_result_hits" => view! { <span class="text-xs text-muted-foreground">{row.zero_result_hits}</span> }.into_any(),
@@ -1271,7 +1275,8 @@ fn analytics_rows_table(
             "last_seen" => view! { <span class="text-xs text-muted-foreground">{row.last_seen_at}</span> }.into_any(),
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-3">
@@ -1311,7 +1316,12 @@ fn intelligence_table(
     let locale = ui_locale.as_deref();
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     let all_rows = core::build_search_analytics_insight_row_view_models(rows);
-    let empty_message = t(locale, "search.analytics.intelligence.empty", "No query-intelligence candidates surfaced in the current window.").to_string();
+    let empty_message = t(
+        locale,
+        "search.analytics.intelligence.empty",
+        "No query-intelligence candidates surfaced in the current window.",
+    )
+    .to_string();
     if all_rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
@@ -1342,15 +1352,19 @@ fn intelligence_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchAnalyticsInsightRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchAnalyticsInsightRowViewModel, String)| {
+            match col_id.as_str() {
             "query" => view! { <span class="font-medium text-card-foreground">{row.query}</span> }.into_any(),
             "hits" => view! { <span class="text-xs text-muted-foreground">{row.hits}</span> }.into_any(),
             "zero_result_hits" => view! { <span class="text-xs text-muted-foreground">{row.zero_result_hits}</span> }.into_any(),
@@ -1359,7 +1373,8 @@ fn intelligence_table(
             "recommendation" => view! { <span class="inline-flex rounded-full bg-accent/50 px-2.5 py-0.5 text-xs font-medium text-accent-foreground">{row.recommendation}</span> }.into_any(),
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-3">
@@ -1450,7 +1465,12 @@ fn lagging_table(
     let locale = ui_locale.as_deref();
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     let all_rows = core::build_lagging_search_document_row_view_models(rows);
-    let empty_message = t(locale, "search.analytics.lagging.empty", "No lagging documents detected. Search projection is currently caught up.").to_string();
+    let empty_message = t(
+        locale,
+        "search.analytics.lagging.empty",
+        "No lagging documents detected. Search projection is currently caught up.",
+    )
+    .to_string();
     if all_rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{empty_message}</p></div> }.into_any();
     }
@@ -1481,15 +1501,19 @@ fn lagging_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::LaggingSearchDocumentRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::LaggingSearchDocumentRowViewModel, String)| {
+            match col_id.as_str() {
             "title" => view! {
                 <div>
                     <div class="font-medium text-card-foreground">{row.title}</div>
@@ -1503,7 +1527,8 @@ fn lagging_table(
             "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-3">
@@ -1548,7 +1573,12 @@ fn consistency_table(
         not_indexed: t(locale, "search.common.notIndexed", "not indexed"),
     };
     let all_rows = core::build_search_consistency_issue_row_view_models(rows, &labels);
-    let empty_message = t(locale, "search.analytics.consistency.empty", "No missing or orphaned search documents detected. Projection consistency is healthy.").to_string();
+    let empty_message = t(
+        locale,
+        "search.analytics.consistency.empty",
+        "No missing or orphaned search documents detected. Projection consistency is healthy.",
+    )
+    .to_string();
     if all_rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{empty_message}</p></div> }.into_any();
     }
@@ -1579,15 +1609,19 @@ fn consistency_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchConsistencyIssueRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchConsistencyIssueRowViewModel, String)| {
+            match col_id.as_str() {
             "issue" => view! {
                 <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {}", row.issue_badge_class)>
                     {row.issue_label}
@@ -1605,7 +1639,8 @@ fn consistency_table(
             "indexed_at" => view! { <span class="text-xs text-muted-foreground">{row.indexed_at}</span> }.into_any(),
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-3">
@@ -2098,7 +2133,12 @@ fn synonyms_table(
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
-    let empty_message = t(locale, "search.dictionary.synonymGroups.empty", "No synonym groups configured yet.").to_string();
+    let empty_message = t(
+        locale,
+        "search.dictionary.synonymGroups.empty",
+        "No synonym groups configured yet.",
+    )
+    .to_string();
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
@@ -2129,7 +2169,10 @@ fn synonyms_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -2139,11 +2182,18 @@ fn synonyms_table(
     let cell_locale = ui_locale.clone();
     let cell_delete = delete_synonym.clone();
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchSynonymRowViewModel, String)| {
-        match col_id.as_str() {
-            "term" => view! { <span class="font-medium text-card-foreground">{row.term}</span> }.into_any(),
-            "synonyms" => view! { <span class="text-xs text-muted-foreground">{row.synonyms_summary}</span> }.into_any(),
-            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchSynonymRowViewModel, String)| match col_id.as_str() {
+            "term" => view! { <span class="font-medium text-card-foreground">{row.term}</span> }
+                .into_any(),
+            "synonyms" => {
+                view! { <span class="text-xs text-muted-foreground">{row.synonyms_summary}</span> }
+                    .into_any()
+            }
+            "updated_at" => {
+                view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }
+                    .into_any()
+            }
             "actions" => {
                 let syn_id = row.id.clone();
                 let on_del = cell_delete.clone();
@@ -2160,8 +2210,8 @@ fn synonyms_table(
                 }.into_any()
             }
             _ => ().into_any(),
-        }
-    });
+        },
+    );
 
     let rows_for_batch = rows.clone();
     let batch_delete = {
@@ -2242,7 +2292,12 @@ fn stop_words_table(
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
-    let empty_message = t(locale, "search.dictionary.stopWords.empty", "No stop words configured yet.").to_string();
+    let empty_message = t(
+        locale,
+        "search.dictionary.stopWords.empty",
+        "No stop words configured yet.",
+    )
+    .to_string();
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
@@ -2273,7 +2328,10 @@ fn stop_words_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -2283,10 +2341,14 @@ fn stop_words_table(
     let cell_locale = ui_locale.clone();
     let cell_delete = delete_stop_word.clone();
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchStopWordRowViewModel, String)| {
-        match col_id.as_str() {
-            "value" => view! { <span class="font-medium text-card-foreground">{row.value}</span> }.into_any(),
-            "updated_at" => view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }.into_any(),
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchStopWordRowViewModel, String)| match col_id.as_str() {
+            "value" => view! { <span class="font-medium text-card-foreground">{row.value}</span> }
+                .into_any(),
+            "updated_at" => {
+                view! { <span class="text-xs text-muted-foreground">{row.updated_at}</span> }
+                    .into_any()
+            }
             "actions" => {
                 let stop_id = row.id.clone();
                 let on_del = cell_delete.clone();
@@ -2303,8 +2365,8 @@ fn stop_words_table(
                 }.into_any()
             }
             _ => ().into_any(),
-        }
-    });
+        },
+    );
 
     let rows_for_batch = rows.clone();
     let batch_delete = {
@@ -2385,7 +2447,12 @@ fn query_rules_table(
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
-    let empty_message = t(locale, "search.dictionary.pinRules.empty", "No pinned query rules configured yet.").to_string();
+    let empty_message = t(
+        locale,
+        "search.dictionary.pinRules.empty",
+        "No pinned query rules configured yet.",
+    )
+    .to_string();
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
@@ -2416,7 +2483,10 @@ fn query_rules_table(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -2426,8 +2496,9 @@ fn query_rules_table(
     let cell_locale = ui_locale.clone();
     let cell_delete = delete_query_rule.clone();
 
-    let cell_renderer = Callback::new(move |(row, col_id): (core::SearchQueryRuleRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(row, col_id): (core::SearchQueryRuleRowViewModel, String)| {
+            match col_id.as_str() {
             "query" => view! {
                 <div>
                     <div class="font-medium text-card-foreground">{row.query_text}</div>
@@ -2463,7 +2534,8 @@ fn query_rules_table(
             }
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     let rows_for_batch = rows.clone();
     let batch_delete = {

@@ -1,17 +1,15 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
-use rustok_ui_core::UiRouteContext;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
+use rustok_ui_core::UiRouteContext;
 
 use crate::catalog_controls::{
     build_product_admin_catalog_controls_labels, serialize_attribute_filters,
 };
 use crate::catalog_transport;
-use crate::core::{
-    filter_products, item_product_kind, product_grid_columns, ProductKind,
-};
+use crate::core::{ProductKind, filter_products, item_product_kind, product_grid_columns};
 use crate::model::ProductListItem;
 
 #[component]
@@ -91,7 +89,10 @@ pub fn ProductGridPage() -> impl IntoView {
 
     // Reactive filtered data
     let filtered_data = Memo::new(move |_| {
-        let raw = products_resource.get().and_then(Result::ok).unwrap_or_default();
+        let raw = products_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default();
         let query = search_query.get().trim().to_lowercase();
         let current_filters = filters.get();
 
@@ -104,8 +105,16 @@ pub fn ProductGridPage() -> impl IntoView {
                 .filter(|item| {
                     item.title.to_lowercase().contains(&query)
                         || item.handle.to_lowercase().contains(&query)
-                        || item.seller_id.as_deref().map(|s| s.to_lowercase().contains(&query)).unwrap_or(false)
-                        || item.vendor.as_deref().map(|v| v.to_lowercase().contains(&query)).unwrap_or(false)
+                        || item
+                            .seller_id
+                            .as_deref()
+                            .map(|s| s.to_lowercase().contains(&query))
+                            .unwrap_or(false)
+                        || item
+                            .vendor
+                            .as_deref()
+                            .map(|v| v.to_lowercase().contains(&query))
+                            .unwrap_or(false)
                         || item.tags.iter().any(|t| t.to_lowercase().contains(&query))
                 })
                 .collect()
@@ -128,9 +137,13 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
-                    set_error_msg.set(Some("Failed to load bootstrap for status mutation".to_string()));
+                    set_error_msg.set(Some(
+                        "Failed to load bootstrap for status mutation".to_string(),
+                    ));
                     return;
                 };
 
@@ -162,7 +175,9 @@ pub fn ProductGridPage() -> impl IntoView {
                     set_error_msg.set(Some(if is_ru {
                         format!("Статус не изменён у {failed} из {total} товаров: {err}")
                     } else {
-                        format!("The status was not changed for {failed} of {total} products: {err}")
+                        format!(
+                            "The status was not changed for {failed} of {total} products: {err}"
+                        )
                     }));
                 }
             });
@@ -184,7 +199,9 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some("Failed to load bootstrap for deletion".to_string()));
                     return;
@@ -236,7 +253,9 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some(if is_ru {
                         "Не удалось получить данные сессии".to_string()
@@ -281,7 +300,9 @@ pub fn ProductGridPage() -> impl IntoView {
             let ten = base_tenant.get_untracked();
 
             leptos::task::spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some(if is_ru {
                         "Не удалось получить данные сессии".to_string()

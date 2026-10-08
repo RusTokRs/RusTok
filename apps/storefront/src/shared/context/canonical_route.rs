@@ -236,6 +236,5 @@ mod tests {
             build_redirect_location(&localized, Some("en"), &query_params),
             "/en/about"
         );
-
     }
 }

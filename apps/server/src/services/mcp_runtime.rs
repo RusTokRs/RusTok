@@ -452,8 +452,8 @@ mod tests {
 
     #[test]
     fn database_errors_map_to_internal_server_error() {
-        let response = map_db_err(sea_orm::DbErr::Custom("database failure".to_string()))
-            .into_response();
+        let response =
+            map_db_err(sea_orm::DbErr::Custom("database failure".to_string())).into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 

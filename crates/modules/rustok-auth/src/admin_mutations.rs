@@ -120,7 +120,6 @@ pub struct OAuthAppSecretResult {
     pub client_secret: String,
 }
 
-
 impl std::fmt::Debug for OAuthAppSecretResult {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -130,7 +129,6 @@ impl std::fmt::Debug for OAuthAppSecretResult {
             .finish()
     }
 }
-
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum AuthAdminMutationError {

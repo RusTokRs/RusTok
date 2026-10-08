@@ -37,7 +37,6 @@ struct AdminProductCatalogFilter {
     per_page: Option<u64>,
 }
 
-
 pub(crate) async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,

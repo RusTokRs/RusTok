@@ -33,8 +33,20 @@ pub fn Switch(
         let (track_off, thumb_off) = switch_classes(false, size, custom);
         let (track_on, thumb_on) = switch_classes(true, size, custom);
         (
-            move || if is_checked() { track_on.clone() } else { track_off.clone() },
-            move || if is_checked() { thumb_on.clone() } else { thumb_off.clone() },
+            move || {
+                if is_checked() {
+                    track_on.clone()
+                } else {
+                    track_off.clone()
+                }
+            },
+            move || {
+                if is_checked() {
+                    thumb_on.clone()
+                } else {
+                    thumb_off.clone()
+                }
+            },
         )
     };
 

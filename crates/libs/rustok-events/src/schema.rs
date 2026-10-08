@@ -260,10 +260,8 @@ const REINDEX_REQUESTED_FIELDS: &[FieldSchema] = &[
     field!("target_type", "string"),
     field!("target_id", "uuid", optional),
 ];
-const TARGET_DELETED_FIELDS: &[FieldSchema] = &[
-    field!("target_type", "string"),
-    field!("target_id", "uuid"),
-];
+const TARGET_DELETED_FIELDS: &[FieldSchema] =
+    &[field!("target_type", "string"), field!("target_id", "uuid")];
 const INDEX_UPDATED_FIELDS: &[FieldSchema] =
     &[field!("index_name", "string"), field!("target_id", "uuid")];
 const BUILD_REQUESTED_FIELDS: &[FieldSchema] =

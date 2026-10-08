@@ -1,6 +1,9 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
-use sea_orm::{DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, ConnectionTrait, FromQueryResult, QueryFilter, QuerySelect, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    FromQueryResult, QueryFilter, QuerySelect, Statement,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -11,8 +14,8 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-mod attributes;
 pub(crate) mod attribute_validation;
+mod attributes;
 mod categories;
 mod effective_forms;
 mod schemas;

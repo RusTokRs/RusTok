@@ -581,7 +581,12 @@ mod tests {
     fn control_characters_beyond_nul_are_rejected() {
         // The previous check named NUL specifically, which let every other C0 and C1 control
         // through into stored page content.
-        for bad in ["bell\u{7}", "escape\u{1b}[31m", "vertical\u{b}tab", "c1\u{85}next"] {
+        for bad in [
+            "bell\u{7}",
+            "escape\u{1b}[31m",
+            "vertical\u{b}tab",
+            "c1\u{85}next",
+        ] {
             assert!(
                 matches!(
                     grant().bind_request(1_000, 1, "hero", bad),
@@ -676,4 +681,3 @@ mod tests {
         }
     }
 }
-

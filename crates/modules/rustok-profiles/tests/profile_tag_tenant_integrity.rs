@@ -1,9 +1,7 @@
 use chrono::Utc;
 use rustok_core::MigrationSource;
 use rustok_profiles::{ProfileStatus, ProfileVisibility, ProfilesModule, entities};
-use rustok_taxonomy::{
-    ModuleTermCreateInput, TaxonomyModule, TaxonomyService, TaxonomyTermKind,
-};
+use rustok_taxonomy::{ModuleTermCreateInput, TaxonomyModule, TaxonomyService, TaxonomyTermKind};
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
 use sea_orm_migration::prelude::SchemaManager;
@@ -47,7 +45,12 @@ async fn create_profile(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid)
     .expect("profile should be inserted");
 }
 
-async fn create_tag(db: &DatabaseConnection, taxonomy: &TaxonomyService, tenant_id: Uuid, name: &str) -> Uuid {
+async fn create_tag(
+    db: &DatabaseConnection,
+    taxonomy: &TaxonomyService,
+    tenant_id: Uuid,
+    name: &str,
+) -> Uuid {
     let route_key = name.to_ascii_lowercase();
     let txn = db.begin().await.expect("transaction should start");
     let term_id = taxonomy

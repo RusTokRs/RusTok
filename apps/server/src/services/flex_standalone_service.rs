@@ -343,12 +343,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         let translation = select_schema_translation(&translations_after, &locale).cloned();
         persist_event_in_tx(
             &txn,
-            flex::flex_schema_updated_event(
-                tenant_id,
-                actor_id,
-                updated.id,
-                updated.slug.clone(),
-            ),
+            flex::flex_schema_updated_event(tenant_id, actor_id, updated.id, updated.slug.clone()),
         )
         .await?;
         txn.commit()
@@ -702,17 +697,12 @@ async fn persist_event_in_tx(
     event: rustok_events::EventEnvelope,
 ) -> Result<(), FlexError> {
     let event_type = event.event_type.clone();
-    TransactionalEventBus::publish_root_in_tx(
-        txn,
-        event.tenant_id,
-        event.actor_id,
-        event.event,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, event_type, "Failed to persist Flex domain event");
-        FlexError::Database(format!("failed to persist Flex domain event: {error}"))
-    })
+    TransactionalEventBus::publish_root_in_tx(txn, event.tenant_id, event.actor_id, event.event)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, event_type, "Failed to persist Flex domain event");
+            FlexError::Database(format!("failed to persist Flex domain event: {error}"))
+        })
 }
 
 async fn tenant_default_locale_on<C>(db: &C, tenant_id: Uuid) -> Result<String, FlexError>
@@ -1108,11 +1098,7 @@ mod tests {
         assert_eq!(merged, json!({"slug": "landing", "title": "Hello"}));
     }
 
-    async fn seed_test_schema(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        schema_id: Uuid,
-    ) {
+    async fn seed_test_schema(db: &DatabaseConnection, tenant_id: Uuid, schema_id: Uuid) {
         let now = Utc::now().fixed_offset();
         tenants::ActiveModel {
             id: Set(tenant_id),

@@ -16,7 +16,6 @@ pub struct PasswordResetEmail {
     pub reset_url: String,
 }
 
-
 impl std::fmt::Debug for PasswordResetEmail {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter

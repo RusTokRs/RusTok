@@ -1,4 +1,9 @@
-use axum::{extract::Request, http::{HeaderMap, request::Parts}, middleware::Next, response::Response};
+use axum::{
+    extract::Request,
+    http::{HeaderMap, request::Parts},
+    middleware::Next,
+    response::Response,
+};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use leptos::prelude::*;

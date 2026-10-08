@@ -360,10 +360,7 @@ struct TestEventParams<'a> {
     created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-async fn insert_event(
-    db: &DatabaseConnection,
-    params: TestEventParams<'_>,
-) {
+async fn insert_event(db: &DatabaseConnection, params: TestEventParams<'_>) {
     seller_event::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(params.tenant_id),

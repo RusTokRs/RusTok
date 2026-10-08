@@ -272,7 +272,8 @@ fn RbacPermissionsGridSection(
     });
 
     let cell_renderer = Callback::new(
-        move |(item, col_id): (RbacPermissionRowViewModel, String)| match col_id.as_str() {
+        move |(item, col_id): (RbacPermissionRowViewModel, String)| {
+            match col_id.as_str() {
             "module" => view! {
                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium border border-border bg-muted/40 text-foreground">
                     {item.module_slug}
@@ -304,6 +305,7 @@ fn RbacPermissionsGridSection(
                 .into_any()
             }
             _ => ().into_any(),
+        }
         },
     );
 

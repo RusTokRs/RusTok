@@ -28,18 +28,18 @@ const AUTHORIZE_CHECKOUT_COLLECTION_OPERATION: &str = "authorize_checkout_collec
 const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection";
 const READ_CHECKOUT_COLLECTION_OPERATION: &str = "read_checkout_collection";
 
-mod types;
-mod diagnostic_safety;
-mod prepare_authorize;
 mod capture_provider;
-mod provider_helpers;
+mod diagnostic_safety;
 mod port_impl;
-mod validation_identity;
+mod prepare_authorize;
+mod provider_helpers;
+mod types;
 mod validation_errors;
+mod validation_identity;
 
-pub use types::*;
 pub use port_impl::in_process_checkout_payment_execution_port;
+pub use types::*;
 
 use diagnostic_safety::*;
-use validation_identity::*;
 use validation_errors::*;
+use validation_identity::*;

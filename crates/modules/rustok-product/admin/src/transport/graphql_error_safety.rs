@@ -416,7 +416,9 @@ impl GraphqlMutationContext {
             GraphqlHttpError::Http(_) => (
                 "http",
                 "product.admin_graphql_http_unavailable",
-                GraphqlHttpError::Http("Product admin service is temporarily unavailable".to_string()),
+                GraphqlHttpError::Http(
+                    "Product admin service is temporarily unavailable".to_string(),
+                ),
                 true,
             ),
             GraphqlHttpError::Unauthorized => (
@@ -518,7 +520,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("create_product_attribute", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "create_product_attribute",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_create_product_attribute_option(
@@ -542,7 +550,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("create_catalog_category", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "create_catalog_category",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_create_attribute_schema(
@@ -551,7 +565,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("create_attribute_schema", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "create_attribute_schema",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_set_category_schema_mode(
@@ -560,7 +580,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("set_category_schema_mode", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "set_category_schema_mode",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_create_product_attribute_schema_group(
@@ -599,7 +625,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("bind_schema_attribute", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "bind_schema_attribute",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_bind_category_attribute(
@@ -608,7 +640,13 @@ impl GraphqlFallbackMutationContext {
         tenant_id: &str,
         actor_id: &str,
     ) -> Self {
-        Self::new("bind_category_attribute", token, tenant_slug, tenant_id, actor_id)
+        Self::new(
+            "bind_category_attribute",
+            token,
+            tenant_slug,
+            tenant_id,
+            actor_id,
+        )
     }
 
     pub(super) fn for_save_product_attribute_values(

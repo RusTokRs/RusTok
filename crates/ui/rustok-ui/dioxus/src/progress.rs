@@ -10,8 +10,8 @@
 
 use dioxus::prelude::*;
 use rustok_ui::{
-    Orientation, normalize_progress_max, normalize_progress_value_for_max,
-    progress_classes, progress_value_percentage,
+    Orientation, normalize_progress_max, normalize_progress_value_for_max, progress_classes,
+    progress_value_percentage,
 };
 
 /// Accessible progress primitive with a configurable ARIA range.
@@ -35,11 +35,7 @@ pub fn Progress(
     let value = normalize_progress_value_for_max(value, max);
     let value_text = value.to_string();
     let width = progress_value_percentage(value, max).to_string();
-    let data_state = if value >= max {
-        "complete"
-    } else {
-        "loading"
-    };
+    let data_state = if value >= max { "complete" } else { "loading" };
     let orientation = orientation.as_str();
     let full_class = progress_classes(class.as_deref());
 

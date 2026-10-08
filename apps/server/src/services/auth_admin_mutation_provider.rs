@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use rustok_api::{Permission, has_any_effective_permission, has_effective_permission};
-use rustok_core::UserRole;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthorizedOAuthAppRecord,
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
+use rustok_core::UserRole;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect,
@@ -52,8 +52,7 @@ where
     })?;
     let locale = oauth_apps::normalize_runtime_copy_locale(locale).map_err(|_| {
         AuthAdminMutationError::Validation(
-            "auth administration requires a valid effective locale other than und"
-                .to_string(),
+            "auth administration requires a valid effective locale other than und".to_string(),
         )
     })?;
     let app = oauth_apps::hydrate_exact_translation(db, app, locale.as_str())
@@ -458,7 +457,9 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
 }
 #[cfg(test)]
 mod tests {
-    use super::{ServerAuthAdminMutationProvider, clamp_auth_admin_list_limit, internal_admin_error};
+    use super::{
+        ServerAuthAdminMutationProvider, clamp_auth_admin_list_limit, internal_admin_error,
+    };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::UserRole;
     use serde_json::json;

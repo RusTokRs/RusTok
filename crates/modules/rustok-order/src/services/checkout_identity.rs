@@ -136,7 +136,9 @@ impl OrderCheckoutIdentityJournal {
                     existing = self.get_by_order(input.tenant_id, input.order_id).await?;
                 }
                 if existing.is_none() {
-                    existing = self.get_by_cart(input.tenant_id, input.source_cart_id).await?;
+                    existing = self
+                        .get_by_cart(input.tenant_id, input.source_cart_id)
+                        .await?;
                 }
                 if let Some(existing) = existing {
                     if existing.tenant_id != input.tenant_id {

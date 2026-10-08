@@ -106,10 +106,7 @@ pub enum ToggleModuleError {
     #[error("{0}")]
     Manifest(#[from] ManifestError),
     #[error("Settings migration required for module '{module_slug}': {reason}")]
-    SettingsMigrationRequired {
-        module_slug: String,
-        reason: String,
-    },
+    SettingsMigrationRequired { module_slug: String, reason: String },
 }
 
 #[derive(Debug, Error)]
@@ -176,11 +173,9 @@ impl ModuleLifecycleService {
                     .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
                     .map(|snapshot| snapshot.settings)
                     .unwrap_or_else(|| serde_json::json!({}));
-                if let Err(error) = normalize_module_settings(
-                    module_slug,
-                    &settings_schema,
-                    retained_settings,
-                ) {
+                if let Err(error) =
+                    normalize_module_settings(module_slug, &settings_schema, retained_settings)
+                {
                     return Err(ToggleModuleError::SettingsMigrationRequired {
                         module_slug: module_slug.to_string(),
                         reason: error.to_string(),
@@ -1000,7 +995,10 @@ mod tests {
         let snapshot = result.expect("dormant settings update succeeds");
         assert_eq!(snapshot.module_slug, "content");
         assert!(!snapshot.enabled);
-        assert_eq!(snapshot.settings, serde_json::json!({ "posts_per_page": 20 }));
+        assert_eq!(
+            snapshot.settings,
+            serde_json::json!({ "posts_per_page": 20 })
+        );
     }
 
     #[tokio::test]

@@ -637,7 +637,10 @@ impl PaymentService {
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         let collection_metadata = active.metadata.clone().take().unwrap_or_default();
         let merged_collection_metadata = merge_metadata(collection_metadata, input.metadata);
-        validate_payment_metadata(&merged_collection_metadata, "capture collection merged metadata")?;
+        validate_payment_metadata(
+            &merged_collection_metadata,
+            "capture collection merged metadata",
+        )?;
         active.status = Set(STATUS_CAPTURED.to_string());
         active.captured_amount = Set(capture_amount);
         active.metadata = Set(merged_collection_metadata);
@@ -698,12 +701,8 @@ impl PaymentService {
                 .clone()
                 .unwrap_or_else(|| "cancelled".to_string());
             let payment_metadata = payment_active.metadata.clone().take().unwrap_or_default();
-            let merged_payment_metadata =
-                merge_metadata(payment_metadata, input.metadata.clone());
-            validate_payment_metadata(
-                &merged_payment_metadata,
-                "cancel payment merged metadata",
-            )?;
+            let merged_payment_metadata = merge_metadata(payment_metadata, input.metadata.clone());
+            validate_payment_metadata(&merged_payment_metadata, "cancel payment merged metadata")?;
             payment_active.status = Set(STATUS_CANCELLED.to_string());
             payment_active.error_message = Set(Some(reason));
             payment_active.metadata = Set(merged_payment_metadata);
@@ -715,7 +714,10 @@ impl PaymentService {
         let mut active: entities::payment_collection::ActiveModel = collection.into();
         let collection_metadata = active.metadata.clone().take().unwrap_or_default();
         let merged_collection_metadata = merge_metadata(collection_metadata, input.metadata);
-        validate_payment_metadata(&merged_collection_metadata, "cancel collection merged metadata")?;
+        validate_payment_metadata(
+            &merged_collection_metadata,
+            "cancel collection merged metadata",
+        )?;
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
         active.metadata = Set(merged_collection_metadata);
@@ -1095,11 +1097,7 @@ mod tests {
 
     #[test]
     fn payment_metadata_is_bounded_by_bytes_and_depth() {
-        assert!(validate_payment_metadata(
-            &serde_json::json!({"note": "ok"}),
-            "test"
-        )
-        .is_ok());
+        assert!(validate_payment_metadata(&serde_json::json!({"note": "ok"}), "test").is_ok());
 
         let oversized = serde_json::json!({"note": "x".repeat(MAX_PAYMENT_METADATA_BYTES)});
         assert!(validate_payment_metadata(&oversized, "test").is_err());

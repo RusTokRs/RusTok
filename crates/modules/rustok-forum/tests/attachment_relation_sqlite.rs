@@ -8,10 +8,10 @@ use rustok_forum::{
     ForumContentTarget, ForumModule,
 };
 use rustok_media::{
+    MediaError, MediaService,
     entities::{asset, asset_reference, blob},
     lifecycle::{AssetState, BlobState},
     migrations as media_migrations,
-    MediaError, MediaService,
 };
 use rustok_outbox::SysEventsMigration;
 use rustok_storage::StorageRuntime;
@@ -225,7 +225,10 @@ async fn sqlite_attachment_relation_migration_enforces_owner_invariants() -> Tes
     let head_count = rustok_forum::entities::forum_attachment_relation_head::Entity::find()
         .count(&db)
         .await?;
-    assert_eq!(head_count, 0, "tenant deletion must cascade attachment heads");
+    assert_eq!(
+        head_count, 0,
+        "tenant deletion must cascade attachment heads"
+    );
 
     let relation_count = rustok_forum::entities::forum_attachment_relation::Entity::find()
         .count(&db)
@@ -240,7 +243,8 @@ async fn sqlite_attachment_relation_migration_enforces_owner_invariants() -> Tes
 }
 
 #[tokio::test]
-async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas() -> TestResult<()> {
+async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas() -> TestResult<()>
+{
     let db = setup_sqlite("service_coordinates").await?;
 
     let outbox_manager = SchemaManager::new(&db);
@@ -323,7 +327,9 @@ async fn sqlite_attachment_relation_service_coordinates_media_retention_and_cas(
 
     let first = forum
         .replace_attachment_relations(
-            context.clone().with_idempotency_key("forum-attachment-create"),
+            context
+                .clone()
+                .with_idempotency_key("forum-attachment-create"),
             ForumAttachmentRelationAdmissionRequest {
                 tenant_id,
                 target: ForumContentTarget::topic(topic_id),

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use std::sync::Arc;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -63,9 +63,8 @@ pub trait MarketplaceCommissionCommandPort: Send + Sync {
 pub fn in_process_marketplace_commission_command_port(
     db: sea_orm::DatabaseConnection,
 ) -> Arc<dyn MarketplaceCommissionCommandPort> {
-    let allocation = Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(
-        db.clone(),
-    ));
+    let allocation =
+        Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()));
     Arc::new(crate::MarketplaceCommissionService::new(db, allocation))
 }
 
@@ -220,13 +219,25 @@ fn map_owner_error(error: MarketplaceCommissionError) -> PortError {
             kind,
         } => PortError::new(
             match kind {
-                crate::error::MarketplaceAllocationBoundaryKind::Validation => PortErrorKind::Validation,
-                crate::error::MarketplaceAllocationBoundaryKind::NotFound => PortErrorKind::NotFound,
-                crate::error::MarketplaceAllocationBoundaryKind::Conflict => PortErrorKind::Conflict,
-                crate::error::MarketplaceAllocationBoundaryKind::Forbidden => PortErrorKind::Forbidden,
-                crate::error::MarketplaceAllocationBoundaryKind::Unavailable => PortErrorKind::Unavailable,
+                crate::error::MarketplaceAllocationBoundaryKind::Validation => {
+                    PortErrorKind::Validation
+                }
+                crate::error::MarketplaceAllocationBoundaryKind::NotFound => {
+                    PortErrorKind::NotFound
+                }
+                crate::error::MarketplaceAllocationBoundaryKind::Conflict => {
+                    PortErrorKind::Conflict
+                }
+                crate::error::MarketplaceAllocationBoundaryKind::Forbidden => {
+                    PortErrorKind::Forbidden
+                }
+                crate::error::MarketplaceAllocationBoundaryKind::Unavailable => {
+                    PortErrorKind::Unavailable
+                }
                 crate::error::MarketplaceAllocationBoundaryKind::Timeout => PortErrorKind::Timeout,
-                crate::error::MarketplaceAllocationBoundaryKind::InvariantViolation => PortErrorKind::InvariantViolation,
+                crate::error::MarketplaceAllocationBoundaryKind::InvariantViolation => {
+                    PortErrorKind::InvariantViolation
+                }
             },
             code,
             message,

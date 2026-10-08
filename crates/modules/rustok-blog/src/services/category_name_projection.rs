@@ -70,4 +70,3 @@ pub(in crate::services) async fn load_category_names_map(
         })
         .collect()
 }
-

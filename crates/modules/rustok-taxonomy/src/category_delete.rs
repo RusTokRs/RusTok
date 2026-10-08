@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
-use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+};
 use uuid::Uuid;
 
 use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};

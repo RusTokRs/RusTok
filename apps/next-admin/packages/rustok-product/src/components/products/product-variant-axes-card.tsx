@@ -51,7 +51,9 @@ interface AxisRowDraft {
 interface ProductVariantAxesCardProps {
   axes: VariantAxisConfig[];
   effectiveForm?: ProductEffectiveForm | null;
-  onSaveAxes?: (input: SetVariantAxesInput) => Promise<VariantAxisConfig[] | void>;
+  onSaveAxes?: (
+    input: SetVariantAxesInput
+  ) => Promise<VariantAxisConfig[] | void>;
   disabled?: boolean;
 }
 
@@ -256,11 +258,11 @@ export function ProductVariantAxesCard({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div className='space-y-1'>
+            <CardTitle className='flex items-center gap-2 text-base'>
               Variant axes
-              <Badge variant="secondary">{rows.length}</Badge>
+              <Badge variant='secondary'>{rows.length}</Badge>
             </CardTitle>
             <CardDescription>
               Axes define the combination identity. Only category-schema
@@ -268,98 +270,98 @@ export function ProductVariantAxesCard({
             </CardDescription>
           </div>
           <Button
-            type="button"
-            size="sm"
+            type='button'
+            size='sm'
             onClick={handleSave}
             disabled={disabled || isBusy || !onSaveAxes}
           >
-            <Save className="mr-2 h-4 w-4" />
+            <Save className='mr-2 h-4 w-4' />
             {isBusy ? 'Saving...' : 'Save axes'}
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className='space-y-3'>
         {error ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <p className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-xs'>
             {error}
           </p>
         ) : null}
         {notice ? (
-          <p className="rounded-md border border-emerald-300/50 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+          <p className='rounded-md border border-emerald-300/50 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400'>
             {notice}
           </p>
         ) : null}
 
         {rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className='text-muted-foreground text-xs'>
             No axes configured. Add an attribute to enable variant combinations.
           </p>
         ) : null}
 
-        <div className="space-y-3">
+        <div className='space-y-3'>
           {rows.map((row, index) => (
             <div
               key={row.attributeId}
-              className="space-y-2 rounded-lg border border-border/70 bg-background p-3"
+              className='border-border/70 bg-background space-y-2 rounded-lg border p-3'
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <span className="text-muted-foreground">#{index + 1}</span>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <div className='flex items-center gap-2 text-sm font-medium'>
+                  <span className='text-muted-foreground'>#{index + 1}</span>
                   <span>{row.label}</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
+                  <span className='text-muted-foreground font-mono text-[11px]'>
                     {row.code}
                   </span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className='flex items-center gap-1'>
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    className='h-7 w-7'
                     disabled={index === 0 || disabled}
                     onClick={() => moveAxis(index, -1)}
-                    aria-label="Move axis up"
+                    aria-label='Move axis up'
                   >
-                    <ArrowUp className="h-3.5 w-3.5" />
+                    <ArrowUp className='h-3.5 w-3.5' />
                   </Button>
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    className='h-7 w-7'
                     disabled={index + 1 === rows.length || disabled}
                     onClick={() => moveAxis(index, 1)}
-                    aria-label="Move axis down"
+                    aria-label='Move axis down'
                   >
-                    <ArrowDown className="h-3.5 w-3.5" />
+                    <ArrowDown className='h-3.5 w-3.5' />
                   </Button>
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7 text-destructive"
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    className='text-destructive h-7 w-7'
                     disabled={disabled}
                     onClick={() => removeAxis(row.attributeId)}
-                    aria-label="Remove axis"
+                    aria-label='Remove axis'
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className='h-3.5 w-3.5' />
                   </Button>
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <div className='space-y-1'>
+                <Label className='text-muted-foreground text-[11px] tracking-wide uppercase'>
                   Allowed values
                 </Label>
-                <div className="flex flex-wrap gap-2">
+                <div className='flex flex-wrap gap-2'>
                   {row.options.map((option) => {
                     const checked = row.allowedOptionIds.includes(option.id);
                     return (
                       <label
                         key={option.id}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2 py-1 text-xs"
+                        className='border-border/70 bg-muted/20 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs'
                       >
                         <input
-                          type="checkbox"
+                          type='checkbox'
                           checked={checked}
                           disabled={disabled}
                           onChange={() =>
@@ -376,9 +378,9 @@ export function ProductVariantAxesCard({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="grid gap-1">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        <div className='flex flex-wrap items-end gap-2'>
+          <div className='grid gap-1'>
+            <Label className='text-muted-foreground text-[11px] tracking-wide uppercase'>
               Attribute
             </Label>
             <Select
@@ -386,8 +388,8 @@ export function ProductVariantAxesCard({
               onValueChange={setAddSelection}
               disabled={disabled || availableCandidates.length === 0}
             >
-              <SelectTrigger className="min-w-[220px]">
-                <SelectValue placeholder="Select attribute" />
+              <SelectTrigger className='min-w-[220px]'>
+                <SelectValue placeholder='Select attribute' />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={SELECT_EMPTY}>Select attribute</SelectItem>
@@ -403,9 +405,9 @@ export function ProductVariantAxesCard({
             </Select>
           </div>
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            type='button'
+            variant='outline'
+            size='sm'
             disabled={
               disabled ||
               addSelection === SELECT_EMPTY ||
@@ -413,13 +415,13 @@ export function ProductVariantAxesCard({
             }
             onClick={addAxis}
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className='mr-2 h-4 w-4' />
             Add axis
           </Button>
           {availableCandidates.length === 0 && rows.length === 0 ? (
-            <span className="text-xs text-muted-foreground">
-              The category schema has no option-backed attribute that allows axis
-              use. Configure the category schema.
+            <span className='text-muted-foreground text-xs'>
+              The category schema has no option-backed attribute that allows
+              axis use. Configure the category schema.
             </span>
           ) : null}
         </div>

@@ -365,7 +365,9 @@ impl CommentsService {
             )
             .await?;
         } else {
-            let existing = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
+            let existing = self
+                .find_comment_in_tx(txn, tenant_id, comment_id, false)
+                .await?;
             self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
         }
 
@@ -401,7 +403,9 @@ impl CommentsService {
         security: SecurityContext,
         comment_id: Uuid,
     ) -> CommentsResult<()> {
-        let existing = self.find_comment_in_tx(txn, tenant_id, comment_id, false).await?;
+        let existing = self
+            .find_comment_in_tx(txn, tenant_id, comment_id, false)
+            .await?;
         let thread = comment_thread::Entity::find_by_id(existing.thread_id)
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
             .one(txn)

@@ -137,9 +137,7 @@ async fn storefront_fulfillment_select_shipping_option_native(
             .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
         let shipping_option_read_runtime = runtime_ctx
             .shared_get::<rustok_commerce::graphql_runtime::CommerceShippingOptionReadRuntime>()
-            .ok_or_else(|| {
-                map_runtime_dependency_error("CommerceShippingOptionReadRuntime")
-            })?;
+            .ok_or_else(|| map_runtime_dependency_error("CommerceShippingOptionReadRuntime"))?;
         let runtime =
             storefront_checkout_runtime::StorefrontCheckoutRuntime::with_shipping_option_read_port(
                 runtime_ctx.db_clone(),

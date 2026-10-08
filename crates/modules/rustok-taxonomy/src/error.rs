@@ -58,7 +58,6 @@ impl TaxonomyError {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::TaxonomyError;

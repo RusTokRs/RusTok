@@ -108,7 +108,11 @@ pub(super) fn validate_collection(
     Ok(())
 }
 
-pub(super) fn checkout_stage_metadata(base: Value, identity: &CheckoutPaymentIdentity, stage: &str) -> Value {
+pub(super) fn checkout_stage_metadata(
+    base: Value,
+    identity: &CheckoutPaymentIdentity,
+    stage: &str,
+) -> Value {
     let mut root = match base {
         Value::Object(root) => root,
         _ => Default::default(),

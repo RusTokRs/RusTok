@@ -114,8 +114,8 @@ pub use partition_admission::{
     PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
     PartitionAdmissionPolicyParams, PartitionAdmissionReason, PartitionBaselineEvidence,
     PartitionEvidence, PartitionMeasurementCoverage, PartitionRelationPlan,
-    PartitionShadowEvidence, PartitionShadowEvidenceParams, PartitionShadowPlan,
-    PartitionStrategy, evaluate_partition_admission,
+    PartitionShadowEvidence, PartitionShadowEvidenceParams, PartitionShadowPlan, PartitionStrategy,
+    evaluate_partition_admission,
 };
 pub use query_admission::{
     PostgresIndexQueryAdmissionCatalog, PostgresIndexQueryAdmissionDescriptor,

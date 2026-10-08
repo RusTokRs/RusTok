@@ -25,9 +25,9 @@ use crate::core::{
     forum_admin_sidebar_category_class, forum_admin_sidebar_copy_labels,
     forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model,
     forum_admin_topic_form_labels, forum_admin_topic_stream_labels,
-    forum_admin_topic_tag_count_label, forum_admin_transport_error_message, reply_card_view_model,
-    reply_count_label, result_item_count, selected_category_filter_label, selected_query_id,
-    topic_card_view_model, topic_category_filter, item_busy,
+    forum_admin_topic_tag_count_label, forum_admin_transport_error_message, item_busy,
+    reply_card_view_model, reply_count_label, result_item_count, selected_category_filter_label,
+    selected_query_id, topic_card_view_model, topic_category_filter,
 };
 use crate::i18n::t;
 use crate::locale_switch::{

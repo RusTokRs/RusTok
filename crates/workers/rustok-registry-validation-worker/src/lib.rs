@@ -18,9 +18,8 @@ use rustok_modules::{
     ModulePlatformPublicationEvidenceProducer, ModulePublicationArtifactOrigin,
     ModulePublicationArtifactRegistryProvider, ModulePublishBundleValidation,
     ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
-    ModuleValidationJobRetryCommand, OciArtifactPublicationBundle,
-    OciArtifactPublicationTarget, OciArtifactReference,
-    OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
+    ModuleValidationJobRetryCommand, OciArtifactPublicationBundle, OciArtifactPublicationTarget,
+    OciArtifactReference, OciDistributionArtifactRegistry, OciRhaiWorkspacePublicationProvenance,
     SeaOrmModuleGovernanceService, validate_module_publish_artifact,
 };
 use rustok_storage::StorageRuntime;
@@ -107,10 +106,18 @@ fn push_origin_failed_checks(
     };
     match origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
-            checks.push(automated_check("platform_publication_evidence", status, detail_platform));
+            checks.push(automated_check(
+                "platform_publication_evidence",
+                status,
+                detail_platform,
+            ));
         }
         ModulePublicationArtifactOrigin::AlloyAuthored => {
-            checks.push(automated_check("alloy_oci_publication", status, detail_alloy));
+            checks.push(automated_check(
+                "alloy_oci_publication",
+                status,
+                detail_alloy,
+            ));
             checks.push(automated_check(
                 "platform_admission",
                 "not_run",
@@ -358,10 +365,9 @@ impl RegistryValidationWorker {
         &self,
         work_item: &rustok_modules::ModuleValidationJobWorkItem,
     ) -> Result<(), String> {
-        let command = self.publication_policy.command(
-            work_item.request_id.clone(),
-            self.actor_principal.clone(),
-        )?;
+        let command = self
+            .publication_policy
+            .command(work_item.request_id.clone(), self.actor_principal.clone())?;
         self.publication_evidence
             .produce(command)
             .await
@@ -554,7 +560,10 @@ impl RegistryValidationWorker {
                 actor_principal: self.actor_principal.clone(),
                 outcome: ModuleValidationJobResultOutcome::Failed,
                 warnings: work_item.existing_warnings.clone(),
-                errors: vec!["Validation job exhausted artifact-load retries before artifact checks.".to_string()],
+                errors: vec![
+                    "Validation job exhausted artifact-load retries before artifact checks."
+                        .to_string(),
+                ],
                 automated_checks: vec![automated_check(
                     "artifact_load",
                     "failed",

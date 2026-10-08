@@ -9,8 +9,8 @@
 // own `#[allow(unsafe_code)]`, which `forbid` would reject.
 #![deny(unsafe_code)]
 
-pub use fly_web::*;
 use dioxus::prelude::*;
+pub use fly_web::*;
 
 #[component]
 pub fn FlyFullEditor(children: Element) -> Element {

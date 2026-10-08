@@ -11,9 +11,8 @@ use crate::tcp_protocol::{
 };
 use crate::{
     BoxCommentsTcpIo, COMMENTS_TCP_PROTOCOL_VERSION, CommentsTcpCredential, CommentsTcpIo,
-    CommentsTcpRequestEnvelope, CommentsTcpServerChannelAcceptor,
-    CommentsThreadRequest, CommentsThreadResponse, CommentsThreadTransportReply,
-    PlaintextLoopbackCommentsTcpChannel,
+    CommentsTcpRequestEnvelope, CommentsTcpServerChannelAcceptor, CommentsThreadRequest,
+    CommentsThreadResponse, CommentsThreadTransportReply, PlaintextLoopbackCommentsTcpChannel,
 };
 
 /// Stable operation identity exposed to host-owned TCP authority resolvers.

@@ -107,11 +107,7 @@ impl IggyDlqPublisher {
             .map_err(publish_error)?
             .partitioning(Partitioning::partition_id(partition))
             .create_stream_if_not_exists()
-            .create_topic_if_not_exists(
-                self.partitions,
-                Default::default(),
-                Default::default(),
-            )
+            .create_topic_if_not_exists(self.partitions, Default::default(), Default::default())
             .build();
         producer.init().await.map_err(publish_error)?;
 

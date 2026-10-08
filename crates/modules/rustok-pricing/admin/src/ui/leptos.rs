@@ -277,7 +277,11 @@ pub fn PricingAdmin() -> impl IntoView {
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
     let filtered_products = Memo::new(move |_| {
-        let raw = products.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let raw = products
+            .get()
+            .and_then(Result::ok)
+            .map(|l| l.items)
+            .unwrap_or_default();
         let current_filters = filters.get();
         filter_pricing_products(&raw, &current_filters)
     });
@@ -318,7 +322,11 @@ pub fn PricingAdmin() -> impl IntoView {
                 };
                 let label = match item.status.as_str() {
                     "ACTIVE" => t(cell_locale.as_deref(), "pricing.status.active", "Active"),
-                    "ARCHIVED" => t(cell_locale.as_deref(), "pricing.status.archived", "Archived"),
+                    "ARCHIVED" => t(
+                        cell_locale.as_deref(),
+                        "pricing.status.archived",
+                        "Archived",
+                    ),
                     _ => t(cell_locale.as_deref(), "pricing.status.draft", "Draft"),
                 };
                 view! {
@@ -347,7 +355,10 @@ pub fn PricingAdmin() -> impl IntoView {
                 .into_any()
             }
             "shipping_profile_slug" => {
-                let profile_str = item.shipping_profile_slug.clone().unwrap_or_else(|| "—".to_string());
+                let profile_str = item
+                    .shipping_profile_slug
+                    .clone()
+                    .unwrap_or_else(|| "—".to_string());
                 view! {
                     <span class="text-xs text-muted-foreground truncate">
                         {profile_str}
@@ -356,7 +367,11 @@ pub fn PricingAdmin() -> impl IntoView {
                 .into_any()
             }
             "created_at" => {
-                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
+                let date_str = item
+                    .created_at
+                    .split('T')
+                    .next()
+                    .unwrap_or(&item.created_at);
                 view! {
                     <span class="text-xs text-muted-foreground whitespace-nowrap">
                         {date_str.to_string()}

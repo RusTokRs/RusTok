@@ -1092,7 +1092,10 @@ async fn record_alias_in_tx(
     let slug = normalize_route_slug(params.slug)?;
     let short_id = ForumTopicRouteService::short_identity(params.topic_id);
     let reason = normalize_alias_reason(params.reason)?;
-    let target_locale = params.target_locale.map(normalize_route_locale).transpose()?;
+    let target_locale = params
+        .target_locale
+        .map(normalize_route_locale)
+        .transpose()?;
     let disposition_value = match params.disposition {
         StoredRouteDisposition::Redirect => "redirect",
         StoredRouteDisposition::Gone => "gone",
@@ -1103,7 +1106,9 @@ async fn record_alias_in_tx(
         {
             return Err(ForumError::TopicRouteResolutionConflict);
         }
-        StoredRouteDisposition::Gone if params.target_topic_id.is_some() || target_locale.is_some() => {
+        StoredRouteDisposition::Gone
+            if params.target_topic_id.is_some() || target_locale.is_some() =>
+        {
             return Err(ForumError::TopicRouteResolutionConflict);
         }
         _ => {}

@@ -263,8 +263,6 @@ impl SearchProjector {
         tx.commit().await.map_err(Error::Database)
     }
 
-
-
     async fn delete_node_in<C>(&self, conn: &C, tenant_id: Uuid, node_id: Uuid) -> Result<()>
     where
         C: ConnectionTrait,

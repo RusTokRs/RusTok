@@ -49,7 +49,9 @@ fn map_invite_error(error: InviteAcceptanceError) -> AuthLifecycleMutationError 
     match error {
         InviteAcceptanceError::InvalidToken => AuthLifecycleMutationError::InvalidInviteToken,
         InviteAcceptanceError::EmailAlreadyExists => AuthLifecycleMutationError::EmailAlreadyExists,
-        InviteAcceptanceError::Internal(err) => AuthLifecycleMutationError::Internal(err.to_string()),
+        InviteAcceptanceError::Internal(err) => {
+            AuthLifecycleMutationError::Internal(err.to_string())
+        }
     }
 }
 
@@ -148,12 +150,9 @@ impl ServerAuthLifecycleProvider {
             return;
         }
 
-        if let Err(error) = AuthLifecycleService::logout_runtime(
-            &self.runtime_ctx,
-            tenant_id,
-            claims.session_id,
-        )
-        .await
+        if let Err(error) =
+            AuthLifecycleService::logout_runtime(&self.runtime_ctx, tenant_id, claims.session_id)
+                .await
         {
             tracing::error!(
                 error = ?error,
@@ -347,10 +346,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
                 return Ok(());
             }
         };
-        let email_service = match email_service_from_ctx(
-            &self.runtime_ctx,
-            context.locale.as_str(),
-        ) {
+        let email_service = match email_service_from_ctx(&self.runtime_ctx, context.locale.as_str())
+        {
             Ok(service) => service,
             Err(_) => {
                 tracing::warn!(

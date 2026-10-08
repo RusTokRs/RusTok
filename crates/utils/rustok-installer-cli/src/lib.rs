@@ -88,7 +88,9 @@ impl CommandProvider for InstallerCommandProvider {
             .map(InstallEnvironment::parse_cli_value)
             .transpose()
             .map_err(input)?
-            .ok_or_else(|| input("seed apply requires an explicit --environment (local, demo, or test)"))?;
+            .ok_or_else(|| {
+                input("seed apply requires an explicit --environment (local, demo, or test)")
+            })?;
         if seed_environment.is_production() {
             return Err(input(
                 "seed apply is not allowed for production installations; use install apply",
@@ -154,8 +156,11 @@ impl CommandProvider for InstallerCommandProvider {
             password: password.clone(),
         });
         let registry = rustok_distribution::build_registry();
-        let ports =
-            SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, profile.default_enabled_modules());
+        let ports = SeaOrmInstallerBootstrapPorts::new(
+            db.clone(),
+            &registry,
+            profile.default_enabled_modules(),
+        );
         let result = execute_seed_profile(
             SeedExecutionRequest {
                 profile,
@@ -178,7 +183,10 @@ impl CommandProvider for InstallerCommandProvider {
             let blueprint = if starter_name == "default" {
                 rustok_starter::default_starter()
             } else {
-                return Err(input(format!("Unknown starter blueprint: {}", starter_name)));
+                return Err(input(format!(
+                    "Unknown starter blueprint: {}",
+                    starter_name
+                )));
             };
             let event_bus = rustok_outbox::TransactionalEventBus::new(std::sync::Arc::new(
                 rustok_outbox::OutboxTransport::new(db.clone()),
@@ -194,12 +202,14 @@ impl CommandProvider for InstallerCommandProvider {
             None
         };
 
-        Ok(CommandOutcome::success("Seed profile applied").with_data(serde_json::json!({
-            "tenant_id": result.tenant.id,
-            "tenant_slug": result.tenant.slug,
-            "enabled_modules": result.enabled_modules,
-            "starter": starter_report,
-        })))
+        Ok(
+            CommandOutcome::success("Seed profile applied").with_data(serde_json::json!({
+                "tenant_id": result.tenant.id,
+                "tenant_slug": result.tenant.slug,
+                "enabled_modules": result.enabled_modules,
+                "starter": starter_report,
+            })),
+        )
     }
 }
 
@@ -279,14 +289,22 @@ impl InstallerCommandProvider {
         let file_path = option(options, "file");
 
         let blueprint = if let Some(path) = file_path {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|err| failed(format!("Failed to read blueprint file `{}`: {}", path, err)))?;
-            serde_json::from_str::<rustok_starter::StarterBlueprint>(&content)
-                .map_err(|err| failed(format!("Failed to parse blueprint JSON `{}`: {}", path, err)))?
+            let content = std::fs::read_to_string(&path).map_err(|err| {
+                failed(format!("Failed to read blueprint file `{}`: {}", path, err))
+            })?;
+            serde_json::from_str::<rustok_starter::StarterBlueprint>(&content).map_err(|err| {
+                failed(format!(
+                    "Failed to parse blueprint JSON `{}`: {}",
+                    path, err
+                ))
+            })?
         } else if starter_name == "default" {
             rustok_starter::default_starter()
         } else {
-            return Err(input(format!("Unknown starter blueprint: {}", starter_name)));
+            return Err(input(format!(
+                "Unknown starter blueprint: {}",
+                starter_name
+            )));
         };
 
         if dry_run {
@@ -325,8 +343,10 @@ impl InstallerCommandProvider {
             .await
             .map_err(failed)?;
 
-        Ok(CommandOutcome::success("Starter blueprint imported successfully")
-            .with_data(serde_json::to_value(&report).map_err(failed)?))
+        Ok(
+            CommandOutcome::success("Starter blueprint imported successfully")
+                .with_data(serde_json::to_value(&report).map_err(failed)?),
+        )
     }
 }
 
@@ -629,10 +649,8 @@ mod tests {
     fn write_test_receipt() -> (std::path::PathBuf, String) {
         let now = chrono::Utc::now();
         let (receipt, public_key) = signed_base_distribution_receipt(now);
-        let path = std::env::temp_dir().join(format!(
-            "rustok-test-receipt-{}.json",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("rustok-test-receipt-{}.json", uuid::Uuid::new_v4()));
         std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
         (path, public_key)
     }
@@ -655,7 +673,11 @@ mod tests {
             })
             .await
             .expect_err("seed apply must require explicit environment");
-        assert!(missing_environment.to_string().contains("explicit --environment"));
+        assert!(
+            missing_environment
+                .to_string()
+                .contains("explicit --environment")
+        );
 
         let production = provider
             .execute(CommandRequest {
@@ -671,9 +693,11 @@ mod tests {
             })
             .await
             .expect_err("seed apply must reject production");
-        assert!(production
-            .to_string()
-            .contains("not allowed for production installations"));
+        assert!(
+            production
+                .to_string()
+                .contains("not allowed for production installations")
+        );
 
         let local = provider
             .execute(CommandRequest {
@@ -752,11 +776,13 @@ mod tests {
 
         assert_eq!(outcome.exit_code, 0);
         assert_eq!(outcome.data["passed"], serde_json::json!(false));
-        assert!(outcome.data["report"]["issues"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|issue| issue["code"] == "distribution_deployment_unavailable"));
+        assert!(
+            outcome.data["report"]["issues"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|issue| issue["code"] == "distribution_deployment_unavailable")
+        );
         assert!(!outcome.data.to_string().contains("admin12345"));
         assert!(!outcome.data.to_string().contains("rustok:secret"));
     }
@@ -785,4 +811,3 @@ mod tests {
         assert_eq!(outcome.data["dry_run"], true);
     }
 }
-

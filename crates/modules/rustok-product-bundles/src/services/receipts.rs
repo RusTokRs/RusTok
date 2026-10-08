@@ -24,9 +24,7 @@ use uuid::Uuid;
 
 use crate::dto::{BundleDto, BundleItemDto, BundleItemInput, CreateBundleInput};
 use crate::error::BundleError;
-use crate::services::bundle_service::{
-    BundleService, add_bundle_item_in_tx, create_bundle_in_tx,
-};
+use crate::services::bundle_service::{BundleService, add_bundle_item_in_tx, create_bundle_in_tx};
 
 /// Durable owner identity for Product bundle receipts.
 pub const PRODUCT_BUNDLE_OWNER_SLUG: &str = "product_bundles";
@@ -109,13 +107,8 @@ impl BundleService {
             "bundle_id": bundle_id,
             "item": &item,
         });
-        let lease = match admit_bundle_operation(
-            self,
-            context,
-            ADD_BUNDLE_ITEM_OPERATION,
-            &request,
-        )
-        .await?
+        let lease = match admit_bundle_operation(self, context, ADD_BUNDLE_ITEM_OPERATION, &request)
+            .await?
         {
             idempotency::Admission::Run(lease) => lease,
             idempotency::Admission::Replay(value) => return decode_bundle_item_receipt(value),

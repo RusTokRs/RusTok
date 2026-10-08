@@ -371,7 +371,6 @@ async fn full_blog_reindex_replaces_only_current_tenant_blog_documents() -> Test
     test_db.cleanup().await
 }
 
-
 #[tokio::test]
 async fn blog_projection_does_not_join_author_from_another_tenant() -> TestResult<()> {
     let Some(test_db) = PostgresSearchTestDb::setup("blog_author_tenant").await? else {

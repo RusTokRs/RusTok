@@ -61,16 +61,17 @@ pub fn ui_badge_container_class(tone: UiBadgeTone) -> &'static str {
 pub fn status_badge_tone(status: &str) -> UiBadgeTone {
     let normalized = status.trim().to_ascii_lowercase();
     match normalized.as_str() {
-        "active" | "published" | "paid" | "completed" | "delivered" | "success"
-        | "approved" | "available" | "healthy" | "in_stock" => UiBadgeTone::Success,
+        "active" | "published" | "paid" | "completed" | "delivered" | "success" | "approved"
+        | "available" | "healthy" | "in_stock" => UiBadgeTone::Success,
 
-        "draft" | "pending" | "processing" | "low_stock" | "warning" | "review"
-        | "in_progress" => UiBadgeTone::Warning,
+        "draft" | "pending" | "processing" | "low_stock" | "warning" | "review" | "in_progress" => {
+            UiBadgeTone::Warning
+        }
 
         "archived" | "inactive" | "disabled" | "neutral" => UiBadgeTone::Neutral,
 
-        "failed" | "error" | "rejected" | "cancelled" | "canceled" | "danger"
-        | "out_of_stock" | "spam" => UiBadgeTone::Danger,
+        "failed" | "error" | "rejected" | "cancelled" | "canceled" | "danger" | "out_of_stock"
+        | "spam" => UiBadgeTone::Danger,
 
         "info" | "shipped" | "refunded" | "replaying" => UiBadgeTone::Info,
 
@@ -102,7 +103,10 @@ mod tests {
         assert_eq!(status_badge_tone("FAILED"), UiBadgeTone::Danger);
         assert_eq!(status_badge_tone("cancelled"), UiBadgeTone::Danger);
 
-        assert_eq!(status_badge_tone("unknown_custom_value"), UiBadgeTone::Muted);
+        assert_eq!(
+            status_badge_tone("unknown_custom_value"),
+            UiBadgeTone::Muted
+        );
     }
 
     #[test]

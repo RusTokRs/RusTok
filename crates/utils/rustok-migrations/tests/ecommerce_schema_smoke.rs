@@ -14,7 +14,9 @@ use rustok_fulfillment::dto::{
 use rustok_fulfillment::services::FulfillmentService;
 use rustok_inventory::InventoryService;
 use rustok_inventory::entities;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement};
+use rustok_order::dto::{
+    CreateOrderInput, CreateOrderLineItemInput, OrderLineFulfillmentRequirement,
+};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CompleteRefundInput, CreatePaymentCollectionInput,

@@ -2,7 +2,6 @@ use super::{BoundaryError, GRAPHQL_QUERY_FULFILLMENT_BOUNDARY, error::Fulfillmen
 use ::rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use ::uuid::Uuid;
 
-
 pub(super) fn fulfillment_query_context(
     tenant_id: Uuid,
     query_field: &'static str,
@@ -30,7 +29,6 @@ fn with_current_graphql_public_channel(context: PortContext) -> PortContext {
         None => context,
     }
 }
-
 
 pub(super) fn map_fulfillment_port_error(
     error: PortError,
@@ -169,7 +167,6 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
 fn text_presence_shape(value: &str) -> &'static str {
     if value.is_empty() { "empty" } else { "present" }
 }
-
 
 #[allow(clippy::too_many_arguments)]
 fn log_fulfillment_port_error(

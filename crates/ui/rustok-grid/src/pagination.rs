@@ -101,7 +101,9 @@ impl GridPagination {
     /// Number of rows rendered for the current page/mode.
     pub fn visible_len(&self) -> usize {
         match self.mode {
-            PaginationMode::Paged => self.to_index().saturating_sub(self.from_index().saturating_sub(1)),
+            PaginationMode::Paged => self
+                .to_index()
+                .saturating_sub(self.from_index().saturating_sub(1)),
             PaginationMode::Infinite => self.to_index(),
         }
     }
@@ -168,11 +170,17 @@ impl GridPagination {
     pub fn slice_bounds(&self, len: usize) -> (usize, usize) {
         match self.mode {
             PaginationMode::Paged => {
-                let start = self.page.saturating_sub(1).saturating_mul(self.page_size).min(len);
+                let start = self
+                    .page
+                    .saturating_sub(1)
+                    .saturating_mul(self.page_size)
+                    .min(len);
                 let end = start.saturating_add(self.page_size).min(len);
                 (start, end)
             }
-            PaginationMode::Infinite => (0, self.page.max(1).saturating_mul(self.page_size).min(len)),
+            PaginationMode::Infinite => {
+                (0, self.page.max(1).saturating_mul(self.page_size).min(len))
+            }
         }
     }
 }

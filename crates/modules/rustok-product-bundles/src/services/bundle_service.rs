@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use rustok_product::entities::{product, product_variant};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
     Statement, TransactionTrait,
 };
 use uuid::Uuid;
-use rustok_product::entities::{product, product_variant};
 
 use crate::dto::{
     BundleDto, BundleFilter, BundleItemDto, BundleItemInput, BundleListResponse,
@@ -32,7 +32,9 @@ async fn lock_bundle_for_update(
 ) -> BundleResult<crate::entities::bundle::Model> {
     let query = Bundle::find_by_id(bundle_id).filter(BundleColumn::TenantId.eq(tenant_id));
     let bundle = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,

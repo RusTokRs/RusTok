@@ -248,7 +248,9 @@ pub fn apply_style_rule_command(
 
 fn upsert_raw_style_rule(document: &mut ProjectDocument, rule: Value) -> FlyResult<()> {
     let descriptor = StyleRuleDescriptor::from_value(rule.clone()).ok_or_else(|| {
-        FlyError::Decode("raw style rule must be an object with GrapesJS style metadata".to_string())
+        FlyError::Decode(
+            "raw style rule must be an object with GrapesJS style metadata".to_string(),
+        )
     })?;
     if let Some(component_id) = descriptor.component_id.as_deref()
         && !document.contains_component(component_id)
@@ -330,7 +332,6 @@ fn find_component_rule_index(
             .is_some_and(|rule| rule.targets(component_id, scope_key.as_str()))
     })
 }
-
 
 fn remove_empty_component_rules(document: &mut ProjectDocument) {
     document.project.styles.retain(|raw| {
@@ -571,4 +572,3 @@ mod tests {
         }
     }
 }
-

@@ -350,8 +350,14 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
             .await
         {
             Ok(collection) => {
-                self.mark_journal_committed(&context, OPERATION, tenant_id, journaled.operation_id, "capture")
-                    .await?;
+                self.mark_journal_committed(
+                    &context,
+                    OPERATION,
+                    tenant_id,
+                    journaled.operation_id,
+                    "capture",
+                )
+                .await?;
                 Ok(collection)
             }
             Err(error) => {
@@ -452,8 +458,14 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         {
             Ok(collection) => {
                 if let Some(operation_id) = provider_operation_id {
-                    self.mark_journal_committed(&context, OPERATION, tenant_id, operation_id, "cancel")
-                        .await?;
+                    self.mark_journal_committed(
+                        &context,
+                        OPERATION,
+                        tenant_id,
+                        operation_id,
+                        "cancel",
+                    )
+                    .await?;
                 }
                 Ok(collection)
             }
@@ -787,8 +799,14 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(context, owner_operation, tenant_id, existing.id, provider_operation)
-                .await?;
+            self.mark_journal_committed(
+                context,
+                owner_operation,
+                tenant_id,
+                existing.id,
+                provider_operation,
+            )
+            .await?;
         }
         Ok(())
     }

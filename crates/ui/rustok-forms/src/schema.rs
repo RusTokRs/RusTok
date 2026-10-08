@@ -119,7 +119,9 @@ impl FormSchema {
             // 1. Check required
             if field.constraints.required {
                 let val_str = value.unwrap_or("");
-                if let Err(e) = rules::required(&field.name, val_str, format!("{} is required", field.name)) {
+                if let Err(e) =
+                    rules::required(&field.name, val_str, format!("{} is required", field.name))
+                {
                     errors.push(e);
                     // Skip further checks if missing and required
                     continue;
@@ -133,19 +135,34 @@ impl FormSchema {
 
             // 2. Length checks
             if let Some(min) = field.constraints.min_length {
-                if let Err(e) = rules::min_length(&field.name, val_str, min, format!("{} must be at least {} characters", field.name, min)) {
+                if let Err(e) = rules::min_length(
+                    &field.name,
+                    val_str,
+                    min,
+                    format!("{} must be at least {} characters", field.name, min),
+                ) {
                     errors.push(e);
                 }
             }
             if let Some(max) = field.constraints.max_length {
-                if let Err(e) = rules::max_length(&field.name, val_str, max, format!("{} must be at most {} characters", field.name, max)) {
+                if let Err(e) = rules::max_length(
+                    &field.name,
+                    val_str,
+                    max,
+                    format!("{} must be at most {} characters", field.name, max),
+                ) {
                     errors.push(e);
                 }
             }
 
             // 3. Pattern checks
             if let Some(pattern) = &field.constraints.pattern {
-                if let Err(e) = rules::pattern(&field.name, val_str, pattern, format!("{} format is invalid", field.name)) {
+                if let Err(e) = rules::pattern(
+                    &field.name,
+                    val_str,
+                    pattern,
+                    format!("{} format is invalid", field.name),
+                ) {
                     errors.push(e);
                 }
             }
@@ -153,7 +170,9 @@ impl FormSchema {
             // 4. Kind-specific format checks
             match field.kind {
                 FieldKind::Email => {
-                    if let Err(e) = rules::email(&field.name, val_str, "Invalid email address format") {
+                    if let Err(e) =
+                        rules::email(&field.name, val_str, "Invalid email address format")
+                    {
                         errors.push(e);
                     }
                 }
@@ -165,12 +184,22 @@ impl FormSchema {
                 FieldKind::Number | FieldKind::Range => {
                     if let Ok(num) = val_str.parse::<f64>() {
                         if let Some(min) = field.constraints.min {
-                            if let Err(e) = rules::min(&field.name, num, min, format!("{} must be at least {}", field.name, min)) {
+                            if let Err(e) = rules::min(
+                                &field.name,
+                                num,
+                                min,
+                                format!("{} must be at least {}", field.name, min),
+                            ) {
                                 errors.push(e);
                             }
                         }
                         if let Some(max) = field.constraints.max {
-                            if let Err(e) = rules::max(&field.name, num, max, format!("{} must be at most {}", field.name, max)) {
+                            if let Err(e) = rules::max(
+                                &field.name,
+                                num,
+                                max,
+                                format!("{} must be at most {}", field.name, max),
+                            ) {
                                 errors.push(e);
                             }
                         }
@@ -185,7 +214,12 @@ impl FormSchema {
                     if !field.options.is_empty() {
                         let allowed_values: Vec<&str> =
                             field.options.iter().map(|o| o.value.as_str()).collect();
-                        if let Err(e) = rules::one_of(&field.name, val_str, &allowed_values, format!("{} must be one of allowed options", field.name)) {
+                        if let Err(e) = rules::one_of(
+                            &field.name,
+                            val_str,
+                            &allowed_values,
+                            format!("{} must be one of allowed options", field.name),
+                        ) {
                             errors.push(e);
                         }
                     }
@@ -270,9 +304,8 @@ mod tests {
 
     #[test]
     fn test_validate_json() {
-        let schema = FormSchema::new("contact_form").with_field(
-            FieldDescriptor::new("email", FieldKind::Email).required(),
-        );
+        let schema = FormSchema::new("contact_form")
+            .with_field(FieldDescriptor::new("email", FieldKind::Email).required());
 
         let json = serde_json::json!({
             "email": "not-an-email"

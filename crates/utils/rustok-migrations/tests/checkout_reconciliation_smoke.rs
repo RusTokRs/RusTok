@@ -1,11 +1,11 @@
 use rust_decimal::Decimal;
+use rustok_api::{PortActor, PortContext};
 use rustok_cart::dto::CreateCartInput;
 use rustok_cart::{CartService, in_process_cart_checkout_port};
 use rustok_commerce::{
     BeginCheckoutOperation, CheckoutCompensationSweepService, CheckoutOperationCheckpoint,
     CheckoutOperationJournal, CheckoutOperationStage, checkout_execution_admission_port,
 };
-use rustok_api::{PortActor, PortContext};
 use rustok_migrations::SqliteTestMigrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_payment::dto::CreatePaymentCollectionInput;
@@ -27,8 +27,7 @@ async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_executio
     // The journal publishes `checkout.operation.parked` through the writer's
     // transaction, and in-transaction contract writes require the real outbox
     // transport, not a recording mock.
-    let event_bus =
-        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let cart = CartService::new(db.clone())
@@ -163,7 +162,9 @@ async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_executio
         .await
         .expect_err("a checkpoint must not re-point the binding at another collection");
     assert!(
-        rebind.to_string().contains("already bound to payment collection"),
+        rebind
+            .to_string()
+            .contains("already bound to payment collection"),
         "the refusal must name the write-once binding: {rebind}"
     );
     let after_rebind_attempt = operation_journal
@@ -261,7 +262,10 @@ async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_executio
     );
     let refusal_error = rustok_payment::execution_admission_refusal_error(&refused_operation)
         .expect("a recorded refusal must produce a bounded owner error");
-    assert_eq!(refusal_error.code.as_str(), "payment.checkout_admission_settling");
+    assert_eq!(
+        refusal_error.code.as_str(),
+        "payment.checkout_admission_settling"
+    );
 
     let sweep = CheckoutCompensationSweepService::new(
         db.clone(),
@@ -370,7 +374,10 @@ async fn park_time_fence_reaches_provider_operations_before_the_collection_is_bo
         })
         .await
         .expect("provider operation must be journaled");
-    assert_eq!(provider_operation.admission_epoch, operation.admission_epoch);
+    assert_eq!(
+        provider_operation.admission_epoch,
+        operation.admission_epoch
+    );
 
     let lease_owner = format!("checkout-unbound-fence-test:{}", Uuid::new_v4());
     operation_journal
@@ -517,13 +524,19 @@ async fn compensation_resolves_the_collection_before_the_binding_is_written() {
         .expect("the unbound collection must be resolved through the cart metadata link");
 
     assert_eq!(snapshot.collection_id, collection.id);
-    assert_eq!(snapshot.status_kind(), PaymentCollectionStatusKind::Cancelled);
+    assert_eq!(
+        snapshot.status_kind(),
+        PaymentCollectionStatusKind::Cancelled
+    );
 
     let persisted = PaymentService::new(db.clone())
         .get_collection(tenant_id, collection.id)
         .await
         .expect("the compensated collection must remain readable");
-    assert_eq!(persisted.status_kind(), PaymentCollectionStatusKind::Cancelled);
+    assert_eq!(
+        persisted.status_kind(),
+        PaymentCollectionStatusKind::Cancelled
+    );
 
     // A different checkout must not adopt this collection: the resolution is
     // keyed by the collection's metadata link, not by the cart alone.
@@ -535,7 +548,9 @@ async fn compensation_resolves_the_collection_before_the_binding_is_written() {
         format!("checkout:{other_operation_id}:compensation:payment"),
     )
     .with_causation_id(other_operation_id.to_string())
-    .with_idempotency_key(format!("checkout:{other_operation_id}:compensation:payment"))
+    .with_idempotency_key(format!(
+        "checkout:{other_operation_id}:compensation:payment"
+    ))
     .with_deadline(std::time::Duration::from_secs(10));
     let unmatched = compensation
         .compensate_checkout_payment(

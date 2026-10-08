@@ -1,12 +1,12 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::application_model::GroupsStorefrontApplicationMembership;
 use crate::application_model::{
     CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationLifecycleResult,
     GroupsStorefrontMembershipApplication, GroupsStorefrontMyApplicationQuery,
 };
-#[cfg(feature = "ssr")]
-use crate::application_model::GroupsStorefrontApplicationMembership;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsApplicationLifecycleError(pub String);

@@ -182,4 +182,3 @@ CREATE TABLE users (
     }
     Ok(db)
 }
-

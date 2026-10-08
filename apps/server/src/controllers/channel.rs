@@ -73,7 +73,9 @@ async fn bootstrap(
         .collect::<Vec<_>>();
     oauth_apps.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-    Ok(json_response(ChannelBootstrapResponse::<crate::context::ChannelContext> {
+    Ok(json_response(ChannelBootstrapResponse::<
+        crate::context::ChannelContext,
+    > {
         current_channel,
         channels,
         policy_sets,
@@ -551,10 +553,7 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::map_channel_error;
-    use axum::{
-        response::IntoResponse,
-        http::StatusCode,
-    };
+    use axum::{http::StatusCode, response::IntoResponse};
     use rustok_channel::ChannelError;
     use uuid::Uuid;
 
@@ -575,10 +574,8 @@ mod tests {
 
     #[test]
     fn maps_channel_conflicts_to_conflict() {
-        let response = map_channel_error(ChannelError::SlugAlreadyExists(
-            "default".to_string(),
-        ))
-        .into_response();
+        let response = map_channel_error(ChannelError::SlugAlreadyExists("default".to_string()))
+            .into_response();
         assert_eq!(response.status(), StatusCode::CONFLICT);
 
         let response = map_channel_error(ChannelError::TargetAlreadyExists(
@@ -604,9 +601,9 @@ mod tests {
 
     #[test]
     fn maps_channel_database_error_to_internal_server_error() {
-        let response = map_channel_error(ChannelError::Database(
-            sea_orm::DbErr::Custom("database failure".to_string()),
-        ))
+        let response = map_channel_error(ChannelError::Database(sea_orm::DbErr::Custom(
+            "database failure".to_string(),
+        )))
         .into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }

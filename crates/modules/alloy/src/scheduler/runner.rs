@@ -203,15 +203,13 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
         script: &Script,
         cron_expr: &str,
     ) -> Result<ScheduledJob, crate::error::ScriptError> {
-        let schedule = Schedule::from_str(cron_expr)
-            .map_err(|err| crate::error::ScriptError::InvalidTrigger(format!("Invalid cron: {err}")))?;
+        let schedule = Schedule::from_str(cron_expr).map_err(|err| {
+            crate::error::ScriptError::InvalidTrigger(format!("Invalid cron: {err}"))
+        })?;
 
-        let next_run = schedule
-            .upcoming(Utc)
-            .next()
-            .ok_or_else(|| {
-                crate::error::ScriptError::InvalidTrigger("No upcoming schedule".to_string())
-            })?;
+        let next_run = schedule.upcoming(Utc).next().ok_or_else(|| {
+            crate::error::ScriptError::InvalidTrigger("No upcoming schedule".to_string())
+        })?;
 
         Ok(ScheduledJob {
             script_id: script.id,

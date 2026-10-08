@@ -40,12 +40,10 @@ pub fn FormField(
     class: String,
     children: Children,
 ) -> impl IntoView {
-    let form_ctx = use_context::<FormContext>().unwrap_or_else(|| {
-        FormContext {
-            state: Signal::derive(FormState::idle),
-            rw_state: None,
-            dirty_tracker: None,
-        }
+    let form_ctx = use_context::<FormContext>().unwrap_or_else(|| FormContext {
+        state: Signal::derive(FormState::idle),
+        rw_state: None,
+        dirty_tracker: None,
     });
 
     let field_id = id.unwrap_or_else(|| name.clone());
@@ -155,9 +153,7 @@ pub fn FormControl(
 ) -> impl IntoView {
     let field = use_context::<FieldContext>();
 
-    let aria_invalid = move || {
-        field.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
-    };
+    let aria_invalid = move || field.as_ref().map(|f| f.is_invalid()).unwrap_or(false);
 
     view! {
         <div
@@ -305,7 +301,9 @@ pub fn FormError(
         if let Some(ref m) = message {
             Some(m.clone())
         } else {
-            form_ctx.as_ref().and_then(|ctx| ctx.state.get().form_error.clone())
+            form_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.state.get().form_error.clone())
         }
     };
 

@@ -8,8 +8,8 @@ use async_graphql::http::{GraphQLPlaygroundConfig, WebSocketProtocols, WsMessage
 use axum::{
     Extension, Json,
     extract::{
-        rejection::JsonRejection,
         State,
+        rejection::JsonRejection,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, StatusCode, header},
@@ -18,7 +18,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use rustok_api::{
-    Action, AuthPrincipalContext, Permission, PLATFORM_FALLBACK_LOCALE, PortActor, PortContext,
+    Action, AuthPrincipalContext, PLATFORM_FALLBACK_LOCALE, Permission, PortActor, PortContext,
 };
 
 use rustok_core::i18n::Locale;
@@ -457,8 +457,7 @@ async fn build_ws_connection_data(
         current_user.inferred_role.clone(),
     );
 
-    let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref())
-        .await?;
+    let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;
 
     auth_lease
         .set(GraphqlWsAuthLease {
@@ -557,8 +556,7 @@ async fn resolve_ws_locale(
                 .locales
                 .iter()
                 .find(|entry| {
-                    entry.is_enabled
-                        && entry.locale.as_str() == tenant_ctx.default_locale.as_str()
+                    entry.is_enabled && entry.locale.as_str() == tenant_ctx.default_locale.as_str()
                 })
                 .map(|entry| entry.locale.as_str().to_string())
         })
@@ -574,8 +572,7 @@ async fn resolve_ws_locale(
                 .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
         });
 
-    Locale::parse(&locale)
-        .ok_or_else(|| async_graphql::Error::new("Invalid tenant locale policy"))
+    Locale::parse(&locale).ok_or_else(|| async_graphql::Error::new("Invalid tenant locale policy"))
 }
 
 const GRAPHQL_HTTP_PATH: &str = "/api/graphql";
@@ -620,11 +617,15 @@ mod tests {
         let request = async_graphql::Request::new("{ __typename }");
         let mut request = request;
         request.extensions = async_graphql::Extensions::default();
-        request
-            .extensions
-            .insert("persistedQuery".to_string(), async_graphql::Value::from_json(valid["persistedQuery"].clone()).expect("json value"));
+        request.extensions.insert(
+            "persistedQuery".to_string(),
+            async_graphql::Value::from_json(valid["persistedQuery"].clone()).expect("json value"),
+        );
 
-        assert_eq!(super::persisted_query_hash(&request), Some("a".repeat(64).as_str()));
+        assert_eq!(
+            super::persisted_query_hash(&request),
+            Some("a".repeat(64).as_str())
+        );
 
         let mut request = async_graphql::Request::new("{ __typename }");
         request.extensions = async_graphql::Extensions::default();
@@ -633,7 +634,8 @@ mod tests {
             async_graphql::Value::from_json(serde_json::json!({
                 "version": 1,
                 "sha256Hash": "b".repeat(65)
-            })).expect("json value"),
+            }))
+            .expect("json value"),
         );
         assert!(super::persisted_query_hash(&request).is_none());
     }
@@ -658,7 +660,10 @@ mod tests {
 
     #[test]
     fn graphql_ws_connection_init_wait_is_bounded_and_protocol_compliant() {
-        assert_eq!(WS_CONNECTION_INIT_TIMEOUT, std::time::Duration::from_secs(10));
+        assert_eq!(
+            WS_CONNECTION_INIT_TIMEOUT,
+            std::time::Duration::from_secs(10)
+        );
         assert_eq!(WS_CONNECTION_INIT_TIMEOUT_CLOSE, 4408);
         assert_eq!(
             WS_CONNECTION_INIT_TIMEOUT_REASON,
@@ -775,8 +780,10 @@ mod tests {
             .find("let locale = resolve_ws_locale")
             .expect("locale resolution call should exist");
         let lease_set = source
-            .find("auth_lease
-        .set(GraphqlWsAuthLease")
+            .find(
+                "auth_lease
+        .set(GraphqlWsAuthLease",
+            )
             .expect("auth lease publication should exist");
         assert!(
             locale_call < lease_set,

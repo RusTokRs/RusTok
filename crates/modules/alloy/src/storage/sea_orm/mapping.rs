@@ -10,17 +10,17 @@ use std::str::FromStr;
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     EventType, HttpMethod, ReviewDecision, ReviewStatus, RhaiWorkspace, RustComponentCandidate,
-    RustComponentCandidateBuild, RustComponentCandidateBuildExecution, RustComponentCandidateReview,
-    RustComponentWorkspace, Script, ScriptDeletionCommand, ScriptDeletionError,
-    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
-    ScriptStatus, ScriptTrigger, TestRun, TestRunStatus,
+    RustComponentCandidateBuild, RustComponentCandidateBuildExecution,
+    RustComponentCandidateReview, RustComponentWorkspace, Script, ScriptDeletionCommand,
+    ScriptDeletionError, ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId,
+    ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestRun, TestRunStatus,
 };
 use crate::storage::ScriptQuery;
 
 use super::entities::{
-    component_candidate, component_candidate_build, component_candidate_build_execution,
-    component_candidate_review, draft_retention_receipt, draft_review, draft_revision,
-    draft_test_run, draft_tombstone, ActiveModel, Column, Entity, Model,
+    ActiveModel, Column, Entity, Model, component_candidate, component_candidate_build,
+    component_candidate_build_execution, component_candidate_review, draft_retention_receipt,
+    draft_review, draft_revision, draft_test_run, draft_tombstone,
 };
 
 pub(crate) fn retention_state_from_parts(
@@ -183,10 +183,9 @@ pub(crate) fn model_to_script(model: Model) -> ScriptResult<Script> {
         })
         .unwrap_or_default();
 
-    let workspace: RhaiWorkspace =
-        serde_json::from_value(model.workspace).map_err(|error| {
-            ScriptError::InvalidWorkspace(format!("stored workspace is invalid: {error}"))
-        })?;
+    let workspace: RhaiWorkspace = serde_json::from_value(model.workspace).map_err(|error| {
+        ScriptError::InvalidWorkspace(format!("stored workspace is invalid: {error}"))
+    })?;
     workspace.validate().map_err(ScriptError::from)?;
     let source_provenance = source_provenance_from_json(model.source_provenance)?;
 
@@ -242,10 +241,9 @@ pub(crate) fn source_provenance_to_json(
 pub(crate) fn source_provenance_from_json(
     value: serde_json::Value,
 ) -> ScriptResult<crate::SourceProvenance> {
-    let provenance: crate::SourceProvenance =
-        serde_json::from_value(value).map_err(|error| {
-            ScriptError::Storage(format!("stored source provenance is invalid: {error}"))
-        })?;
+    let provenance: crate::SourceProvenance = serde_json::from_value(value).map_err(|error| {
+        ScriptError::Storage(format!("stored source provenance is invalid: {error}"))
+    })?;
     provenance
         .validate()
         .map_err(|error| ScriptError::Storage(error.to_string()))?;
@@ -267,9 +265,7 @@ pub(crate) fn new_script_active_model(script: &Script) -> ScriptResult<ActiveMod
         run_as_system: ActiveValue::Set(script.run_as_system),
         permissions: ActiveValue::Set(permissions_to_json(&script.permissions)),
         author_id: ActiveValue::Set(script.author_id.clone()),
-        source_provenance: ActiveValue::Set(source_provenance_to_json(
-            &script.source_provenance,
-        )?),
+        source_provenance: ActiveValue::Set(source_provenance_to_json(&script.source_provenance)?),
         parent_release_slug: ActiveValue::Set(
             script
                 .parent_release
@@ -325,12 +321,9 @@ pub(crate) fn model_to_source_revision(
         ));
     }
 
-    let workspace: RhaiWorkspace =
-        serde_json::from_value(model.workspace).map_err(|error| {
-            ScriptError::InvalidWorkspace(format!(
-                "stored revision workspace is invalid: {error}"
-            ))
-        })?;
+    let workspace: RhaiWorkspace = serde_json::from_value(model.workspace).map_err(|error| {
+        ScriptError::InvalidWorkspace(format!("stored revision workspace is invalid: {error}"))
+    })?;
     workspace.validate().map_err(ScriptError::from)?;
     let source_provenance = source_provenance_from_json(model.source_provenance)?;
 

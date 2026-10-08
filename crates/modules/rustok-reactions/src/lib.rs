@@ -7,16 +7,16 @@ mod service;
 mod target_lifecycle;
 
 use async_trait::async_trait;
-use std::sync::Arc;
 use rustok_core::{
     MigrationDependencyDescriptor, MigrationSource, ModuleEventListenerContext,
     ModuleEventListenerRegistry, ModuleRuntimeExtensions, RusToKModule,
 };
 use rustok_reactions_api::{
-    ensure_reaction_subject_factory_registry, ensure_reaction_subject_registry,
-    reaction_subject_registry_from_extensions, ReactionSubjectRegistry,
+    ReactionSubjectRegistry, ensure_reaction_subject_factory_registry,
+    ensure_reaction_subject_registry, reaction_subject_registry_from_extensions,
 };
 use sea_orm_migration::MigrationTrait;
+use std::sync::Arc;
 
 pub use reconciliation::{
     MAX_REACTION_RECONCILIATION_ACTOR_STATES, MAX_REACTION_RECONCILIATION_ISSUES,

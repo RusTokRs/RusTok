@@ -156,20 +156,21 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
         &self,
         authoritative: StorefrontProductList,
         params: StorefrontBudgetedExecutionParams,
-    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError> {
-        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match params.decision
-        {
-            ProductStorefrontIndexServingBudgetDecision::Eligible {
-                index_execution_ms,
-                tag_hydration_ms,
-                safety_margin_ms,
-            } => (index_execution_ms, tag_hydration_ms, safety_margin_ms),
-            other => {
-                return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(
-                    other,
-                ));
-            }
-        };
+    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError>
+    {
+        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) =
+            match params.decision {
+                ProductStorefrontIndexServingBudgetDecision::Eligible {
+                    index_execution_ms,
+                    tag_hydration_ms,
+                    safety_margin_ms,
+                } => (index_execution_ms, tag_hydration_ms, safety_margin_ms),
+                other => {
+                    return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(
+                        other,
+                    ));
+                }
+            };
 
         let mut index_context = params.context.clone();
         index_context.deadline_ms = Some(index_execution_budget_ms);
@@ -204,8 +205,11 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
                 Some(
                     match timeout(
                         Duration::from_millis(tag_hydration_budget_ms),
-                        self.phases
-                            .hydrate_projected_tags(tag_context, params.fallback_locale, projected),
+                        self.phases.hydrate_projected_tags(
+                            tag_context,
+                            params.fallback_locale,
+                            projected,
+                        ),
                     )
                     .await
                     {

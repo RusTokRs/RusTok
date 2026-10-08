@@ -4,8 +4,7 @@ use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetReferenceInput, MediaAssetWritePort, MediaPublicImageReadPort,
-    MediaReconciliationRequest,
-    MediaUploadRequest, UpsertTranslationInput,
+    MediaReconciliationRequest, MediaUploadRequest, UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::{Code, Request, Response, Status};
@@ -513,12 +512,8 @@ mod tests {
         );
         let claimed = PortContext::new("tenant-a", PortActor::user("forged"), "en", "corr");
 
-        let error = trusted_context(
-            &request,
-            claimed,
-            MediaGrpcOperation::LookupAssetReferences,
-        )
-        .expect_err("exact owner-reference lookup requires an explicit trusted grant");
+        let error = trusted_context(&request, claimed, MediaGrpcOperation::LookupAssetReferences)
+            .expect_err("exact owner-reference lookup requires an explicit trusted grant");
 
         assert_eq!(error.code(), Code::PermissionDenied);
     }

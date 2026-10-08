@@ -135,7 +135,8 @@ mod tests {
                 "city": "Москва",
                 "streetAddress": "ул. Тверская, д. 1",
                 "postalCode": "125009",
-            }).to_string(),
+            })
+            .to_string(),
             payment_id: None,
             payment_method: Some("card".into()),
             tracking_number: Some("TRK123456".into()),

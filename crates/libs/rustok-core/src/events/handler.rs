@@ -485,8 +485,6 @@ mod tests {
         assert_eq!(error_notifications.load(Ordering::SeqCst), 0);
     }
 
-
-
     #[tokio::test]
     async fn dispatcher_respects_max_queue_depth_before_receiving_more_events() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -531,18 +529,28 @@ mod tests {
         });
         let running = dispatcher.start();
 
-        bus.publish(Uuid::new_v4(), None, DomainEvent::IndexUpdated {
-            index_name: "products".to_string(),
-            target_id: Uuid::new_v4(),
-        }).expect("first event publish");
+        bus.publish(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::IndexUpdated {
+                index_name: "products".to_string(),
+                target_id: Uuid::new_v4(),
+            },
+        )
+        .expect("first event publish");
         while started.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
 
-        bus.publish(Uuid::new_v4(), None, DomainEvent::IndexUpdated {
-            index_name: "products".to_string(),
-            target_id: Uuid::new_v4(),
-        }).expect("second event publish");
+        bus.publish(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::IndexUpdated {
+                index_name: "products".to_string(),
+                target_id: Uuid::new_v4(),
+            },
+        )
+        .expect("second event publish");
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }

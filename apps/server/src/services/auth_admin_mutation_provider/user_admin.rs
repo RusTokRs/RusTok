@@ -354,9 +354,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .map_err(map_custom_field_error)?;
         }
         let tenant_name = self.tenant_name(&tx, context.tenant_id).await?;
-        tx.commit()
-            .await
-            .map_err(super::internal_admin_error)?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
         Ok(ServerAuthAdminMutationProvider::user_record(
             user,
             role,
@@ -491,8 +489,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
-            active.password_hash = Set(hash_password(&password)
-                .map_err(|error| super::internal_admin_error(error))?);
+            active.password_hash =
+                Set(hash_password(&password).map_err(|error| super::internal_admin_error(error))?);
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
@@ -626,9 +624,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .as_ref()
             .map(|plan| plan.new_role().clone())
             .unwrap_or_else(|| current_role.clone());
-        tx.commit()
-            .await
-            .map_err(super::internal_admin_error)?;
+        tx.commit().await.map_err(super::internal_admin_error)?;
         if let Some(durable_generation) = durable_generation {
             publish_committed_user_invalidation(context.tenant_id, user.id, durable_generation)
                 .await;

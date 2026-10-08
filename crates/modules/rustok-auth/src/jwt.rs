@@ -498,41 +498,40 @@ mod tests {
             access_expiration: u64::MAX,
             ..config.clone()
         };
-        assert!(encode_access_token(
-            &access,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            UserRole::Customer,
-            Uuid::new_v4(),
-        )
-        .is_err());
+        assert!(
+            encode_access_token(
+                &access,
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                UserRole::Customer,
+                Uuid::new_v4(),
+            )
+            .is_err()
+        );
 
-        assert!(encode_oauth_access_token(
-            &config,
-            OauthAccessTokenInput {
-                app_id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                role: UserRole::Customer,
-                client_id: Uuid::new_v4(),
-                scopes: &[],
-                grant_type: "client_credentials",
-                expires_in_secs: u64::MAX,
-            },
-        )
-        .is_err());
+        assert!(
+            encode_oauth_access_token(
+                &config,
+                OauthAccessTokenInput {
+                    app_id: Uuid::new_v4(),
+                    tenant_id: Uuid::new_v4(),
+                    role: UserRole::Customer,
+                    client_id: Uuid::new_v4(),
+                    scopes: &[],
+                    grant_type: "client_credentials",
+                    expires_in_secs: u64::MAX,
+                },
+            )
+            .is_err()
+        );
 
         assert!(
             encode_password_reset_token(&config, Uuid::new_v4(), "user@example.com", u64::MAX)
                 .is_err()
         );
         assert!(
-            encode_email_verification_token(
-                &config,
-                Uuid::new_v4(),
-                "user@example.com",
-                u64::MAX
-            )
-            .is_err()
+            encode_email_verification_token(&config, Uuid::new_v4(), "user@example.com", u64::MAX)
+                .is_err()
         );
         assert!(
             encode_invite_token(

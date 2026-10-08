@@ -177,9 +177,7 @@ DROP TABLE IF EXISTS channel_index_identity_generations;
             DatabaseBackend::Sqlite => {
                 manager
                     .get_connection()
-                    .execute_unprepared(
-                        "DROP TABLE IF EXISTS channel_index_identity_generations;",
-                    )
+                    .execute_unprepared("DROP TABLE IF EXISTS channel_index_identity_generations;")
                     .await?;
                 Ok(())
             }

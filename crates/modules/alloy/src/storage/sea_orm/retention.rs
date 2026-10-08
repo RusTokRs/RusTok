@@ -2,26 +2,24 @@ use chrono::{DateTime, Utc};
 use rustok_core::RetentionPolicy;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
-use sea_orm::{
-    ActiveValue, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
-};
+use sea_orm::{ActiveValue, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    deleted_evidence_retention, ScriptDeletionCommand, ScriptEvidenceRetentionCommand,
-    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId,
+    ScriptDeletionCommand, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
+    ScriptEvidenceRetentionState, ScriptId, deleted_evidence_retention,
 };
 use crate::storage::ScriptRegistry;
 
+use super::SeaOrmStorage;
 use super::entities::{
-    component_candidate, component_candidate_build, component_candidate_build_execution,
-    component_candidate_review, draft_purge_receipt, draft_retention_receipt, draft_review,
-    draft_revision, draft_test_run, draft_tombstone, Column, Entity,
+    Column, Entity, component_candidate, component_candidate_build,
+    component_candidate_build_execution, component_candidate_review, draft_purge_receipt,
+    draft_retention_receipt, draft_review, draft_revision, draft_test_run, draft_tombstone,
 };
 use super::mapping::{
     replay_deleted_command, retention_state_from_receipt, retention_state_from_tombstone,
 };
-use super::SeaOrmStorage;
 
 impl SeaOrmStorage {
     pub(crate) async fn deletion_receipt(

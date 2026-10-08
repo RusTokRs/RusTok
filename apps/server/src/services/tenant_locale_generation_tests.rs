@@ -17,8 +17,8 @@ use super::*;
 use crate::common::settings::RustokSettings;
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::middleware::locale as locale_middleware;
-use rustok_tenant::entities::tenant as tenants;
 use crate::services::cache_runtime::ensure_cache_service;
+use rustok_tenant::entities::tenant as tenants;
 
 async fn locale_probe() -> &'static str {
     "ok"

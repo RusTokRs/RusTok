@@ -102,9 +102,14 @@ impl StarterEngine {
 
         // 4. Forum Categories & Topics
         if let Some(forum) = &blueprint.content.forum {
-            let (forum_cat_map, cat_created, cat_skipped) =
-                import_forum_categories(&self.db, tenant_id, &effective_security, &forum.categories, locale)
-                    .await?;
+            let (forum_cat_map, cat_created, cat_skipped) = import_forum_categories(
+                &self.db,
+                tenant_id,
+                &effective_security,
+                &forum.categories,
+                locale,
+            )
+            .await?;
             report.forum_categories_created = cat_created;
             report.skipped_existing += cat_skipped;
 
@@ -125,8 +130,14 @@ impl StarterEngine {
 
         // 5. Navigation
         if let Some(navigation) = &blueprint.content.navigation {
-            let (created, skipped) =
-                import_navigation(&self.db, tenant_id, &effective_security, &navigation.menus, locale).await?;
+            let (created, skipped) = import_navigation(
+                &self.db,
+                tenant_id,
+                &effective_security,
+                &navigation.menus,
+                locale,
+            )
+            .await?;
             report.menus_created = created;
             report.skipped_existing += skipped;
         }

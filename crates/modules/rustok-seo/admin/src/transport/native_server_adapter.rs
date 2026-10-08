@@ -792,7 +792,10 @@ mod tests {
         insert_tenant_module(&db, tenant_id, false, json!({})).await;
 
         let result = persist_seo_settings(&db, tenant_id, SeoModuleSettings::default()).await;
-        assert!(result.is_ok(), "dormant settings save should succeed for disabled module");
+        assert!(
+            result.is_ok(),
+            "dormant settings save should succeed for disabled module"
+        );
     }
 
     #[tokio::test]

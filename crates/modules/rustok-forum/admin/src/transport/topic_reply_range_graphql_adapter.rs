@@ -59,7 +59,6 @@ struct MoveInput {
     reason: String,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: V,

@@ -173,7 +173,6 @@ struct ShippingProfileTranslationInput {
     description: Option<String>,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,

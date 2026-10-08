@@ -475,7 +475,11 @@ fn undo_and_redo_rebind_instead_of_copying() {
     );
 
     editor.undo().expect("undo");
-    assert_eq!(editor.document(), &*entry_before, "undo restored the wrong state");
+    assert_eq!(
+        editor.document(),
+        &*entry_before,
+        "undo restored the wrong state"
+    );
     assert!(
         editor
             .document()
@@ -523,4 +527,3 @@ fn the_editor_refuses_a_snapshot_with_no_integrity_digest() {
     assert_eq!(editor.document().hash(), before);
     assert_eq!(editor.history().undo_len(), 0);
 }
-

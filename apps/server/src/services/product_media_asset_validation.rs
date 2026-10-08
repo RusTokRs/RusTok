@@ -99,10 +99,8 @@ fn resolve_media_asset_read_port(
         return None;
     };
 
-    let provider: Arc<dyn MediaAssetReadPort> = Arc::new(rustok_media::MediaService::new(
-        server.db_clone(),
-        storage,
-    ));
+    let provider: Arc<dyn MediaAssetReadPort> =
+        Arc::new(rustok_media::MediaService::new(server.db_clone(), storage));
     server.shared_insert(provider.clone());
     Some(provider)
 }
@@ -158,8 +156,7 @@ mod product_media_asset_validation_tests {
             Arc::new(MediaService::new(db.clone(), local_storage("host")));
         let host = HostRuntimeContext::new(db.clone()).with_shared_value(provider);
 
-        let runtime =
-            compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
+        let runtime = compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
 
         assert_eq!(
             runtime.media_reference_policy(),
@@ -177,8 +174,7 @@ mod product_media_asset_validation_tests {
         ctx.shared_insert(local_storage("embedded"));
         let host = HostRuntimeContext::new(db.clone());
 
-        let runtime =
-            compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
+        let runtime = compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
 
         assert_eq!(
             runtime.media_reference_policy(),
@@ -198,8 +194,7 @@ mod product_media_asset_validation_tests {
         let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
         let host = HostRuntimeContext::new(db.clone());
 
-        let runtime =
-            compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
+        let runtime = compose_product_media_asset_validation(embedded_runtime(db), &ctx, &host);
 
         assert_eq!(
             runtime.media_reference_policy(),

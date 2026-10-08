@@ -213,10 +213,7 @@ fn product_schema_write_port(
 }
 
 /// Validates one GraphQL idempotency key for a scoped catalog write command.
-fn validate_scoped_idempotency_key<'a>(
-    idempotency_key: &'a str,
-    subject: &str,
-) -> Result<&'a str> {
+fn validate_scoped_idempotency_key<'a>(idempotency_key: &'a str, subject: &str) -> Result<&'a str> {
     let caller_key = idempotency_key.trim();
     if caller_key.is_empty() {
         return Err(invalid_product_idempotency_key(format!(
@@ -288,7 +285,10 @@ fn catalog_write_command_error(
 ) -> async_graphql::Error {
     let prefix = domain.code_prefix();
     let (message, code) = match (&error.kind, error.code.as_str()) {
-        (PortErrorKind::Unavailable | PortErrorKind::Timeout, "outbox.operation_receipt_in_progress") => (
+        (
+            PortErrorKind::Unavailable | PortErrorKind::Timeout,
+            "outbox.operation_receipt_in_progress",
+        ) => (
             "The same catalog write is still being processed and can be retried".to_string(),
             "CATALOG_OPERATION_IN_PROGRESS".to_string(),
         ),

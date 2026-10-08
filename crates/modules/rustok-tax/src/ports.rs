@@ -483,10 +483,7 @@ fn tax_error_to_port_error(
                 boundary = TAX_CALCULATION_PORT_BOUNDARY,
                 "tax owner validation failed"
             );
-            PortError::validation(
-                "tax.validation",
-                "tax calculation request is invalid",
-            )
+            PortError::validation("tax.validation", "tax calculation request is invalid")
         }
     }
 }

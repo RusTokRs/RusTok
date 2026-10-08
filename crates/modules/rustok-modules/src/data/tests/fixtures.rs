@@ -29,7 +29,6 @@ pub(crate) use crate::{
     ModuleArtifactDescriptor, ModuleBindingIdempotency, ModulesModule, canonical_schema_digest,
 };
 
-pub(crate) use super::super::*;
 pub(crate) use super::super::broker::*;
 pub(crate) use super::super::capabilities::*;
 pub(crate) use super::super::constants::*;
@@ -48,6 +47,7 @@ pub(crate) use super::super::upgrade::*;
 pub(crate) use super::super::upload::*;
 pub(crate) use super::super::upload_sessions::*;
 pub(crate) use super::super::validation::*;
+pub(crate) use super::super::*;
 
 #[derive(Clone)]
 pub(crate) struct CompletedPageBroker {

@@ -262,12 +262,11 @@ mod tests {
     use rustok_core::{ModuleRuntimeExtensions, UserRole};
     use rustok_index::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexReconciliationBudget,
-        IndexReconciliationRunRequest,
-        IndexSchema, IndexSource, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
-        IndexSourcePage, IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName, SchemaRef,
-        SchemaVersion, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-        materialize_index_schema_registry, materialize_index_source_registry,
-        register_index_schema_source, register_index_source,
+        IndexReconciliationRunRequest, IndexSchema, IndexSource, IndexSourceFailure,
+        IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
+        IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+        SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_schema_registry,
+        materialize_index_source_registry, register_index_schema_source, register_index_source,
     };
     use sea_orm::Database;
     use uuid::Uuid;

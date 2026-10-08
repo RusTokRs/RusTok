@@ -25,8 +25,8 @@ pub use catalog::{
     ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
     StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
-    StorefrontProductListPrice, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection,
+    StorefrontProductListPrice, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 pub use catalog_attribute_terms::{
     ProductAttributeTermError, ProductAttributeTermExpr, ProductResolvedAttributeFilter,

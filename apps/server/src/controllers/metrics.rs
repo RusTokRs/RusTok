@@ -33,7 +33,6 @@ use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
 use crate::middleware::tenant::{TenantCacheStats, tenant_cache_stats};
-use rustok_tenant::entities::tenant::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
 use crate::services::email::{EmailDeliveryMetricsSnapshot, email_delivery_metrics_snapshot};
 use crate::services::rbac_consistency::load_rbac_consistency_stats;
@@ -44,6 +43,7 @@ use crate::services::runtime_guardrails::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_cache::CacheService;
 use rustok_telemetry::metrics::update_queue_depth;
+use rustok_tenant::entities::tenant::{Column as TenantsColumn, Entity as TenantsEntity};
 use tracing::warn;
 
 static RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -367,12 +367,8 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         update_queue_depth("outbox", i64::try_from(backlog).unwrap_or(i64::MAX));
     }
 
-    let mut payload = format_outbox_metrics_optional(
-        backlog_size,
-        dlq_total,
-        retries_total,
-        pending_lag_seconds,
-    );
+    let mut payload =
+        format_outbox_metrics_optional(backlog_size, dlq_total, retries_total, pending_lag_seconds);
     let relay_metrics = ctx
         .shared_get::<Arc<EventRuntime>>()
         .and_then(|runtime| {
@@ -476,9 +472,7 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     payload.push_str(&format_runtime_worker_state(
         "outbox_retention",
         retention_required,
-        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
-            OutboxRetentionWorkerHandle::is_finished,
-        ),
+        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
@@ -495,10 +489,10 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     ));
 
     #[cfg(feature = "mod-seo")]
-    let seo_worker_finished = ctx.shared_map::<
-        crate::services::app_lifecycle::SeoBulkWorkerHandle,
-        _,
-    >(crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished);
+    let seo_worker_finished = ctx
+        .shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
+            crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
+        );
     payload.push_str(&format_runtime_worker_state(
         "seo_bulk",
         settings.runtime.background_workers.seo_bulk_enabled,
@@ -840,9 +834,9 @@ fn format_rbac_metrics(
 #[cfg(test)]
 mod tests {
     use super::{
-        format_email_backend_state, format_email_delivery_metrics,
-        format_outbox_retention_failure_metrics, format_outbox_metrics,
-        format_outbox_relay_runtime_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
+        format_email_backend_state, format_email_delivery_metrics, format_outbox_metrics,
+        format_outbox_relay_runtime_metrics, format_outbox_retention_failure_metrics,
+        format_rbac_metrics, format_runtime_guardrail_metrics,
         format_runtime_worker_restart_metrics, format_runtime_worker_state,
         format_tenant_activity_metrics, format_tenant_cache_metrics,
         format_tenant_locale_cache_metrics, render_auth_lifecycle_metrics,
@@ -886,13 +880,15 @@ mod tests {
 
     #[test]
     fn rbac_metrics_include_claim_role_mismatch_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_claim_role_mismatch_total"));
     }
 
     #[test]
     fn rbac_metrics_include_engine_decision_and_latency_counters() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert_metric_line(&payload, "rustok_rbac_engine_decisions_policy_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_ms_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_samples");
@@ -900,38 +896,44 @@ mod tests {
 
     #[test]
     fn rbac_metrics_include_users_without_roles_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_users_without_roles_total"));
     }
 
     #[test]
     fn rbac_metrics_include_orphan_user_roles_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total"));
     }
 
     #[test]
     fn rbac_metrics_include_orphan_role_permissions_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total"));
     }
 
     #[test]
     fn rbac_metrics_include_consistency_query_failures_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_consistency_query_failures_total"));
     }
 
     #[test]
     fn rbac_metrics_include_consistency_query_latency_counters() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(0), Some(0), Some(0));
         assert!(payload.contains("rustok_rbac_consistency_query_latency_ms_total"));
         assert!(payload.contains("rustok_rbac_consistency_query_latency_samples"));
     }
 
     #[test]
     fn rbac_metrics_render_consistency_values() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), Some(7), Some(3), Some(1));
+        let payload =
+            format_rbac_metrics(RbacService::metrics_snapshot(), Some(7), Some(3), Some(1));
         assert!(payload.contains("rustok_rbac_users_without_roles_total 7"));
         assert!(payload.contains("rustok_rbac_orphan_user_roles_total 3"));
         assert!(payload.contains("rustok_rbac_orphan_role_permissions_total 1"));
@@ -1037,18 +1039,19 @@ mod tests {
 
     #[test]
     fn runtime_worker_failure_metrics_include_outbox_retention_counter() {
-        let payload = format_outbox_retention_failure_metrics(
-            OutboxRetentionSupervisorMetricsSnapshot { failure_total: 3 },
-        );
+        let payload =
+            format_outbox_retention_failure_metrics(OutboxRetentionSupervisorMetricsSnapshot {
+                failure_total: 3,
+            });
 
         assert_metric_labeled_line(
             &payload,
             "rustok_runtime_worker_failures_total",
             "{worker=\"outbox_retention\"}",
         );
-        assert!(payload.contains(
-            "rustok_runtime_worker_failures_total{worker=\"outbox_retention\"} 3"
-        ));
+        assert!(
+            payload.contains("rustok_runtime_worker_failures_total{worker=\"outbox_retention\"} 3")
+        );
     }
 
     #[test]

@@ -202,9 +202,8 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     let seo_index_repair_worker_enabled =
         settings.runtime.background_workers.seo_index_repair_enabled;
     #[cfg(feature = "mod-seo")]
-    let seo_worker_enabled = seo_bulk_worker_enabled
-        || seo_sitemap_worker_enabled
-        || seo_index_repair_worker_enabled;
+    let seo_worker_enabled =
+        seo_bulk_worker_enabled || seo_sitemap_worker_enabled || seo_index_repair_worker_enabled;
 
     if !settings.runtime.runs_background_workers() {
         tracing::info!(host_mode = ?settings.runtime.host_mode, "Skipping background workers for non-worker host mode");
@@ -462,7 +461,11 @@ async fn seo_worker_loop(
         }
 
         if sitemap_enabled {
-            match service.bulk().execute_next_sitemap_job(&authorization).await {
+            match service
+                .bulk()
+                .execute_next_sitemap_job(&authorization)
+                .await
+            {
                 Ok(Some(job)) => tracing::info!(
                     job_id = %job.id,
                     status = %job.status,

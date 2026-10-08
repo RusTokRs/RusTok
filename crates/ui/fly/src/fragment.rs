@@ -116,13 +116,9 @@ impl ProjectFragment {
         self.remap_ids(&mut staged.id_generator);
         let mut inserted_ids = Vec::new();
         let mut commands = Vec::new();
-        commands.extend(
-            self.assets
-                .into_iter()
-                .map(|asset| EditorCommand::Asset {
-                    command: AssetCommand::Upsert { asset },
-                }),
-        );
+        commands.extend(self.assets.into_iter().map(|asset| EditorCommand::Asset {
+            command: AssetCommand::Upsert { asset },
+        }));
         commands.extend(
             self.components
                 .into_iter()
@@ -261,8 +257,7 @@ mod tests {
 
         assert_eq!(inserted, vec!["fly-paste-1".to_string()]);
         assert!(editor.document().project.assets.iter().any(|asset| {
-            AssetDescriptor::from_value(asset.clone())
-                .is_some_and(|asset| asset.id == "hero-asset")
+            AssetDescriptor::from_value(asset.clone()).is_some_and(|asset| asset.id == "hero-asset")
         }));
         assert!(
             StyleRuleCatalog::from_document(editor.document())

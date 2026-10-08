@@ -925,8 +925,9 @@ impl PricingService {
                 price_active.compare_at_amount = Set(compare_at_amount);
                 price_active.legacy_amount =
                     Set(rustok_pricing_persistence::legacy_amount_units(amount));
-                price_active.legacy_compare_at_amount = Set(compare_at_amount
-                    .and_then(rustok_pricing_persistence::legacy_amount_units));
+                price_active.legacy_compare_at_amount = Set(
+                    compare_at_amount.and_then(rustok_pricing_persistence::legacy_amount_units)
+                );
                 price_active.price_list_id = Set(price_list_id);
                 price_active.channel_id = Set(channel_id);
                 price_active.channel_slug = Set(channel_slug.clone());
@@ -946,8 +947,9 @@ impl PricingService {
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
                     legacy_amount: Set(rustok_pricing_persistence::legacy_amount_units(amount)),
-                    legacy_compare_at_amount: Set(compare_at_amount
-                        .and_then(rustok_pricing_persistence::legacy_amount_units)),
+                    legacy_compare_at_amount: Set(
+                        compare_at_amount.and_then(rustok_pricing_persistence::legacy_amount_units)
+                    ),
                     min_quantity: Set(min_quantity),
                     max_quantity: Set(max_quantity),
                 };
@@ -1049,8 +1051,9 @@ impl PricingService {
                     price_active.channel_id = Set(price_input.channel_id);
                     price_active.channel_slug =
                         Set(normalize_channel_slug(price_input.channel_slug.as_deref()));
-                    price_active.legacy_amount =
-                        Set(rustok_pricing_persistence::legacy_amount_units(price_input.amount));
+                    price_active.legacy_amount = Set(
+                        rustok_pricing_persistence::legacy_amount_units(price_input.amount),
+                    );
                     price_active.legacy_compare_at_amount = Set(price_input
                         .compare_at_amount
                         .and_then(rustok_pricing_persistence::legacy_amount_units));
@@ -1083,10 +1086,10 @@ impl PricingService {
             }
 
             let currency_code = price_input.currency_code.as_str();
-            let old_cents = old_amount
-                .and_then(|amount| money::to_minor_units(amount, currency_code).ok());
-            let new_cents = money::to_minor_units(price_input.amount, currency_code)
-                .map_err(|error| {
+            let old_cents =
+                old_amount.and_then(|amount| money::to_minor_units(amount, currency_code).ok());
+            let new_cents =
+                money::to_minor_units(price_input.amount, currency_code).map_err(|error| {
                     CommerceError::Validation(format!(
                         "price amount {} has no minor-unit form in {currency_code}: {error}",
                         price_input.amount
@@ -1120,11 +1123,7 @@ impl PricingService {
     /// would answer for any tenant that names the identifier, and the caller has
     /// no second check to lean on. `resolve_variant_price` states the same rule
     /// inline; both now share this loader.
-    async fn ensure_variant_tenant(
-        &self,
-        tenant_id: Uuid,
-        variant_id: Uuid,
-    ) -> CommerceResult<()> {
+    async fn ensure_variant_tenant(&self, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()> {
         entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
             .one(&self.db)

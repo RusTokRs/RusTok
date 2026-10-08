@@ -1,5 +1,5 @@
-use lazy_static::lazy_static;
 use crate::factory::*;
+use lazy_static::lazy_static;
 use prometheus::{HistogramVec, IntCounterVec, IntGaugeVec, Registry};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

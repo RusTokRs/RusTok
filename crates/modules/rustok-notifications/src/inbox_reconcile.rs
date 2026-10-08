@@ -3,11 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::{HostRuntimeContext, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_notifications_api::{
-    NotificationInboxReconciliationInspectPage,
-    NotificationInboxReconciliationInspectPort,
+    NotificationInboxReconciliationInspectPage, NotificationInboxReconciliationInspectPort,
     NotificationInboxReconciliationInspectPortFactory,
-    NotificationInboxReconciliationInspectRequest,
-    NotificationSourceRegistry,
+    NotificationInboxReconciliationInspectRequest, NotificationSourceRegistry,
 };
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -223,7 +221,6 @@ impl NotificationInboxReconcileService {
         })
     }
 }
-
 
 #[async_trait]
 impl NotificationInboxReconciliationInspectPort for NotificationInboxReconcileService {

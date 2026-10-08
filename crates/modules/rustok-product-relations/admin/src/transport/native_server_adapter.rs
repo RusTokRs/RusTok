@@ -26,7 +26,9 @@ impl From<ServerFnError> for NativeProductRelationsAdminError {
 pub async fn load_relations(
     filters: ProductRelationsAdminFilters,
 ) -> Result<Vec<ProductRelationItem>, NativeProductRelationsAdminError> {
-    product_relations_list_native(filters).await.map_err(Into::into)
+    product_relations_list_native(filters)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn execute_command(
@@ -254,9 +256,7 @@ fn ensure_tenant(
     required_permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
     if auth.tenant_id != tenant.id {
-        return Err(ServerFnError::new(
-            "Permission denied: tenant mismatch",
-        ));
+        return Err(ServerFnError::new("Permission denied: tenant mismatch"));
     }
     if !rustok_api::has_effective_permission(&auth.permissions, &required_permission) {
         return Err(ServerFnError::new(format!(

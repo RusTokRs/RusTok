@@ -1,5 +1,5 @@
-use lazy_static::lazy_static;
 use crate::factory::*;
+use lazy_static::lazy_static;
 use prometheus::{IntCounter, IntCounterVec, IntGauge, Registry};
 
 lazy_static! {

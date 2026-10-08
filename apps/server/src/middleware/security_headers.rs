@@ -299,7 +299,10 @@ mod tests {
             assert!(!is_richtext_frame_surface(path), "{path}");
         }
 
-        assert_eq!(richtext_cache_control(RICHTEXT_FRAME_PATH), Some("no-store"));
+        assert_eq!(
+            richtext_cache_control(RICHTEXT_FRAME_PATH),
+            Some("no-store")
+        );
         assert_eq!(
             richtext_cache_control("/richtext/frame/leptos-adapter.mjs"),
             None
@@ -423,13 +426,9 @@ mod tests {
 
     #[tokio::test]
     async fn outer_security_layer_covers_edge_short_circuit_responses() {
-        let app = crate::middleware::http_stack::apply_http_edge_stack(
-            Router::new(),
-            false,
-            None,
-            10,
-        )
-        .layer(middleware::from_fn(security_headers));
+        let app =
+            crate::middleware::http_stack::apply_http_edge_stack(Router::new(), false, None, 10)
+                .layer(middleware::from_fn(security_headers));
 
         let response = app
             .oneshot(
@@ -477,10 +476,7 @@ mod tests {
         };
         let app = Router::new()
             .layer(middleware::from_fn(handle_csp_report))
-            .layer(middleware::from_fn_with_state(
-                state,
-                rate_limit_for_paths,
-            ))
+            .layer(middleware::from_fn_with_state(state, rate_limit_for_paths))
             .layer(middleware::from_fn(security_headers));
 
         let request = || {

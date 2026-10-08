@@ -9,10 +9,12 @@ use rustok_api::{
 use rustok_media::{
     ApplyExactMediaTranslationInput, AssetState, BlobState, CreateRenditionInput, ImageBackground,
     ImageOutputFormat, ImageRecipe, MediaAssetReferenceInput, MediaError, MediaService,
-    MediaTranslationTargetProvider,
-    PrepareUploadSessionInput, QuarterTurn, RenditionState, UploadInput, UploadState,
-    UpsertTranslationInput,
-    entities::{asset, asset_reference, blob, media_translation, rendition, translation_change, upload_session},
+    MediaTranslationTargetProvider, PrepareUploadSessionInput, QuarterTurn, RenditionState,
+    UploadInput, UploadState, UpsertTranslationInput,
+    entities::{
+        asset, asset_reference, blob, media_translation, rendition, translation_change,
+        upload_session,
+    },
     migrations,
 };
 use rustok_outbox::{SysEvents, SysEventsMigration};
@@ -23,7 +25,8 @@ use rustok_translation_targets::{
     TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    Statement,
 };
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
@@ -267,7 +270,11 @@ async fn retained_reference_blocks_delete_until_released() {
         ))
         .await
         .expect_err("database lifecycle guard must reject referenced media deletion");
-    assert!(direct_delete.to_string().contains("media asset has retained references"));
+    assert!(
+        direct_delete
+            .to_string()
+            .contains("media asset has retained references")
+    );
 
     let active = asset::Entity::find_by_id(item.id)
         .one(&database)

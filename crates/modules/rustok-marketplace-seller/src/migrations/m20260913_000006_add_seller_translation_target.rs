@@ -35,9 +35,7 @@ impl MigrationTrait for Migration {
             );
         }
         table
-            .col(
-                ColumnDef::new(MarketplaceSellerTranslationChangeJournal::OperationId).uuid(),
-            )
+            .col(ColumnDef::new(MarketplaceSellerTranslationChangeJournal::OperationId).uuid())
             .col(
                 ColumnDef::new(MarketplaceSellerTranslationChangeJournal::TenantId)
                     .uuid()

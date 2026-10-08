@@ -107,12 +107,9 @@ impl NativeClientErrorContext {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE, NativeClientErrorContext,
-    };
+    use super::{FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE, NativeClientErrorContext};
     use crate::transport::ShippingSelectionTransportError;
 
     #[test]

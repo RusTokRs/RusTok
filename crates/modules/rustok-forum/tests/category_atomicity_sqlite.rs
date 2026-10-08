@@ -103,7 +103,9 @@ END
     );
     let persisted = load_category(&db, tenant_id, category.id).await?;
     assert!(!persisted.moderated);
-    let category_view = service.get(tenant_id, admin_security(), category.id, "en").await?;
+    let category_view = service
+        .get(tenant_id, admin_security(), category.id, "en")
+        .await?;
     assert_eq!(category_view.position, 3);
     assert!(
         taxonomy_term_translation::Entity::find()
@@ -159,7 +161,9 @@ END
     );
     let persisted = load_category(&db, tenant_id, category.id).await?;
     assert!(!persisted.moderated);
-    let category_view = service.get(tenant_id, admin_security(), category.id, "en").await?;
+    let category_view = service
+        .get(tenant_id, admin_security(), category.id, "en")
+        .await?;
     assert_eq!(category_view.position, 3);
     assert!(
         taxonomy_term_translation::Entity::find()

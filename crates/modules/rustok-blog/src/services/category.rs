@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -91,14 +91,8 @@ impl CategoryService {
         )
         .await?;
 
-        canonicalize_siblings_for_insert_in_tx(
-            &txn,
-            tenant_id,
-            id,
-            parent_id,
-            requested_position,
-        )
-        .await?;
+        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, id, parent_id, requested_position)
+            .await?;
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
@@ -247,17 +241,18 @@ impl CategoryService {
         }
 
         let ids = [category_id];
-        let canonical = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-            txn,
-            tenant_id,
-            rustok_taxonomy::TaxonomyScopeType::Module,
-            Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-            Some(&ids),
-            rustok_api::PLATFORM_FALLBACK_LOCALE,
-            None,
-        )
-        .await
-        .map_err(BlogError::from)?;
+        let canonical =
+            rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+                txn,
+                tenant_id,
+                rustok_taxonomy::TaxonomyScopeType::Module,
+                Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
+                Some(&ids),
+                rustok_api::PLATFORM_FALLBACK_LOCALE,
+                None,
+            )
+            .await
+            .map_err(BlogError::from)?;
 
         let canonical = canonical.into_iter().next().ok_or_else(|| {
             BlogError::invariant(format!(
@@ -406,10 +401,7 @@ async fn canonicalize_siblings_for_insert_in_tx(
             siblings.len()
         )));
     }
-    let mut ordered_sibling_ids = siblings
-        .into_iter()
-        .map(|(_, id)| id)
-        .collect::<Vec<_>>();
+    let mut ordered_sibling_ids = siblings.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
     ordered_sibling_ids.insert(insertion_index, category_id);
 
     rustok_taxonomy::reorder_module_category_siblings_in_tx(
@@ -439,9 +431,7 @@ fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_
     Ok(settings)
 }
 
-pub(super) fn validate_persisted_category_settings(
-    settings: &serde_json::Value,
-) -> BlogResult<()> {
+pub(super) fn validate_persisted_category_settings(settings: &serde_json::Value) -> BlogResult<()> {
     if !settings.is_object() {
         return Err(BlogError::invariant(
             "Persisted Blog category settings are not a JSON object",
@@ -510,9 +500,7 @@ fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResu
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
     let normalized = rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
-        BlogError::validation(
-            "Slug must contain at least one routable letter or digit",
-        )
+        BlogError::validation("Slug must contain at least one routable letter or digit")
     })?;
     if normalized.chars().count() > 120 {
         return Err(BlogError::validation(

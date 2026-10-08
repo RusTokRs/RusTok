@@ -255,11 +255,7 @@ impl ObjectCapabilityConstraints {
         call: &CapabilityCall,
         input: &serde_json::Map<String, Value>,
     ) -> SandboxResult<()> {
-        reject_unexpected_data_fields(
-            call,
-            input,
-            &["session_id", "sequence", "data_base64"],
-        )?;
+        reject_unexpected_data_fields(call, input, &["session_id", "sequence", "data_base64"])?;
         if Uuid::parse_str(required_data_string(call, input, "session_id")?).is_err()
             || input.get("sequence").and_then(Value::as_u64).is_none()
             || input
@@ -280,11 +276,7 @@ impl ObjectCapabilityConstraints {
         call: &CapabilityCall,
         input: &serde_json::Map<String, Value>,
     ) -> SandboxResult<()> {
-        reject_unexpected_data_fields(
-            call,
-            input,
-            &["session_id", "size_bytes", "digest_sha256"],
-        )?;
+        reject_unexpected_data_fields(call, input, &["session_id", "size_bytes", "digest_sha256"])?;
         if Uuid::parse_str(required_data_string(call, input, "session_id")?).is_err()
             || input
                 .get("size_bytes")

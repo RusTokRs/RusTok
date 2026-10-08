@@ -25,8 +25,8 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
-use sea_orm::TransactionTrait;
 use rustok_taxonomy::ModuleTermCreateInput;
+use sea_orm::TransactionTrait;
 
 async fn create_term(
     service: &TaxonomyService,
@@ -37,7 +37,11 @@ async fn create_term(
     name: &str,
 ) -> Uuid {
     if scope_type == TaxonomyScopeType::Module {
-        let txn = service.database().begin().await.expect("transaction should start");
+        let txn = service
+            .database()
+            .begin()
+            .await
+            .expect("transaction should start");
         let term_id = service
             .create_module_term_in_tx(
                 &txn,
@@ -48,7 +52,11 @@ async fn create_term(
                     locale: "en".to_string(),
                     name: name.to_string(),
                     slug: None,
-                    canonical_key: Some(format!("{}-{}", name.to_ascii_lowercase(), Uuid::new_v4())),
+                    canonical_key: Some(format!(
+                        "{}-{}",
+                        name.to_ascii_lowercase(),
+                        Uuid::new_v4()
+                    )),
                 },
             )
             .await
@@ -67,7 +75,11 @@ async fn create_term(
                     locale: "en".to_string(),
                     name: name.to_string(),
                     slug: None,
-                    canonical_key: Some(format!("{}-{}", name.to_ascii_lowercase(), Uuid::new_v4())),
+                    canonical_key: Some(format!(
+                        "{}-{}",
+                        name.to_ascii_lowercase(),
+                        Uuid::new_v4()
+                    )),
                     description: None,
                     aliases: Vec::new(),
                 },

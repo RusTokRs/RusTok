@@ -20,7 +20,6 @@ pub enum UiTransportPath {
     Graphql,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UiTransportRetrySafety {
@@ -213,8 +212,7 @@ where
 mod tests {
     use super::{
         UiTransportError, UiTransportPath, UiTransportRetrySafety, execute_selected_transport,
-        execute_transport_policy,
-        execute_with_fallback,
+        execute_transport_policy, execute_with_fallback,
     };
 
     #[test]

@@ -64,9 +64,6 @@ pub trait CommentsThreadPort: Send + Sync {
         request: SetCommentStatusRequest,
     ) -> Result<CommentRecord, PortError>;
 
-    async fn delete_comment(
-        &self,
-        context: PortContext,
-        comment_id: Uuid,
-    ) -> Result<(), PortError>;
+    async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
+    -> Result<(), PortError>;
 }

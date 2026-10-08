@@ -205,8 +205,7 @@ impl BlogSearchProjector {
             .map_err(Error::Database)?
             .ok_or_else(|| {
                 Error::External(
-                    "Blog Search projection schema availability query returned no row"
-                        .to_string(),
+                    "Blog Search projection schema availability query returned no row".to_string(),
                 )
             })?;
         let available = row
@@ -475,7 +474,9 @@ impl BlogSearchProjector {
             }
 
             if let Some(cursor) = cursor.as_deref() {
-                where_clause.push_str(&format!(" AND CONCAT('blog_post:', p.id::text, ':', bt.locale) > ${next_parameter}"));
+                where_clause.push_str(&format!(
+                    " AND CONCAT('blog_post:', p.id::text, ':', bt.locale) > ${next_parameter}"
+                ));
                 values.push(cursor.to_owned().into());
                 next_parameter += 1;
             }
@@ -518,9 +519,7 @@ impl BlogSearchProjector {
                 let excerpt = row
                     .try_get::<Option<String>>("", "excerpt")
                     .map_err(Error::Database)?;
-                let body = row
-                    .try_get::<String>("", "body")
-                    .map_err(Error::Database)?;
+                let body = row.try_get::<String>("", "body").map_err(Error::Database)?;
                 let article_text = project_canonical_article_plain_text(&body)?;
                 let search_body = compose_search_body(excerpt.as_deref(), &article_text);
 
@@ -537,8 +536,8 @@ impl BlogSearchProjector {
                 Error::Internal("Blog Search body refresh returned an empty batch".to_string())
             })?;
             let next_cursor = last_row
-                    .try_get::<String>("", "document_key")
-                    .map_err(Error::Database)?;
+                .try_get::<String>("", "document_key")
+                .map_err(Error::Database)?;
             cursor = Some(next_cursor);
 
             if rows.len() < BATCH_SIZE as usize {
@@ -625,7 +624,7 @@ mod tests {
     use rustok_api::RichTextDocument;
 
     use super::{
-        compose_search_body, project_canonical_article_plain_text, AUTHOR_PROJECTION_REFRESH_SQL,
+        AUTHOR_PROJECTION_REFRESH_SQL, compose_search_body, project_canonical_article_plain_text,
     };
 
     #[test]

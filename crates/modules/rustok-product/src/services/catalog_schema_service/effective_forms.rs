@@ -385,7 +385,9 @@ impl ProductCatalogSchemaService {
                     validation_overrides: row.validation_overrides,
                     validation: Value::Object(Default::default()),
                     source: EffectiveAttributeSource::Schema,
-                    variant_axis_policy: row.variant_axis_policy.unwrap_or_else(|| "forbidden".to_string()),
+                    variant_axis_policy: row
+                        .variant_axis_policy
+                        .unwrap_or_else(|| "forbidden".to_string()),
                     default_variant_axis: row.default_variant_axis.unwrap_or(false),
                 });
         }

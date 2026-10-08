@@ -391,11 +391,8 @@ impl WasmComponentExecutor {
         let (engine, component) = self.load_component(request)?;
         let cancellation = host.cancellation();
         let (linker, mut store) = init_wasm_store(&engine, request, host)?;
-        let (watchdog_flags, watchdog) = spawn_wasm_watchdog(
-            &engine,
-            cancellation,
-            request.policy.limits.wall_clock_ms,
-        );
+        let (watchdog_flags, watchdog) =
+            spawn_wasm_watchdog(&engine, cancellation, request.policy.limits.wall_clock_ms);
         let result = invoke_wasm_component(&component, &linker, &mut store, request);
         watchdog_flags.completed.store(true, Ordering::Release);
         let _ = watchdog.join();
@@ -505,8 +502,7 @@ fn invoke_wasm_component(
         )));
     }
     let output = call_wasm_component_instance(&instance, store, &request.input)?;
-    let output_bytes =
-        validate_wasm_output_limit(&output, request.policy.limits.max_output_bytes)?;
+    let output_bytes = validate_wasm_output_limit(&output, request.policy.limits.max_output_bytes)?;
     let fuel_remaining = store.get_fuel().unwrap_or(0);
     let peak_memory_bytes = store.data().limits.peak_linear_memory_bytes();
     Ok(SandboxOutcome {
@@ -533,8 +529,8 @@ fn call_wasm_component_instance(
     store: &mut Store<WasmStoreState>,
     input: &serde_json::Value,
 ) -> SandboxResult<serde_json::Value> {
-    let input_str = serde_json::to_string(input)
-        .map_err(|error| SandboxError::Internal(error.to_string()))?;
+    let input_str =
+        serde_json::to_string(input).map_err(|error| SandboxError::Internal(error.to_string()))?;
     let output = instance
         .call_run(&mut *store, &input_str)
         .map_err(|error| SandboxError::Trap(error.to_string()))?

@@ -391,7 +391,10 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
         "translation.targets.empty",
         "No owner target providers are registered.",
     );
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
 
     let columns = core::translation_target_grid_columns(locale.as_deref());
     let all_targets = StoredValue::new(targets);
@@ -419,34 +422,41 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
         filters.set(new_filters);
     });
 
-    let cell_renderer = Callback::new(move |(target, col_id): (TranslationTarget, String)| {
-        match col_id.as_str() {
-            "provider" => view! {
-                <span class="font-medium text-foreground">{target.owner_slug}</span>
-            }.into_any(),
-            "target" => view! {
-                <div>
-                    <div class="font-medium text-foreground">{target.display_name}</div>
-                    <div class="text-xs text-muted-foreground">{target.resource_kind}</div>
-                </div>
-            }.into_any(),
-            "capabilities" => view! {
-                <div class="flex flex-wrap gap-1">
-                    {target.capabilities.into_iter().map(|capability| view! {
-                        <Badge variant=BadgeVariant::Outline>{capability}</Badge>
-                    }).collect_view()}
-                </div>
-            }.into_any(),
-            _ => ().into_any(),
-        }
-    });
+    let cell_renderer =
+        Callback::new(
+            move |(target, col_id): (TranslationTarget, String)| match col_id.as_str() {
+                "provider" => view! {
+                    <span class="font-medium text-foreground">{target.owner_slug}</span>
+                }
+                .into_any(),
+                "target" => view! {
+                    <div>
+                        <div class="font-medium text-foreground">{target.display_name}</div>
+                        <div class="text-xs text-muted-foreground">{target.resource_kind}</div>
+                    </div>
+                }
+                .into_any(),
+                "capabilities" => view! {
+                    <div class="flex flex-wrap gap-1">
+                        {target.capabilities.into_iter().map(|capability| view! {
+                            <Badge variant=BadgeVariant::Outline>{capability}</Badge>
+                        }).collect_view()}
+                    </div>
+                }
+                .into_any(),
+                _ => ().into_any(),
+            },
+        );
 
     view! {
         <Card>
@@ -497,7 +507,10 @@ fn ReviewerQueueGrid(
     empty_label: String,
     unassigned_label: String,
 ) -> impl IntoView {
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = core::reviewer_queue_grid_columns(locale.as_deref());
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
@@ -523,7 +536,10 @@ fn ReviewerQueueGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -589,7 +605,10 @@ fn ReviewerWorkloadGrid(
     empty_label: String,
     unassigned_label: String,
 ) -> impl IntoView {
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = core::reviewer_workload_grid_columns(locale.as_deref());
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
@@ -615,7 +634,10 @@ fn ReviewerWorkloadGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -629,26 +651,33 @@ fn ReviewerWorkloadGrid(
                 let assignee = core::format_actor_display(workload.assignee.as_ref(), &unassigned);
                 view! {
                     <span class="text-foreground">{assignee}</span>
-                }.into_any()
+                }
+                .into_any()
             }
             "open_items" => view! {
                 <span class="text-foreground">{workload.open_items}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "in_review_items" => view! {
                 <span class="text-foreground">{workload.in_review_items}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "approved_items" => view! {
                 <span class="text-foreground">{workload.approved_items}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "rebase_required_items" => view! {
                 <span class="text-foreground">{workload.rebase_required_items}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "blocked_items" => view! {
                 <span class="text-foreground">{workload.blocked_items}</span>
-            }.into_any(),
+            }
+            .into_any(),
             "source_characters" => view! {
                 <span class="text-foreground">{workload.source_characters}</span>
-            }.into_any(),
+            }
+            .into_any(),
             _ => ().into_any(),
         }
     });
@@ -691,7 +720,10 @@ fn InterchangeArtifactsGrid(
     locale: Option<String>,
     empty_label: String,
 ) -> impl IntoView {
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = core::interchange_artifact_grid_columns(locale.as_deref());
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
@@ -717,7 +749,10 @@ fn InterchangeArtifactsGrid(
         let list = filtered_rows.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {

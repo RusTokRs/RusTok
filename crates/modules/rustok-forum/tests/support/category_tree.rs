@@ -275,10 +275,7 @@ async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestRe
             "INSERT INTO forum_categories \
                 (id, tenant_id, moderated, topic_count, reply_count) \
              VALUES (?, ?, FALSE, 0, 0)",
-            [
-                category_id.into(),
-                tenant_id.into(),
-            ],
+            [category_id.into(), tenant_id.into()],
         ))
         .await?;
     }

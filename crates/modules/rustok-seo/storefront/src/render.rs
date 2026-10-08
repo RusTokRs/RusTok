@@ -247,14 +247,12 @@ pub fn render_head_html_with_nonce(context: &SeoPageContext, csp_nonce: Option<&
 }
 
 fn serialize_structured_data_for_html(value: &serde_json::Value) -> Option<String> {
-    serde_json::to_string(value)
-        .ok()
-        .map(|payload| {
-            payload
-                .replace('<', "\\u003c")
-                .replace('>', "\\u003e")
-                .replace('&', "\\u0026")
-        })
+    serde_json::to_string(value).ok().map(|payload| {
+        payload
+            .replace('<', "\\u003c")
+            .replace('>', "\\u003e")
+            .replace('&', "\\u0026")
+    })
 }
 
 pub fn robots_directives(robots: &SeoRobots) -> Vec<String> {
@@ -402,7 +400,11 @@ mod tests {
         let head = render_head_html(&context);
 
         assert!(!head.contains("</script><script>"));
-        assert!(head.contains(r#"\u003c/script\u003e\u003cscript\u003ealert(1)\u003c/script\u003e\u0026"#));
+        assert!(
+            head.contains(
+                r#"\u003c/script\u003e\u003cscript\u003ealert(1)\u003c/script\u003e\u0026"#
+            )
+        );
     }
 
     #[test]

@@ -380,7 +380,12 @@ pub fn BrandAdmin() -> impl IntoView {
                 .into_any()
             }
             "updated_at" => {
-                let updated = item.updated_at.split('T').next().unwrap_or(item.updated_at.as_str()).to_string();
+                let updated = item
+                    .updated_at
+                    .split('T')
+                    .next()
+                    .unwrap_or(item.updated_at.as_str())
+                    .to_string();
                 view! {
                     <span class="text-xs text-muted-foreground font-mono">
                         {updated}

@@ -118,7 +118,9 @@ impl FieldDefinitionCache {
                 .generations
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let entry = gens.entry((tenant_id, entity_type.to_string())).or_insert(0);
+            let entry = gens
+                .entry((tenant_id, entity_type.to_string()))
+                .or_insert(0);
             *entry = entry.wrapping_add(1);
         }
         self.inner
@@ -329,7 +331,11 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
     }
 
     async fn generation(&self, tenant_id: Uuid, entity_type: &str) -> Option<u64> {
-        Some(FieldDefinitionCache::generation(self, tenant_id, entity_type))
+        Some(FieldDefinitionCache::generation(
+            self,
+            tenant_id,
+            entity_type,
+        ))
     }
 
     async fn set_if_generation(
@@ -339,7 +345,8 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
         rows: Vec<FieldDefinitionView>,
         generation: u64,
     ) {
-        FieldDefinitionCache::set_if_generation(self, tenant_id, entity_type, rows, generation).await;
+        FieldDefinitionCache::set_if_generation(self, tenant_id, entity_type, rows, generation)
+            .await;
     }
 }
 

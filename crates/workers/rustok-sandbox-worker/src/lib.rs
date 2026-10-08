@@ -389,7 +389,8 @@ impl IsolationAttestation {
             || !self.resource_limits.is_bounded()
         {
             return Err(
-                "sandbox isolation attestation does not match the hardened worker policy".to_string(),
+                "sandbox isolation attestation does not match the hardened worker policy"
+                    .to_string(),
             );
         }
         Ok(())

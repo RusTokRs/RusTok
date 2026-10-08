@@ -70,7 +70,11 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
             )
         },
         |(reactions_enabled, forum_reactions_enabled, topic_id, locale)| async move {
-            if !reactions_enabled || !forum_reactions_enabled.and_then(Result::ok).unwrap_or(false) {
+            if !reactions_enabled
+                || !forum_reactions_enabled
+                    .and_then(Result::ok)
+                    .unwrap_or(false)
+            {
                 return Ok(None);
             }
             let Some(topic_id) = topic_id else {
@@ -83,14 +87,20 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     );
 
     let reply_revision_resource = Resource::new_blocking(
-        move || (
-            reactions_enabled.get(),
-            forum_reactions_enabled.get(),
-            reply_id,
-            reply_locale.clone(),
-        ),
+        move || {
+            (
+                reactions_enabled.get(),
+                forum_reactions_enabled.get(),
+                reply_id,
+                reply_locale.clone(),
+            )
+        },
         |(reactions_enabled, forum_reactions_enabled, reply_id, locale)| async move {
-            if !reactions_enabled || !forum_reactions_enabled.and_then(Result::ok).unwrap_or(false) {
+            if !reactions_enabled
+                || !forum_reactions_enabled
+                    .and_then(Result::ok)
+                    .unwrap_or(false)
+            {
                 return Ok(None);
             }
             let Some(reply_id) = reply_id else {

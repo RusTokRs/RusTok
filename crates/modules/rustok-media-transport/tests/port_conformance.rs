@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_media::{
-    MediaAssetReadPort, MediaAssetReferenceInput, MediaAssetReferenceAdmissionState,
+    MediaAssetReadPort, MediaAssetReferenceAdmissionState, MediaAssetReferenceInput,
     MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
     MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport,
     UploadInput, UpsertTranslationInput, migrations,
@@ -139,10 +139,7 @@ async fn exercise_provider(
         .expect("get_asset_reference_admission should preserve the lifecycle admission contract");
     assert_eq!(admission.media_id, asset_id);
     assert_eq!(admission.tenant_id, tenant_id);
-    assert_eq!(
-        admission.state,
-        MediaAssetReferenceAdmissionState::Admitted
-    );
+    assert_eq!(admission.state, MediaAssetReferenceAdmissionState::Admitted);
 
     let reference_page = read
         .list_asset_references(
@@ -309,11 +306,7 @@ async fn exercise_provider(
     };
     let retain_context = write_context(tenant_id, "retain-reference");
     let retained = write
-        .retain_asset_reference(
-            retain_context.clone(),
-            asset_id,
-            reference.clone(),
-        )
+        .retain_asset_reference(retain_context.clone(), asset_id, reference.clone())
         .await
         .expect("retain_asset_reference should persist a durable owner hold");
     let retained_replay = write
@@ -338,10 +331,7 @@ async fn exercise_provider(
         reference_page_after_retain.references[0].reference_id,
         retained.reference_id
     );
-    assert_eq!(
-        reference_page_after_retain.references[0].media_id,
-        asset_id
-    );
+    assert_eq!(reference_page_after_retain.references[0].media_id, asset_id);
     assert!(!reference_page_after_retain.has_more);
 
     let empty_after_cursor = read
@@ -400,10 +390,7 @@ async fn exercise_provider(
         .await
         .expect_err("retained media must reject deletion");
     assert_eq!(delete_while_retained.kind, PortErrorKind::Conflict);
-    assert_eq!(
-        delete_while_retained.code,
-        "media.asset_referenced"
-    );
+    assert_eq!(delete_while_retained.code, "media.asset_referenced");
 
     write
         .release_asset_reference(

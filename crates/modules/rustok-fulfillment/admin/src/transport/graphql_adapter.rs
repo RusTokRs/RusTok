@@ -156,7 +156,6 @@ struct ShippingOptionTranslationInput {
     name: String,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,
@@ -493,7 +492,10 @@ mod tests {
 
         let translations = input.translations.expect("translation update expected");
         assert_eq!(
-            translations.iter().map(|value| (&value.locale, &value.name)).collect::<Vec<_>>(),
+            translations
+                .iter()
+                .map(|value| (&value.locale, &value.name))
+                .collect::<Vec<_>>(),
             vec![
                 (&"en".to_string(), &"Express".to_string()),
                 (&"fr".to_string(), &"Express FR".to_string()),
@@ -522,9 +524,11 @@ mod tests {
         assert_eq!(translations.len(), 2);
         assert!(translations.iter().all(|value| value.locale != "und"));
         assert!(translations.iter().any(|value| value.locale == "en"));
-        assert!(translations
-            .iter()
-            .any(|value| value.locale == "de" && value.name == "Express DE"));
+        assert!(
+            translations
+                .iter()
+                .any(|value| value.locale == "de" && value.name == "Express DE")
+        );
     }
 
     #[test]
@@ -540,8 +544,10 @@ mod tests {
 
         assert_eq!(translations.len(), 2);
         assert!(translations.iter().any(|value| value.locale == "en"));
-        assert!(translations
-            .iter()
-            .any(|value| value.locale == "de" && value.name == "Express DE"));
+        assert!(
+            translations
+                .iter()
+                .any(|value| value.locale == "de" && value.name == "Express DE")
+        );
     }
 }

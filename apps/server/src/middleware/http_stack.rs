@@ -126,7 +126,9 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
         .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .map(|ct| ct.starts_with("multipart/form-data") || ct.starts_with("application/octet-stream"))
+        .map(|ct| {
+            ct.starts_with("multipart/form-data") || ct.starts_with("application/octet-stream")
+        })
         .unwrap_or(false)
 }
 
@@ -382,7 +384,10 @@ pub fn apply_http_edge_stack(
     let compression_layer = CompressionLayer::new();
 
     let service_stack = ServiceBuilder::new()
-        .layer(SetRequestIdLayer::new(x_request_id.clone(), MakeRequestUuid))
+        .layer(SetRequestIdLayer::new(
+            x_request_id.clone(),
+            MakeRequestUuid,
+        ))
         .layer(PropagateRequestIdLayer::new(x_request_id))
         .layer(sensitive_headers_layer)
         .layer(trace_layer)
@@ -517,6 +522,10 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("http://localhost:3000")
         );
-        assert!(response.headers().contains_key("access-control-allow-methods"));
+        assert!(
+            response
+                .headers()
+                .contains_key("access-control-allow-methods")
+        );
     }
 }

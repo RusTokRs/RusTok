@@ -188,7 +188,10 @@ impl ComponentPatch {
 }
 
 fn is_unpatchable_reserved_field(field: &str) -> bool {
-    matches!(field, "id" | "attributes" | "style" | "traits" | "components")
+    matches!(
+        field,
+        "id" | "attributes" | "style" | "traits" | "components"
+    )
 }
 
 fn merge_style(current: &mut Option<Value>, patch: Value) {

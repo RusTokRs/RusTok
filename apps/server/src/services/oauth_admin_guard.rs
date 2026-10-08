@@ -116,8 +116,8 @@ impl GuardedOAuthAdminProvider {
         let first_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let second_token = generate_refresh_token().map_err(internal_oauth_guard_error)?;
         let client_secret = format!("sk_live_{first_token}{second_token}");
-        let secret_hash = hash_password(&client_secret)
-            .map_err(|error| internal_oauth_guard_error(error))?;
+        let secret_hash =
+            hash_password(&client_secret).map_err(|error| internal_oauth_guard_error(error))?;
         let mut active: oauth_apps::ActiveModel = app.into();
         active.client_secret_hash = Set(Some(secret_hash));
         active.updated_at = Set(Utc::now().into());
@@ -155,10 +155,7 @@ where
             .await
             .map_err(|error| internal_oauth_guard_error(error))?,
         DbBackend::Sqlite => {
-            let app = query()
-                .one(db)
-                .await
-                .map_err(internal_oauth_guard_error)?;
+            let app = query().one(db).await.map_err(internal_oauth_guard_error)?;
             if let Some(app) = app.as_ref() {
                 let result = oauth_apps::Entity::update_many()
                     .col_expr(
@@ -322,7 +319,9 @@ fn map_consent_error(error: crate::error::Error) -> AuthAdminMutationError {
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_oauth_guard_list_limit, internal_oauth_guard_error, validate_grant_dependencies};
+    use super::{
+        clamp_oauth_guard_list_limit, internal_oauth_guard_error, validate_grant_dependencies,
+    };
     use rustok_auth::AuthAdminMutationError;
 
     #[test]

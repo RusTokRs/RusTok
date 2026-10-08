@@ -13,16 +13,16 @@ use rustok_notifications_api::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use super::forum_graphql_runtime;
 use crate::{
     ForumCounterDrift, ForumCounterReconciliationReport, ForumCounterReconciliationService,
     ForumError,
     services::{
-        ForumAttachmentHoldReconciliationReport, ForumAttachmentHoldReconciliationService,
-        ForumAttachmentHoldDrift, ForumSolutionDrift, ForumSolutionReconciliationReport,
-        ForumSolutionReconciliationService,
+        ForumAttachmentHoldDrift, ForumAttachmentHoldReconciliationReport,
+        ForumAttachmentHoldReconciliationService, ForumSolutionDrift,
+        ForumSolutionReconciliationReport, ForumSolutionReconciliationService,
     },
 };
-use super::forum_graphql_runtime;
 
 const MODULE_SLUG: &str = "forum";
 
@@ -158,8 +158,7 @@ impl ForumReconciliationQuery {
         media_after: Option<Uuid>,
         relation_after: Option<Uuid>,
     ) -> Result<GqlForumAttachmentHoldReconciliationReport> {
-        let (tenant_id, security, requested_limit, db) =
-            reconciliation_context(ctx, limit).await?;
+        let (tenant_id, security, requested_limit, db) = reconciliation_context(ctx, limit).await?;
         let runtime = forum_graphql_runtime(ctx);
         let media = runtime
             .attachment_hold_reconciliation_media()
@@ -232,13 +231,11 @@ impl ForumReconciliationQuery {
 
         let requested_limit = normalize_notification_limit(limit)?;
         let runtime = forum_graphql_runtime(ctx);
-        let reconciliation = runtime
-            .notification_reconciliation_port()
-            .ok_or_else(|| {
-                <FieldError as GraphQLError>::internal_error(
-                    "Forum notification reconciliation capability is unavailable",
-                )
-            })?;
+        let reconciliation = runtime.notification_reconciliation_port().ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error(
+                "Forum notification reconciliation capability is unavailable",
+            )
+        })?;
         let request_context = ctx.data_opt::<RequestContext>();
         let locale = request_context
             .map(|request| request.locale.clone())
@@ -457,13 +454,15 @@ fn map_attachment_hold_report(
         forum_cursor: report.forum_cursor,
         drift_count: saturating_i32(report.drift_count() as u64),
         clean: report.is_clean(),
-        drifts: report.drifts.into_iter().map(map_attachment_hold_drift).collect(),
+        drifts: report
+            .drifts
+            .into_iter()
+            .map(map_attachment_hold_drift)
+            .collect(),
     }
 }
 
-fn map_attachment_hold_drift(
-    drift: ForumAttachmentHoldDrift,
-) -> GqlForumAttachmentHoldDrift {
+fn map_attachment_hold_drift(drift: ForumAttachmentHoldDrift) -> GqlForumAttachmentHoldDrift {
     GqlForumAttachmentHoldDrift {
         kind: drift.kind.as_str().to_string(),
         reference_id: drift.reference_id,

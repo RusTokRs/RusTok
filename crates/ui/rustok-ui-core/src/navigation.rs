@@ -94,14 +94,11 @@ pub fn build_ui_nav_groups(
             });
         }
 
-        grouped
-            .entry(entry.nav_group)
-            .or_default()
-            .push(UiNavItem {
-                label: entry.nav_label.to_string(),
-                order: entry.nav_order,
-                children,
-            });
+        grouped.entry(entry.nav_group).or_default().push(UiNavItem {
+            label: entry.nav_label.to_string(),
+            order: entry.nav_order,
+            children,
+        });
     }
 
     let mut groups = grouped
@@ -219,7 +216,11 @@ pub fn build_ui_breadcrumbs(
 
         crumbs.push(UiBreadcrumb {
             label: capitalized,
-            href: if is_last { None } else { Some(current_href.clone()) },
+            href: if is_last {
+                None
+            } else {
+                Some(current_href.clone())
+            },
             is_current: is_last,
         });
     }
@@ -247,7 +248,11 @@ mod tests {
             None,
             "/modules/blog"
         ));
-        assert!(!ui_href_is_active("/modules/blogger", None, "/modules/blog"));
+        assert!(!ui_href_is_active(
+            "/modules/blogger",
+            None,
+            "/modules/blog"
+        ));
     }
 
     #[test]

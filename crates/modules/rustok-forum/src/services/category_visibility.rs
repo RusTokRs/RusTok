@@ -208,8 +208,14 @@ impl CategoryVisibilitySnapshot {
 
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
         let hierarchy_rows = rustok_taxonomy::entities::taxonomy_category_hierarchy::Entity::find()
-            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-            .filter(rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId.is_in(category_ids.iter().copied()))
+            .filter(
+                rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TenantId
+                    .eq(tenant_id),
+            )
+            .filter(
+                rustok_taxonomy::entities::taxonomy_category_hierarchy::Column::TermId
+                    .is_in(category_ids.iter().copied()),
+            )
             .all(db)
             .await?;
         let mut parents = hierarchy_rows

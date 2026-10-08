@@ -279,7 +279,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-
     #[test]
     fn auth_config_rejects_malformed_nested_auth_settings() {
         let settings = serde_json::json!({

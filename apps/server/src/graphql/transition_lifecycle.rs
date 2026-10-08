@@ -163,12 +163,13 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
     match error {
         TransitionCoordinatorError::RecoveryLimitExhausted(reason) => {
             tracing::error!(%reason, "module transition automatic recovery limit exhausted");
-            FieldError::new("Automatic transition recovery limit was exhausted")
-                .extend_with(|_, extensions| {
+            FieldError::new("Automatic transition recovery limit was exhausted").extend_with(
+                |_, extensions| {
                     extensions.set("code", "RECOVERY_LIMIT_EXHAUSTED");
                     extensions.set("retryable_issue", false);
-                })
-        },
+                },
+            )
+        }
         TransitionCoordinatorError::InvalidStateTransition { from, to } => FieldError::new(
             format!("Invalid state transition from {from} to {to}"),
         )
@@ -183,7 +184,7 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
                     extensions.set("code", "SECURITY_EPOCH_STALE");
                     extensions.set("retryable_issue", false);
                 })
-        },
+        }
         _ => <FieldError as GraphQLError>::internal_error("Transition coordinator failed"),
     }
 }
@@ -195,13 +196,15 @@ mod tests {
 
     #[test]
     fn recovery_limit_error_redacts_owner_reason() {
-        let error = map_transition_coordinator_error(
-            TransitionCoordinatorError::RecoveryLimitExhausted(
+        let error =
+            map_transition_coordinator_error(TransitionCoordinatorError::RecoveryLimitExhausted(
                 "Automatic recovery already attempted: database password=secret".to_string(),
-            ),
-        );
+            ));
 
-        assert_eq!(error.message, "Automatic transition recovery limit was exhausted");
+        assert_eq!(
+            error.message,
+            "Automatic transition recovery limit was exhausted"
+        );
         assert!(!error.message.contains("database password=secret"));
     }
 
@@ -221,15 +224,14 @@ mod tests {
 
     #[test]
     fn security_epoch_error_redacts_latest_reason() {
-        let error = map_transition_coordinator_error(
-            TransitionCoordinatorError::SecurityEpochStale(
+        let error =
+            map_transition_coordinator_error(TransitionCoordinatorError::SecurityEpochStale(
                 SecurityEpochConflictError::EpochStale {
                     expected: rustok_modules::GlobalSecurityEpoch(1),
                     current: rustok_modules::GlobalSecurityEpoch(2),
                     latest_reason: "secret operational reason".to_string(),
                 },
-            ),
-        );
+            ));
 
         assert_eq!(
             error.message,

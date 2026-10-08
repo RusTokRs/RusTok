@@ -261,15 +261,10 @@ impl SeaOrmRbacPresentationStore {
     {
         Self::ensure_known_resource(tenant_id, resource_kind, resource_key)?;
         let locale = StoredLocale::from(source_locale.clone());
-        let current = Self::load_model_on(
-            connection,
-            tenant_id,
-            resource_kind,
-            resource_key,
-            &locale,
-        )
-        .await?
-        .ok_or(RbacPresentationStoreError::NotFound)?;
+        let current =
+            Self::load_model_on(connection, tenant_id, resource_kind, resource_key, &locale)
+                .await?
+                .ok_or(RbacPresentationStoreError::NotFound)?;
         if current.copy_revision != expected_copy_revision {
             return Err(RbacPresentationStoreError::RevisionConflict {
                 expected: expected_copy_revision,
@@ -325,14 +320,7 @@ impl RbacPresentationStore for SeaOrmRbacPresentationStore {
         resource_key: &str,
         locale: &StoredLocale,
     ) -> Result<Option<RbacLocalizedPresentation>, RbacPresentationStoreError> {
-        Self::find_exact_on(
-            &self.db,
-            tenant_id,
-            resource_kind,
-            resource_key,
-            locale,
-        )
-        .await
+        Self::find_exact_on(&self.db, tenant_id, resource_kind, resource_key, locale).await
     }
 
     async fn list_for_resource(

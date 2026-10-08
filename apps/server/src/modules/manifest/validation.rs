@@ -37,10 +37,7 @@ pub fn module_root_path(spec: &ManifestModuleSpec) -> Option<PathBuf> {
     }
 
     let module_path = spec.path.as_ref()?;
-    Some(
-        workspace_root_path()
-            .join(module_path),
-    )
+    Some(workspace_root_path().join(module_path))
 }
 
 pub fn workspace_root_path() -> PathBuf {

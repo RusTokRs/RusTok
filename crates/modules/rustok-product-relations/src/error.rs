@@ -13,7 +13,9 @@ pub enum ProductRelationError {
     #[error("Self-relation is not allowed: product {0} cannot be related to itself")]
     SelfRelationNotAllowed(Uuid),
 
-    #[error("Relation between product {product_id} and {related_product_id} with type '{relation_type}' already exists")]
+    #[error(
+        "Relation between product {product_id} and {related_product_id} with type '{relation_type}' already exists"
+    )]
     RelationAlreadyExists {
         product_id: Uuid,
         related_product_id: Uuid,

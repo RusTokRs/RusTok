@@ -530,7 +530,11 @@ mod tests {
 
     #[tokio::test]
     async fn kubernetes_resolver_async_rejects_invalid_namespace_before_cluster_discovery() {
-        assert!(KubernetesSecretResolver::in_cluster_async("invalid namespace").await.is_err());
+        assert!(
+            KubernetesSecretResolver::in_cluster_async("invalid namespace")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

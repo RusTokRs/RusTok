@@ -134,10 +134,7 @@ impl PriceListOwnerService {
         validate_tenant(tenant_id)?;
         validate_price_list_id(price_list_id)?;
 
-        let normalized_translations = input
-            .translations
-            .map(normalize_translations)
-            .transpose()?;
+        let normalized_translations = input.translations.map(normalize_translations).transpose()?;
         let list_type = input
             .list_type
             .as_deref()
@@ -162,7 +159,10 @@ impl PriceListOwnerService {
         };
         let next_ends_at = match input.ends_at {
             Some(value) => value,
-            None => current.ends_at.as_ref().map(|value| value.with_timezone(&Utc)),
+            None => current
+                .ends_at
+                .as_ref()
+                .map(|value| value.with_timezone(&Utc)),
         };
         validate_window(next_starts_at.as_ref(), next_ends_at.as_ref())?;
 
@@ -237,7 +237,9 @@ impl PriceListOwnerService {
         )
         .await
         .map_err(translation_change_error_to_commerce_error)?;
-        price_list::Entity::delete_by_id(price_list_id).exec(&txn).await?;
+        price_list::Entity::delete_by_id(price_list_id)
+            .exec(&txn)
+            .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -295,8 +297,7 @@ fn normalize_translations(
         let name = translation.name.trim();
         if name.is_empty() || name.chars().count() > 100 {
             return Err(CommerceError::Validation(
-                "price-list translation name must contain between 1 and 100 characters"
-                    .to_string(),
+                "price-list translation name must contain between 1 and 100 characters".to_string(),
             ));
         }
         let description = translation
@@ -413,9 +414,7 @@ fn snapshot(
         channel_slug: model.channel_slug,
         rule_kind: model.rule_kind,
         adjustment_percent: model.adjustment_percent,
-        starts_at: model
-            .starts_at
-            .map(|value| value.with_timezone(&Utc)),
+        starts_at: model.starts_at.map(|value| value.with_timezone(&Utc)),
         ends_at: model.ends_at.map(|value| value.with_timezone(&Utc)),
         translations: translations
             .into_iter()

@@ -526,10 +526,10 @@ pub mod payment_provider_event_worker;
 pub mod payment_provider_runtime;
 pub mod platform_composition;
 pub mod product_catalog_deployment;
-#[cfg(all(feature = "mod-product", feature = "mod-media"))]
-pub mod product_media_asset_validation;
 #[cfg(feature = "mod-product")]
 pub mod product_index_refresh_worker;
+#[cfg(all(feature = "mod-product", feature = "mod-media"))]
+pub mod product_media_asset_validation;
 pub mod profile_media_public_image_deployment;
 pub mod profile_media_public_image_runtime;
 

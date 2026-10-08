@@ -325,8 +325,11 @@ impl CatalogService {
                     locale: target_locale.clone(),
                 }
             })?;
-        let resource_revision =
-            product_variant_translation_resource_revision(&product, &updated_variant, &translations_after);
+        let resource_revision = product_variant_translation_resource_revision(
+            &product,
+            &updated_variant,
+            &translations_after,
+        );
         let target_revision = product_variant_translation_locale_revision(target_after);
         let target = ProductVariantTranslationExactLocaleRecord::from(target_after.clone());
 

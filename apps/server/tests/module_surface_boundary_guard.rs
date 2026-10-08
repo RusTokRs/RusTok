@@ -147,15 +147,13 @@ fn forum_notification_reconciliation_graphql_is_owned_by_forum_crate() {
         );
     }
 
-    let server_schema =
-        std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
-            .expect("server GraphQL schema should read");
+    let server_schema = std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
+        .expect("server GraphQL schema should read");
     assert!(
         !server_schema.contains("ForumNotificationReconciliationQuery"),
         "server GraphQL schema must not compose a server-owned notification reconciliation shim"
     );
 }
-
 
 #[test]
 fn module_owned_graphql_types_and_resolvers_do_not_live_in_server() {

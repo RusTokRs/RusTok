@@ -1,12 +1,12 @@
-use std::collections::HashMap;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use rustok_api::Patch;
 use rustok_blog::{
-    ports::{blog_post, blog_post_translation},
     CategoryService as BlogCategoryService, CreateCategoryInput, CreatePostInput, PostService,
     UpdatePostInput,
+    ports::{blog_post, blog_post_translation},
 };
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
@@ -31,8 +31,13 @@ pub async fn import_blog_categories(
     for (pos, cat) in categories.iter().enumerate() {
         // Idempotency: check if category already exists in taxonomy term translations
         let existing = rustok_taxonomy::entities::taxonomy_term_translation::Entity::find()
-            .filter(rustok_taxonomy::entities::taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-            .filter(rustok_taxonomy::entities::taxonomy_term_translation::Column::Slug.eq(&cat.slug))
+            .filter(
+                rustok_taxonomy::entities::taxonomy_term_translation::Column::TenantId
+                    .eq(tenant_id),
+            )
+            .filter(
+                rustok_taxonomy::entities::taxonomy_term_translation::Column::Slug.eq(&cat.slug),
+            )
             .one(db)
             .await?;
 
@@ -98,7 +103,8 @@ pub async fn import_blog_posts(
                 .as_ref()
                 .and_then(|slug| category_map.get(slug).copied());
 
-            let content = rustok_blog::richtext::article_document_from_plain_text(&post.content_markdown);
+            let content =
+                rustok_blog::richtext::article_document_from_plain_text(&post.content_markdown);
 
             let new_id = post_service
                 .create_post(
@@ -139,7 +145,9 @@ pub async fn import_blog_posts(
                 .await?;
 
             if trans_exists.is_none() {
-                let content = rustok_blog::richtext::article_document_from_plain_text(&translation.content_markdown);
+                let content = rustok_blog::richtext::article_document_from_plain_text(
+                    &translation.content_markdown,
+                );
                 let update_input = UpdatePostInput {
                     locale: Some(trans_locale.clone()),
                     title: Some(translation.title.clone()),

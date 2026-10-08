@@ -15,8 +15,8 @@ use rustok_api::{
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::{
-    FulfillmentService, ListAllShippingOptionProjectionsRequest, ListShippingOptionProjectionsRequest,
-    ReadShippingOptionProjectionRequest,
+    FulfillmentService, ListAllShippingOptionProjectionsRequest,
+    ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
 };
 use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
@@ -1353,8 +1353,7 @@ impl CommerceQuery {
             ));
         }
         let tenant_id = tenant.id;
-        let locale =
-            resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let owner_context = shipping_option_graphql_read_port_context(
             tenant_id,
             "shipping_option",
@@ -1382,13 +1381,14 @@ impl CommerceQuery {
         {
             Ok(option) => Ok(Some(option.into())),
             Err(error) if error.kind == rustok_api::PortErrorKind::NotFound => Ok(None),
-            Err(error) => Err(super::super::query_error_boundary::shipping_option_port_error(
-                &owner_context,
-                error,
-            )),
+            Err(error) => Err(
+                super::super::query_error_boundary::shipping_option_port_error(
+                    &owner_context,
+                    error,
+                ),
+            ),
         }
     }
-
 
     async fn shipping_options(
         &self,
@@ -1411,8 +1411,7 @@ impl CommerceQuery {
             ));
         }
         let tenant_id = tenant.id;
-        let locale =
-            resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let filter = filter.unwrap_or(ShippingOptionsFilter {
             active: None,
             currency_code: None,
@@ -1485,7 +1484,6 @@ impl CommerceQuery {
         })
     }
 
-
     async fn fulfillment(
         &self,
         ctx: &Context<'_>,
@@ -1498,8 +1496,7 @@ impl CommerceQuery {
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
         )?;
-        let tenant_id =
-            current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let fulfillment = match FulfillmentService::new(db.clone())
@@ -1528,8 +1525,7 @@ impl CommerceQuery {
             &[Permission::FULFILLMENTS_READ],
             "Permission denied: fulfillments:read required",
         )?;
-        let tenant_id =
-            current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
+        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Fulfillment reads")?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let filter = filter.unwrap_or(FulfillmentsFilter {

@@ -1,12 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
-use std::fmt::Display;
 use chrono::{DateTime, Utc};
-use rustok_api::{
-    HostAuthority, Permission, graphql::GraphQLError,
-    has_effective_permission,
-};
+use rustok_api::{HostAuthority, Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use std::fmt::Display;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
@@ -255,8 +252,9 @@ impl SystemQuery {
             .filter(SessionCol::ExpiresAt.gt(now))
             .count(db)
             .await
-            .map_err(|error| graphql_system_internal_error("Unable to read active session count", error))?
-            as i64;
+            .map_err(|error| {
+                graphql_system_internal_error("Unable to read active session count", error)
+            })? as i64;
 
         Ok(SessionStats {
             tenant_id: tenant.id,
@@ -290,7 +288,6 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
 #[cfg(test)]
 mod tests {
     use rustok_api::{Permission, has_effective_permission};
-
 
     #[test]
     fn host_global_system_queries_require_host_authority() {

@@ -13,14 +13,14 @@ use rustok_core::generate_id;
 
 use crate::entities::{payment_collection, provider_operation, refund};
 use crate::error::{PaymentError, PaymentResult};
+use crate::providers::{
+    MAX_EXTERNAL_REFERENCE_LENGTH, PaymentProviderOperationResult,
+    validate_provider_operation_payload,
+};
 use crate::services::checkout_admission::{
     CheckoutAdmissionDecision, CheckoutAdmissionLinkState, CheckoutAdmissionRefusal,
     CheckoutExecutionAdmissionPort, ProviderExecutionEffect, decide_checkout_admission_claim,
     refusal_metric_operation_label, resolve_checkout_operation_id,
-};
-use crate::providers::{
-    MAX_EXTERNAL_REFERENCE_LENGTH, PaymentProviderOperationResult,
-    validate_provider_operation_payload,
 };
 
 pub const PROVIDER_OPERATION_PENDING: &str = "pending";
@@ -137,11 +137,7 @@ impl PaymentProviderOperationJournal {
         }
     }
 
-    pub async fn get(
-        &self,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> PaymentResult<provider_operation::Model> {
+    pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> PaymentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, id)?;
         provider_operation::Entity::find_by_id(id)
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
@@ -236,7 +232,10 @@ impl PaymentProviderOperationJournal {
         };
         match decide_checkout_admission_claim(link, effect, operation.admission_epoch) {
             CheckoutAdmissionDecision::Unfenced => self.claim_without_fence(tenant_id, id).await,
-            CheckoutAdmissionDecision::Admitted { epoch, adopt_legacy } => {
+            CheckoutAdmissionDecision::Admitted {
+                epoch,
+                adopt_legacy,
+            } => {
                 self.claim_extending(
                     tenant_id,
                     id,
@@ -247,13 +246,8 @@ impl PaymentProviderOperationJournal {
                 .await
             }
             CheckoutAdmissionDecision::Refused(refusal) => {
-                self.record_admission_refusal(
-                    tenant_id,
-                    id,
-                    operation.operation.as_str(),
-                    refusal,
-                )
-                .await?;
+                self.record_admission_refusal(tenant_id, id, operation.operation.as_str(), refusal)
+                    .await?;
                 Ok(None)
             }
         }
@@ -485,11 +479,7 @@ impl PaymentProviderOperationJournal {
     ///
     /// `0` means "not observed": the claim gate adopts such a row only while the
     /// checkout is `open` (see [`decide_checkout_admission_claim`]).
-    async fn checkout_admission_epoch(
-        &self,
-        tenant_id: Uuid,
-        payment_collection_id: Uuid,
-    ) -> i64 {
+    async fn checkout_admission_epoch(&self, tenant_id: Uuid, payment_collection_id: Uuid) -> i64 {
         match self
             .checkout_admission_link(tenant_id, payment_collection_id)
             .await
@@ -590,10 +580,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::ErrorMessage,
                 Expr::value(Option::<String>::None),
             )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
                 Expr::value(Some(now)),
@@ -644,10 +631,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::ErrorMessage,
                 Expr::value(Some(error_message)),
             )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
@@ -702,10 +686,8 @@ impl PaymentProviderOperationJournal {
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
             .filter(
-                provider_operation::Column::Status.is_in([
-                    PROVIDER_OPERATION_EXECUTING,
-                    PROVIDER_OPERATION_SUCCEEDED,
-                ]),
+                provider_operation::Column::Status
+                    .is_in([PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED]),
             )
             .exec(&self.db)
             .await?;
@@ -747,10 +729,7 @@ impl PaymentProviderOperationJournal {
                 provider_operation::Column::ErrorMessage,
                 Expr::value(Option::<String>::None),
             )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::value(now),
-            )
+            .col_expr(provider_operation::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 provider_operation::Column::ProviderCompletedAt,
                 if provider_completion_missing {
@@ -765,12 +744,10 @@ impl PaymentProviderOperationJournal {
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(id))
-            .filter(
-                provider_operation::Column::Status.is_in([
-                    PROVIDER_OPERATION_SUCCEEDED,
-                    PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-                ]),
-            )
+            .filter(provider_operation::Column::Status.is_in([
+                PROVIDER_OPERATION_SUCCEEDED,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            ]))
             .exec(&self.db)
             .await?;
 
@@ -996,12 +973,16 @@ fn validate_provider_result_for_operation(
         });
     }
 
-    validate_provider_operation_payload(&serde_json::to_value(&typed_result).map_err(|_| {
-        PaymentError::ProviderInvalidResponse {
-            provider_id: current.provider_id.clone(),
-            operation: current.operation.clone(),
-        }
-    })?, "canonical result").map_err(|_| PaymentError::ProviderInvalidResponse {
+    validate_provider_operation_payload(
+        &serde_json::to_value(&typed_result).map_err(|_| {
+            PaymentError::ProviderInvalidResponse {
+                provider_id: current.provider_id.clone(),
+                operation: current.operation.clone(),
+            }
+        })?,
+        "canonical result",
+    )
+    .map_err(|_| PaymentError::ProviderInvalidResponse {
         provider_id: current.provider_id.clone(),
         operation: current.operation.clone(),
     })?;
@@ -1071,6 +1052,9 @@ mod tests {
             updated_at: now,
             provider_completed_at: None,
             committed_at: None,
+            admission_epoch: 0,
+            admission_refusal_code: None,
+            admission_refused_at: None,
         }
     }
 

@@ -157,7 +157,10 @@ pub fn WorkflowAdmin() -> impl IntoView {
 #[component]
 fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let is_ru = locale.as_deref().map(|s| s.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|s| s.starts_with("ru"))
+        .unwrap_or(false);
     let empty_message = t(
         locale.as_deref(),
         "workflow.empty",
@@ -243,7 +246,12 @@ fn WorkflowList(workflows: Vec<WorkflowSummary>) -> impl IntoView {
                 .into_any()
             }
             "updated_at" => {
-                let updated = item.updated_at.split('T').next().unwrap_or(item.updated_at.as_str()).to_string();
+                let updated = item
+                    .updated_at
+                    .split('T')
+                    .next()
+                    .unwrap_or(item.updated_at.as_str())
+                    .to_string();
                 view! {
                     <span class="text-xs text-muted-foreground font-mono">
                         {updated}

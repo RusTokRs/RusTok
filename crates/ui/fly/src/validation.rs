@@ -1,9 +1,9 @@
-use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject};
 use crate::safe_url::{self, UrlAttributeKind, UrlPolicy};
 use crate::{
     AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
     StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
+use crate::{ComponentChildren, ComponentIndex, ComponentNode, ComponentObject};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -222,7 +222,11 @@ fn validate_page_metadata(metadata: &PageMetadata, page_path: &str, report: &mut
     }
     for (field, value, allow_data_image) in [
         ("canonical_url", metadata.canonical_url.as_deref(), false),
-        ("open_graph_image", metadata.open_graph_image.as_deref(), true),
+        (
+            "open_graph_image",
+            metadata.open_graph_image.as_deref(),
+            true,
+        ),
     ] {
         if value.is_some_and(|value| !metadata_url_allowed(value, allow_data_image)) {
             report.diagnostics.push(diagnostic(
@@ -902,7 +906,14 @@ mod tests {
 
     #[test]
     fn identifier_rule_allows_grapesjs_shapes_and_rejects_injection_payloads() {
-        for id in ["hero", "i3kj", "hero--rep-0", "fly-section-12", "ns:block.v2", "a_b"] {
+        for id in [
+            "hero",
+            "i3kj",
+            "hero--rep-0",
+            "fly-section-12",
+            "ns:block.v2",
+            "a_b",
+        ] {
             assert!(validate_identifier(id).is_ok(), "rejected `{id}`");
         }
         for id in [
@@ -1225,4 +1236,3 @@ mod tests {
         assert_eq!(standalone, unified);
     }
 }
-

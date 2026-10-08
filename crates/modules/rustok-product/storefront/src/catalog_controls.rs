@@ -29,7 +29,11 @@ impl CatalogListInput {
 fn normalize_currency_code(currency_code: Option<String>) -> Option<String> {
     let currency_code = normalize_optional_ui_text(currency_code)?;
     let normalized = currency_code.to_ascii_uppercase();
-    if normalized.len() == 3 && normalized.chars().all(|character| character.is_ascii_alphabetic()) {
+    if normalized.len() == 3
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
         Some(normalized)
     } else {
         None

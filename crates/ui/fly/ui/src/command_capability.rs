@@ -254,4 +254,3 @@ mod tests {
         assert!(!capabilities.contains(&EditorCapability::Edit));
     }
 }
-
