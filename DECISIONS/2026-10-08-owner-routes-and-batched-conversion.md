@@ -1,7 +1,7 @@
 # Owner-held routes, cursor pagination, and batched conversion for Blog and Forum
 
 - Date: 2026-10-08
-- Decision status: Proposed
+- Decision status: Accepted
 - Implementation status: Not started
 - Owners: `rustok-blog` (post storage, post routes and redirects); `rustok-forum` (topic storage, topic routes and redirects); `rustok-content` (shared ports and the canonical route resolver contract); `rustok-content-orchestration` (Blog/Forum conversion and route resolver implementation)
 - Extends: `DECISIONS/2026-03-28-content-orchestration-port-boundary.md`, `DECISIONS/2026-03-28-multilingual-content-contract.md`
@@ -34,8 +34,13 @@ topics must scale. Measured on the current code:
 - `resolve_route` queries `url_alias` by `(tenant_id, alias_url)`, but the unique
   index is `(tenant_id, locale, alias_url)`. The leading `locale` column does not
   serve this query before PostgreSQL skip-scan support.
-- The Forum reply counter is serialized by a per-topic row lock trigger
-  (`forum_lock_reply_counter_mutation`). Hot topics contend on that lock.
+- Every Forum reply insert runs `forum_lock_reply_counter_mutation`, which takes
+  a transaction-scoped advisory lock on the category key and on the topic key.
+  All replies in one category are therefore serialized, not only replies in a hot
+  topic.
+- Forum reply position is allocated by
+  `UPDATE forum_topics SET next_reply_position = next_reply_position + 1 ...
+  RETURNING`, which locks the topic row on every reply.
 - The unique alias index allows the same URL in several locales for different
   targets, so the schema does not prevent ambiguous global Blog routes.
 
@@ -86,13 +91,16 @@ topics must scale. Measured on the current code:
    - Phase 4, batches: remove the source rows that were moved.
    Conversion never loads the full reply set into memory. A failed run resumes
    from the last committed cursor.
+   The source stays frozen from Phase 1 until Phase 3 commits. Phase 4 removes
+   source rows that are no longer visible to readers.
 
 6. **Keyset pagination everywhere on hot paths.** Public and admin listings,
    reply and comment lists, and the SEO bulk and sitemap scans use keyset
    cursors:
    - Blog posts: `(published_at, id)`;
    - Forum topics: `(last_activity_at, id)` or the existing order key plus `id`;
-   - Replies and comments: `(position, id)`;
+   - Replies and comments: `(created_at, id)`, where `id` is UUIDv7 so that the
+     order is monotonic in time. `position` is not used as a pagination key;
    - Bulk and sitemap: `id`.
    `OFFSET` is not used on these paths.
 
@@ -148,8 +156,17 @@ topics must scale. Measured on the current code:
   nothing twice.
 - Frozen source topics reject writes with a conflict error. Readers see the
   previous owner until Phase 3 commits.
-- Forum reply counters keep the existing serialized trigger. Hot-topic contention
-  is documented as an accepted cost, not solved by this ADR.
+- Forum reply write path takes no counter lock and no category lock. Reply
+  creation and deletion insert one outbox event in the same transaction as the
+  reply. A consumer applies deltas to `reply_count` on topics and categories in
+  batches, idempotently by `event_id` recorded in a processed-event table.
+  The existing trigger `forum_lock_reply_counter_mutation` is removed.
+- Counter reads are eventually consistent with a lag of seconds. The contract is
+  documented in the Forum module docs and in the public API description. The
+  existing counter reconciliation job remains the drift repair.
+- If a visible per-reply number (`#N`) is a product requirement, the per-topic
+  sequence `next_reply_position` stays. It serializes only that topic, and it
+  never locks the category. Otherwise the column is removed.
 - Deletion of a target removes redirect rows that point at it in the owner table
   of the redirect source. The removal runs from a domain event, is idempotent, and
   is retried until it succeeds.
@@ -186,20 +203,26 @@ topics must scale. Measured on the current code:
 
 ## Migration and cutover
 
-- The registry tables `canonical_url` and `url_alias` and their migrations
-  (`m20260328_000001_create_content_url_tables`,
-  `m20260721_000004_expand_content_locale_storage_columns`) are removed under the
-  unreleased-schema rule (amend pending), if they have not been released. If any
-  release has created them, a dedicated drop migration is required instead. This
-  question must be answered before implementation starts.
+- Decided: the repository is pre-release, has no version tags, and keeps its
+  changelog under `[Unreleased]`. The registry tables `canonical_url` and
+  `url_alias` are removed by amending the pending migrations
+  `m20260328_000001_create_content_url_tables` and
+  `m20260721_000004_expand_content_locale_storage_columns`. No drop migration is
+  added. Precondition: no environment has applied these migrations. Any dev or
+  staging database that applied them is recreated before merge.
 - `blog_post_routes` and `forum_topic_routes` are new tables in the owner crates.
-- Existing `url_alias` and `canonical_url` rows created by commit `1634179` or by
-  earlier conversions must be migrated once into the owner tables before the drop
-  runs. The migration is one-off and idempotent. No live data is expected because
-  the schema is unreleased; this must be verified in each environment.
+- No data migration from the registry tables. Rows created by commit `1634179`
+  in dev or staging are discarded with the recreated database, as stated above.
 - Blog migration `m20261008_000031_remove_blog_post_view_count` is unchanged.
-- Public list and bulk APIs change from offset to cursor arguments. This is a
-  contract change and must follow the release policy for GraphQL and REST.
+- Public list and bulk APIs replace offset arguments with cursor arguments in one
+  atomic change. No compatibility layer and no transition period, as required by
+  `docs/api/compatibility-exceptions.json` for pre-release breaking changes. The
+  change covers GraphQL, `#[server]` functions, the Next.js packages, reference
+  artifacts, and module docs. The `total` field is removed from hot-path lists;
+  counts come from the projection.
+- Precondition: no external consumer of the GraphQL or REST contracts exists. The
+  decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
+  time-bounded exception is recorded in `compatibility-exceptions.json` first.
 
 ## Alternatives considered
 
@@ -218,12 +241,18 @@ topics must scale. Measured on the current code:
 
 ## Verification
 
-Required evidence before the decision moves to Accepted and before
-implementation is marked complete:
+Required evidence before implementation is marked complete:
 
 - Database: primary keys of `blog_post_routes` and `forum_topic_routes`;
-  tenant-scoped index for the namespace lookup; `EXPLAIN` on the resolver query
-  for each owner table with a production-sized sample, showing an index scan.
+  tenant-scoped index for the namespace lookup; `EXPLAIN (ANALYZE, BUFFERS)` on the
+  resolver query and on each hot keyset query for each owner table, on a
+  synthetic sample of at least 50 million replies and 10 million topics on the
+  target PostgreSQL major version. Acceptance: index or index-only scans on large
+  tables, no `Sort` node on keyset queries, buffers per page constant as the
+  cursor depth grows, and p95 within the agreed budget. Results are recorded in
+  this ADR. Scale-down runs are labelled as local and do not replace this check.
+  Concurrency: a pgbench scenario with parallel replies into one topic and into
+  one category, before and after the counter change.
 - Pagination: tests that keyset cursors return every row exactly once across
   pages, including ties on the sort key; no `OFFSET` on the listed hot paths
   (static check added to the verify scripts).
@@ -246,12 +275,15 @@ implementation is marked complete:
   shared rules, the port, and the resolver contract.
 - Conversion cost depends on the size of the source thread, but it runs in
   bounded batches. It never blocks steady-state reads.
-- Public list APIs change to keyset cursors. This is the largest external
-  compatibility cost.
+- Public list APIs change to keyset cursors and drop `total`. No compatibility
+  period. Any client that depends on the old arguments breaks at cutover.
+- Forum reply counts become eventually consistent. Writers no longer serialize on
+  a category lock.
 - The Blog route part of `DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`
   and the current H-3 implementation in commit `1634179` must be replaced.
-- Follow-up work, in order: decide the migration policy for the registry tables;
+- Follow-up work, in order: amend the pending migrations for the registry tables;
   add owner tables and migrations; move `promote` and `demote` to batched phases;
   implement the resolver port and inject it into SEO, the storefront, and GraphQL;
-  switch listings and bulk scans to keyset cursors; update ADR, module docs,
+  switch listings and bulk scans to keyset cursors; move the reply counter to the
+  outbox projection and remove the category lock; update ADR, module docs,
   runbook, CHANGELOG, and verify scripts.
