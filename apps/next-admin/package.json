@@ -121,7 +121,7 @@
     "react-responsive": "^10.0.0",
     "recharts": "^3.10.1",
     "rxjs": "^7.8.2",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "sort-by": "^1.2.0",
     "tailwind-merge": "^3.7.0",
