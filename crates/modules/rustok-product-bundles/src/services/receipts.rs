@@ -19,6 +19,7 @@
 
 use rustok_api::PortError;
 use rustok_outbox::idempotency;
+use sea_orm::TransactionTrait;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -60,6 +61,12 @@ pub enum BundleCommandError {
     Domain(#[from] BundleError),
     #[error(transparent)]
     Receipt(#[from] PortError),
+}
+
+impl From<sea_orm::DbErr> for BundleCommandError {
+    fn from(err: sea_orm::DbErr) -> Self {
+        Self::Domain(BundleError::Database(err))
+    }
 }
 
 impl BundleService {

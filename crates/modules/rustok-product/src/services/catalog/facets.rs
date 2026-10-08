@@ -558,7 +558,7 @@ fn facet_products_condition(
     let mut condition = Condition::all()
         .add(Expr::cust_with_values(
             format!("products.tenant_id = {}", sql_placeholder(backend, 1)),
-            vec![tenant_id.into()],
+            vec![sea_orm::Value::from(tenant_id)],
         ))
         .add(Expr::cust("products.status = 'active'"))
         .add(Expr::cust("products.published_at IS NOT NULL"))
@@ -572,7 +572,7 @@ fn facet_products_condition(
                 "products.primary_category_id = {}",
                 sql_placeholder(backend, 1)
             ),
-            vec![category_id.into()],
+            vec![sea_orm::Value::from(category_id)],
         ));
     }
     if let Some(search) = list_query
@@ -612,15 +612,11 @@ async fn load_facet_total(
             Alias::new("product_count"),
         )
         .cond_where(products_condition.clone());
-    let (sql, values) = query.build(db.get_database_backend());
-    let row = FacetCountRow::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        sql,
-        values,
-    ))
-    .one(db)
-    .await?;
-    Ok(row.map(|row| row.product_count.max(0) as u64).unwrap_or(0))
+    let statement = db.get_database_backend().build(&query);
+    let row = FacetCountRow::find_by_statement(statement)
+        .one(db)
+        .await?;
+    Ok(row.map(|row| std::cmp::Ord::max(row.product_count, 0) as u64).unwrap_or(0))
 }
 
 async fn load_facet_buckets(
@@ -664,15 +660,13 @@ async fn load_facet_buckets(
                 // One extra row distinguishes "exactly the limit" from "truncated".
                 .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
 
-            let (sql, values) = query.build(backend);
-            FacetOptionBucketRow::find_by_statement(Statement::from_sql_and_values(
-                backend, sql, values,
-            ))
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|row| (row.option_id.to_string(), row.product_count.max(0) as u64))
-            .collect::<Vec<_>>()
+            let statement = backend.build(&query);
+            FacetOptionBucketRow::find_by_statement(statement)
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|row| (row.option_id.to_string(), std::cmp::Ord::max(row.product_count, 0) as u64))
+                .collect::<Vec<_>>()
         }
         AttributeValueType::Boolean => {
             query
@@ -687,20 +681,18 @@ async fn load_facet_buckets(
                 .order_by((pav.clone(), Alias::new("value_boolean")), Order::Asc)
                 .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
 
-            let (sql, values) = query.build(backend);
-            FacetBooleanBucketRow::find_by_statement(Statement::from_sql_and_values(
-                backend, sql, values,
-            ))
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|row| {
-                (
-                    row.value_boolean.to_string(),
-                    row.product_count.max(0) as u64,
-                )
-            })
-            .collect::<Vec<_>>()
+            let statement = backend.build(&query);
+            FacetBooleanBucketRow::find_by_statement(statement)
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|row| {
+                    (
+                        row.value_boolean.to_string(),
+                        std::cmp::Ord::max(row.product_count, 0) as u64,
+                    )
+                })
+                .collect::<Vec<_>>()
         }
         _ => Vec::new(),
     };
@@ -727,7 +719,7 @@ fn facet_base_query(backend: DbBackend, attribute_id: &Uuid) -> sea_query::Selec
         )
         .and_where(Expr::cust_with_values(
             format!("facet_pav.attribute_id = {}", sql_placeholder(backend, 1)),
-            vec![(*attribute_id).into()],
+            vec![sea_orm::Value::from(*attribute_id)],
         ))
         .and_where(Expr::col((pav, Alias::new("detached_at"))).is_null());
     query

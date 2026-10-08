@@ -128,6 +128,7 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
                 .collect::<Vec<_>>();
             permissions.sort();
             RbacRoleInfo {
+                id: None,
                 slug: role.to_string(),
                 display_name: match role {
                     UserRole::SuperAdmin => "Super Admin",
@@ -136,6 +137,8 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
                     UserRole::Customer => "Customer",
                 }
                 .to_string(),
+                description: None,
+                is_system: true,
                 permissions,
             }
         })

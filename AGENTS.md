@@ -81,6 +81,10 @@ Before implementing helpers, formatters, validators, data transformers, UI compo
 
 Do not patch the first visible caller until the owning contract and affected surfaces are understood.
 
+### 2.2 Optional codebase intelligence tooling (CodeGraph)
+
+In environments where CodeGraph is available (as an MCP tool `codegraph_explore` or CLI `codegraph`), contributors and agents SHOULD prioritize it for codebase exploration, cross-module call flow discovery, and blast radius analysis before falling back to manual grep/read loops over indexed code. When CodeGraph is not present in the runtime environment (e.g. CI or environments without local CodeGraph indexes), agents MUST transparently fall back to standard repository search and inspection tools without failing or attempting to force CodeGraph initialization.
+
 ## 3. Multi-agent and Git concurrency protocol
 
 RusToK is edited concurrently by multiple agents and contributors.

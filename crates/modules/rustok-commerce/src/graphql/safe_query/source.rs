@@ -1,5 +1,5 @@
 mod async_graphql_shim {
-    pub use ::async_graphql::{Context, Object};
+    pub use ::async_graphql::{Context, Json, Object};
 
     pub type Error = super::super::query_error_boundary::BoundaryError;
     pub type FieldError = super::super::query_error_boundary::BoundaryError;

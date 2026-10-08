@@ -726,13 +726,18 @@ impl CatalogService {
             .await?;
         }
         if primary_category_changed {
+            let new_category_id = match input.primary_category_id {
+                Patch::Set(id) => Some(id),
+                Patch::Clear => None,
+                Patch::Keep => existing_product.primary_category_id,
+            };
             txn.publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductPrimaryCategoryChanged {
                     product_id,
                     old_category_id: existing_product.primary_category_id,
-                    new_category_id: input.primary_category_id,
+                    new_category_id,
                 },
             )
             .await?;

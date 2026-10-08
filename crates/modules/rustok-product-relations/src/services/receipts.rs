@@ -18,6 +18,7 @@
 
 use rustok_api::PortError;
 use rustok_outbox::idempotency;
+use sea_orm::TransactionTrait;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -56,6 +57,12 @@ pub enum ProductRelationCommandError {
     Domain(#[from] ProductRelationError),
     #[error(transparent)]
     Receipt(#[from] PortError),
+}
+
+impl From<sea_orm::DbErr> for ProductRelationCommandError {
+    fn from(err: sea_orm::DbErr) -> Self {
+        Self::Domain(ProductRelationError::Database(err))
+    }
 }
 
 impl ProductRelationService {

@@ -63,7 +63,9 @@ fn TypedProductAttributeField(
     empty_option_label: String,
     boolean_true_label: String,
     boolean_false_label: String,
+    #[prop(default)]
     saved_option_ids: Vec<String>,
+    #[prop(default)]
     missing_option_suffix: String,
 ) -> impl IntoView {
     let attribute_id = attribute.attribute_id.clone();
@@ -2778,7 +2780,7 @@ pub fn ProductAttributeValuesSection(
     let clear_product_id = product_id.clone();
     let clear_locale = locale.clone();
     let clear_error_copy = error_copy.clone();
-    let on_clear_detached = move |_| {
+    let on_clear_detached = Callback::new(move |_| {
         let attribute_ids = form_resource
             .get_untracked()
             .and_then(Result::ok)
@@ -2969,7 +2971,7 @@ pub fn ProductAttributeValuesSection(
                             type="button"
                             class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                             disabled=move || busy.get()
-                            on:click=on_clear_detached
+                            on:click=move |_| on_clear_detached.run(())
                         >
                             {form_clear_detached_label.clone()}
                         </button>
