@@ -11,7 +11,7 @@ use crate::CacheService;
 const GENERATION_KEY_PREFIX: &str = "rustok:cache-generation:v1";
 const DEFAULT_GENERATION_OPERATION_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GENERATION_NAMESPACE_BYTES: usize = 512;
-pub const DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS: usize = 4_096;
+pub const DEFAULT_MAX_LOCAL_GENERATION_SNAPSHOTS: usize = 65_536;
 pub const DEFAULT_MAX_SHARED_GENERATION_STORES: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,15 +175,41 @@ impl CacheNamespaceGenerationStore {
         if let Some(client) = &self.redis_client {
             match self.read_shared(client, &namespace_key).await {
                 Ok(value) => {
-                    if let Err(error) = self.observe_shared(&namespace_key, value) {
-                        self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
-                        return Err(error);
+                    match self.observe_shared(&namespace_key, value) {
+                        Ok(()) => {
+                            self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
+                            return Ok(CacheNamespaceGeneration {
+                                value,
+                                source: CacheGenerationSource::SharedRedis,
+                            });
+                        }
+                        Err(CacheGenerationError::GenerationRegressed { local, shared }) => {
+                            self.metrics
+                                .local_fallback_reads
+                                .fetch_add(1, Ordering::Relaxed);
+                            tracing::warn!(
+                                namespace,
+                                local,
+                                shared,
+                                "Shared cache generation regressed behind local observation; using local fallback"
+                            );
+                            return Ok(CacheNamespaceGeneration {
+                                value: local,
+                                source: CacheGenerationSource::LocalFallback,
+                            });
+                        }
+                        Err(CacheGenerationError::LocalSnapshotCapacityExceeded { .. }) => {
+                            self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
+                            return Ok(CacheNamespaceGeneration {
+                                value,
+                                source: CacheGenerationSource::SharedRedis,
+                            });
+                        }
+                        Err(error) => {
+                            self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);
+                            return Err(error);
+                        }
                     }
-                    self.metrics.shared_reads.fetch_add(1, Ordering::Relaxed);
-                    return Ok(CacheNamespaceGeneration {
-                        value,
-                        source: CacheGenerationSource::SharedRedis,
-                    });
                 }
                 Err(error) => {
                     self.metrics.read_failures.fetch_add(1, Ordering::Relaxed);

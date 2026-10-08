@@ -188,8 +188,16 @@ async fn effective_module_policy_view(
     let tenant_id = ctx.data::<TenantContext>()?.id;
     let registry = ctx.data::<ModuleRegistry>()?;
 
-    EffectiveModulePolicyService::resolve_view(db, registry, tenant_id)
-        .await
+    let result = if let Ok(runtime_ctx) = ctx.data::<crate::services::server_runtime_context::ServerRuntimeContext>() {
+        let cache = runtime_ctx.effective_policy_cache();
+        EffectiveModulePolicyService::resolve_cached(db, registry, tenant_id, &cache)
+            .await
+            .map(Into::into)
+    } else {
+        EffectiveModulePolicyService::resolve_view(db, registry, tenant_id).await
+    };
+
+    result
         .map_err(|error| {
             tracing::error!(
                 tenant_id = %tenant_id,

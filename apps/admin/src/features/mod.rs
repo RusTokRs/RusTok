@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod cache;
 pub mod dashboard;
 pub mod email;
 pub mod installer;

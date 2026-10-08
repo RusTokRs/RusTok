@@ -14401,6 +14401,7 @@ dependencies = [
  "rustok-brand-admin",
  "rustok-build",
  "rustok-cache",
+ "rustok-cache-admin",
  "rustok-channel-admin",
  "rustok-comments",
  "rustok-comments-admin",
@@ -15013,6 +15014,7 @@ version = "0.1.0"
 dependencies = [
  "leptos",
  "leptos-auth",
+ "leptos-ui",
  "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",

@@ -33,10 +33,16 @@ where
             StatusCode::INTERNAL_SERVER_ERROR,
             "Static module registry unavailable",
         ))?;
-        let is_enabled =
-            EffectiveModulePolicyService::is_enabled(ctx.db(), &registry, tenant_id, M::SLUG)
-                .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        let cache = ctx.effective_policy_cache();
+        let is_enabled = EffectiveModulePolicyService::is_enabled_cached(
+            ctx.db(),
+            &registry,
+            tenant_id,
+            M::SLUG,
+            &cache,
+        )
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         if is_enabled {
             Ok(Self(PhantomData))

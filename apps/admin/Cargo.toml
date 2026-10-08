@@ -67,6 +67,7 @@ hydrate = [
   "rustok-product-admin/hydrate",
   "rustok-product-relations-admin/hydrate",
   "rustok-brand-admin/hydrate",
+  "rustok-cache-admin/hydrate",
   "rustok-product-bundles-admin/hydrate",
   "rustok-rbac-admin/hydrate",
   "rustok-search-admin/hydrate",
@@ -126,6 +127,7 @@ ssr = [
   "rustok-product-admin/ssr",
   "rustok-product-relations-admin/ssr",
   "rustok-brand-admin/ssr",
+  "rustok-cache-admin/ssr",
   "rustok-product-bundles-admin/ssr",
   "rustok-rbac-admin/ssr",
   "rustok-search-admin/ssr",
@@ -210,6 +212,7 @@ rustok-pricing-admin = { path = "../../crates/modules/rustok-pricing/admin", def
 rustok-product-admin = { path = "../../crates/modules/rustok-product/admin", default-features = false }
 rustok-product-relations-admin = { path = "../../crates/modules/rustok-product-relations/admin", default-features = false }
 rustok-brand-admin = { path = "../../crates/modules/rustok-brand/admin", default-features = false }
+rustok-cache-admin = { path = "../../crates/modules/rustok-cache/admin", default-features = false }
 rustok-product-bundles-admin = { path = "../../crates/modules/rustok-product-bundles/admin", default-features = false }
 rustok-region-admin = { path = "../../crates/modules/rustok-region/admin", default-features = false }
 rustok-rbac-admin = { path = "../../crates/modules/rustok-rbac/admin", default-features = false }

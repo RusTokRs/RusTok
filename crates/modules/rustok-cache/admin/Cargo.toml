@@ -23,6 +23,7 @@ ssr = [
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 rustok-ui-i18n.workspace = true
+leptos-ui.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true

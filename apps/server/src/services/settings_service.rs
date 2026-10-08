@@ -143,41 +143,9 @@ impl SettingsValidator for CacheSettingsValidator {
     }
 
     fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
-        let mut errors = Vec::new();
-
-        if let Some(mode) = settings.get("mode").and_then(|v| v.as_str()) {
-            if !matches!(mode, "in-memory" | "redis" | "hybrid") {
-                errors.push(format!(
-                    "cache.mode must be one of: in-memory, redis, hybrid; got '{mode}'"
-                ));
-            }
-        }
-
-        if let Some(port) = settings.get("redis_port") {
-            if let Some(n) = port.as_u64() {
-                if !(1..=65535).contains(&n) {
-                    errors.push("cache.redis_port must be between 1 and 65535".to_string());
-                }
-            } else {
-                errors.push("cache.redis_port must be a valid port number".to_string());
-            }
-        }
-
-        if let Some(db) = settings.get("redis_db") {
-            if let Some(n) = db.as_u64() {
-                if n > 255 {
-                    errors.push("cache.redis_db must be between 0 and 255".to_string());
-                }
-            } else {
-                errors.push("cache.redis_db must be a valid database number".to_string());
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        let parsed: rustok_cache::CacheSettings = serde_json::from_value(settings.clone())
+            .map_err(|e| vec![format!("Invalid cache settings schema: {e}")])?;
+        parsed.validate()
     }
 }
 

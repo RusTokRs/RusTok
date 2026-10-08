@@ -32,6 +32,7 @@ pub struct EffectiveModulePolicyService;
 pub struct ServerEffectiveModulePolicyReader {
     db: DatabaseConnection,
     registry: ModuleRegistry,
+    cache: Option<ModuleEffectivePolicyCache>,
 }
 
 impl ServerEffectiveModulePolicyReader {
@@ -39,7 +40,23 @@ impl ServerEffectiveModulePolicyReader {
         db: DatabaseConnection,
         registry: ModuleRegistry,
     ) -> SharedModuleEffectivePolicyReader {
-        SharedModuleEffectivePolicyReader(Arc::new(Self { db, registry }))
+        SharedModuleEffectivePolicyReader(Arc::new(Self {
+            db,
+            registry,
+            cache: None,
+        }))
+    }
+
+    pub fn shared_cached(
+        db: DatabaseConnection,
+        registry: ModuleRegistry,
+        cache: ModuleEffectivePolicyCache,
+    ) -> SharedModuleEffectivePolicyReader {
+        SharedModuleEffectivePolicyReader(Arc::new(Self {
+            db,
+            registry,
+            cache: Some(cache),
+        }))
     }
 }
 
@@ -49,16 +66,21 @@ impl ModuleEffectivePolicyReader for ServerEffectiveModulePolicyReader {
         &self,
         tenant_id: uuid::Uuid,
     ) -> Result<ModuleEffectivePolicyView, ModuleEffectivePolicyReaderError> {
-        EffectiveModulePolicyService::resolve_view(&self.db, &self.registry, tenant_id)
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    tenant_id = %tenant_id,
-                    error = %error,
-                    "failed to resolve the owner-issued effective module policy"
-                );
-                ModuleEffectivePolicyReaderError::Unavailable
-            })
+        let result = if let Some(cache) = &self.cache {
+            EffectiveModulePolicyService::resolve_cached(&self.db, &self.registry, tenant_id, cache)
+                .await
+                .map(Into::into)
+        } else {
+            EffectiveModulePolicyService::resolve_view(&self.db, &self.registry, tenant_id).await
+        };
+        result.map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                error = %error,
+                "failed to resolve the owner-issued effective module policy"
+            );
+            ModuleEffectivePolicyReaderError::Unavailable
+        })
     }
 }
 
@@ -353,6 +375,18 @@ impl EffectiveModulePolicyService {
         module_slug: &str,
     ) -> Result<bool, PlatformCompositionError> {
         Ok(Self::resolve_enabled(db, registry, tenant_id)
+            .await?
+            .contains(module_slug))
+    }
+
+    pub async fn is_enabled_cached(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        cache: &ModuleEffectivePolicyCache,
+    ) -> Result<bool, PlatformCompositionError> {
+        Ok(Self::resolve_cached(db, registry, tenant_id, cache)
             .await?
             .contains(module_slug))
     }

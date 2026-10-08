@@ -295,9 +295,10 @@ pub fn compose_application_router(
         return Ok(router);
     }
 
-    let effective_policy_reader = ServerEffectiveModulePolicyReader::shared(
+    let effective_policy_reader = ServerEffectiveModulePolicyReader::shared_cached(
         middleware_runtime_ctx.db_clone(),
         runtime.registry.clone(),
+        middleware_runtime_ctx.effective_policy_cache(),
     );
     let static_module_lifecycle_reader = ServerStaticModuleLifecycleReader::shared(
         middleware_runtime_ctx.db_clone(),

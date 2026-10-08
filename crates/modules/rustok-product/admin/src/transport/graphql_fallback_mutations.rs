@@ -7,8 +7,8 @@
 use crate::model::{
     BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
     CategoryAttributeGroupDraft, ProductAttributeDraft, ProductAttributeOptionDraft,
-    ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft, ProductAttributeValuePatchDraft,
-    SetCategorySchemaModeDraft,
+    ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft, ProductAttributeValueItem,
+    ProductAttributeValuePatchDraft, SetCategorySchemaModeDraft,
 };
 use crate::transport as legacy;
 
