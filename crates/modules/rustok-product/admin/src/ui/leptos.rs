@@ -63,7 +63,9 @@ fn TypedProductAttributeField(
     empty_option_label: String,
     boolean_true_label: String,
     boolean_false_label: String,
+    #[prop(default = Default::default())]
     saved_option_ids: Vec<String>,
+    #[prop(default = Default::default())]
     missing_option_suffix: String,
 ) -> impl IntoView {
     let attribute_id = attribute.attribute_id.clone();
@@ -2708,6 +2710,7 @@ pub fn ProductAttributeValuesSection(
 
     let save_product_id = product_id.clone();
     let save_locale = locale.clone();
+    let save_error_copy = error_copy.clone();
     let on_save = move |_| {
         let attribute_types = form_resource
             .get_untracked()
@@ -2744,7 +2747,7 @@ pub fn ProductAttributeValuesSection(
         let pid = save_product_id.clone();
         let loc = save_locale.clone().unwrap_or_default();
         let saved_label = section_saved_label.clone();
-        let save_error_copy = error_copy.clone();
+        let save_error_copy = save_error_copy.clone();
         spawn_local(async move {
             let result = async {
                 let bootstrap =
@@ -2778,7 +2781,7 @@ pub fn ProductAttributeValuesSection(
     let clear_product_id = product_id.clone();
     let clear_locale = locale.clone();
     let clear_error_copy = error_copy.clone();
-    let on_clear_detached = move |_| {
+    let on_clear_detached = Callback::new(move |_| {
         let attribute_ids = form_resource
             .get_untracked()
             .and_then(Result::ok)
@@ -2828,7 +2831,7 @@ pub fn ProductAttributeValuesSection(
                 Err(failure) => set_error.set(Some(clear_error.save_product_failure(failure))),
             }
         });
-    };
+    });
 
     let has_detached_values = move || {
         form_resource
@@ -2959,51 +2962,64 @@ pub fn ProductAttributeValuesSection(
             }}
 
             <Show when=has_detached_values>
-                <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h4 class="text-xs font-semibold text-foreground">{form_detached_title.clone()}</h4>
-                            <p class="text-[11px] text-muted-foreground">{form_detached_values_label.clone()}</p>
+                {
+                    let form_detached_title = form_detached_title.clone();
+                    let form_detached_values_label = form_detached_values_label.clone();
+                    let form_clear_detached_label = form_clear_detached_label.clone();
+                    let detached_locale = detached_locale.clone();
+                    let form_detached_empty_label = form_detached_empty_label.clone();
+                    view! {
+                        <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h4 class="text-xs font-semibold text-foreground">{form_detached_title}</h4>
+                                    <p class="text-[11px] text-muted-foreground">{form_detached_values_label}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                    disabled=move || busy.get()
+                                    on:click=move |_| on_clear_detached.run(())
+                                >
+                                    {form_clear_detached_label}
+                                </button>
+                            </div>
+                            <div class="mt-3 grid gap-2">
+                                {
+                                    let detached_locale = detached_locale.clone();
+                                    let form_detached_empty_label = form_detached_empty_label.clone();
+                                    move || {
+                                        let values = form_resource
+                                            .get()
+                                            .and_then(Result::ok)
+                                            .map(|(_, values)| {
+                                                build_product_detached_attribute_value_view_models(
+                                                    detached_locale.as_deref(),
+                                                    &values,
+                                                )
+                                            })
+                                            .unwrap_or_default();
+                                        if values.is_empty() {
+                                            let empty_label = form_detached_empty_label.clone();
+                                            view! { <p class="text-xs text-muted-foreground">{empty_label}</p> }.into_any()
+                                        } else {
+                                            view! {
+                                                <div class="grid gap-2">
+                                                    {values.into_iter().map(|value| view! {
+                                                        <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                                                            <p class="font-medium text-foreground">{value.label}</p>
+                                                            <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
+                                                        </div>
+                                                    }).collect_view()}
+                                                </div>
+                                            }.into_any()
+                                        }
+                                    }
+                                }
+                            </div>
                         </div>
-                        <button
-                            type="button"
-                            class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                            disabled=move || busy.get()
-                            on:click=on_clear_detached
-                        >
-                            {form_clear_detached_label.clone()}
-                        </button>
-                    </div>
-                    <div class="mt-3 grid gap-2">
-                        {move || {
-                            let values = form_resource
-                                .get()
-                                .and_then(Result::ok)
-                                .map(|(_, values)| {
-                                    build_product_detached_attribute_value_view_models(
-                                        detached_locale.as_deref(),
-                                        &values,
-                                    )
-                                })
-                                .unwrap_or_default();
-                            if values.is_empty() {
-                                let empty_label = form_detached_empty_label.clone();
-                                view! { <p class="text-xs text-muted-foreground">{empty_label}</p> }.into_any()
-                            } else {
-                                view! {
-                                    <div class="grid gap-2">
-                                        {values.into_iter().map(|value| view! {
-                                            <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
-                                                <p class="font-medium text-foreground">{value.label}</p>
-                                                <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
-                                            </div>
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
-                            }
-                        }}
-                    </div>
-                </div>
+                    }
+                }
             </Show>
         </section>
     }.into_any()

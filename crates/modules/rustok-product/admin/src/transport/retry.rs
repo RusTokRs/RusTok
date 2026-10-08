@@ -32,6 +32,7 @@ fn lifecycle_operation_segment(operation: ProductAdminLifecycleOperation) -> &'s
         ProductAdminLifecycleOperation::UpdateImage => "update-image",
         ProductAdminLifecycleOperation::DeleteImage => "delete-image",
         ProductAdminLifecycleOperation::ReorderImages => "reorder-images",
+        ProductAdminLifecycleOperation::SetVariantAxes => "set-variant-axes",
     }
 }
 

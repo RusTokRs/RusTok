@@ -29,8 +29,11 @@ mod shared_backend;
 #[cfg(all(test, feature = "redis-cache"))]
 mod startup_recovery_tests;
 mod tenant_generation_observability;
+pub mod settings;
 mod typed;
 mod weighted;
+
+pub use settings::CacheSettings;
 
 pub use backend_generation::{
     CacheBackendGenerationError, CacheBackendGenerationSnapshot,

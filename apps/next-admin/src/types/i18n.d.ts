@@ -218,6 +218,44 @@ export type AppMessageKey =
   | 'cache.health.unhealthyBadge'
   | 'cache-no'
   | 'cache.no'
+  | 'cache-settings-description'
+  | 'cache.settings.description'
+  | 'cache-settings-errorToast'
+  | 'cache.settings.errorToast'
+  | 'cache-settings-mode'
+  | 'cache.settings.mode'
+  | 'cache-settings-mode-hybrid'
+  | 'cache.settings.mode.hybrid'
+  | 'cache-settings-mode-inmemory'
+  | 'cache.settings.mode.inmemory'
+  | 'cache-settings-mode-redis'
+  | 'cache.settings.mode.redis'
+  | 'cache-settings-redis-db'
+  | 'cache.settings.redis.db'
+  | 'cache-settings-redis-description'
+  | 'cache.settings.redis.description'
+  | 'cache-settings-redis-host'
+  | 'cache.settings.redis.host'
+  | 'cache-settings-redis-password'
+  | 'cache.settings.redis.password'
+  | 'cache-settings-redis-password-placeholder'
+  | 'cache.settings.redis.password.placeholder'
+  | 'cache-settings-redis-port'
+  | 'cache.settings.redis.port'
+  | 'cache-settings-redis-title'
+  | 'cache.settings.redis.title'
+  | 'cache-settings-redis-url'
+  | 'cache.settings.redis.url'
+  | 'cache-settings-redis-url-placeholder'
+  | 'cache.settings.redis.url.placeholder'
+  | 'cache-settings-save'
+  | 'cache.settings.save'
+  | 'cache-settings-savedToast'
+  | 'cache.settings.savedToast'
+  | 'cache-settings-saving'
+  | 'cache.settings.saving'
+  | 'cache-settings-title'
+  | 'cache.settings.title'
   | 'cache-subtitle'
   | 'cache.subtitle'
   | 'cache-title'
@@ -1768,6 +1806,44 @@ export interface AppMessageArgs {
   'cache-health-unhealthyBadge'?: Record<string, never>;
   'cache.no'?: Record<string, never>;
   'cache-no'?: Record<string, never>;
+  'cache.settings.description'?: Record<string, never>;
+  'cache-settings-description'?: Record<string, never>;
+  'cache.settings.errorToast'?: Record<string, never>;
+  'cache-settings-errorToast'?: Record<string, never>;
+  'cache.settings.mode'?: Record<string, never>;
+  'cache-settings-mode'?: Record<string, never>;
+  'cache.settings.mode.hybrid'?: Record<string, never>;
+  'cache-settings-mode-hybrid'?: Record<string, never>;
+  'cache.settings.mode.inmemory'?: Record<string, never>;
+  'cache-settings-mode-inmemory'?: Record<string, never>;
+  'cache.settings.mode.redis'?: Record<string, never>;
+  'cache-settings-mode-redis'?: Record<string, never>;
+  'cache.settings.redis.db'?: Record<string, never>;
+  'cache-settings-redis-db'?: Record<string, never>;
+  'cache.settings.redis.description'?: Record<string, never>;
+  'cache-settings-redis-description'?: Record<string, never>;
+  'cache.settings.redis.host'?: Record<string, never>;
+  'cache-settings-redis-host'?: Record<string, never>;
+  'cache.settings.redis.password'?: Record<string, never>;
+  'cache-settings-redis-password'?: Record<string, never>;
+  'cache.settings.redis.password.placeholder'?: Record<string, never>;
+  'cache-settings-redis-password-placeholder'?: Record<string, never>;
+  'cache.settings.redis.port'?: Record<string, never>;
+  'cache-settings-redis-port'?: Record<string, never>;
+  'cache.settings.redis.title'?: Record<string, never>;
+  'cache-settings-redis-title'?: Record<string, never>;
+  'cache.settings.redis.url'?: Record<string, never>;
+  'cache-settings-redis-url'?: Record<string, never>;
+  'cache.settings.redis.url.placeholder'?: Record<string, never>;
+  'cache-settings-redis-url-placeholder'?: Record<string, never>;
+  'cache.settings.save'?: Record<string, never>;
+  'cache-settings-save'?: Record<string, never>;
+  'cache.settings.savedToast'?: Record<string, never>;
+  'cache-settings-savedToast'?: Record<string, never>;
+  'cache.settings.saving'?: Record<string, never>;
+  'cache-settings-saving'?: Record<string, never>;
+  'cache.settings.title'?: Record<string, never>;
+  'cache-settings-title'?: Record<string, never>;
   'cache.subtitle'?: Record<string, never>;
   'cache-subtitle'?: Record<string, never>;
   'cache.title'?: Record<string, never>;

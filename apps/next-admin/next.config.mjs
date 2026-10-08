@@ -43,6 +43,7 @@ const baseConfig = {
     '@rustok/iggy-connector-admin',
     '@rustok/mcp-admin',
     '@rustok/product-admin',
+    '@rustok/ui-grid',
     '@rustok/rbac-admin',
     '@rustok/richtext',
     '@rustok/search-admin',

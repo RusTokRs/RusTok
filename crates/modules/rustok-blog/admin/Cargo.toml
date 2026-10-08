@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-csr = ["leptos/csr"]
+csr = ["leptos/csr", "rustok-grid-leptos/csr"]
 hydrate = ["leptos/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "leptos/ssr",

@@ -114,15 +114,7 @@ impl PageRouteHistoryImportService {
                 .all(&txn)
                 .await?;
 
-            let current_page = load_page_for_import(&txn, item.page_id).await?;
-            if current_page
-                .as_ref()
-                .is_some_and(|page| page.tenant_id != tenant_id)
-            {
-                return Err(route_history_import_conflict(
-                    "Historical route import page identifier belongs to another tenant",
-                ));
-            }
+            let current_page = load_page_for_import(&txn, tenant_id, item.page_id).await?;
             let page_exists = current_page.is_some();
 
             let (page_was_missing, replayed) = match receipts.as_slice() {
@@ -253,9 +245,24 @@ fn prepare_input(
 
 async fn load_page_for_import(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     page_id: Uuid,
 ) -> PagesResult<Option<page::Model>> {
-    let query = || page::Entity::find_by_id(page_id);
+    // Inspect ownership without locking a foreign tenant row. Only the current tenant's row
+    // participates in the import lock; otherwise a caller who knows another tenant's UUID could
+    // create avoidable cross-tenant lock contention before the ownership check rejects the request.
+    let existing = page::Entity::find_by_id(page_id).one(txn).await?;
+    let Some(existing) = existing else {
+        return Ok(None);
+    };
+    if existing.tenant_id != tenant_id {
+        return Err(route_history_import_conflict(
+            "Historical route import page identifier belongs to another tenant",
+        ));
+    }
+    let query = || {
+        page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id))
+    };
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,

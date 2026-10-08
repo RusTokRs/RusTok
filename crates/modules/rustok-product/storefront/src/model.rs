@@ -128,6 +128,31 @@ pub struct ProductDetail {
     pub images: Vec<ProductImage>,
     pub translations: Vec<ProductTranslation>,
     pub variants: Vec<ProductVariant>,
+    /// Storefront-safe specifications resolved by the Product owner: localized labels and values,
+    /// no service attributes, no option ids. Empty when the cataloguer filled nothing for the
+    /// storefront.
+    #[serde(default)]
+    pub attributes: Vec<ProductAttribute>,
+}
+
+/// One display-ready product specification.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductAttribute {
+    pub code: String,
+    pub label: String,
+    /// Stored value type, e.g. `select`; `boolean` values keep the `true`/`false` vocabulary so
+    /// the storefront renders its own localized copy.
+    #[serde(rename = "valueType")]
+    pub value_type: String,
+    #[serde(rename = "isLocalized")]
+    pub is_localized: bool,
+    pub values: Vec<ProductAttributeValue>,
+}
+
+/// One value of a storefront specification.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductAttributeValue {
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -71,6 +71,14 @@ product-list-category = Основная категория
 product-list-createdAt = Дата создания
 product-list-descending = Сначала новые
 product-list-empty = Товаров пока нет.
+product-list-facetsClear = Очистить фильтры
+# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
+product-list-facetsEmpty = Для этого каталога фильтры пока недоступны.
+product-list-facetsLabel = Фильтры
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = Доступны и другие значения, кроме показанных.
+product-list-facetsUnbounded = Укажите значение в поле фильтра выше.
+product-list-facetsUnselected = [ ]
 product-list-loading = Загружаем товары...
 product-list-publishedAt = Дата публикации
 product-list-search = Поиск по названию

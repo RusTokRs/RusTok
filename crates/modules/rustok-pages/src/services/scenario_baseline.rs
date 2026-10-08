@@ -9,7 +9,7 @@ use rustok_page_builder::runtime_scenario_release::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -28,6 +28,7 @@ pub const PAGE_BUILDER_SCENARIO_BASELINE_PROMOTION_NOTE_REQUIRED_ERROR_CODE: &st
 const BASELINE_OPERATION_CREATE: &str = "create";
 const BASELINE_OPERATION_REPLACE: &str = "replace";
 const BASELINE_OPERATION_DELETE: &str = "delete";
+const MAX_BASELINE_HISTORY_LIMIT: u64 = 200;
 
 /// One append-only record of what a baseline mutation did, as stored in
 /// `page_builder_scenario_baseline_revisions`.
@@ -406,10 +407,10 @@ impl PageBuilderScenarioBaselineService {
         let mut query = page_builder_scenario_baseline_revision::Entity::find()
             .filter(page_builder_scenario_baseline_revision::Column::TenantId.eq(tenant_id))
             .filter(page_builder_scenario_baseline_revision::Column::PageId.eq(page_id))
-            .order_by_desc(page_builder_scenario_baseline_revision::Column::CreatedAt);
-        if let Some(limit) = limit {
-            query = query.limit(limit);
-        }
+            .order_by_desc(page_builder_scenario_baseline_revision::Column::CreatedAt)
+            .order_by_desc(page_builder_scenario_baseline_revision::Column::Id);
+        let limit = limit.unwrap_or(MAX_BASELINE_HISTORY_LIMIT).min(MAX_BASELINE_HISTORY_LIMIT);
+        query = query.limit(limit);
         Ok(query.all(&self.db).await?)
     }
 
@@ -465,7 +466,7 @@ impl PageBuilderScenarioBaselineService {
                     baseline_id: &existing.baseline_id,
                     baseline_hash: &existing.baseline_hash,
                     source_project_hash: &existing.source_project_hash,
-                    previous_baseline_hash: None,
+                    previous_baseline_hash: existing.previous_baseline_hash.as_deref(),
                     baseline: existing.baseline,
                     actor_id: security.user_id,
                     note: None,
@@ -487,6 +488,7 @@ impl PageBuilderScenarioBaselineService {
             return Ok(None);
         };
         let body = page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .filter(page_body::Column::Format.eq(PAGE_BUILDER_DOCUMENT_FORMAT))
             .order_by_desc(page_body::Column::UpdatedAt)
@@ -524,6 +526,7 @@ impl PageBuilderScenarioBaselineService {
             return Ok(());
         };
         let bodies = page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .filter(page_body::Column::Format.eq(PAGE_BUILDER_DOCUMENT_FORMAT))
             .all(&self.db)

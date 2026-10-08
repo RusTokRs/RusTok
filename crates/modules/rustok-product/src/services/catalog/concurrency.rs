@@ -31,7 +31,8 @@ pub(crate) fn revision_conflict(expected_revision: i32, current_revision: i32) -
 
 /// Recognizes the reserved refusal and returns its facts.
 pub(crate) fn revision_conflict_of(message: &str) -> Option<RevisionConflictFacts> {
-    let rest = message.strip_prefix(REVISION_CONFLICT_PREFIX)?;
+    let start = message.find(REVISION_CONFLICT_PREFIX)?;
+    let rest = &message[start + REVISION_CONFLICT_PREFIX.len()..];
     let rest = rest.strip_prefix(": expected revision ")?;
     let (expected, rest) = rest.split_once(", current revision ")?;
     Some(RevisionConflictFacts {

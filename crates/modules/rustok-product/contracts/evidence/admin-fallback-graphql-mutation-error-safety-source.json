@@ -24,6 +24,7 @@
     "graphql": "GraphQL error: Product admin request could not be completed"
   },
   "source_contract": {
+    "_scope": "graphql_documents_changed and graphql_variables_changed describe this error-safety slice only; the schema-write wire change is recorded in schema_write_wire_contract",
     "explicit_facade_reexport": true,
     "context_before_compatibility_executor": true,
     "unique_correlation_id": true,
@@ -46,7 +47,8 @@
     "input_mapping_changed": false,
     "response_mapping_changed": false,
     "retry_added": false,
-    "fallback_added": false
+    "fallback_added": false,
+    "schema_write_wire_contract_changed": true
   },
   "safe_diagnostics": [
     "owner",
@@ -124,5 +126,17 @@
     "browser_runtime_proven": false,
     "mounted_transport_proven": false
   },
-  "execution": []
+  "execution": [],
+  "schema_write_wire_contract": {
+    "scope": "eleven schema-authoring mutations: GraphQL documents in transport/product_schema_graphql.rs, native owner calls in native_server_adapter.rs, one caller key minted per logical invocation in transport.rs",
+    "added": "non-null $idempotencyKey: String! on every schema mutation, forwarded as idempotencyKey",
+    "removed_variables": [
+      "tenantId",
+      "userId"
+    ],
+    "reason": "the mounted Commerce resolvers declare no tenant/user arguments; the actor and tenant come from the request context (product_mutation_actor), and the documents did not declare these variables",
+    "retry_identity": "schema_retry_identity.rs (run_keyed_schema_write); explicit retry reuses the caller key for the same operation and intent; a successful owner write releases it; an unconfirmed GraphQL response (null or false) is a protocol error that keeps the key",
+    "residual_risk": "none for native/fallback deduplication; a non-retryable owner failure is stored as a terminal receipt, so an identical retry with the same key replays it until the intent changes",
+    "owner_key": "native and GraphQL fallback share one owner key: rustok-product scoped_caller_idempotency_key uses the same formula as the mounted Commerce GraphQL resolvers"
+  }
 }

@@ -23,13 +23,86 @@ function fixture(options = {}) {
     root,
     "crates/modules/rustok-product/src/runtime.rs",
     options.omitExternal
-      ? "pub enum ProductCatalogReadProfile { EmbeddedNative } pub struct ProductCatalogReadRuntime pub fn in_process pub fn read_port pub const fn profile"
-      : "pub enum ProductCatalogReadProfile { EmbeddedNative, External } pub struct ProductCatalogReadRuntime pub fn in_process pub fn external pub fn read_port pub const fn profile",
+      ? `pub enum ProductCatalogReadProfile {
+    EmbeddedNative,
+}
+pub struct ProductCatalogReadRuntime {}
+impl ProductCatalogReadRuntime {
+    pub fn in_process(catalog: Arc<CatalogService>) -> Self {
+        Self::default()
+            .with_storefront_http_read_port(catalog.clone())
+            .with_storefront_tag_read_port(catalog)
+    }
+    pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {}
+    pub const fn profile(&self) -> ProductCatalogReadProfile {}
+}
+`
+      : `pub enum ProductCatalogReadProfile {
+    EmbeddedNative,
+    External,
+}
+pub struct ProductCatalogReadRuntime {
+    storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>,
+    storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>,
+}
+impl ProductCatalogReadRuntime {
+    pub fn in_process(catalog: Arc<CatalogService>) -> Self {
+        Self::default()
+            .with_storefront_http_read_port(catalog.clone())
+            .with_storefront_tag_read_port(catalog)
+    }
+    pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {}
+    pub fn with_storefront_http_read_port(mut self, port: Arc<dyn ProductStorefrontHttpReadPort>) -> Self {}
+    pub fn storefront_http_read_port(&self) -> Option<Arc<dyn ProductStorefrontHttpReadPort>> {}
+    pub fn with_storefront_tag_read_port(mut self, port: Arc<dyn ProductStorefrontTagReadPort>) -> Self {}
+    pub fn storefront_tag_read_port(&self) -> Option<Arc<dyn ProductStorefrontTagReadPort>> {}
+    pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {}
+    pub const fn profile(&self) -> ProductCatalogReadProfile {}
+}
+`,
   );
   write(
     root,
     "crates/modules/rustok-product/src/lib.rs",
-    "mod runtime; ProductCatalogReadProfile ProductCatalogReadRuntime",
+    `mod runtime;
+mod storefront_http_read_port;
+mod storefront_tag_read_port;
+pub use runtime::{ProductCatalogReadProfile, ProductCatalogReadRuntime};
+pub use storefront_http_read_port::{
+    LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,
+};
+pub use storefront_tag_read_port::{
+    ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
+};
+`,
+  );
+  write(
+    root,
+    "crates/modules/rustok-product/src/storefront_http_read_port.rs",
+    `pub trait ProductStorefrontHttpReadPort {}
+impl ProductStorefrontHttpReadPort for CatalogService {}
+const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
+fn load(context: &PortContext, products: &[Product]) {
+    context.require_policy(PortCallPolicy::read())?;
+    rustok_inventory::is_metadata_visible_for_public_channel(
+        context,
+        metadata,
+        channel,
+    );
+    self.load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale));
+}
+`,
+  );
+  write(
+    root,
+    "crates/modules/rustok-product/src/storefront_tag_read_port.rs",
+    `pub trait ProductStorefrontTagReadPort {}
+impl ProductStorefrontTagReadPort for CatalogService {}
+const MAX_STOREFRONT_TAG_HYDRATION_PRODUCTS: usize = 48;
+fn hydrate(&self) {
+    self.load_product_tag_map(tenant_id, &products, locale, None);
+}
+`,
   );
   const directMarketplace = options.directMarketplace
     ? "let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new("
@@ -40,7 +113,16 @@ function fixture(options = {}) {
   write(
     root,
     "apps/server/src/services/commerce_provider_runtime.rs",
-    `host.shared_get::<rustok_product::ProductCatalogReadRuntime>() server.shared_get::<rustok_product::ProductCatalogReadRuntime>() rustok_product::ProductCatalogReadRuntime::in_process ProductCatalogReadRuntime must be initialized before marketplace listing SharedAiProductCatalogReadPort(runtime.read_port()) preserves_host_selected_external_product_catalog_runtime ProductCatalogReadProfile::External ${directMarketplace} ${directAi}`,
+    `host.shared_get::<rustok_product::ProductCatalogReadRuntime>()
+server.shared_get::<rustok_product::ProductCatalogReadRuntime>()
+rustok_product::ProductCatalogReadRuntime::in_process
+ProductCatalogReadRuntime must be initialized before marketplace listing
+preserves_host_selected_external_product_catalog_runtime
+ProductCatalogReadProfile::External
+host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(
+    runtime.read_port(),
+))
+${directMarketplace} ${directAi}`,
   );
   write(
     root,
@@ -68,7 +150,10 @@ function fixture(options = {}) {
     "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "ProductCatalogReadRuntime AI, checkout consumer source cutover is complete Concrete external transport execution remains open verify-product-catalog-read-runtime-composition.mjs",
+      : `ProductCatalogReadRuntime AI, and the checkout consumer
+source cutover is complete. Concrete external transport execution remains open:
+verify-product-catalog-read-runtime-composition.mjs
+`,
   );
   return root;
 }

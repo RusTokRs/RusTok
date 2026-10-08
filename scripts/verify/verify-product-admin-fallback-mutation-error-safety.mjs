@@ -36,6 +36,7 @@ const paths = {
     "crates/modules/rustok-product/admin/src/transport/graphql_fallback_mutation_error_safety.rs",
   legacy: "crates/modules/rustok-product/admin/src/transport.rs",
   graphql: "crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs",
+  schemaGraphql: "crates/modules/rustok-product/admin/src/transport/product_schema_graphql.rs",
   primaryMutationGuard:
     "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
   categoryReadGuard:
@@ -57,6 +58,7 @@ const wrappers = read(paths.wrappers);
 const safety = read(paths.safety);
 const legacy = read(paths.legacy);
 const graphql = read(paths.graphql);
+const schemaGraphql = read(paths.schemaGraphql);
 const primaryMutationGuard = read(paths.primaryMutationGuard);
 const categoryReadGuard = read(paths.categoryReadGuard);
 const primaryReadGuard = read(paths.primaryReadGuard);
@@ -240,6 +242,8 @@ for (let index = 0; index < operationNames.length; index += 1) {
   }
 }
 
+// The schema-write documents and their variable shapes live in the per-concern
+// GraphQL module; the adapter only re-exports the eleven functions.
 for (const marker of [
   "CREATE_PRODUCT_ATTRIBUTE_MUTATION",
   "CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION",
@@ -252,13 +256,29 @@ for (const marker of [
   "BIND_CATEGORY_ATTRIBUTE_MUTATION",
   "SAVE_ATTRIBUTE_VALUES_MUTATION",
   "CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION",
-  "TenantUserScopedVariables",
-  "LocaleMutationVariables",
+  "LocaleInputVariables",
   "InputVariables",
   "SaveAttributeValuesVariables",
   "ClearDetachedAttributeValuesVariables",
 ]) {
-  requireText(graphql, marker, `${paths.graphql}: preserved mutation contract`);
+  requireText(schemaGraphql, marker, `${paths.schemaGraphql}: preserved mutation contract`);
+}
+requireText(graphql, "pub(super) use crate::product_schema_graphql::{", `${paths.graphql}: schema mutation re-export`);
+for (const name of [
+  "create_product_attribute",
+  "create_product_attribute_option",
+  "create_catalog_category",
+  "create_attribute_schema",
+  "set_category_schema_mode",
+  "create_product_attribute_schema_group",
+  "create_category_attribute_group",
+  "bind_schema_attribute",
+  "bind_category_attribute",
+  "save_product_attribute_values",
+  "clear_detached_product_attribute_values",
+  "TenantUserScopedVariables",
+]) {
+  requireText(graphql, name, `${paths.graphql}: preserved mutation re-export`);
 }
 
 for (const [source, marker, label] of [

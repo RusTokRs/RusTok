@@ -42,16 +42,28 @@ impl CacheService {
         max_weight_bytes: u64,
         options: CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
+        let key = crate::service::SharedBackendKey {
+            prefix: prefix.to_string(),
+            ttl,
+            max_capacity: max_weight_bytes,
+            weighted: true,
+            metrics_enabled: options.metrics_enabled,
+        };
+        if let Some(existing) = self.get_shared_backend(&key) {
+            return existing;
+        }
+
         let backend = self
             .raw_weighted_backend(prefix, ttl, max_weight_bytes, &options)
             .await;
         let backend = self.wrap_generation_aware_backend(prefix, backend).await;
         let backend = self.wrap_generation_recovery_health(prefix, backend);
-        if options.metrics_enabled {
+        let result: Arc<dyn CacheBackend> = if options.metrics_enabled {
             Arc::new(InstrumentedWeightedCacheBackend::new(prefix, backend))
         } else {
             backend
-        }
+        };
+        self.insert_shared_backend(key, result)
     }
 
     /// Create a pure byte-weighted in-memory backend.

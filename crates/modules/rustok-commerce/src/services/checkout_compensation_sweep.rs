@@ -191,6 +191,7 @@ fn operation_error_kind(error: &CheckoutOperationError) -> &'static str {
         CheckoutOperationError::NotFound(_) => "not_found",
         CheckoutOperationError::Conflict(_) => "conflict",
         CheckoutOperationError::Database(_) => "database",
+        CheckoutOperationError::Event(_) => "event",
     }
 }
 

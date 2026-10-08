@@ -204,7 +204,28 @@ fn map_product_list_item(value: rustok_product::StorefrontProductListItem) -> Pr
 }
 
 #[cfg(feature = "ssr")]
+fn map_product_attributes(
+    attributes: Vec<rustok_product::dto::StorefrontProductAttributeResponse>,
+) -> Vec<crate::model::ProductAttribute> {
+    attributes
+        .into_iter()
+        .map(|attribute| crate::model::ProductAttribute {
+            code: attribute.code,
+            label: attribute.label,
+            value_type: attribute.value_type,
+            is_localized: attribute.is_localized,
+            values: attribute
+                .values
+                .into_iter()
+                .map(|value| crate::model::ProductAttributeValue { text: value.text })
+                .collect(),
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
 fn map_product_detail(value: rustok_product::dto::ProductResponse) -> ProductDetail {
+    let attributes = map_product_attributes(value.storefront_attributes);
     ProductDetail {
         id: value.id.to_string(),
         status: value.status.to_string(),
@@ -256,6 +277,7 @@ fn map_product_detail(value: rustok_product::dto::ProductResponse) -> ProductDet
                     .collect(),
             })
             .collect(),
+        attributes,
     }
 }
 

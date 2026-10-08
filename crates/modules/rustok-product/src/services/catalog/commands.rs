@@ -101,12 +101,6 @@ impl CatalogService {
             input.variant_axes.as_slice(),
         )
         .await?;
-        if input.publish {
-            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
-                .validate_new_product_publish_requirements(tenant_id, input.primary_category_id)
-                .await?;
-        }
-
         let product_id = generate_id();
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
@@ -130,6 +124,14 @@ impl CatalogService {
         );
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        if input.publish {
+            ProductCatalogSchemaService::validate_new_product_publish_requirements_in(
+                &txn,
+                tenant_id,
+                input.primary_category_id,
+            )
+            .await?;
+        }
 
         let product = entities::product::ActiveModel {
             id: Set(product_id),
@@ -726,13 +728,18 @@ impl CatalogService {
             .await?;
         }
         if primary_category_changed {
+            let new_category_id = match input.primary_category_id {
+                Patch::Set(id) => Some(id),
+                Patch::Clear => None,
+                Patch::Keep => existing_product.primary_category_id,
+            };
             txn.publish(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductPrimaryCategoryChanged {
                     product_id,
                     old_category_id: existing_product.primary_category_id,
-                    new_category_id: input.primary_category_id,
+                    new_category_id,
                 },
             )
             .await?;

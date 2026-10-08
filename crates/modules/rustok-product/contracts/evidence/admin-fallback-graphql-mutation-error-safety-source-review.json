@@ -23,9 +23,9 @@
   ],
   "findings": [
     {
-      "id": "fallback-public-envelope-already-bounded",
-      "severity": "preserved",
-      "finding": "All eleven native-first fallback commands already mapped final GraphqlHttpError variants into the Product Admin static public envelope while retaining typed variant classification and stable codes."
+      "id": "fallback-public-envelope-unbounded-before-slice",
+      "severity": "corrected",
+      "finding": "Corrected in the 2026-10 remediation wave: the earlier review assumed the eleven fallback commands already mapped final GraphqlHttpError variants into the static public envelope. Before this slice, GraphqlFallbackMutationContext::map_error returned the typed error unchanged. The static envelope is introduced here."
     },
     {
       "id": "fallback-private-typed-error-payload-leak",

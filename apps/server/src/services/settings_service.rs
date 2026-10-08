@@ -20,8 +20,9 @@ pub mod category {
     pub const FEATURES: &str = "features";
     pub const I18N: &str = "i18n";
     pub const OAUTH: &str = "oauth";
+    pub const CACHE: &str = "cache";
 
-    pub const ALL: &[&str] = &[GENERAL, EMAIL, RATE_LIMIT, FEATURES, I18N, OAUTH];
+    pub const ALL: &[&str] = &[GENERAL, EMAIL, RATE_LIMIT, FEATURES, I18N, OAUTH, CACHE];
 }
 
 #[derive(Debug)]
@@ -133,6 +134,53 @@ impl SettingsValidator for EmailSettingsValidator {
     }
 }
 
+/// Built-in validator for the `cache` category.
+pub struct CacheSettingsValidator;
+
+impl SettingsValidator for CacheSettingsValidator {
+    fn category(&self) -> &str {
+        category::CACHE
+    }
+
+    fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+
+        if let Some(mode) = settings.get("mode").and_then(|v| v.as_str()) {
+            if !matches!(mode, "in-memory" | "redis" | "hybrid") {
+                errors.push(format!(
+                    "cache.mode must be one of: in-memory, redis, hybrid; got '{mode}'"
+                ));
+            }
+        }
+
+        if let Some(port) = settings.get("redis_port") {
+            if let Some(n) = port.as_u64() {
+                if !(1..=65535).contains(&n) {
+                    errors.push("cache.redis_port must be between 1 and 65535".to_string());
+                }
+            } else {
+                errors.push("cache.redis_port must be a valid port number".to_string());
+            }
+        }
+
+        if let Some(db) = settings.get("redis_db") {
+            if let Some(n) = db.as_u64() {
+                if n > 255 {
+                    errors.push("cache.redis_db must be between 0 and 255".to_string());
+                }
+            } else {
+                errors.push("cache.redis_db must be a valid database number".to_string());
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
 /// Registry of validators indexed by category.
 pub struct ValidatorRegistry {
     validators: Vec<Box<dyn SettingsValidator>>,
@@ -145,6 +193,7 @@ impl Default for ValidatorRegistry {
         };
         reg.register(RateLimitSettingsValidator);
         reg.register(EmailSettingsValidator);
+        reg.register(CacheSettingsValidator);
         reg
     }
 }
@@ -252,7 +301,7 @@ impl SettingsService {
     ) -> Result<Value, SettingsError> {
         ensure_supported_category(cat)?;
 
-        let settings = preserve_email_secrets(ctx, tenant_id, cat, settings).await?;
+        let settings = preserve_secrets(ctx, tenant_id, cat, settings).await?;
 
         validators
             .validate(cat, &settings)
@@ -304,40 +353,66 @@ impl SettingsService {
             category::EMAIL => serde_json::to_value(&rs.email).unwrap_or(Value::Null),
             category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
             category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
+            category::CACHE => {
+                let default_mode = if rs.cache.redis_url.is_some() {
+                    "redis"
+                } else {
+                    "in-memory"
+                };
+                serde_json::json!({
+                    "mode": default_mode,
+                    "redis_url": rs.cache.redis_url.clone().unwrap_or_default(),
+                    "redis_host": "127.0.0.1",
+                    "redis_port": 6379,
+                    "redis_password": "",
+                    "redis_db": 0
+                })
+            }
             _ => Value::Null,
         }
     }
 }
 
 fn redact_secrets(cat: &str, mut settings: Value) -> Value {
-    if cat != category::EMAIL {
-        return settings;
-    }
-
-    if let Some(object) = settings.as_object_mut() {
-        if object.contains_key("smtp_password") {
-            object.insert("smtp_password".to_string(), Value::String(String::new()));
+    match cat {
+        category::EMAIL => {
+            if let Some(object) = settings.as_object_mut() {
+                if object.contains_key("smtp_password") {
+                    object.insert("smtp_password".to_string(), Value::String(String::new()));
+                }
+                if object.contains_key("smtpPassword") {
+                    object.insert("smtpPassword".to_string(), Value::String(String::new()));
+                }
+                if let Some(smtp) = object.get_mut("smtp").and_then(Value::as_object_mut)
+                    && smtp.contains_key("password")
+                {
+                    smtp.insert("password".to_string(), Value::String(String::new()));
+                }
+            }
         }
-        if object.contains_key("smtpPassword") {
-            object.insert("smtpPassword".to_string(), Value::String(String::new()));
+        category::CACHE => {
+            if let Some(object) = settings.as_object_mut() {
+                if object.contains_key("redis_password") {
+                    object.insert("redis_password".to_string(), Value::String(String::new()));
+                }
+                if object.contains_key("redisPassword") {
+                    object.insert("redisPassword".to_string(), Value::String(String::new()));
+                }
+            }
         }
-        if let Some(smtp) = object.get_mut("smtp").and_then(Value::as_object_mut)
-            && smtp.contains_key("password")
-        {
-            smtp.insert("password".to_string(), Value::String(String::new()));
-        }
+        _ => {}
     }
 
     settings
 }
 
-async fn preserve_email_secrets(
+async fn preserve_secrets(
     ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     cat: &str,
     incoming: Value,
 ) -> Result<Value, SettingsError> {
-    if cat != category::EMAIL {
+    if cat != category::EMAIL && cat != category::CACHE {
         return Ok(incoming);
     }
 
@@ -345,7 +420,45 @@ async fn preserve_email_secrets(
         return Ok(incoming);
     };
 
-    Ok(preserve_email_secret_fields(existing.settings, incoming))
+    match cat {
+        category::EMAIL => Ok(preserve_email_secret_fields(existing.settings, incoming)),
+        category::CACHE => Ok(preserve_cache_secret_fields(existing.settings, incoming)),
+        _ => Ok(incoming),
+    }
+}
+
+fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
+    let (Some(existing_object), Some(incoming_object)) =
+        (existing.as_object(), incoming.as_object_mut())
+    else {
+        return incoming;
+    };
+
+    if incoming_object
+        .get("redis_password")
+        .and_then(Value::as_str)
+        .is_some_and(str::is_empty)
+        && let Some(existing_password) = existing_object
+            .get("redis_password")
+            .or_else(|| existing_object.get("redisPassword"))
+            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+    {
+        incoming_object.insert("redis_password".to_string(), existing_password.clone());
+    }
+
+    if incoming_object
+        .get("redisPassword")
+        .and_then(Value::as_str)
+        .is_some_and(str::is_empty)
+        && let Some(existing_password) = existing_object
+            .get("redis_password")
+            .or_else(|| existing_object.get("redisPassword"))
+            .filter(|value| !value.as_str().unwrap_or_default().is_empty())
+    {
+        incoming_object.insert("redisPassword".to_string(), existing_password.clone());
+    }
+
+    incoming
 }
 
 fn preserve_email_secret_fields(existing: Value, mut incoming: Value) -> Value {
@@ -536,6 +649,57 @@ mod tests {
 
         assert_eq!(value["smtpPassword"], "new-secret");
         assert_eq!(value["smtp"]["password"], "new-nested-secret");
+    }
+
+    #[test]
+    fn cache_validator_accepts_valid_modes() {
+        let v = CacheSettingsValidator;
+        for mode in ["in-memory", "redis", "hybrid"] {
+            assert!(
+                v.validate(&json!({ "mode": mode, "redis_port": 6379, "redis_db": 0 }))
+                    .is_ok(),
+                "should accept mode '{mode}'"
+            );
+        }
+    }
+
+    #[test]
+    fn cache_validator_rejects_unknown_mode() {
+        let v = CacheSettingsValidator;
+        let errs = v.validate(&json!({ "mode": "memcached" })).unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("mode")));
+    }
+
+    #[test]
+    fn cache_validator_rejects_invalid_port() {
+        let v = CacheSettingsValidator;
+        let errs = v.validate(&json!({ "redis_port": 70000 })).unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("redis_port")));
+    }
+
+    #[test]
+    fn cache_secrets_are_redacted_from_generic_settings_reads() {
+        let value = redact_secrets(
+            category::CACHE,
+            json!({
+                "mode": "redis",
+                "redis_password": "super-secret-redis-password",
+                "redis_host": "127.0.0.1"
+            }),
+        );
+
+        assert_eq!(value["redis_password"], "");
+        assert_eq!(value["redis_host"], "127.0.0.1");
+    }
+
+    #[test]
+    fn empty_redis_password_preserves_existing_secret() {
+        let value = preserve_cache_secret_fields(
+            json!({ "redis_password": "super-secret" }),
+            json!({ "redis_password": "", "mode": "redis" }),
+        );
+
+        assert_eq!(value["redis_password"], "super-secret");
     }
 
     #[test]

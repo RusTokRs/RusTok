@@ -68,7 +68,6 @@ impl CheckoutPaymentStageExecutor {
         Self {
             payment_port: in_process_checkout_payment_execution_port(
                 db.clone(),
-                super::checkout_execution_admission_port(db.clone()),
             ),
             operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus),
             owner_db: db,
@@ -81,12 +80,10 @@ impl CheckoutPaymentStageExecutor {
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
     ) -> Self {
-        let checkout_admission = super::checkout_execution_admission_port(self.owner_db.clone());
         self.payment_port = Arc::new(
             InProcessCheckoutPaymentExecutionPort::with_provider_registry(
                 self.owner_db.clone(),
                 payment_provider_registry,
-                checkout_admission,
             ),
         );
         self

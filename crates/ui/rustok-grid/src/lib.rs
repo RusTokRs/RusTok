@@ -15,6 +15,7 @@
 
 pub mod column;
 pub mod facet;
+pub mod facet_panel;
 pub mod filter;
 pub mod pagination;
 pub mod resize;
@@ -29,6 +30,11 @@ pub use column::{
 pub use facet::{
     FacetDomain, FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS,
     SELECTION_SEPARATOR, selection_except, selection_key,
+};
+pub use facet_panel::{
+    FacetPanel, FacetPanelFacet, FacetPanelLabels, FacetPanelValue, count_label, has_selection_for_key,
+    is_selection_selected, selection_after_clear, selection_after_clear_key, selection_after_toggle,
+    selection_entry, selection_for_key, split_selection,
 };
 pub use filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
 pub use pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};
@@ -45,6 +51,12 @@ pub mod prelude {
     pub use crate::facet::{
         FacetDomain, FacetValue, GridFacet, MAX_GRID_FACET_VALUES, MAX_GRID_FACETS,
         SELECTION_SEPARATOR, selection_except, selection_key,
+    };
+    pub use crate::facet_panel::{
+        FacetPanel, FacetPanelFacet, FacetPanelLabels, FacetPanelValue, count_label,
+        has_selection_for_key, is_selection_selected, selection_after_clear,
+        selection_after_clear_key, selection_after_toggle, selection_entry, selection_for_key,
+        split_selection,
     };
     pub use crate::filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
     pub use crate::pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};

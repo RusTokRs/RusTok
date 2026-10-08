@@ -10,9 +10,10 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = ["leptos/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "leptos/ssr",
+  "rustok-grid-leptos/ssr",
   "rustok-api/server",
   "dep:leptos_axum",
   "dep:rustok-core",
@@ -35,4 +36,4 @@ uuid.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 rustok-grid.workspace = true
-rustok-grid-leptos.workspace = true
+rustok-grid-leptos = { workspace = true, default-features = false }

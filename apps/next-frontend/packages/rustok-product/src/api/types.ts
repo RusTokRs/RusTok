@@ -106,6 +106,27 @@ export type StorefrontProductImage = {
   position: number;
 };
 
+/**
+ * One display-ready storefront specification value.
+ *
+ * `text` is already localized by the Product owner (localized text, option label or formatted
+ * number/date). Booleans stay `true`/`false`: product data carries no locale copy, so the
+ * storefront maps them to its own yes/no wording.
+ */
+export type StorefrontProductAttributeValue = {
+  text: string;
+};
+
+/** A storefront-safe product specification: service attributes never reach this list. */
+export type StorefrontProductAttribute = {
+  code: string;
+  label: string;
+  /** Stored attribute value type, e.g. `select`; drives the boolean vocabulary mapping. */
+  valueType: string;
+  isLocalized: boolean;
+  values: StorefrontProductAttributeValue[];
+};
+
 export type StorefrontProductDetail = {
   id: string;
   status: string;
@@ -118,6 +139,8 @@ export type StorefrontProductDetail = {
   images: StorefrontProductImage[];
   translations: StorefrontProductTranslation[];
   variants: StorefrontProductVariant[];
+  /** Specifications the owner resolved for the storefront; empty when nothing is published. */
+  attributes?: StorefrontProductAttribute[];
 };
 
 export type StorefrontCatalogFilter = {
@@ -129,4 +152,27 @@ export type StorefrontCatalogFilter = {
   currencyCode?: string;
   page?: number;
   perPage?: number;
+};
+
+/** One bucket of an enumerable facet: an option id for dictionaries, `true`/`false` for booleans. */
+export type ProductCatalogFacetValue = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+/** A facet the Product owner counted for the current catalog filter set. */
+export type ProductCatalogFacet = {
+  code: string;
+  label: string;
+  /** Stored attribute value type, e.g. `select`. */
+  valueType: string;
+  isLocalized: boolean;
+  /** False for unbounded domains (text, numeric, date): `values` stays empty. */
+  isEnumerable: boolean;
+  /** True when the owner cut the bucket list at its facet-value limit. */
+  isTruncated: boolean;
+  /** Products matching every other active facet that carry a value for this attribute. */
+  totalProducts: number;
+  values: ProductCatalogFacetValue[];
 };

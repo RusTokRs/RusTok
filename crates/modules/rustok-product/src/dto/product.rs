@@ -148,6 +148,36 @@ pub struct ProductResponse {
     pub variant_axes: Vec<VariantAxisConfigResponse>,
     pub variants: Vec<VariantResponse>,
     pub images: Vec<ProductImageResponse>,
+    /// Storefront-safe specifications: filled by the published storefront detail projection and
+    /// empty on admin reads, which resolve attribute values through the catalog schema service.
+    ///
+    /// Every entry is already display-ready — localized label, ordered values, localized text or
+    /// option label — so a storefront never joins `product_attribute*` tables or resolves option
+    /// ids itself. Attributes that a cataloguer hid from the storefront, service attributes of
+    /// other scopes and JSON payloads are absent by construction.
+    #[serde(default)]
+    pub storefront_attributes: Vec<StorefrontProductAttributeResponse>,
+}
+
+/// One display-ready value of a storefront attribute.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StorefrontProductAttributeValueResponse {
+    /// Localized text, option label or formatted number/date. Booleans keep the `true`/`false`
+    /// vocabulary so each storefront renders its own localized yes/no copy.
+    pub text: String,
+}
+
+/// One storefront-safe product attribute with its resolved values.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StorefrontProductAttributeResponse {
+    pub code: String,
+    /// Localized attribute label (`product_attribute_translations`) with the attribute code as the
+    /// last resort.
+    pub label: String,
+    /// Stored value type, e.g. `select`; drives storefront-side presentation of booleans.
+    pub value_type: String,
+    pub is_localized: bool,
+    pub values: Vec<StorefrontProductAttributeValueResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

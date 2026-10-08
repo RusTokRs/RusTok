@@ -372,6 +372,7 @@ pub fn ProductEditorPage(
     // Save product (Create or Update)
     let is_editing = !is_new && product_id.is_some();
     let current_edit_id = product_id.clone();
+    let save_edit_id = current_edit_id.clone();
     let base_route_for_save = base_route.clone();
     let navigate = use_navigate();
     let save_locale = locale.clone();
@@ -407,7 +408,7 @@ pub fn ProductEditorPage(
         let ten = tenant.get_untracked();
         let loc = save_locale.clone();
         let base_route = base_route_for_save.clone();
-        let edit_id_opt = current_edit_id.clone();
+        let edit_id_opt = save_edit_id.clone();
         let kind = active_kind.get_untracked();
         let nav = navigate.clone();
 
@@ -820,7 +821,10 @@ pub fn ProductEditorPage(
                             </span>
                         </div>
 
-                        {move || match active_kind.get() {
+                        {
+                            let axes_current_edit_id = current_edit_id.clone();
+                            let axes_parent_locale = locale.clone();
+                            move || match active_kind.get() {
                             ProductKind::Simple => view! {
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
@@ -881,8 +885,8 @@ pub fn ProductEditorPage(
 
                             ProductKind::Variable => view! {
                                 <div class="space-y-4">
-                                    {current_edit_id.clone().map(|pid| {
-                                        let axes_locale = locale.clone();
+                                    {axes_current_edit_id.clone().map(|pid| {
+                                        let axes_locale = axes_parent_locale.clone();
                                         let refresh_after_axes = set_refresh_nonce;
                                         view! {
                                             <ProductVariantAxesSection

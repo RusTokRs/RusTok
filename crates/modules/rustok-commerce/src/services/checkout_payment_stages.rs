@@ -210,6 +210,7 @@ mod rustok_payment_shim {
 
     use ::rustok_api::PortContext;
 
+    use super::checkout_execution_admission_port;
     use super::payment_execution_boundary::{BoundaryPortError, sanitize_owner_error};
 
     pub use ::rustok_payment::{

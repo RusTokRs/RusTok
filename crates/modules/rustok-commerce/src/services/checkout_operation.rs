@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

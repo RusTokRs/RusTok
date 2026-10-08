@@ -15008,6 +15008,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-cache-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos-auth",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-cache",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-cart"
 version = "0.1.0"
 dependencies = [
@@ -16995,6 +17017,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "chrono",
+ "fly",
  "rustok-api",
  "rustok-channel",
  "rustok-content",
@@ -17414,6 +17437,7 @@ dependencies = [
  "rustok-api",
  "rustok-commerce-foundation",
  "rustok-graphql",
+ "rustok-grid",
  "rustok-outbox",
  "rustok-pricing",
  "rustok-product",
@@ -17965,6 +17989,7 @@ dependencies = [
 name = "rustok-seo-storefront"
 version = "0.1.0"
 dependencies = [
+ "leptos",
  "rustok-core",
  "rustok-graphql",
  "rustok-seo",

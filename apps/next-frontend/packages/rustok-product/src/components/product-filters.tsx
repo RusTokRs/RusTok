@@ -11,9 +11,23 @@
 "use client";
 
 import { useTransition } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Filter, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
-import type { ProductCatalogSearchOption } from "../api/types";
+import {
+  Filter,
+  ListFilter,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
+import type {
+  ProductCatalogFacet,
+  ProductCatalogSearchOption,
+} from "../api/types";
+import {
+  buildCatalogFacetFiltersView,
+  buildCatalogFacetLabels,
+} from "../catalog/facets";
 
 interface ProductFiltersProps {
   categoryOptions: ProductCatalogSearchOption[];
@@ -22,6 +36,9 @@ interface ProductFiltersProps {
   currentCategory?: string;
   currentSortBy?: string;
   currentSortDirection?: string;
+  currentAttributeFilters?: string[];
+  facets?: ProductCatalogFacet[];
+  currencyCode?: string;
 }
 
 export function ProductFilters({
@@ -31,11 +48,31 @@ export function ProductFilters({
   currentCategory = "",
   currentSortBy = "published_at",
   currentSortDirection = "desc",
+  currentAttributeFilters = [],
+  facets = [],
+  currencyCode,
 }: ProductFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const isRu = locale === "ru";
+
+  // The panel is a pure view over the owner's counts and the current route state: every bucket is
+  // a link that toggles one `code=value` selection, so deep links stay shareable and the component
+  // keeps no client-side filter state.
+  const facetPanel = buildCatalogFacetFiltersView(
+    `/${locale}/products`,
+    facets,
+    {
+      search: currentSearch,
+      categoryId: currentCategory,
+      sortBy: currentSortBy,
+      sortDirection: currentSortDirection,
+      attributeFilters: currentAttributeFilters,
+      currencyCode,
+    },
+    buildCatalogFacetLabels(locale),
+  );
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -62,6 +99,7 @@ export function ProductFilters({
   const hasActiveFilters =
     Boolean(currentSearch) ||
     Boolean(currentCategory) ||
+    currentAttributeFilters.length > 0 ||
     currentSortBy !== "published_at" ||
     currentSortDirection !== "desc";
 
@@ -157,6 +195,88 @@ export function ProductFilters({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Facet panel: owner-counted buckets, every bucket toggles one `code=value` in the URL */}
+      <div className="border-t border-border pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <ListFilter className="h-3.5 w-3.5" />
+            {facetPanel.title}
+          </span>
+          {facetPanel.clearHref && (
+            <Link
+              href={facetPanel.clearHref}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground transition"
+            >
+              {facetPanel.clearLabel}
+            </Link>
+          )}
+        </div>
+
+        {facetPanel.showEmptyState ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {facetPanel.emptyMessage}
+          </p>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {facetPanel.facets.map((facet) => (
+              <div key={facet.code} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-foreground">
+                    {facet.label}
+                  </span>
+                  {facet.clearHref && (
+                    <Link
+                      href={facet.clearHref}
+                      className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition"
+                    >
+                      {facet.clearLabel}
+                    </Link>
+                  )}
+                </div>
+
+                {facet.unboundedHint && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {facet.unboundedHint}
+                  </p>
+                )}
+
+                <ul className="space-y-1">
+                  {facet.values.map((bucket) => (
+                    <li key={bucket.value}>
+                      <Link
+                        href={bucket.href}
+                        aria-pressed={bucket.selected}
+                        className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-xs transition ${
+                          bucket.selected
+                            ? "bg-primary/10 font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                        }`}
+                      >
+                        <span className="truncate">
+                          <span className="mr-1.5 font-mono text-[10px] text-muted-foreground">
+                            {bucket.marker}
+                          </span>
+                          {bucket.label}
+                        </span>
+                        <span className="tabular-nums text-[11px] text-muted-foreground">
+                          {bucket.countLabel}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+
+                {facet.truncatedHint && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {facet.truncatedHint}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

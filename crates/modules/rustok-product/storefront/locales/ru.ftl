@@ -8,6 +8,14 @@ product-list-attributeFiltersLabel = Фильтры по атрибутам
 product-list-attributeFiltersPlaceholder = color=red;weight=12.5
 product-list-categoryLabel = Категория
 product-list-empty = Опубликованные товары пока недоступны.
+product-list-facetsClear = Очистить фильтры
+# Bucket counts are rendered by the code-owned panel count template, not by Fluent.
+product-list-facetsEmpty = Для этого каталога фильтры пока недоступны.
+product-list-facetsLabel = Фильтры
+product-list-facetsSelected = [x]
+product-list-facetsTruncated = Доступны и другие значения, кроме показанных.
+product-list-facetsUnbounded = Укажите значение в поле фильтра выше.
+product-list-facetsUnselected = [ ]
 product-list-open = Открыть
 product-list-searchLabel = Поиск по каталогу
 product-list-searchPlaceholder = Поиск опубликованных товаров
@@ -41,6 +49,9 @@ product-selected-pricingPreview = preview из pricing-модуля
 product-selected-quantity = qty
 product-selected-region = регион
 product-selected-unscheduled = запланировано позже
+product-selected-attributes = Характеристики
+product-selected-attributeYes = Да
+product-selected-attributeNo = Нет
 product-selected-untitled = Товар без названия
 product-selected-vendorFallback = независимый бренд
 product-subtitle = Этот storefront route читает product-owned catalog data и показывает resolved pricing через отдельный hook модуля pricing, сохраняя GraphQL как fallback path.

@@ -467,6 +467,9 @@ impl CatalogService {
                     }
                 })
                 .collect(),
+            // Admin reads resolve attribute values through the catalog schema service; the
+            // storefront projection fills this block for published detail reads.
+            storefront_attributes: Vec::new(),
         };
 
         debug!(

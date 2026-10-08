@@ -309,16 +309,28 @@ impl CacheService {
         max_capacity: u64,
         options: CacheBackendOptions,
     ) -> Arc<dyn CacheBackend> {
+        let key = crate::service::SharedBackendKey {
+            prefix: prefix.to_string(),
+            ttl,
+            max_capacity,
+            weighted: false,
+            metrics_enabled: options.metrics_enabled,
+        };
+        if let Some(existing) = self.get_shared_backend(&key) {
+            return existing;
+        }
+
         let backend = self
             .raw_shared_client_backend(prefix, ttl, max_capacity, &options)
             .await;
         let backend = self.wrap_generation_aware_backend(prefix, backend).await;
         let backend = self.wrap_generation_recovery_health(prefix, backend);
-        if options.metrics_enabled {
+        let result: Arc<dyn CacheBackend> = if options.metrics_enabled {
             Arc::new(SharedInstrumentedCacheBackend::new(prefix, backend))
         } else {
             backend
-        }
+        };
+        self.insert_shared_backend(key, result)
     }
 
     pub(crate) async fn raw_shared_client_backend(

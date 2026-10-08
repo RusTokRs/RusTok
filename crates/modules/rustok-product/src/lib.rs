@@ -43,7 +43,10 @@ pub use catalog_schema_read_port::{
     ProductEffectiveFormRequest, ProductEffectiveFormSubject,
     ProductStorefrontAttributeFilterResolutionRequest,
 };
-pub use catalog_schema_write_port::ProductCatalogSchemaWritePort;
+pub use catalog_schema_write_port::{
+    PRODUCT_CALLER_IDEMPOTENCY_NAMESPACE, ProductCatalogSchemaWritePort,
+    scoped_caller_idempotency_key,
+};
 pub use error::{CommerceError, CommerceResult};
 pub use fulfillment::ProductFulfillmentRequirement;
 pub use image_translation_progress_target::ProductImageTranslationTargetProvider;
@@ -65,8 +68,8 @@ pub use services::{
     MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE, MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES,
-    ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
-    ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
+    ProductAttributeFilter, ProductAttributeFilterSelection, ProductAttributeTermError,
+    ProductAttributeTermExpr, ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
     ProductImageTranslationExactLocaleApplyReceipt, ProductImageTranslationExactLocaleError,
     ProductImageTranslationExactLocaleRecord, ProductImageTranslationExactLocaleResult,
     ProductImageTranslationExactLocaleSnapshot, ProductIndexLocaleRefreshRecord,
@@ -96,11 +99,11 @@ pub use services::{
     StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
     StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
     StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
-    product_attribute_boolean_term, product_attribute_date_term, product_attribute_datetime_term,
-    product_attribute_decimal_term, product_attribute_integer_term,
-    product_attribute_localized_presence_term, product_attribute_localized_text_expr,
-    product_attribute_localized_text_term, product_attribute_option_term,
-    product_attribute_text_term,
+    group_product_attribute_filters, product_attribute_boolean_term, product_attribute_date_term,
+    product_attribute_datetime_term, product_attribute_decimal_term,
+    product_attribute_integer_term, product_attribute_localized_presence_term,
+    product_attribute_localized_text_expr, product_attribute_localized_text_term,
+    product_attribute_option_term, product_attribute_text_term,
 };
 pub use storefront_http_read_port::{
     LegacyStorefrontHttpProductsRequest, ProductStorefrontHttpReadPort,

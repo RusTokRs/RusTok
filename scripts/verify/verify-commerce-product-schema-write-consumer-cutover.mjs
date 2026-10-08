@@ -19,10 +19,11 @@ const forbidText = (source, text, message) => {
 
 const server = read("crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs");
 const catalogFixture = read("crates/modules/rustok-commerce/tests/graphql_runtime_parity_test/catalog.rs");
-const activeTransport = read("crates/modules/rustok-product/admin/src/catalog_transport_retry.rs");
+const activeTransport = read("crates/modules/rustok-product/admin/src/transport/graphql_adapter.rs");
 const schemaTransport = read("crates/modules/rustok-product/admin/src/transport/product_schema_graphql.rs");
 const retryIdentity = read("crates/modules/rustok-product/admin/src/schema_retry_identity.rs");
 const adminLib = read("crates/modules/rustok-product/admin/src/lib.rs");
+const legacyTransport = read("crates/modules/rustok-product/admin/src/transport.rs");
 
 forbidText(
   server,
@@ -81,7 +82,7 @@ for (const required of [
 
 requireText(
   activeTransport,
-  "pub(crate) use crate::product_schema_graphql::{",
+  "pub(super) use crate::product_schema_graphql::{",
   "active Product Admin transport must source schema writes from the retry-aware GraphQL module",
 );
 requireText(adminLib, "mod product_schema_graphql;", "Product Admin must mount the schema-write GraphQL transport");
@@ -95,8 +96,11 @@ const forwardedKeyCount = (schemaTransport.match(/idempotencyKey: \$idempotencyK
 if (forwardedKeyCount !== schemaResolvers.length) {
   fail(`Product Admin must forward idempotencyKey on every schema mutation (expected ${schemaResolvers.length}, found ${forwardedKeyCount})`);
 }
-requireText(schemaTransport, "retained_caller_key", "Product Admin schema transport must retain caller identity across failed explicit retries");
-requireText(schemaTransport, "mark_succeeded", "Product Admin schema transport must release caller identity only after success");
+requireText(retryIdentity, "retained_caller_key", "Product Admin schema retry identity must retain caller identity across failed explicit retries");
+requireText(retryIdentity, "mark_succeeded", "Product Admin schema retry identity must release caller identity only after success");
+requireText(retryIdentity, "if result.is_ok()", "Product Admin schema retry identity must release caller identity only on owner success");
+requireText(legacyTransport, "run_keyed_schema_write(slot, operation, intent, move |idempotency_key| async move {", "Product Admin legacy transport must mint one caller key per logical schema invocation");
+requireText(legacyTransport, "idempotency_key.clone(),", "Product Admin legacy transport must hand the same caller key to the native owner call");
 requireText(retryIdentity, "ProductAdminSchemaRetryIdentity", "Product Admin must own a typed schema retry identity capability");
 requireText(retryIdentity, "pending.operation == operation", "schema retry identity must require the same operation");
 requireText(retryIdentity, "&pending.intent == intent", "schema retry identity must require the exact same intent");

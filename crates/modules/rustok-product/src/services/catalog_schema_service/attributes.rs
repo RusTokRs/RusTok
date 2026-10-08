@@ -15,7 +15,9 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
-use crate::services::catalog::types::validate_product_attribute_filters;
+use crate::services::catalog::types::{
+    group_product_attribute_filters, validate_product_attribute_filters,
+};
 use crate::services::catalog_attribute_terms::{
     ProductAttributeFilterValue, parse_product_attribute_filter_value,
 };
@@ -245,13 +247,21 @@ impl ProductCatalogSchemaService {
                 ON t.attribute_id = a.id AND t.locale = $2
             WHERE a.tenant_id = $1 AND a.archived_at IS NULL
             ORDER BY a.position ASC, a.code ASC
+            LIMIT $3
             "#,
-            vec![tenant_id.into(), locale.to_string().into()],
+            vec![
+                tenant_id.into(),
+                locale.to_string().into(),
+                ((super::MAX_SCHEMA_LIST_ROWS + 1) as i64).into(),
+            ],
         ))
         .all(&self.db)
         .await
         .map_err(Into::into)
-        .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
+        .and_then(|rows| -> CommerceResult<Vec<ProductAttributeListRecord>> {
+            super::ensure_schema_list_within_limit(rows.len(), "attribute")?;
+            rows.into_iter().map(TryInto::try_into).collect()
+        })
     }
 
     pub async fn list_attribute_options(
@@ -293,7 +303,13 @@ impl ProductCatalogSchemaService {
     /// Resolve public Storefront attribute filters into the canonical Product-owned term grammar.
     ///
     /// This is an owner capability: consumers do not read Product attribute/option tables directly.
-    /// Missing option codes resolve to `Never`, matching the existing owner SQL's empty-result behavior.
+    /// Missing option codes resolve to `Never`, matching the existing owner SQL's empty-result
+    /// behavior.
+    ///
+    /// The answer carries one entry per attribute code, in the caller's first-seen order: several
+    /// selected values of one attribute become one [`ProductAttributeTermExpr::Or`], exactly like the
+    /// SQL list path builds one `Condition::any()` per attribute, so the owner database read and the
+    /// index shadow speak the same selection language.
     pub async fn resolve_storefront_attribute_filter_terms(
         &self,
         tenant_id: Uuid,
@@ -306,15 +322,16 @@ impl ProductCatalogSchemaService {
             return Ok(Vec::new());
         }
 
+        let selections = group_product_attribute_filters(filters);
         let definitions = load_storefront_filter_definitions(&self.db, tenant_id, filters).await?;
-        let mut resolved = Vec::with_capacity(filters.len());
-        for filter in filters {
+        let mut resolved = Vec::with_capacity(selections.len());
+        for selection in &selections {
             let definition = definitions
-                .get(&filter.code.to_ascii_lowercase())
+                .get(&selection.code.to_ascii_lowercase())
                 .ok_or_else(|| {
                     CommerceError::Validation(format!(
                         "attribute {} is not available as a product filter",
-                        filter.code
+                        selection.code
                     ))
                 })?;
             let value_type = AttributeValueType::from_storage(definition.value_type.as_str())
@@ -324,18 +341,27 @@ impl ProductCatalogSchemaService {
                         definition.code
                     ))
                 })?;
-            let predicate = resolve_storefront_filter_predicate(
-                &self.db,
-                tenant_id,
-                definition,
-                value_type,
-                filter.value.as_str(),
-                requested_locale,
-                fallback_locale,
-            )
-            .await?;
+            let mut predicates = Vec::with_capacity(selection.values.len());
+            for raw_value in &selection.values {
+                let predicate = resolve_storefront_filter_predicate(
+                    &self.db,
+                    tenant_id,
+                    definition,
+                    value_type,
+                    raw_value.as_str(),
+                    requested_locale,
+                    fallback_locale,
+                )
+                .await?;
+                predicates.push(predicate);
+            }
+            let predicate = if predicates.len() == 1 {
+                predicates.remove(0)
+            } else {
+                ProductAttributeTermExpr::Or(predicates)
+            };
             resolved.push(ProductResolvedAttributeFilter {
-                code: filter.code.clone(),
+                code: selection.code.clone(),
                 predicate,
             });
         }

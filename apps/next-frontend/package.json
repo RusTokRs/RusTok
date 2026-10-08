@@ -35,6 +35,7 @@
     "clsx": "^2.1.1",
     "graphql": "^17.0.2",
     "@rustok/ui-auth": "file:../../packages/rustok-ui-auth",
+    "@rustok/ui-grid": "file:../../packages/rustok-ui-grid",
     "lucide-react": "^1.48.0",
     "next": "16.3.6",
     "react": "^19.2.7",

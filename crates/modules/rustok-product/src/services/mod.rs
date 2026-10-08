@@ -13,7 +13,8 @@ mod write_transaction;
 
 pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter,
+    MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
+    ProductAttributeFilter, ProductAttributeFilterSelection,
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
     ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
@@ -24,9 +25,10 @@ pub use catalog::{
     ProductVariantTranslationExactLocaleApply, ProductVariantTranslationExactLocaleApplyReceipt,
     ProductVariantTranslationExactLocaleError, ProductVariantTranslationExactLocaleRecord,
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
-    StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
-    StorefrontProductListPrice, StorefrontProductListQuery, StorefrontProductSortBy,
-    StorefrontProductSortDirection,
+    StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
+    StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
+    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    group_product_attribute_filters,
 };
 pub use catalog_attribute_terms::{
     ProductAttributeTermError, ProductAttributeTermExpr, ProductResolvedAttributeFilter,

@@ -91,10 +91,13 @@ requireAll(host, [
   "server.shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   "rustok_product::ProductCatalogReadRuntime::in_process",
   "ProductCatalogReadRuntime must be initialized before marketplace listing",
-  "SharedAiProductCatalogReadPort(runtime.read_port())",
   "preserves_host_selected_external_product_catalog_runtime",
   "ProductCatalogReadProfile::External",
 ], "host composition");
+// rustfmt wraps the port composition as soon as the call grows; match the shape, not one line.
+if (!/SharedAiProductCatalogReadPort\(\s*runtime\.read_port\(\),?\s*\)/.test(host)) {
+  failures.push("host composition: missing SharedAiProductCatalogReadPort(runtime.read_port())");
+}
 forbid(
   host,
   "let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(",
@@ -121,10 +124,15 @@ requireAll(registry, [
 requireAll(plan, [
   "ProductCatalogReadRuntime",
   "AI,",
-  "checkout consumer source cutover is complete",
   "Concrete external transport execution remains open",
   "verify-product-catalog-read-runtime-composition.mjs",
 ], "Product implementation plan");
+// the plan is a wrapped markdown document; the sentence is matched across a line break.
+if (!/checkout consumer\s+source cutover is complete/.test(plan)) {
+  failures.push(
+    "Product implementation plan: missing checkout consumer source cutover is complete",
+  );
+}
 
 const externalStart = runtime.indexOf("pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)");
 const withHttpStart = runtime.indexOf("pub fn with_storefront_http_read_port(");

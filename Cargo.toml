@@ -73,6 +73,7 @@ members = [
     "crates/modules/rustok-marketplace-seller/admin",
     "crates/modules/rustok-marketplace-listing/admin",
     "crates/modules/rustok-brand/admin",
+    "crates/modules/rustok-cache/admin",
     "crates/modules/rustok-product-relations/admin",
     "crates/modules/rustok-product-bundles/admin",
     "tests/e2e-rust",
@@ -366,6 +367,7 @@ rustok-ui-i18n = { path = "crates/ui/rustok-ui-i18n" }
 rustok-ui-transport = { path = "crates/ui/rustok-ui-transport" }
 leptos-ui-routing = { path = "crates/ui/leptos-ui-routing" }
 rustok-cache = { path = "crates/modules/rustok-cache" }
+rustok-cache-admin = { path = "crates/modules/rustok-cache/admin" }
 rustok-channel = { path = "crates/modules/rustok-channel" }
 rustok-email = { path = "crates/modules/rustok-email" }
 rustok-outbox = { path = "crates/modules/rustok-outbox" }

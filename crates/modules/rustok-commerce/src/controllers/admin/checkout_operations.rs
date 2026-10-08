@@ -786,6 +786,12 @@ fn checkout_operation_error_policy(
             "Checkout operation storage is unavailable",
             "database",
         ),
+        CheckoutOperationError::Event(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "checkout_operation_event_failed",
+            "Checkout operation event publication failed",
+            "event",
+        ),
     }
 }
 

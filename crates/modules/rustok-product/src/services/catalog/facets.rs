@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
+use crate::entities::product::ProductStatus;
 use crate::error::{CommerceError, CommerceResult};
 use crate::services::catalog_schema::AttributeValueType;
 
@@ -135,8 +136,68 @@ impl super::CatalogService {
         )
         .await
     }
+
+    /// Computes admin facet counts for the requested attribute codes.
+    ///
+    /// The admin scope counts every product of the tenant — drafts and archived rows included —
+    /// and narrows to a single lifecycle status only when the admin list does. Search, category and
+    /// the *other* attribute filters are shared with the admin list, so a bucket count answers
+    /// "what would this admin filter produce if I picked this bucket". Pagination fields of the
+    /// list query are ignored: facets describe the whole filtered catalog, not one page.
+    #[tracing::instrument(skip(self))]
+    pub async fn admin_catalog_facets(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        list_query: &super::AdminProductListQuery,
+        facet_codes: &[String],
+    ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
+        let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+        super::types::validate_storefront_product_search(list_query.search.as_deref())?;
+        load_catalog_facets(
+            &self.db,
+            tenant_id,
+            locale,
+            fallback_locale,
+            CatalogFacetScope::Admin {
+                status: list_query.status.as_ref(),
+            },
+            CatalogFacetFilters {
+                search: list_query.search.as_deref(),
+                category_id: list_query.category_id,
+                attribute_filters: list_query.attribute_filters.as_slice(),
+            },
+            facet_codes,
+        )
+        .await
+    }
 }
 
+/// Which product population a facet count describes.
+///
+/// The counting rules below (definitions, buckets, labels, truncation) are identical for both
+/// scopes; only the product predicate differs, so the admin grids reuse the storefront machinery
+/// instead of growing a second, drifting facet implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CatalogFacetScope<'a> {
+    /// Published, channel-visible products: the storefront population.
+    Storefront {
+        public_channel_slug: Option<&'a str>,
+    },
+    /// Every product of the tenant, optionally narrowed to one lifecycle status: the admin grids.
+    Admin { status: Option<&'a ProductStatus> },
+}
+
+/// The catalog filter set a facet count shares with its list query.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CatalogFacetFilters<'a> {
+    pub search: Option<&'a str>,
+    pub category_id: Option<Uuid>,
+    pub attribute_filters: &'a [ProductAttributeFilter],
+}
+
+/// Storefront entry point: counted over the published, channel-visible population.
 pub(super) async fn load_storefront_catalog_facets(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -144,6 +205,34 @@ pub(super) async fn load_storefront_catalog_facets(
     fallback_locale: &str,
     public_channel_slug: Option<&str>,
     list_query: &super::StorefrontProductListQuery,
+    facet_codes: &[String],
+) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
+    load_catalog_facets(
+        db,
+        tenant_id,
+        locale,
+        fallback_locale,
+        CatalogFacetScope::Storefront {
+            public_channel_slug,
+        },
+        CatalogFacetFilters {
+            search: list_query.search.as_deref(),
+            category_id: list_query.category_id,
+            attribute_filters: list_query.attribute_filters.as_slice(),
+        },
+        facet_codes,
+    )
+    .await
+}
+
+/// Counts the requested facets under one scope and filter set.
+pub(super) async fn load_catalog_facets(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    locale: &str,
+    fallback_locale: &str,
+    scope: CatalogFacetScope<'_>,
+    filters: CatalogFacetFilters<'_>,
     facet_codes: &[String],
 ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
     let codes = normalize_facet_codes(facet_codes)?;
@@ -174,7 +263,7 @@ pub(super) async fn load_storefront_catalog_facets(
             )));
         }
 
-        let other_filters = list_query
+        let other_filters = filters
             .attribute_filters
             .iter()
             .filter(|filter| !filter.code.eq_ignore_ascii_case(&definition.code))
@@ -191,8 +280,8 @@ pub(super) async fn load_storefront_catalog_facets(
         let products_condition = facet_products_condition(
             db.get_database_backend(),
             tenant_id,
-            public_channel_slug,
-            list_query,
+            scope,
+            &filters,
             other_conditions,
         );
 
@@ -417,7 +506,7 @@ async fn load_facet_attribute_labels(
 
     Ok(by_attribute
         .into_iter()
-        .filter_map(|(attribute_id, mut labels)| {
+        .filter_map(|(attribute_id, labels)| {
             labels
                 .into_iter()
                 .next()
@@ -493,7 +582,7 @@ async fn load_facet_option_labels(
         .collect::<Vec<_>>();
     let mut resolved = labels
         .into_iter()
-        .filter_map(|(option_id, mut by_locale)| {
+        .filter_map(|(option_id, by_locale)| {
             by_locale
                 .into_iter()
                 .next()
@@ -532,7 +621,10 @@ async fn load_facet_option_labels(
 }
 
 /// Locale candidates in resolution order: requested, then fallback (when different).
-fn locale_candidates(locale: &str, fallback_locale: &str) -> Vec<String> {
+///
+/// Shared with the storefront attribute projection: both read the owner's translation tables and
+/// must resolve a locale the same way.
+pub(super) fn locale_candidates(locale: &str, fallback_locale: &str) -> Vec<String> {
     let mut candidates = Vec::with_capacity(2);
     if !locale.is_empty() {
         candidates.push(locale.to_string());
@@ -543,41 +635,79 @@ fn locale_candidates(locale: &str, fallback_locale: &str) -> Vec<String> {
     candidates
 }
 
+/// Canonical storage literal of one lifecycle status.
+///
+/// The literal comes from a typed enum and never from request text, which keeps the inline
+/// comparison safe while staying portable: PostgreSQL stores the column as `product_status_enum`,
+/// so a bound text parameter would not resolve, and the same SQL must also run on the SQLite test
+/// schema.
+fn facet_status_literal(status: &ProductStatus) -> &'static str {
+    match status {
+        ProductStatus::Draft => "draft",
+        ProductStatus::Active => "active",
+        ProductStatus::Archived => "archived",
+    }
+}
+
+/// Builds the product population a facet count describes for the given scope.
+fn facet_scope_condition(
+    backend: DbBackend,
+    tenant_id: Uuid,
+    scope: CatalogFacetScope<'_>,
+) -> Condition {
+    let mut condition = Condition::all().add(Expr::cust_with_values(
+        format!("products.tenant_id = {}", sql_placeholder(backend, 1)),
+        vec![sea_orm::Value::from(tenant_id)],
+    ));
+    match scope {
+        CatalogFacetScope::Storefront {
+            public_channel_slug,
+        } => {
+            condition = condition
+                .add(Expr::cust("products.status = 'active'"))
+                .add(Expr::cust("products.published_at IS NOT NULL"))
+                .add(product_channel_visibility_condition(
+                    backend,
+                    public_channel_slug,
+                ));
+        }
+        CatalogFacetScope::Admin { status } => {
+            // No status filter means "every lifecycle status", which is what an unfiltered admin
+            // grid shows; a set one is narrowed by the literal above.
+            if let Some(status) = status {
+                condition = condition.add(Expr::cust(format!(
+                    "products.status = '{}'",
+                    facet_status_literal(status)
+                )));
+            }
+        }
+    }
+    condition
+}
+
 /// Builds the product filter set shared by every facet query.
 ///
 /// `other_conditions` are the already-resolved attribute-filter conditions of every *other*
-/// selected attribute. The product status is compared with an inline literal because PostgreSQL
-/// stores it as the `product_status_enum` type, which does not resolve against a text parameter.
+/// selected attribute.
 fn facet_products_condition(
     backend: DbBackend,
     tenant_id: Uuid,
-    public_channel_slug: Option<&str>,
-    list_query: &super::StorefrontProductListQuery,
+    scope: CatalogFacetScope<'_>,
+    filters: &CatalogFacetFilters<'_>,
     other_conditions: Vec<Condition>,
 ) -> Condition {
-    let mut condition = Condition::all()
-        .add(Expr::cust_with_values(
-            format!("products.tenant_id = {}", sql_placeholder(backend, 1)),
-            vec![tenant_id.into()],
-        ))
-        .add(Expr::cust("products.status = 'active'"))
-        .add(Expr::cust("products.published_at IS NOT NULL"))
-        .add(product_channel_visibility_condition(
-            backend,
-            public_channel_slug,
-        ));
-    if let Some(category_id) = list_query.category_id {
+    let mut condition = facet_scope_condition(backend, tenant_id, scope);
+    if let Some(category_id) = filters.category_id {
         condition = condition.add(Expr::cust_with_values(
             format!(
                 "products.primary_category_id = {}",
                 sql_placeholder(backend, 1)
             ),
-            vec![category_id.into()],
+            vec![sea_orm::Value::from(category_id)],
         ));
     }
-    if let Some(search) = list_query
+    if let Some(search) = filters
         .search
-        .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
@@ -612,15 +742,11 @@ async fn load_facet_total(
             Alias::new("product_count"),
         )
         .cond_where(products_condition.clone());
-    let (sql, values) = query.build(db.get_database_backend());
-    let row = FacetCountRow::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        sql,
-        values,
-    ))
-    .one(db)
-    .await?;
-    Ok(row.map(|row| row.product_count.max(0) as u64).unwrap_or(0))
+    let statement = db.get_database_backend().build(&query);
+    let row = FacetCountRow::find_by_statement(statement)
+        .one(db)
+        .await?;
+    Ok(row.map(|row| std::cmp::Ord::max(row.product_count, 0) as u64).unwrap_or(0))
 }
 
 async fn load_facet_buckets(
@@ -664,15 +790,13 @@ async fn load_facet_buckets(
                 // One extra row distinguishes "exactly the limit" from "truncated".
                 .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
 
-            let (sql, values) = query.build(backend);
-            FacetOptionBucketRow::find_by_statement(Statement::from_sql_and_values(
-                backend, sql, values,
-            ))
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|row| (row.option_id.to_string(), row.product_count.max(0) as u64))
-            .collect::<Vec<_>>()
+            let statement = backend.build(&query);
+            FacetOptionBucketRow::find_by_statement(statement)
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|row| (row.option_id.to_string(), std::cmp::Ord::max(row.product_count, 0) as u64))
+                .collect::<Vec<_>>()
         }
         AttributeValueType::Boolean => {
             query
@@ -687,20 +811,18 @@ async fn load_facet_buckets(
                 .order_by((pav.clone(), Alias::new("value_boolean")), Order::Asc)
                 .limit((MAX_CATALOG_FACET_VALUES as u64) + 1);
 
-            let (sql, values) = query.build(backend);
-            FacetBooleanBucketRow::find_by_statement(Statement::from_sql_and_values(
-                backend, sql, values,
-            ))
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|row| {
-                (
-                    row.value_boolean.to_string(),
-                    row.product_count.max(0) as u64,
-                )
-            })
-            .collect::<Vec<_>>()
+            let statement = backend.build(&query);
+            FacetBooleanBucketRow::find_by_statement(statement)
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|row| {
+                    (
+                        row.value_boolean.to_string(),
+                        std::cmp::Ord::max(row.product_count, 0) as u64,
+                    )
+                })
+                .collect::<Vec<_>>()
         }
         _ => Vec::new(),
     };
@@ -727,7 +849,7 @@ fn facet_base_query(backend: DbBackend, attribute_id: &Uuid) -> sea_query::Selec
         )
         .and_where(Expr::cust_with_values(
             format!("facet_pav.attribute_id = {}", sql_placeholder(backend, 1)),
-            vec![(*attribute_id).into()],
+            vec![sea_orm::Value::from(*attribute_id)],
         ))
         .and_where(Expr::col((pav, Alias::new("detached_at"))).is_null());
     query

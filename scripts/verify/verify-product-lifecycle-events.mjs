@@ -138,8 +138,18 @@ for (const marker of [
 ]) {
   need(registry, marker, "event registry");
 }
-need(canonicalTest, "DomainEvent::ProductUnpublished { product_id:", "canonical contract sample");
-need(canonicalTest, "DomainEvent::ProductArchived { product_id:", "canonical contract sample");
+// The sample carries each lifecycle event with its product id. rustfmt wraps the literal as soon as
+// the line grows, so the rule is the shape of the sample entry, not one line of it.
+for (const variant of ["ProductUnpublished", "ProductArchived"]) {
+  const sample = new RegExp(`DomainEvent::${variant} \\{\\s*product_id: id\\(\\d+\\)`).test(
+    canonicalTest,
+  );
+  if (!sample) {
+    failures.push(
+      `canonical contract sample: missing DomainEvent::${variant} { product_id: id(…) }`,
+    );
+  }
+}
 
 // ── Owner commands ───────────────────────────────────────────────────────────────────────────
 const unpublish = slice(commands, "pub async fn unpublish_product(", "pub async fn archive_product(");

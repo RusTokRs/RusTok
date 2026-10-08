@@ -7,11 +7,14 @@ description = "Storefront and client UI support for RusToK SEO module"
 
 [features]
 default = []
+hydrate = ["leptos/hydrate"]
 ssr = [
+  "leptos/ssr",
   "rustok-seo/server",
 ]
 
 [dependencies]
+leptos.workspace = true
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 rustok-graphql.workspace = true
