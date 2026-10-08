@@ -132,9 +132,9 @@ const STOREFRONT_CATEGORIES_QUERY = `
 `;
 
 const STOREFRONT_TOPICS_QUERY = `
-  query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $pagination: PaginationInput) {
-    forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, pagination: $pagination) {
-      total
+  query StorefrontForumAudienceTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $perPage: Int) {
+    forumStorefrontAudienceTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, perPage: $perPage) {
+      nextCursor
       items {
         id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt solutionReplyId voteScore
       }
@@ -143,9 +143,9 @@ const STOREFRONT_TOPICS_QUERY = `
 `;
 
 const STOREFRONT_UNREAD_TOPICS_QUERY = `
-  query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $limit: Int) {
-    forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, limit: $limit) {
-      total
+  query StorefrontForumUnreadTopics($tenantId: UUID, $categoryId: UUID, $locale: String, $after: String, $limit: Int) {
+    forumStorefrontUnreadTopics(tenantId: $tenantId, categoryId: $categoryId, locale: $locale, after: $after, limit: $limit) {
+      nextCursor
       items {
         id effectiveLocale categoryId authorId title slug status isPinned isLocked replyCount createdAt
         readStateExplicit lastReadPosition lastReadRevision unreadCount hasUnreadTopicRevision isUnread
@@ -253,10 +253,11 @@ export async function fetchStorefrontTopics(options: {
   categoryId?: string;
   locale?: string;
   limit?: number;
-  offset?: number;
-}): Promise<{ items: ForumTopicListItem[]; total: number }> {
+  /** Opaque cursor returned as `nextCursor` by the previous page. */
+  after?: string;
+}): Promise<{ items: ForumTopicListItem[]; nextCursor: string | null }> {
   const result = await storefrontGraphql<{
-    forumStorefrontAudienceTopics: { items: ForumTopicListItem[]; total: number };
+    forumStorefrontAudienceTopics: { items: ForumTopicListItem[]; nextCursor: string | null };
   }>({
     query: STOREFRONT_TOPICS_QUERY,
     tenant: options.tenantSlug,
@@ -264,17 +265,15 @@ export async function fetchStorefrontTopics(options: {
       tenantId: options.tenantId,
       categoryId: options.categoryId,
       locale: options.locale,
-      pagination: {
-        offset: options.offset ?? 0,
-        limit: options.limit ?? 50,
-      },
+      after: options.after,
+      perPage: options.limit ?? 50,
     },
   });
 
   return (
     result.data?.forumStorefrontAudienceTopics ?? {
       items: [],
-      total: 0,
+      nextCursor: null,
     }
   );
 }

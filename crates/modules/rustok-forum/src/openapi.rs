@@ -80,6 +80,7 @@ use utoipa::OpenApi;
             crate::ListTopicsFilter,
             crate::TopicResponse,
             crate::TopicListItem,
+            crate::TopicListItemPage,
             crate::CreateReplyInput,
             crate::UpdateReplyInput,
             crate::CreateReplyCommandInput,

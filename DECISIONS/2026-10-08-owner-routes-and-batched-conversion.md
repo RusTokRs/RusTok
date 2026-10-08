@@ -255,9 +255,30 @@ topics must scale. Measured on the current code:
   cursor cannot be replayed against another sort. Admin indexes:
   `(tenant_id, created_at|updated_at|published_at, id)`. The public Blog list keeps
   no total; counts come from the projection (stage 4).
-  Still on offset until their own slices: the SEO bulk editor (see the Blog
-  implementation plan, H-7), forum topic lists, the `topic_list` page-builder
-  widget, comments, and the other admin lists.
+  Forum topics (sixth slice): `ListTopicsFilter` takes `after` and `perPage`
+  instead of `page`. The owner keyset is
+  `is_pinned DESC, last_reply_at DESC NULLS LAST, updated_at DESC, id DESC`. The
+  offset order had no `id` tie-breaker, so ties could repeat or skip topics, and
+  NULL `last_reply_at` sorted first on PostgreSQL but last on SQLite. The cursor
+  is versioned (`v1|pinned|last_reply_at|updated_at|id`). Responses are
+  `ForumTopicPage` (GraphQL, `forumTopics`, `forumStorefrontTopics`,
+  `forumStorefrontAudienceTopics`, and `forumStorefrontUnreadTopics`, which keeps
+  its `limit` argument) and `TopicListItemPage` (REST). `total` is removed. The
+  storefront feed count is the selected category's `topicCount`. The audience
+  list filters candidates in batches from the cursor, closes a page only after it
+  finds one more visible topic, and never returns an empty last page. Its cost is
+  bounded by the owner batch size, not by the offset. Index
+  `idx_forum_topics_list_keyset` on `(tenant_id, is_pinned, last_reply_at,
+  updated_at, id)` is amended into the forum read-model index migration. The
+  admin candidate pickers (merge, fork, split, reply range, slug rename) take the
+  first page by `perPage` as before, so they show the same first-page subset.
+  The existing unread read-model cursor `(updated_at, id)` is unchanged.
+  Still on offset: the `topic_list` page-builder widget (its own `page` and
+  `per_page` contract, `per_page` at most 100, `page` at most 100000; it orders by
+  the widget `sort` and cannot share the default keyset without a per-sort cursor),
+  the SEO bulk editor (see the Blog implementation plan, H-7), comments, and the
+  category and other admin lists. `EXPLAIN` evidence for the new keyset queries is
+  still pending (stage 6).
 - Precondition: no external consumer of the GraphQL or REST contracts exists. The
   decision owner confirmed this on 2026-10-08. If a consumer is later proven, a
   time-bounded exception is recorded in `compatibility-exceptions.json` first.

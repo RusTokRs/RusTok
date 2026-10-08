@@ -7,7 +7,7 @@ use crate::topic_slug_rename_model::{
 
 pub type ApiError = String;
 
-const RENAME_CANDIDATES_QUERY: &str = "query ForumAdminTopicSlugRenameCandidates($locale: String, $pagination: PaginationInput!) { forumTopics(locale: $locale, pagination: $pagination) { items { id title locale slug } } }";
+const RENAME_CANDIDATES_QUERY: &str = "query ForumAdminTopicSlugRenameCandidates($locale: String, $perPage: Int) { forumTopics(locale: $locale, perPage: $perPage) { items { id title locale slug } } }";
 const RENAME_TOPIC_SLUG_MUTATION: &str = "mutation ForumAdminRenameTopicSlug($topicId: UUID!, $input: RenameForumTopicSlugGraphqlInput!) { renameForumTopicSlug(topicId: $topicId, input: $input) { topic_id: topicId locale previous_slug: previousSlug slug previous_path: previousPath canonical { topic_id: topicId locale short_id: shortId slug path } alias_id: aliasId changed } }";
 
 #[derive(Debug, Deserialize)]
@@ -28,15 +28,10 @@ struct RenameResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CandidatesVariables {
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,10 +77,7 @@ pub async fn fetch_candidates(
         RENAME_CANDIDATES_QUERY,
         CandidatesVariables {
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 100,
-            },
+            per_page: 100,
         },
         token,
         tenant_slug,

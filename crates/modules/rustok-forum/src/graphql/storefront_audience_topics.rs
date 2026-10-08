@@ -10,7 +10,7 @@ use async_graphql::{Context, Object, Result};
 use prometheus::{IntCounterVec, Opts};
 use rustok_api::{
     RequestContext, TenantContext,
-    graphql::{PaginationInput, require_module_enabled, resolve_graphql_locale},
+    graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::{ForumTopicAudienceListService, TopicListItem};
 
-use super::types::*;
+use super::{ForumTopicPage, types::*};
 
 const MODULE_SLUG: &str = "forum";
 const STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT: &str = "exact";
@@ -38,7 +38,7 @@ pub struct ForumStorefrontAudienceTopicsQuery;
 impl ForumStorefrontAudienceTopicsQuery {
     /// Public storefront topic pagination through the exact richer-audience owner.
     ///
-    /// The response page and total are derived from the same allowed sequence.
+    /// The response page and its `next_cursor` are derived from the same allowed sequence.
     /// Authenticated callers may use this field as the public fallback surface;
     /// user-specific unread composition remains on `forumStorefrontUnreadTopics`.
     async fn forum_storefront_audience_topics(
@@ -47,8 +47,9 @@ impl ForumStorefrontAudienceTopicsQuery {
         tenant_id: Option<Uuid>,
         category_id: Option<Uuid>,
         locale: Option<String>,
-        #[graphql(default)] pagination: PaginationInput,
-    ) -> Result<ForumTopicConnection> {
+        after: Option<String>,
+        per_page: Option<i32>,
+    ) -> Result<ForumTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         super::require_public_forum_channel_enabled(ctx).await?;
 
@@ -57,8 +58,8 @@ impl ForumStorefrontAudienceTopicsQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data_opt::<RequestContext>();
-        let requested_limit = pagination.requested_limit();
-        let (offset, limit) = pagination.normalize()?;
+        let requested_limit = per_page.map(|value| value.max(0) as u64);
+        let per_page = crate::dto::bounded_forum_read_limit(requested_limit);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let list_started_at = Instant::now();
@@ -69,8 +70,8 @@ impl ForumStorefrontAudienceTopicsQuery {
                     category_id,
                     status: None,
                     locale: Some(locale),
-                    page: (offset / limit + 1) as u64,
-                    per_page: limit as u64,
+                    after,
+                    per_page,
                 },
                 Some(tenant.default_locale.as_str()),
                 request.and_then(|request| request.channel_slug.as_deref()),
@@ -81,7 +82,7 @@ impl ForumStorefrontAudienceTopicsQuery {
             "forum.storefront_audience_topics",
             "exact_audience_owner",
             list_started_at.elapsed().as_secs_f64(),
-            page.total,
+            page.items.len() as u64,
         );
         observe_storefront_topic_list_locale_resolution(&page.items);
 
@@ -93,17 +94,15 @@ impl ForumStorefrontAudienceTopicsQuery {
         metrics::record_read_path_budget(
             "graphql",
             "forum.storefront_audience_topics",
-            Some(requested_limit),
-            limit as u64,
+            requested_limit,
+            per_page,
             items.len(),
         );
 
-        Ok(ForumTopicConnection::new(
+        Ok(ForumTopicPage {
             items,
-            page.total as i64,
-            offset,
-            limit,
-        ))
+            next_cursor: page.next_cursor,
+        })
     }
 }
 

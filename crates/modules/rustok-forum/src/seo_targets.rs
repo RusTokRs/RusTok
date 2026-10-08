@@ -276,11 +276,11 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetBulkListRequest<'_>,
     ) -> AnyResult<Vec<SeoBulkSummaryRecord>> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
+        let mut after: Option<String> = None;
         let mut summaries = Vec::new();
 
         loop {
-            let (items, total) = service
+            let page = service
                 .list_with_locale_fallback(
                     request.tenant_id,
                     SecurityContext::system(),
@@ -288,17 +288,14 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                         category_id: None,
                         status: None,
                         locale: Some(request.locale.to_string()),
-                        page: page_number,
+                        after: after.clone(),
                         per_page: BULK_FETCH_SIZE,
                     },
                     Some(request.default_locale),
                 )
                 .await?;
-            if items.is_empty() {
-                break;
-            }
 
-            for item in items {
+            for item in page.items {
                 if let Some(summary) = load_topic_summary(
                     &service,
                     request.tenant_id,
@@ -312,10 +309,10 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 }
             }
 
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
+            match page.next_cursor {
+                Some(cursor) => after = Some(cursor),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(summaries)
@@ -327,11 +324,11 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetSitemapRequest<'_>,
     ) -> AnyResult<Vec<SeoSitemapCandidateRecord>> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let mut page_number = 1_u64;
+        let mut after: Option<String> = None;
         let mut candidates = Vec::new();
 
         loop {
-            let (items, total) = service
+            let page = service
                 .list_storefront_visible_with_locale_fallback(
                     request.tenant_id,
                     SecurityContext::system(),
@@ -339,18 +336,15 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                         category_id: None,
                         status: Some(TopicStatus::Open),
                         locale: Some(request.default_locale.to_string()),
-                        page: page_number,
+                        after: after.clone(),
                         per_page: BULK_FETCH_SIZE,
                     },
                     Some(request.default_locale),
                     None,
                 )
                 .await?;
-            if items.is_empty() {
-                break;
-            }
 
-            for item in items {
+            for item in page.items {
                 if let Some(candidate) = load_topic_sitemap_candidate(
                     &service,
                     request.tenant_id,
@@ -363,10 +357,10 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 }
             }
 
-            if page_number.saturating_mul(BULK_FETCH_SIZE) >= total {
-                break;
+            match page.next_cursor {
+                Some(cursor) => after = Some(cursor),
+                None => break,
             }
-            page_number += 1;
         }
 
         Ok(candidates)

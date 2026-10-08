@@ -143,7 +143,7 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
         .expect("topic should load");
     assert_eq!(topic_after_mark.solution_reply_id, Some(reply.id));
 
-    let (topics, total) = topic_service
+    let page = topic_service
         .list(
             tenant_id,
             customer.clone(),
@@ -151,13 +151,14 @@ async fn mark_and_clear_solution_updates_topic_and_reply_read_paths() {
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("en".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
         )
         .await
         .expect("topic list should load");
-    assert_eq!(total, 1);
+    let topics = page.items;
+    assert_eq!(topics.len(), 1);
     assert_eq!(topics[0].solution_reply_id, Some(reply.id));
 
     let reply_after_mark = reply_service

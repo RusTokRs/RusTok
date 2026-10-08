@@ -43,7 +43,8 @@ pub struct GqlForumStorefrontUnreadTopic {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GqlForumStorefrontUnreadTopicPage {
     pub items: Vec<GqlForumStorefrontUnreadTopic>,
-    pub total: i64,
+    /// Opaque cursor for the next page; absent when this is the last page. Topics are not counted.
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -66,6 +67,7 @@ impl ForumStorefrontReadStateQuery {
         tenant_id: Option<Uuid>,
         category_id: Option<Uuid>,
         locale: Option<String>,
+        after: Option<String>,
         limit: Option<i32>,
     ) -> Result<GqlForumStorefrontUnreadTopicPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -104,7 +106,7 @@ impl ForumStorefrontReadStateQuery {
                     category_id,
                     status: None,
                     locale: Some(locale),
-                    page: 1,
+                    after,
                     per_page: limit,
                 },
                 Some(tenant.default_locale.as_str()),
@@ -113,7 +115,7 @@ impl ForumStorefrontReadStateQuery {
 
         Ok(GqlForumStorefrontUnreadTopicPage {
             items: page.items.into_iter().map(map_topic).collect(),
-            total: page.total as i64,
+            next_cursor: page.next_cursor,
         })
     }
 }

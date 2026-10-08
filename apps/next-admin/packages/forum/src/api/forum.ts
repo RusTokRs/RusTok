@@ -225,8 +225,8 @@ export async function listForumTopics(
   input: { locale?: string; first?: number } = {}
 ): Promise<ForumTopicSummary[]> {
   const query = `
-    query ForumTopics($tenantId: UUID!, $locale: String, $pagination: PaginationInput!) {
-      forumTopics(tenantId: $tenantId, locale: $locale, pagination: $pagination) {
+    query ForumTopics($tenantId: UUID!, $locale: String, $perPage: Int) {
+      forumTopics(tenantId: $tenantId, locale: $locale, perPage: $perPage) {
         items {
           id
           locale
@@ -245,7 +245,7 @@ export async function listForumTopics(
     {
       tenantId: string;
       locale?: string;
-      pagination: { first: number };
+      perPage: number;
     },
     {
       forumTopics: { items: ForumTopicSummary[] };
@@ -255,7 +255,7 @@ export async function listForumTopics(
     {
       tenantId: opts.tenantId!,
       locale: input.locale,
-      pagination: { first: input.first ?? 100 }
+      perPage: input.first ?? 100
     },
     opts.token,
     opts.tenantSlug

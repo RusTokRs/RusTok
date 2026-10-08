@@ -23,7 +23,7 @@ const ARCHIVE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminArchiveCateg
 const RESTORE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminRestoreCategorySubtree($categoryId: UUID!) { restoreForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
-const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_deleted: isDeleted is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
+const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $perPage: Int) { forumTopics(categoryId: $categoryId, locale: $locale, perPage: $perPage) { items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_deleted: isDeleted is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
 const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status is_deleted: isDeleted tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const CREATE_TOPIC_MUTATION: &str = "mutation ForumAdminCreateTopic($input: CreateForumTopicInput!) { createForumTopic(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status is_deleted: isDeleted tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body { document html } body_plain_text: bodyPlainText status is_deleted: isDeleted tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
@@ -177,12 +177,6 @@ struct ReplyConnection {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CategoryVariables {
     id: String,
     locale: Option<String>,
@@ -193,7 +187,8 @@ struct TopicsVariables {
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -543,10 +538,7 @@ pub async fn fetch_topics(
         TopicsVariables {
             category_id: category_id.filter(|value| !value.trim().is_empty()),
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 50,
-            },
+            per_page: 50,
         },
         token,
         tenant_slug,

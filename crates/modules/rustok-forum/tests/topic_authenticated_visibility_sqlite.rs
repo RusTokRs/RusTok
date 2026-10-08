@@ -121,7 +121,7 @@ fn topic_filter(category_id: Option<Uuid>) -> ListTopicsFilter {
         category_id,
         status: None,
         locale: Some("en".into()),
-        page: 1,
+        after: None,
         per_page: 20,
     }
 }
@@ -200,7 +200,7 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
     );
 
     let topics = TopicService::new(db.clone(), event_bus);
-    let (public_page, public_total) = topics
+    let page = topics
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             public.clone(),
@@ -210,7 +210,8 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         )
         .await
         .expect("public storefront list should resolve");
-    assert_eq!(public_total, 1);
+    let public_page = page.items;
+    assert_eq!(public_page.len(), 1);
     assert_eq!(
         public_page
             .iter()
@@ -219,7 +220,7 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         HashSet::from([public_topic])
     );
 
-    let (authenticated_page, authenticated_total) = topics
+    let page = topics
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             authenticated.clone(),
@@ -229,7 +230,8 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         )
         .await
         .expect("authenticated storefront list should resolve");
-    assert_eq!(authenticated_total, 2);
+    let authenticated_page = page.items;
+    assert_eq!(authenticated_page.len(), 2);
     assert_eq!(
         authenticated_page
             .iter()
@@ -238,7 +240,7 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         HashSet::from([public_topic, restricted_topic])
     );
 
-    let (public_restricted_page, public_restricted_total) = topics
+    let page = topics
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             public.clone(),
@@ -248,10 +250,11 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         )
         .await
         .expect("public restricted-category page should resolve as empty");
+    let public_restricted_page = page.items;
     assert!(public_restricted_page.is_empty());
-    assert_eq!(public_restricted_total, 0);
+    assert_eq!(public_restricted_page.len(), 0);
 
-    let (authenticated_restricted_page, authenticated_restricted_total) = topics
+    let page = topics
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             authenticated.clone(),
@@ -261,7 +264,8 @@ async fn inherited_authenticated_categories_filter_before_storefront_pagination(
         )
         .await
         .expect("authenticated restricted-category page should resolve");
-    assert_eq!(authenticated_restricted_total, 1);
+    let authenticated_restricted_page = page.items;
+    assert_eq!(authenticated_restricted_page.len(), 1);
     assert_eq!(authenticated_restricted_page[0].id, restricted_topic);
 
     assert!(

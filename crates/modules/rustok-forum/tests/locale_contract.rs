@@ -302,7 +302,7 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
         .await
         .expect("ru topic translation should be saved");
 
-    let (items, total) = topic_service
+    let page = topic_service
         .list_with_locale_fallback(
             tenant_id,
             admin,
@@ -310,15 +310,16 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
                 category_id: Some(category.id),
                 status: None,
                 locale: Some("fr-FR".to_string()),
-                page: 1,
+                after: None,
                 per_page: 20,
             },
             Some("ru"),
         )
         .await
         .expect("topic list should load");
+    let items = page.items;
 
-    assert_eq!(total, 1);
+    assert_eq!(items.len(), 1);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].requested_locale, "fr-FR");
     assert_eq!(items[0].locale, "fr-FR");

@@ -13,7 +13,7 @@ where
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontForumData {
     pub categories: ForumCategoryConnection,
-    pub topics: ForumTopicConnection,
+    pub topics: ForumTopicPage,
     pub selected_category_id: Option<String>,
     pub selected_topic_id: Option<String>,
     pub selected_topic: Option<ForumTopicDetail>,
@@ -31,9 +31,11 @@ pub struct ForumCategoryConnection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ForumTopicConnection {
+pub struct ForumTopicPage {
     pub items: Vec<ForumTopicListItem>,
-    pub total: u64,
+    /// Present only when another page exists. Topics are not counted.
+    #[serde(rename = "nextCursor", default)]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

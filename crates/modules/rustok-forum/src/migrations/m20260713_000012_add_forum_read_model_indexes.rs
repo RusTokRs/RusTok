@@ -17,6 +17,9 @@ CREATE INDEX IF NOT EXISTS idx_forum_categories_cursor
 CREATE INDEX IF NOT EXISTS idx_forum_topics_cursor
     ON forum_topics (tenant_id, updated_at DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_forum_topics_list_keyset
+    ON forum_topics (tenant_id, is_pinned DESC, last_reply_at DESC, updated_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_forum_replies_keyset
     ON forum_replies (tenant_id, topic_id, created_at, id);
 "#,
@@ -31,6 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_forum_replies_keyset
             .execute_unprepared(
                 r#"
 DROP INDEX IF EXISTS idx_forum_replies_keyset;
+DROP INDEX IF EXISTS idx_forum_topics_list_keyset;
 DROP INDEX IF EXISTS idx_forum_topics_cursor;
 DROP INDEX IF EXISTS idx_forum_categories_cursor;
 "#,

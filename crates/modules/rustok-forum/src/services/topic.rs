@@ -25,7 +25,7 @@ use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
+    DatabaseTransaction, EntityTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, Select,
     Statement, TransactionTrait,
     sea_query::{Expr, Query, SelectStatement},
 };
@@ -43,7 +43,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
-use crate::dto::{ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput};
+use crate::dto::{
+    ListTopicsFilter, TopicListCursor, TopicListItem, TopicPage, TopicResponse, UpdateTopicInput,
+};
 use crate::entities::{
     forum_reply, forum_solution, forum_topic, forum_topic_channel_access, forum_topic_tag,
     forum_topic_translation,
@@ -746,6 +748,12 @@ impl TopicService {
 
             items.push(TopicListItem {
                 id: topic.id,
+                sort_key: Some(TopicListCursor {
+                    is_pinned: topic.is_pinned,
+                    last_reply_at: topic.last_reply_at,
+                    updated_at: topic.updated_at,
+                    id: topic.id,
+                }),
                 requested_locale: locale.to_string(),
                 locale: locale.to_string(),
                 effective_locale: resolved.effective_locale,

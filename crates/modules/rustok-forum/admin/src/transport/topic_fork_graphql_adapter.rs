@@ -8,7 +8,7 @@ use crate::topic_fork_model::{
 
 pub type ApiError = String;
 
-const FORK_CANDIDATES_QUERY: &str = "query ForumAdminForkCandidates($locale: String, $pagination: PaginationInput!) { forumTopics(locale: $locale, pagination: $pagination) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
+const FORK_CANDIDATES_QUERY: &str = "query ForumAdminForkCandidates($locale: String, $perPage: Int) { forumTopics(locale: $locale, perPage: $perPage) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
 const FORK_REPLIES_QUERY: &str = "query ForumAdminForkReplies($topicId: UUID!, $locale: String, $after: String, $perPage: Int) { forumReplies(topicId: $topicId, locale: $locale, after: $after, perPage: $perPage) { nextCursor items { id content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
 const FORK_TOPIC_MUTATION: &str = "mutation ForumAdminForkTopic($sourceTopicId: UUID!, $input: ForkForumTopicReplyBranchGraphqlInput!) { forkForumTopicReplyBranch(sourceTopicId: $sourceTopicId, input: $input) { operation_id: operationId event_id: eventId source_topic_id: sourceTopicId target_topic_id: targetTopicId root_reply_id: rootReplyId category_id: categoryId actor_id: actorId reason copied_reply_count: copiedReplyCount copied_published_reply_count: copiedPublishedReplyCount copied_body_count: copiedBodyCount copied_reply_revision_count: copiedReplyRevisionCount copied_relation_revision_count: copiedRelationRevisionCount copied_mention_count: copiedMentionCount copied_quote_count: copiedQuoteCount forked_at: forkedAt } }";
 
@@ -46,15 +46,10 @@ struct ForkResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CandidatesVariables {
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -118,10 +113,7 @@ pub async fn fetch_candidates(
         FORK_CANDIDATES_QUERY,
         CandidatesVariables {
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 100,
-            },
+            per_page: 100,
         },
         token,
         tenant_slug,

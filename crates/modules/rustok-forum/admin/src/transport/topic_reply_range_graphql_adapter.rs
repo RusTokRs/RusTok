@@ -7,7 +7,7 @@ use crate::topic_reply_range_model::{
 
 pub type ApiError = String;
 
-const CANDIDATES_QUERY: &str = "query ForumAdminReplyRangeCandidates($locale: String, $pagination: PaginationInput!) { forumTopics(locale: $locale, pagination: $pagination) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
+const CANDIDATES_QUERY: &str = "query ForumAdminReplyRangeCandidates($locale: String, $perPage: Int) { forumTopics(locale: $locale, perPage: $perPage) { items { id locale title category_id: categoryId reply_count: replyCount } } }";
 const MOVE_REPLY_RANGE_MUTATION: &str = "mutation ForumAdminMoveReplyRange($sourceTopicId: UUID!, $input: MoveForumTopicReplyRangeGraphqlInput!) { moveForumTopicReplyRange(sourceTopicId: $sourceTopicId, input: $input) { operation_id: operationId event_id: eventId source_topic_id: sourceTopicId target_topic_id: targetTopicId source_category_id: sourceCategoryId target_category_id: targetCategoryId actor_id: actorId reason source_start_position: sourceStartPosition source_end_position: sourceEndPosition target_start_position: targetStartPosition target_end_position: targetEndPosition moved_reply_count: movedReplyCount moved_published_reply_count: movedPublishedReplyCount source_resulting_published_reply_count: sourceResultingPublishedReplyCount target_resulting_published_reply_count: targetResultingPublishedReplyCount moved_solution_reply_id: movedSolutionReplyId source_resulting_solution_reply_id: sourceResultingSolutionReplyId target_resulting_solution_reply_id: targetResultingSolutionReplyId moved_at: movedAt } }";
 
 #[derive(Debug, Deserialize)]
@@ -28,15 +28,10 @@ struct MoveResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct PaginationInput {
-    offset: i64,
-    limit: i64,
-}
-
-#[derive(Debug, Serialize)]
 struct CandidatesVariables {
     locale: Option<String>,
-    pagination: PaginationInput,
+    #[serde(rename = "perPage")]
+    per_page: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,10 +84,7 @@ pub async fn fetch_candidates(
         CANDIDATES_QUERY,
         CandidatesVariables {
             locale: Some(locale),
-            pagination: PaginationInput {
-                offset: 0,
-                limit: 100,
-            },
+            per_page: 100,
         },
         token,
         tenant_slug,

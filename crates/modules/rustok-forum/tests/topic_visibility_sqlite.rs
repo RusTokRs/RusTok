@@ -116,7 +116,7 @@ fn topic_filter(category_id: Uuid) -> ListTopicsFilter {
         category_id: Some(category_id),
         status: None,
         locale: Some("en".into()),
-        page: 1,
+        after: None,
         per_page: 20,
     }
 }
@@ -274,7 +274,7 @@ async fn storefront_topic_facade_is_guarded_by_the_exact_owner_scope() {
     .await;
 
     let topic_service = TopicService::new(db.clone(), event_bus);
-    let (public_page, _) = topic_service
+    let page = topic_service
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             reader.clone(),
@@ -284,12 +284,13 @@ async fn storefront_topic_facade_is_guarded_by_the_exact_owner_scope() {
         )
         .await
         .expect("public storefront page should resolve");
+    let public_page = page.items;
     assert_eq!(
         public_page.iter().map(|topic| topic.id).collect::<Vec<_>>(),
         vec![public_topic]
     );
 
-    let (mobile_page, _) = topic_service
+    let page = topic_service
         .list_storefront_visible_with_locale_fallback(
             tenant_id,
             reader.clone(),
@@ -299,6 +300,7 @@ async fn storefront_topic_facade_is_guarded_by_the_exact_owner_scope() {
         )
         .await
         .expect("mobile storefront page should resolve");
+    let mobile_page = page.items;
     let mobile_ids = mobile_page
         .iter()
         .map(|topic| topic.id)
