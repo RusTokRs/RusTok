@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -45,7 +45,10 @@ pub async fn move_module_category_in_tx(
         .filter(taxonomy_term::Column::ScopeValue.eq(&module_scope))
         .all(txn)
         .await?;
-    let scoped_ids = scoped_terms.iter().map(|term| term.id).collect::<HashSet<_>>();
+    let scoped_ids = scoped_terms
+        .iter()
+        .map(|term| term.id)
+        .collect::<HashSet<_>>();
     let hierarchy_rows = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_category_hierarchy::Column::TermId.is_in(scoped_ids.iter().copied()))
@@ -57,11 +60,14 @@ pub async fn move_module_category_in_tx(
             "Module Category hierarchy coverage is incomplete during move",
         ));
     }
-    let current = hierarchy_rows.iter().find(|row| row.term_id == category_id).ok_or_else(|| {
-        TaxonomyError::invariant(format!(
-            "Module Category {category_id} hierarchy placement is missing during move"
-        ))
-    })?;
+    let current = hierarchy_rows
+        .iter()
+        .find(|row| row.term_id == category_id)
+        .ok_or_else(|| {
+            TaxonomyError::invariant(format!(
+                "Module Category {category_id} hierarchy placement is missing during move"
+            ))
+        })?;
     let source_parent_id = current.parent_term_id;
     validate_candidate_hierarchy(category_id, new_parent_id, &hierarchy_rows)?;
 
@@ -81,7 +87,8 @@ pub async fn move_module_category_in_tx(
             .collect::<Vec<_>>()
     };
     if source_parent_id != new_parent_id {
-        target_siblings.sort_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)));
+        target_siblings
+            .sort_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)));
     }
     let target_position = usize::try_from(new_position).map_err(|_| {
         TaxonomyError::validation("Module Category sibling position exceeds usize range")
@@ -89,7 +96,8 @@ pub async fn move_module_category_in_tx(
     if target_position > target_siblings.len() {
         return Err(TaxonomyError::validation(format!(
             "Module Category position {} exceeds destination sibling count {}",
-            new_position, target_siblings.len()
+            new_position,
+            target_siblings.len()
         )));
     }
     target_siblings.insert(target_position, (category_id, new_position));
@@ -110,7 +118,10 @@ pub async fn move_module_category_in_tx(
         affected.push((term_id, new_parent_id, position));
     }
 
-    let mut rows_by_id = hierarchy_rows.into_iter().map(|row| (row.term_id, row)).collect::<HashMap<_, _>>();
+    let mut rows_by_id = hierarchy_rows
+        .into_iter()
+        .map(|row| (row.term_id, row))
+        .collect::<HashMap<_, _>>();
     let mut placements = Vec::with_capacity(affected.len());
     for (term_id, parent_id, position) in affected {
         let row = rows_by_id.remove(&term_id).ok_or_else(|| {
@@ -119,7 +130,11 @@ pub async fn move_module_category_in_tx(
             ))
         })?;
         if row.parent_term_id == parent_id && row.position == position {
-            placements.push(crate::dto::TaxonomyCategoryPlacement { term_id, parent_id, position });
+            placements.push(crate::dto::TaxonomyCategoryPlacement {
+                term_id,
+                parent_id,
+                position,
+            });
             continue;
         }
         let mut active: taxonomy_category_hierarchy::ActiveModel = row.into();
@@ -147,12 +162,7 @@ pub async fn reorder_module_category_siblings_in_tx(
     ordered_term_ids: &[Uuid],
 ) -> TaxonomyResult<()> {
     let module_scope = normalize_module_scope(module_scope)?;
-    if ordered_term_ids
-        .iter()
-        .collect::<HashSet<_>>()
-        .len()
-        != ordered_term_ids.len()
-    {
+    if ordered_term_ids.iter().collect::<HashSet<_>>().len() != ordered_term_ids.len() {
         return Err(TaxonomyError::validation(
             "Module Category sibling order contains duplicate identities",
         ));
@@ -171,7 +181,10 @@ pub async fn reorder_module_category_siblings_in_tx(
         .filter(taxonomy_term::Column::ScopeValue.eq(&module_scope))
         .all(txn)
         .await?;
-    let scoped_ids = scoped_terms.iter().map(|term| term.id).collect::<HashSet<_>>();
+    let scoped_ids = scoped_terms
+        .iter()
+        .map(|term| term.id)
+        .collect::<HashSet<_>>();
 
     if ordered_term_ids
         .iter()
@@ -370,9 +383,10 @@ pub async fn delete_module_category_placement_and_compact_in_tx(
     let expected_siblings = siblings.len();
     let remaining_hierarchy = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(
-            scoped_terms.iter().map(|term| term.id).collect::<Vec<_>>(),
-        ))
+        .filter(
+            taxonomy_category_hierarchy::Column::TermId
+                .is_in(scoped_terms.iter().map(|term| term.id).collect::<Vec<_>>()),
+        )
         .all(txn)
         .await?;
     if remaining_hierarchy.len() != scoped_terms.len() {

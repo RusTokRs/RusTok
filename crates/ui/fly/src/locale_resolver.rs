@@ -306,7 +306,10 @@ mod tests {
     #[test]
     fn extensions_do_not_affect_catalog_selection() {
         let resolver = BasicLocaleResolver;
-        assert_eq!(resolver.normalize_tag("en-US-u-ca-gregory").as_deref(), Some("en-US"));
+        assert_eq!(
+            resolver.normalize_tag("en-US-u-ca-gregory").as_deref(),
+            Some("en-US")
+        );
     }
 
     /// The two resolvers must agree wherever CLDR data is not involved.
@@ -320,7 +323,15 @@ mod tests {
         let basic = BasicLocaleResolver;
         let platform = PlatformLocaleResolver;
         for input in [
-            "ru", "ru_ru", "ru-RU", "pt_br", "zh-Hant", "zh-Hant-TW", "es-419", "en", "en-GB",
+            "ru",
+            "ru_ru",
+            "ru-RU",
+            "pt_br",
+            "zh-Hant",
+            "zh-Hant-TW",
+            "es-419",
+            "en",
+            "en-GB",
             "de-DE-1996",
         ] {
             assert_eq!(
@@ -370,7 +381,9 @@ mod tests {
         // `zh-TW` should reach a `zh-Hant` catalog, but that requires CLDR likely-subtag data.
         assert_eq!(basic.fallback_chain("zh-TW"), vec!["zh-TW", "zh"]);
         assert!(
-            platform.fallback_chain("zh-TW").contains(&"zh-Hant".to_string()),
+            platform
+                .fallback_chain("zh-TW")
+                .contains(&"zh-Hant".to_string()),
             "platform resolver lost likely-subtag inference: {:?}",
             platform.fallback_chain("zh-TW")
         );

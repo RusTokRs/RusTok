@@ -124,7 +124,12 @@ impl ChannelReadPort for crate::ChannelService {
             ));
         }
         let (items, total) = self
-            .list_channel_details_page(tenant_id, request.page, request.per_page, request.include_inactive)
+            .list_channel_details_page(
+                tenant_id,
+                request.page,
+                request.per_page,
+                request.include_inactive,
+            )
             .await
             .map_err(map_channel_error)?;
         Ok(ChannelListProjectionPage {

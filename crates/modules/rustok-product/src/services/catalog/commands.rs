@@ -289,7 +289,13 @@ impl CatalogService {
             })?;
 
             if !var_input.axis_values.is_empty() {
-                assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &var_input.axis_values).await?;
+                assign_variant_axis_values_in_tx(
+                    &txn,
+                    tenant_id,
+                    variant_id,
+                    &var_input.axis_values,
+                )
+                .await?;
             }
 
             BootstrapService::create_initial_records_in_tx(
@@ -415,7 +421,8 @@ impl CatalogService {
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
-        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await
+        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
+            .await
             .map_err(|error| {
                 if matches!(error, CommerceError::ProductNotFound(_)) {
                     warn!(product_id = %product_id, "Product not found for update");
@@ -943,7 +950,9 @@ impl CatalogService {
 
         if !axis_ids.is_empty() {
             entities::product_variant_axis_value::Entity::delete_many()
-                .filter(entities::product_variant_axis_value::Column::AxisId.is_in(axis_ids.clone()))
+                .filter(
+                    entities::product_variant_axis_value::Column::AxisId.is_in(axis_ids.clone()),
+                )
                 .exec(&txn)
                 .await?;
 
@@ -978,17 +987,17 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        flex::delete_attached_localized_values(&txn, tenant_id, flex::PRODUCT_ENTITY_TYPE, product_id)
-            .await
-            .map_err(CommerceError::from)?;
-
-        txn.publish_product_deleted(
+        flex::delete_attached_localized_values(
+            &txn,
             tenant_id,
-            Some(actor_id),
+            flex::PRODUCT_ENTITY_TYPE,
             product_id,
-            &image_ids,
         )
-        .await?;
+        .await
+        .map_err(CommerceError::from)?;
+
+        txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &image_ids)
+            .await?;
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
@@ -1014,7 +1023,8 @@ impl CatalogService {
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
-        let configured_axes = load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
+        let configured_axes =
+            load_variant_axis_configuration_in(&txn, tenant_id, product_id).await?;
         validate_variant_axis_values_against_configuration(
             input.axis_values.as_slice(),
             configured_axes.as_slice(),
@@ -1039,9 +1049,15 @@ impl CatalogService {
                 "a product without variant axes can have exactly one default variant".to_owned(),
             ));
         }
-        let next_position = match existing_variants.iter().map(|variant| variant.position).max() {
+        let next_position = match existing_variants
+            .iter()
+            .map(|variant| variant.position)
+            .max()
+        {
             Some(max_position) => max_position.checked_add(1).ok_or_else(|| {
-                CommerceError::Validation("cannot append variant: variant ordering is exhausted".to_owned())
+                CommerceError::Validation(
+                    "cannot append variant: variant ordering is exhausted".to_owned(),
+                )
             })?,
             None => 0,
         };
@@ -1078,7 +1094,8 @@ impl CatalogService {
             .map_err(|error| map_product_unique_violation(error, "", "", input.sku.as_deref()))?;
 
         if !input.axis_values.is_empty() {
-            assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values).await?;
+            assign_variant_axis_values_in_tx(&txn, tenant_id, variant_id, &input.axis_values)
+                .await?;
         }
 
         let default_stock_location =
@@ -1232,11 +1249,9 @@ impl CatalogService {
                 for aid in configured_axis_attribute_ids {
                     params.push(aid.into());
                 }
-                let existing_vals: Vec<IdRow> = IdRow::find_by_statement(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    &query,
-                    params,
-                ))
+                let existing_vals: Vec<IdRow> = IdRow::find_by_statement(
+                    Statement::from_sql_and_values(txn.get_database_backend(), &query, params),
+                )
                 .all(&txn)
                 .await?;
                 for ev in existing_vals {
@@ -1405,11 +1420,16 @@ impl CatalogService {
             .order_by_asc(entities::product_image::Column::Id)
             .all(&txn)
             .await?;
-        let requested_position = input.position.map(|position| {
-            usize::try_from(position).map_err(|_| {
-                CommerceError::Validation("Product image position cannot be negative".to_owned())
+        let requested_position = input
+            .position
+            .map(|position| {
+                usize::try_from(position).map_err(|_| {
+                    CommerceError::Validation(
+                        "Product image position cannot be negative".to_owned(),
+                    )
+                })
             })
-        }).transpose()?;
+            .transpose()?;
         let insertion_index = requested_position.unwrap_or(existing_images.len());
         if insertion_index > existing_images.len() {
             return Err(CommerceError::Validation(
@@ -1535,7 +1555,8 @@ impl CatalogService {
             }
             ordered_image_ids.remove(current_index);
             ordered_image_ids.insert(target_index, image_id);
-            persist_product_image_order_in_tx(&txn, product_id, ordered_image_ids.as_slice()).await?;
+            persist_product_image_order_in_tx(&txn, product_id, ordered_image_ids.as_slice())
+                .await?;
             position = i32::try_from(target_index)
                 .map_err(|_| CommerceError::Validation("too many Product images".to_owned()))?;
         }
@@ -1855,10 +1876,15 @@ async fn persist_product_image_order_in_tx(
 fn canonical_product_image_locale(locale: Option<&str>) -> CommerceResult<String> {
     TenantLocale::new(locale.unwrap_or(PLATFORM_FALLBACK_LOCALE))
         .map(TenantLocale::into_inner)
-        .map_err(|error| CommerceError::Validation(format!("invalid Product image locale: {error}")))
+        .map_err(|error| {
+            CommerceError::Validation(format!("invalid Product image locale: {error}"))
+        })
 }
 
-fn validate_product_image_input(position: Option<i32>, alt_text: Option<&str>) -> CommerceResult<()> {
+fn validate_product_image_input(
+    position: Option<i32>,
+    alt_text: Option<&str>,
+) -> CommerceResult<()> {
     if position.is_some_and(|position| position < 0) {
         return Err(CommerceError::Validation(
             "Product image position cannot be negative".to_owned(),
@@ -2035,7 +2061,9 @@ where
                 "duplicate variant axis position `{position}`"
             )));
         }
-        if axis.allowed_option_ids.is_empty() || axis.allowed_option_ids.len() > MAX_VARIANT_AXIS_VALUES {
+        if axis.allowed_option_ids.is_empty()
+            || axis.allowed_option_ids.len() > MAX_VARIANT_AXIS_VALUES
+        {
             return Err(CommerceError::Validation(format!(
                 "variant axis `{}` must contain 1..={MAX_VARIANT_AXIS_VALUES} allowed options",
                 axis.attribute_id
@@ -2068,7 +2096,10 @@ where
         }
     }
 
-    let attribute_ids = axes.iter().map(|axis| axis.attribute_id).collect::<Vec<_>>();
+    let attribute_ids = axes
+        .iter()
+        .map(|axis| axis.attribute_id)
+        .collect::<Vec<_>>();
     let attribute_placeholders = (0..attribute_ids.len())
         .map(|index| format!("${}", index + 2))
         .collect::<Vec<_>>()
@@ -2094,7 +2125,9 @@ where
                 "variant axis attribute {attribute_id} is unavailable or archived"
             ))
         })?;
-        if definition.value_type != "select" || !matches!(definition.scope.as_str(), "variant" | "both") {
+        if definition.value_type != "select"
+            || !matches!(definition.scope.as_str(), "variant" | "both")
+        {
             return Err(CommerceError::Validation(format!(
                 "variant axis attribute {attribute_id} must be an active variant-scoped select attribute"
             )));
@@ -2151,8 +2184,13 @@ where
             allowed_option_ids: axis.allowed_option_ids.into_iter().collect(),
         });
     }
-    validate_variant_axis_configuration_in(conn, tenant_id, Some(primary_category_id), &proposed_axes)
-        .await
+    validate_variant_axis_configuration_in(
+        conn,
+        tenant_id,
+        Some(primary_category_id),
+        &proposed_axes,
+    )
+    .await
 }
 
 fn validate_variant_axis_values_against_configuration(
@@ -2384,7 +2422,11 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
     txn.execute_raw(Statement::from_sql_and_values(
         txn.get_database_backend(),
         "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
-        vec![combination_identity.into(), tenant_id.into(), variant_id.into()],
+        vec![
+            combination_identity.into(),
+            tenant_id.into(),
+            variant_id.into(),
+        ],
     ))
     .await?;
 
@@ -2398,7 +2440,8 @@ pub(crate) fn validate_variant_axes_and_combinations(
     if variant_axes.is_empty() {
         if variants.len() != 1 {
             return Err(CommerceError::Validation(
-                "a product without variant axes must contain exactly one default variant".to_owned(),
+                "a product without variant axes must contain exactly one default variant"
+                    .to_owned(),
             ));
         }
         if !variants[0].axis_values.is_empty() {
@@ -2563,4 +2606,3 @@ mod tests {
         assert!(matches!(err, CommerceError::Validation(_)));
     }
 }
-

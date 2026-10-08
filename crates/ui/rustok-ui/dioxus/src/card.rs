@@ -10,8 +10,8 @@
 
 use dioxus::prelude::*;
 use rustok_ui::{
-    CardVariant, card_action_classes, card_classes, card_content_classes,
-    card_description_classes, card_footer_classes, card_header_classes, card_title_classes,
+    CardVariant, card_action_classes, card_classes, card_content_classes, card_description_classes,
+    card_footer_classes, card_header_classes, card_title_classes,
 };
 
 #[component]

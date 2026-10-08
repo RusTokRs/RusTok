@@ -23,7 +23,10 @@ pub struct ProductCardData {
 #[component]
 pub fn ProductCard(product: ProductCardData, badge_new: String, cta_view: String) -> impl IntoView {
     let badge = product.badge.clone().unwrap_or(badge_new);
-    let category = product.category.clone().unwrap_or_else(|| "Hardware".to_string());
+    let category = product
+        .category
+        .clone()
+        .unwrap_or_else(|| "Hardware".to_string());
     let rating = product.rating.unwrap_or(4.9);
     let review_count = product.review_count.unwrap_or(36);
     let image_url = product.image_url.clone();

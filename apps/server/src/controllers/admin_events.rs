@@ -92,10 +92,7 @@ pub async fn list_dlq(
     }
 
     let query_started_at = Instant::now();
-    let models = db_query
-        .all(ctx.db())
-        .await
-        .map_err(Error::Database)?;
+    let models = db_query.all(ctx.db()).await.map_err(Error::Database)?;
     metrics::record_read_path_query(
         "http",
         "admin.list_dlq",
@@ -248,7 +245,10 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 mod tests {
     use chrono::Utc;
     use rustok_api::{Action, Permission, Resource};
-    use rustok_outbox::{SysEventsMigration, entity::{self, SysEventStatus}};
+    use rustok_outbox::{
+        SysEventsMigration,
+        entity::{self, SysEventStatus},
+    };
     use sea_orm::{ActiveModelTrait, Database, DbBackend, EntityTrait, Set};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use uuid::Uuid;
@@ -263,7 +263,6 @@ mod tests {
         );
     }
 
- 
     #[tokio::test]
     async fn replay_does_not_clobber_a_pending_event_claim() {
         let db = Database::connect("sqlite::memory:")

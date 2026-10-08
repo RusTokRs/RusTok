@@ -280,7 +280,6 @@ pub(super) fn parse_port_tenant_id(
     })
 }
 
-
 // ── Storage/variant error helpers ───────────────────────────────────
 
 pub(super) fn product_storage_error(
@@ -329,7 +328,6 @@ pub(super) fn product_variant_not_found(
 }
 
 // ── Domain error → port error mapping ───────────────────────────────
-
 
 fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
     use crate::error::CommerceError;

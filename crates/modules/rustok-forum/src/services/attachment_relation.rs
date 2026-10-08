@@ -6,8 +6,7 @@ use rustok_api::{PortContext, PortError};
 use rustok_media::{MediaAssetReferenceInput, MediaAssetWritePort};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use tracing::{error, instrument};
@@ -90,22 +89,17 @@ impl ForumAttachmentRelationService {
         let locale = batch.source().locale().to_string();
 
         ensure_forum_target_exists(&self.db, tenant_id, target).await?;
-        self.ensure_source_revision_current(
-            tenant_id,
-            target,
-            batch.source().source_revision(),
-        )
-        .await?;
+        self.ensure_source_revision_current(tenant_id, target, batch.source().source_revision())
+            .await?;
 
         let observed = self.load_head(&self.db, tenant_id, target, &locale).await?;
         if let Some(head) = observed {
-            let current = self
-                .load_relation_set_from_head(&self.db, head)
-                .await?;
+            let current = self.load_relation_set_from_head(&self.db, head).await?;
             if batch.expected_relation_revision() != current.relation_revision
                 && same_requested_state(&batch, &current)
             {
-                self.ensure_media_holds(&context, &current.attachments).await?;
+                self.ensure_media_holds(&context, &current.attachments)
+                    .await?;
                 return Ok(current);
             }
             batch
@@ -154,9 +148,7 @@ impl ForumAttachmentRelationService {
         let (head, created_head, current) =
             match self.load_head(&txn, tenant_id, target, &locale).await? {
                 Some(head) => {
-                    let current = self
-                        .load_relation_set_from_head(&txn, head.clone())
-                        .await?;
+                    let current = self.load_relation_set_from_head(&txn, head.clone()).await?;
                     (head, false, current)
                 }
                 None if batch.expected_relation_revision().is_empty() => {
@@ -173,7 +165,11 @@ impl ForumAttachmentRelationService {
                         .load_head(&txn, tenant_id, target, &locale)
                         .await?
                         .ok_or(ForumError::AttachmentRelationInvariant)?;
-                    (head, true, empty_relation_set(tenant_id, target, locale.clone()))
+                    (
+                        head,
+                        true,
+                        empty_relation_set(tenant_id, target, locale.clone()),
+                    )
                 }
                 None => {
                     txn.rollback().await?;
@@ -184,7 +180,8 @@ impl ForumAttachmentRelationService {
         if !created_head && batch.expected_relation_revision() != current.relation_revision {
             if same_requested_state(&batch, &current) {
                 txn.rollback().await?;
-                self.ensure_media_holds(&context, &current.attachments).await?;
+                self.ensure_media_holds(&context, &current.attachments)
+                    .await?;
                 return Ok(current);
             }
             txn.rollback().await?;
@@ -207,23 +204,10 @@ impl ForumAttachmentRelationService {
             .collect::<Vec<_>>();
 
         if !created_head {
-            update_head(
-                &txn,
-                &head,
-                next_revision,
-                batch.source().source_revision(),
-            )
-            .await?;
+            update_head(&txn, &head, next_revision, batch.source().source_revision()).await?;
         }
         delete_relations_for_head(&txn, &head).await?;
-        insert_relations_for_head(
-            &txn,
-            tenant_id,
-            target,
-            &locale,
-            desired,
-        )
-        .await?;
+        insert_relations_for_head(&txn, tenant_id, target, &locale, desired).await?;
 
         let committed_set = ForumAttachmentRelationSet {
             tenant_id,
@@ -234,13 +218,15 @@ impl ForumAttachmentRelationService {
             attachments: desired
                 .iter()
                 .zip(new_references.iter())
-                .map(|(relation, (_, reference_id))| ForumAttachmentRelationRecord {
-                    reference_id: *reference_id,
-                    media_id: relation.media_id,
-                    usage: relation.usage,
-                    position: relation.position,
-                    caption: relation.caption.clone(),
-                })
+                .map(
+                    |(relation, (_, reference_id))| ForumAttachmentRelationRecord {
+                        reference_id: *reference_id,
+                        media_id: relation.media_id,
+                        usage: relation.usage,
+                        position: relation.position,
+                        caption: relation.caption.clone(),
+                    },
+                )
                 .collect(),
         };
 
@@ -449,8 +435,7 @@ impl ForumAttachmentRelationService {
             let position = u16::try_from(row.position)
                 .ok()
                 .filter(|value| {
-                    usize::from(*value)
-                        < crate::attachment_relation::MAX_FORUM_ATTACHMENTS_PER_SET
+                    usize::from(*value) < crate::attachment_relation::MAX_FORUM_ATTACHMENTS_PER_SET
                 })
                 .ok_or(ForumError::AttachmentRelationInvariant)?;
             if row.media_id.is_nil() || row.reference_id.is_nil() {
@@ -545,26 +530,30 @@ async fn lock_forum_target<C: ConnectionTrait>(
     target: ForumContentTarget,
 ) -> ForumResult<()> {
     let rows = match target.kind() {
-        ForumContentTargetKind::Topic => forum_topic::Entity::update_many()
-            .col_expr(
-                forum_topic::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::col(forum_topic::Column::UpdatedAt),
-            )
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::Id.eq(target.id()))
-            .exec(connection)
-            .await?
-            .rows_affected,
-        ForumContentTargetKind::Reply => forum_reply::Entity::update_many()
-            .col_expr(
-                forum_reply::Column::UpdatedAt,
-                sea_orm::sea_query::Expr::col(forum_reply::Column::UpdatedAt),
-            )
-            .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .filter(forum_reply::Column::Id.eq(target.id()))
-            .exec(connection)
-            .await?
-            .rows_affected,
+        ForumContentTargetKind::Topic => {
+            forum_topic::Entity::update_many()
+                .col_expr(
+                    forum_topic::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::col(forum_topic::Column::UpdatedAt),
+                )
+                .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic::Column::Id.eq(target.id()))
+                .exec(connection)
+                .await?
+                .rows_affected
+        }
+        ForumContentTargetKind::Reply => {
+            forum_reply::Entity::update_many()
+                .col_expr(
+                    forum_reply::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::col(forum_reply::Column::UpdatedAt),
+                )
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply::Column::Id.eq(target.id()))
+                .exec(connection)
+                .await?
+                .rows_affected
+        }
     };
 
     if rows != 1 {
@@ -591,8 +580,7 @@ async fn insert_head<C: ConnectionTrait>(
         locale: Set(locale.to_string()),
         relation_revision: Set(relation_revision.value()),
         source_revision: Set(
-            i64::try_from(source_revision)
-                .map_err(|_| ForumError::AttachmentRelationInvariant)?,
+            i64::try_from(source_revision).map_err(|_| ForumError::AttachmentRelationInvariant)?
         ),
         updated_at: Set(Utc::now().fixed_offset()),
     };
@@ -608,10 +596,8 @@ async fn update_head<C: ConnectionTrait>(
 ) -> ForumResult<()> {
     let mut model: forum_attachment_relation_head::ActiveModel = head.clone().into();
     model.relation_revision = Set(relation_revision.value());
-    model.source_revision = Set(
-        i64::try_from(source_revision)
-            .map_err(|_| ForumError::AttachmentRelationInvariant)?,
-    );
+    model.source_revision =
+        Set(i64::try_from(source_revision).map_err(|_| ForumError::AttachmentRelationInvariant)?);
     model.updated_at = Set(Utc::now().fixed_offset());
     model.update(connection).await?;
     Ok(())
@@ -771,9 +757,7 @@ fn forum_attachment_reference_id(
     Uuid::from_bytes(bytes)
 }
 
-fn attachment_admission_to_forum_error(
-    error: ForumAttachmentRelationAdmissionError,
-) -> ForumError {
+fn attachment_admission_to_forum_error(error: ForumAttachmentRelationAdmissionError) -> ForumError {
     ForumError::Validation(error.to_string())
 }
 

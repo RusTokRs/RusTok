@@ -1,6 +1,7 @@
 use async_graphql::{
     ComplexObject, Context, Enum, InputObject, Json, Result, SimpleObject, dataloader::DataLoader,
 };
+use rustok_api::graphql::{GraphQLError, PageInfo};
 use rustok_api::{
     ArtifactBindingExecutionAuditEntry, ArtifactUiContributionView,
     ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
@@ -10,7 +11,6 @@ use rustok_api::{
     StaticInstalledModuleView, StaticModuleRegistryView, StaticTenantModuleView,
 };
 use rustok_core::{UserRole, UserStatus};
-use rustok_api::graphql::{GraphQLError, PageInfo};
 use sea_orm::DatabaseConnection;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -129,9 +129,7 @@ impl User {
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let permission = Permission::from_str(&action).map_err(|_| {
-            <async_graphql::FieldError as GraphQLError>::bad_user_input(
-                "Invalid permission action",
-            )
+            <async_graphql::FieldError as GraphQLError>::bad_user_input("Invalid permission action")
         })?;
 
         RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
@@ -411,10 +409,7 @@ pub struct ModuleOperationRecoveryPlan {
     pub error_message: Option<String>,
 }
 
-fn sanitized_recovery_error_message(
-    issue: &str,
-    error_message: Option<String>,
-) -> Option<String> {
+fn sanitized_recovery_error_message(issue: &str, error_message: Option<String>) -> Option<String> {
     let Some(_) = error_message else {
         return None;
     };

@@ -2136,28 +2136,21 @@ async fn validate_journal_owned_provider_metadata(
             "provider lifecycle receipt is missing from the journal".to_string(),
         ));
     };
-    let journaled_metadata = journaled_result
-        .get("metadata")
-        .ok_or_else(|| {
-            FulfillmentError::ProviderResultInvalid(
-                "provider lifecycle journal result has no metadata".to_string(),
-            )
-        })?;
+    let journaled_metadata = journaled_result.get("metadata").ok_or_else(|| {
+        FulfillmentError::ProviderResultInvalid(
+            "provider lifecycle journal result has no metadata".to_string(),
+        )
+    })?;
     if journaled_metadata != provider_metadata {
         return Err(FulfillmentError::ProviderResultInvalid(
-            "provider lifecycle metadata does not match the journaled provider result"
-                .to_string(),
+            "provider lifecycle metadata does not match the journaled provider result".to_string(),
         ));
     }
     validate_provider_metadata_safety(journaled_metadata)?;
     Ok(())
 }
 
-fn has_matching_provider_operation(
-    metadata: &Value,
-    operation_id: Uuid,
-    operation: &str,
-) -> bool {
+fn has_matching_provider_operation(metadata: &Value, operation_id: Uuid, operation: &str) -> bool {
     if operation_id.is_nil() {
         return false;
     }

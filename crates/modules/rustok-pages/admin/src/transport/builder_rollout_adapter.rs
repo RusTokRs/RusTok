@@ -43,7 +43,6 @@ struct PageBuilderProviderHealthPayload {
     runtime_error_rate: f64,
 }
 
-
 fn health_transport_error(message: impl Into<String>) -> GraphqlHttpError {
     GraphqlHttpError::Graphql(format!(
         "Pages rollout provider health transport is invalid: {}",

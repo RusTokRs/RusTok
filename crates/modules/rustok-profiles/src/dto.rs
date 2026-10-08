@@ -78,7 +78,6 @@ pub struct UpsertProfileInput {
     pub visibility: ProfileVisibility,
 }
 
-
 impl From<ProfileVisibility> for rustok_profiles_api::ProfileSummaryVisibility {
     fn from(value: ProfileVisibility) -> Self {
         match value {

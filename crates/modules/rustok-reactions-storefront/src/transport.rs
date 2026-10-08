@@ -182,7 +182,6 @@ pub async fn apply_reaction(
     Ok(response.result)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{APPLY_MUTATION, SNAPSHOT_QUERY, SubjectInputWire};

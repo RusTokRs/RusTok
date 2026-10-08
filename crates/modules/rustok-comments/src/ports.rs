@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
-use rustok_outbox::{idempotency::{self, Admission, OwnerOperationScope}, TransactionalEventBus};
+use rustok_outbox::{
+    TransactionalEventBus,
+    idempotency::{self, Admission, OwnerOperationScope},
+};
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -13,8 +16,7 @@ use crate::{
 pub use rustok_comments_api::CommentsThreadPort;
 use rustok_comments_api::{
     CommentListItem as ApiCommentListItem, CommentRecord as ApiCommentRecord,
-    CreateCommentInput as ApiCreateCommentInput,
-    ListCommentsFilter as ApiListCommentsFilter,
+    CreateCommentInput as ApiCreateCommentInput, ListCommentsFilter as ApiListCommentsFilter,
     SetCommentStatusRequest as ApiSetCommentStatusRequest,
     UpdateCommentInput as ApiUpdateCommentInput,
 };
@@ -196,15 +198,14 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {
-                let port_error = PortError::unavailable(
-                    "comments.operation_begin_failed",
-                    error.to_string(),
-                );
+                let port_error =
+                    PortError::unavailable("comments.operation_begin_failed", error.to_string());
                 persist_idempotency_failure(&self.db, lease, &port_error).await;
                 return Err(port_error);
             }
         };
-        let result = self.service
+        let result = self
+            .service
             .create_comment_record_in_tx(&txn, tenant_id, security, domain_request)
             .await
             .map_err(comments_error_to_port_error);
@@ -229,10 +230,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     return Err(error);
                 }
                 let commit_result = txn.commit().await.map_err(|error| {
-                    PortError::unavailable(
-                        "comments.operation_commit_failed",
-                        error.to_string(),
-                    )
+                    PortError::unavailable("comments.operation_commit_failed", error.to_string())
                 });
                 if let Err(commit_error) = commit_result {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -365,10 +363,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {
-                let port_error = PortError::unavailable(
-                    "comments.operation_begin_failed",
-                    error.to_string(),
-                );
+                let port_error =
+                    PortError::unavailable("comments.operation_begin_failed", error.to_string());
                 persist_idempotency_failure(&self.db, lease, &port_error).await;
                 return Err(port_error);
             }
@@ -399,10 +395,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     return Err(error);
                 }
                 let commit_result = txn.commit().await.map_err(|error| {
-                    PortError::unavailable(
-                        "comments.operation_commit_failed",
-                        error.to_string(),
-                    )
+                    PortError::unavailable("comments.operation_commit_failed", error.to_string())
                 });
                 if let Err(commit_error) = commit_result {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -463,10 +456,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {
-                let port_error = PortError::unavailable(
-                    "comments.operation_begin_failed",
-                    error.to_string(),
-                );
+                let port_error =
+                    PortError::unavailable("comments.operation_begin_failed", error.to_string());
                 persist_idempotency_failure(&self.db, lease, &port_error).await;
                 return Err(port_error);
             }
@@ -497,10 +488,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     return Err(error);
                 }
                 let commit_result = txn.commit().await.map_err(|error| {
-                    PortError::unavailable(
-                        "comments.operation_commit_failed",
-                        error.to_string(),
-                    )
+                    PortError::unavailable("comments.operation_commit_failed", error.to_string())
                 });
                 if let Err(commit_error) = commit_result {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -563,10 +551,8 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {
-                let port_error = PortError::unavailable(
-                    "comments.operation_begin_failed",
-                    error.to_string(),
-                );
+                let port_error =
+                    PortError::unavailable("comments.operation_begin_failed", error.to_string());
                 persist_idempotency_failure(&self.db, lease, &port_error).await;
                 return Err(port_error);
             }
@@ -605,10 +591,7 @@ impl CommentsThreadPort for InProcessCommentsThreadProvider {
                     return Err(error);
                 }
                 let commit_result = txn.commit().await.map_err(|error| {
-                    PortError::unavailable(
-                        "comments.operation_commit_failed",
-                        error.to_string(),
-                    )
+                    PortError::unavailable("comments.operation_commit_failed", error.to_string())
                 });
                 if let Err(commit_error) = commit_result {
                     persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -706,7 +689,6 @@ fn comments_error_to_port_error(error: CommentsError) -> PortError {
         CommentsError::Validation(message) => PortError::validation("comments.validation", message),
     }
 }
-
 
 #[cfg(test)]
 mod idempotency_tests {

@@ -47,11 +47,11 @@ mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
+mod m20260808_000099_create_module_operation_override_states;
+mod m20260928_000001_create_install_http_jobs;
 mod m20261007_000014_add_sys_events_claim_index;
 mod m20261007_000015_add_sys_events_retention_index;
 mod m20261007_000016_drop_sys_events_superseded_indexes;
-mod m20260808_000099_create_module_operation_override_states;
-mod m20260928_000001_create_install_http_jobs;
 
 pub mod schema_diff;
 pub use schema_diff::*;
@@ -524,7 +524,9 @@ impl MigratorTrait for Migrator {
             &rustok_social_graph::SocialGraphModule,
         ));
         all.extend(rustok_translation::migrations::migrations());
-        all.extend(rustok_core::MigrationSource::migrations(&rustok_ai::AiModule));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_ai::AiModule,
+        ));
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
@@ -1153,7 +1155,9 @@ mod tests {
             .map(|migration| migration.name().to_string())
             .collect::<Vec<_>>();
         assert!(
-            names.iter().any(|name| name == "m20260928_000001_create_install_http_jobs"),
+            names
+                .iter()
+                .any(|name| name == "m20260928_000001_create_install_http_jobs"),
             "server migrator must include durable HTTP installer job storage"
         );
     }

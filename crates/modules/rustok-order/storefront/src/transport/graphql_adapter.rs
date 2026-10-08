@@ -384,10 +384,7 @@ pub(super) async fn fetch_storefront_order(
 
     let response: StorefrontOrderQueryResponse = execute(
         &graphql_url(),
-        GraphqlRequest::new(
-            STOREFRONT_ORDER_QUERY,
-            Some(json!({ "id": uuid })),
-        ),
+        GraphqlRequest::new(STOREFRONT_ORDER_QUERY, Some(json!({ "id": uuid }))),
         None,
         configured_tenant_slug(),
         None,
@@ -428,11 +425,15 @@ pub(super) async fn fetch_storefront_orders(
     .map_err(|error| OrderQueryTransportError(error.to_string()))?;
 
     Ok(StorefrontOrdersResponse {
-        items: response.orders.items.into_iter().map(map_gql_order).collect(),
+        items: response
+            .orders
+            .items
+            .into_iter()
+            .map(map_gql_order)
+            .collect(),
         total: response.orders.total,
         page: response.orders.page,
         per_page: response.orders.per_page,
         has_next: response.orders.has_next,
     })
 }
-

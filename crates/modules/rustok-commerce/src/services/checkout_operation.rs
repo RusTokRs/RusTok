@@ -126,11 +126,9 @@ impl CheckoutOperationStatus {
             ],
             // Operators may close a parked operation, or send it back to the
             // compensation queue after the blocking condition was removed.
-            Self::ReconciliationRequired => &[
-                Self::Compensated,
-                Self::Failed,
-                Self::CompensationRequired,
-            ],
+            Self::ReconciliationRequired => {
+                &[Self::Compensated, Self::Failed, Self::CompensationRequired]
+            }
             Self::Completed | Self::Compensated | Self::Failed => &[],
         }
     }
@@ -698,15 +696,13 @@ impl CheckoutOperationJournal {
     where
         C: ConnectionTrait,
     {
-        let admission =
-            CheckoutExecutionAdmission::parse(operation.execution_admission.as_str()).ok_or_else(
-                || {
-                    CheckoutOperationError::Validation(format!(
-                        "checkout operation {} carries unknown admission level `{}`",
-                        operation.id, operation.execution_admission
-                    ))
-                },
-            )?;
+        let admission = CheckoutExecutionAdmission::parse(operation.execution_admission.as_str())
+            .ok_or_else(|| {
+            CheckoutOperationError::Validation(format!(
+                "checkout operation {} carries unknown admission level `{}`",
+                operation.id, operation.execution_admission
+            ))
+        })?;
         self.invalidate_provider_execution_admitted_by(txn, operation)
             .await?;
         self.event_bus
@@ -717,8 +713,7 @@ impl CheckoutOperationJournal {
                 CheckoutOperationEvent::AdmissionChanged {
                     operation_id: operation.id,
                     cart_id: operation.cart_id,
-                    previous_admission: previous_admission
-                        .map(|level| level.as_str().to_string()),
+                    previous_admission: previous_admission.map(|level| level.as_str().to_string()),
                     admission: admission.as_str().to_string(),
                     admission_epoch: operation.admission_epoch,
                     status: operation.status.clone(),
@@ -1475,8 +1470,7 @@ impl CheckoutOperationJournal {
             CheckedTransition::new(CheckoutOperationStatus::ReconciliationRequired, next_status)?;
         let admission = AdmissionWrite::between(checked.expected, checked.next);
         let reason = normalize_bounded("reconciliation_reason", reason.into(), 1500)?;
-        let error_code =
-            normalize_error_code(CHECKOUT_RECONCILIATION_RESOLVED_CODE.to_string())?;
+        let error_code = normalize_error_code(CHECKOUT_RECONCILIATION_RESOLVED_CODE.to_string())?;
         let error_message = normalize_error_message(format!(
             "checkout reconciliation resolved as `{}` by operator {operator_id}: {reason}",
             outcome.as_str()
@@ -1704,7 +1698,9 @@ impl CheckoutOperationJournal {
             .await?;
         if update.rows_affected == 0 {
             txn.rollback().await?;
-            return Err(self.cas_conflict(tenant_id, id, checked.next.as_str()).await?);
+            return Err(self
+                .cas_conflict(tenant_id, id, checked.next.as_str())
+                .await?);
         }
         // The parking decision, the admission change and their events are one
         // unit of work; the metric is recorded only after the transaction that
@@ -1806,7 +1802,9 @@ impl CheckoutOperationJournal {
         let result = update.exec(&txn).await?;
         if result.rows_affected == 0 {
             txn.rollback().await?;
-            return Err(self.cas_conflict(tenant_id, id, checked.next.as_str()).await?);
+            return Err(self
+                .cas_conflict(tenant_id, id, checked.next.as_str())
+                .await?);
         }
         let operation = self.get_in(&txn, tenant_id, id).await?;
         if admission.changes_the_level() {

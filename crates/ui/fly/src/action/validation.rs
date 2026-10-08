@@ -292,10 +292,7 @@ fn validate_form_action_url(value: &str) -> Result<(), String> {
     validate_safe_url(value, "form action_url")?;
     let value = value.trim();
     let lower = value.to_ascii_lowercase();
-    if lower.starts_with("mailto:")
-        || lower.starts_with("tel:")
-        || lower.starts_with('#')
-    {
+    if lower.starts_with("mailto:") || lower.starts_with("tel:") || lower.starts_with('#') {
         return Err(
             "form action_url must be a relative, http, or https submission URL".to_string(),
         );

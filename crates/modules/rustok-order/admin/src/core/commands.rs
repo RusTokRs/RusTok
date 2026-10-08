@@ -43,10 +43,14 @@ pub fn prepare_mark_paid_command(
     requirements_message: String,
 ) -> Result<OrderMarkPaidCommand, OrderCommandError> {
     let Some(payment_id) = text_or_none(payment_id) else {
-        return Err(OrderCommandError::MissingRequiredField(requirements_message));
+        return Err(OrderCommandError::MissingRequiredField(
+            requirements_message,
+        ));
     };
     let Some(payment_method) = text_or_none(payment_method) else {
-        return Err(OrderCommandError::MissingRequiredField(requirements_message));
+        return Err(OrderCommandError::MissingRequiredField(
+            requirements_message,
+        ));
     };
 
     Ok(OrderMarkPaidCommand {
@@ -61,10 +65,14 @@ pub fn prepare_ship_order_command(
     requirements_message: String,
 ) -> Result<OrderShipCommand, OrderCommandError> {
     let Some(tracking_number) = text_or_none(tracking_number) else {
-        return Err(OrderCommandError::MissingRequiredField(requirements_message));
+        return Err(OrderCommandError::MissingRequiredField(
+            requirements_message,
+        ));
     };
     let Some(carrier) = text_or_none(carrier) else {
-        return Err(OrderCommandError::MissingRequiredField(requirements_message));
+        return Err(OrderCommandError::MissingRequiredField(
+            requirements_message,
+        ));
     };
 
     Ok(OrderShipCommand {

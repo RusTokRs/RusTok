@@ -2,7 +2,8 @@ use crate::{
     ProjectDocument, ValidationDiagnostic, ValidationReport, analyze_runtime_context_dependencies,
     extract_runtime_context_contract, validate_binding_definitions, validate_component_actions,
     validate_component_public_urls, validate_dynamic_definitions, validate_internal_page_links,
-    validate_localized_page_routes, validate_project_locale_policy, validate_translation_definitions,
+    validate_localized_page_routes, validate_project_locale_policy,
+    validate_translation_definitions,
 };
 use std::collections::BTreeSet;
 

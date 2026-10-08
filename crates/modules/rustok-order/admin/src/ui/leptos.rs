@@ -543,7 +543,11 @@ pub fn OrderAdmin() -> impl IntoView {
     });
 
     let filtered_orders = Memo::new(move |_| {
-        let raw = orders.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let raw = orders
+            .get()
+            .and_then(Result::ok)
+            .map(|l| l.items)
+            .unwrap_or_default();
         let query = search_query.get().trim().to_lowercase();
         let current_filters = filters.get();
         let filtered = filter_orders(&raw, &current_filters);
@@ -554,9 +558,16 @@ pub fn OrderAdmin() -> impl IntoView {
                 .into_iter()
                 .filter(|item| {
                     item.id.to_lowercase().contains(&query)
-                        || item.customer_id.as_deref().map(|c| c.to_lowercase().contains(&query)).unwrap_or(false)
+                        || item
+                            .customer_id
+                            .as_deref()
+                            .map(|c| c.to_lowercase().contains(&query))
+                            .unwrap_or(false)
                         || item.status.to_lowercase().contains(&query)
-                        || item.line_items.iter().any(|li| li.title.to_lowercase().contains(&query))
+                        || item
+                            .line_items
+                            .iter()
+                            .any(|li| li.title.to_lowercase().contains(&query))
                 })
                 .collect()
         }
@@ -570,13 +581,14 @@ pub fn OrderAdmin() -> impl IntoView {
     let cell_selected_id = selected_id;
     let cell_action_writer = query_writer.clone();
     let cell_open_label = open_label.clone();
-    let cell_renderer = Callback::new(move |(item, col_id): (OrderListItem, String)| {
-        match col_id.as_str() {
-            "id" => {
-                let id_short = short_order_id(&item.id);
-                let caption = format_order_caption(cell_locale.as_deref(), &item);
-                let is_sel = cell_selected_id.get().as_deref() == Some(&item.id);
-                view! {
+    let cell_renderer = Callback::new(move |(item, col_id): (OrderListItem, String)| match col_id
+        .as_str()
+    {
+        "id" => {
+            let id_short = short_order_id(&item.id);
+            let caption = format_order_caption(cell_locale.as_deref(), &item);
+            let is_sel = cell_selected_id.get().as_deref() == Some(&item.id);
+            view! {
                     <div class="flex items-center gap-1.5" title=caption>
                         <span class=if is_sel {
                             "font-mono text-xs font-semibold text-primary underline"
@@ -588,62 +600,64 @@ pub fn OrderAdmin() -> impl IntoView {
                     </div>
                 }
                 .into_any()
+        }
+        "created_at" => {
+            let date_str = item
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&item.created_at);
+            view! {
+                <span class="text-xs text-muted-foreground whitespace-nowrap">
+                    {date_str.to_string()}
+                </span>
             }
-            "created_at" => {
-                let date_str = item.created_at.split('T').next().unwrap_or(&item.created_at);
-                view! {
-                    <span class="text-xs text-muted-foreground whitespace-nowrap">
-                        {date_str.to_string()}
-                    </span>
-                }
-                .into_any()
-            }
-            "customer" => {
-                let display = item
-                    .customer_id
-                    .as_deref()
-                    .map(short_order_id)
-                    .unwrap_or_else(|| "—".to_string());
-                view! {
+            .into_any()
+        }
+        "customer" => {
+            let display = item
+                .customer_id
+                .as_deref()
+                .map(short_order_id)
+                .unwrap_or_else(|| "—".to_string());
+            view! {
                     <span class="text-xs text-foreground/90 font-mono truncate" title=item.customer_id.clone().unwrap_or_default()>
                         {display}
                     </span>
                 }
                 .into_any()
-            }
-            "status" => {
-                let badge_cls = order_status_badge(item.status.as_str());
-                let label = localized_order_status(cell_locale.as_deref(), item.status.as_str());
-                view! {
+        }
+        "status" => {
+            let badge_cls = order_status_badge(item.status.as_str());
+            let label = localized_order_status(cell_locale.as_deref(), item.status.as_str());
+            view! {
                     <span class=format!("inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border {badge_cls}")>
                         {label}
                     </span>
                 }
                 .into_any()
-            }
-            "items" => {
-                let summary = summarize_order_lines(cell_locale.as_deref(), item.line_items.as_slice());
-                let summary_title = summary.clone();
-                view! {
+        }
+        "items" => {
+            let summary = summarize_order_lines(cell_locale.as_deref(), item.line_items.as_slice());
+            let summary_title = summary.clone();
+            view! {
                     <span class="text-xs text-muted-foreground truncate block max-w-[220px]" title=summary_title>
                         {summary}
                     </span>
                 }
                 .into_any()
-            }
-            "total" => {
-                view! {
-                    <span class="text-xs font-semibold text-foreground whitespace-nowrap">
-                        {format!("{} {}", item.total_amount, item.currency_code)}
-                    </span>
-                }
-                .into_any()
-            }
-            "actions" => {
-                let open_id = item.id.clone();
-                let item_writer = cell_action_writer.clone();
-                let btn_label = cell_open_label.clone();
-                view! {
+        }
+        "total" => view! {
+            <span class="text-xs font-semibold text-foreground whitespace-nowrap">
+                {format!("{} {}", item.total_amount, item.currency_code)}
+            </span>
+        }
+        .into_any(),
+        "actions" => {
+            let open_id = item.id.clone();
+            let item_writer = cell_action_writer.clone();
+            let btn_label = cell_open_label.clone();
+            view! {
                     <div class="flex items-center justify-center">
                         <button
                             type="button"
@@ -658,9 +672,8 @@ pub fn OrderAdmin() -> impl IntoView {
                     </div>
                 }
                 .into_any()
-            }
-            _ => ().into_any(),
         }
+        _ => ().into_any(),
     });
 
     let on_row_click = {

@@ -1,6 +1,5 @@
 use axum::{
-    Extension,
-    Json,
+    Extension, Json,
     body::Body,
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -935,14 +934,12 @@ async fn download_publish_artifact(
         })?
     {
         let mut response = axum::response::Redirect::temporary(&download_url).into_response();
-        response.headers_mut().insert(
-            CACHE_CONTROL,
-            HeaderValue::from_static("private, no-store"),
-        );
-        response.headers_mut().insert(
-            "referrer-policy",
-            HeaderValue::from_static("no-referrer"),
-        );
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+        response
+            .headers_mut()
+            .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
         return Ok(response);
     }
 
@@ -2484,11 +2481,10 @@ async fn first_party_catalog_modules(
             tracing::error!("Failed to load platform composition for registry catalog");
             Error::InternalServerError
         })?;
-    let modules = ManifestManager::catalog_modules(&manifest)
-        .map_err(|_| {
-            tracing::error!("Failed to build marketplace catalog");
-            Error::InternalServerError
-        })?;
+    let modules = ManifestManager::catalog_modules(&manifest).map_err(|_| {
+        tracing::error!("Failed to build marketplace catalog");
+        Error::InternalServerError
+    })?;
 
     let first_party_modules = modules
         .into_iter()
@@ -2496,11 +2492,7 @@ async fn first_party_catalog_modules(
         .collect::<Vec<_>>();
 
     RegistryGovernanceService::new(ctx.db_clone())
-        .apply_catalog_projection(
-            first_party_modules,
-            Some(locale),
-            Some(locale),
-        )
+        .apply_catalog_projection(first_party_modules, Some(locale), Some(locale))
         .await
         .map_err(|_| {
             tracing::error!("Failed to project registry releases into catalog");
@@ -2600,11 +2592,10 @@ where
     T: serde::Serialize,
 {
     let etag = registry_etag(payload)?;
-    let etag_header = HeaderValue::from_str(&etag)
-        .map_err(|_| {
-            tracing::error!("Failed to build registry ETag header");
-            Error::InternalServerError
-        })?;
+    let etag_header = HeaderValue::from_str(&etag).map_err(|_| {
+        tracing::error!("Failed to build registry ETag header");
+        Error::InternalServerError
+    })?;
     let total_count_header = total_count.map(registry_total_count_header).transpose()?;
     if request_matches_etag(headers, &etag) {
         let mut builder = Response::builder()
@@ -2625,9 +2616,7 @@ where
     response
         .headers_mut()
         .insert(CACHE_CONTROL, registry_cache_control());
-    response
-        .headers_mut()
-        .insert("vary", registry_cache_vary());
+    response.headers_mut().insert("vary", registry_cache_vary());
     response.headers_mut().insert(ETAG, etag_header);
     if let Some(total_count_header) = total_count_header {
         response
@@ -2661,11 +2650,10 @@ fn registry_etag<T>(payload: &T) -> Result<String, Error>
 where
     T: serde::Serialize,
 {
-    let body = serde_json::to_vec(payload)
-        .map_err(|_| {
-            tracing::error!("Failed to serialize registry payload for ETag");
-            Error::InternalServerError
-        })?;
+    let body = serde_json::to_vec(payload).map_err(|_| {
+        tracing::error!("Failed to serialize registry payload for ETag");
+        Error::InternalServerError
+    })?;
     let hash = Sha256::digest(body);
     Ok(format!("\"{}\"", hex::encode(hash)))
 }
@@ -2675,13 +2663,9 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
         .get(IF_NONE_MATCH)
         .and_then(|value| value.to_str().ok())
         .map(|value| {
-            value
-                .split(',')
-                .map(str::trim)
-                .any(|candidate| {
-                    candidate == "*"
-                        || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
-                })
+            value.split(',').map(str::trim).any(|candidate| {
+                candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+            })
         })
         .unwrap_or(false)
 }
@@ -3241,12 +3225,10 @@ fn map_module_governance_error(error: &ModuleGovernanceError) -> Error {
         ModuleGovernanceErrorCategory::InvalidInput => {
             http_error(HttpError::bad_request(error.code(), error.to_string()))
         }
-        ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(
-                error.code(),
-                "You do not have permission to perform this registry operation",
-            ))
-        }
+        ModuleGovernanceErrorCategory::PermissionDenied => http_error(HttpError::forbidden(
+            error.code(),
+            "You do not have permission to perform this registry operation",
+        )),
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(error.code(), "Not found"))
         }
@@ -3276,12 +3258,10 @@ fn map_remote_validation_transition_error(error: RegistryRemoteTransitionError) 
         ModuleGovernanceErrorCategory::InvalidInput => {
             http_error(HttpError::bad_request(code, detail))
         }
-        ModuleGovernanceErrorCategory::PermissionDenied => {
-            http_error(HttpError::forbidden(
-                code,
-                "You do not have permission to perform this registry runner operation",
-            ))
-        }
+        ModuleGovernanceErrorCategory::PermissionDenied => http_error(HttpError::forbidden(
+            code,
+            "You do not have permission to perform this registry runner operation",
+        )),
         ModuleGovernanceErrorCategory::NotFound => {
             http_error(HttpError::not_found(code, "Not found"))
         }
@@ -3340,7 +3320,6 @@ fn validate_registry_version(version: &str) -> Result<(), Error> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod marketplace_registry_tests {
     use super::{
@@ -3389,8 +3368,11 @@ mod marketplace_registry_tests {
 
     #[test]
     fn catalog_pagination_is_bounded_when_limit_is_omitted() {
-        let modules = (0..125).map(|index| module(&format!("module-{index:03}"))).collect();
-        let (page, total) = paginate_catalog_modules(modules, &RegistryCatalogListParams::default());
+        let modules = (0..125)
+            .map(|index| module(&format!("module-{index:03}")))
+            .collect();
+        let (page, total) =
+            paginate_catalog_modules(modules, &RegistryCatalogListParams::default());
 
         assert_eq!(total, 125);
         assert_eq!(page.len(), 100);
@@ -3411,19 +3393,22 @@ mod marketplace_registry_tests {
     #[tokio::test]
     async fn registry_response_declares_presentation_vary() {
         let headers = HeaderMap::new();
-        let response = build_registry_response(
-            &headers,
-            &serde_json::json!({"modules": []}),
-            Some(0),
-        )
-        .expect("registry response should build");
+        let response =
+            build_registry_response(&headers, &serde_json::json!({"modules": []}), Some(0))
+                .expect("registry response should build");
 
         assert_eq!(
-            response.headers().get("cache-control").and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get("cache-control")
+                .and_then(|value| value.to_str().ok()),
             Some("public, max-age=60")
         );
         assert_eq!(
-            response.headers().get("vary").and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get("vary")
+                .and_then(|value| value.to_str().ok()),
             Some("Accept-Language, Cookie, X-Medusa-Locale, X-Tenant-ID")
         );
 

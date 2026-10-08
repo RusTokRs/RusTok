@@ -99,11 +99,15 @@ lazy_static! {
     pub static ref CONTENT_OPERATION_DURATION_SECONDS: HistogramVec = create_histogram_vec(
         "rustok_content_operation_duration_seconds",
         "Duration of content operations",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        vec![
+            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
+        ],
         &["operation", "kind"],
     );
-    pub static ref CONTENT_NODES_TOTAL: IntGauge =
-        create_int_gauge("rustok_content_nodes_total", "Total number of content nodes");
+    pub static ref CONTENT_NODES_TOTAL: IntGauge = create_int_gauge(
+        "rustok_content_nodes_total",
+        "Total number of content nodes"
+    );
     pub static ref COMMERCE_OPERATIONS_TOTAL: CounterVec = create_counter_vec(
         "rustok_commerce_operations_total",
         "Total commerce operations",
@@ -112,7 +116,9 @@ lazy_static! {
     pub static ref COMMERCE_OPERATION_DURATION_SECONDS: HistogramVec = create_histogram_vec(
         "rustok_commerce_operation_duration_seconds",
         "Duration of commerce operations",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        vec![
+            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
+        ],
         &["operation", "kind"],
     );
     pub static ref COMMERCE_PRODUCTS_TOTAL: IntGauge =
@@ -127,7 +133,9 @@ lazy_static! {
     pub static ref HTTP_REQUEST_DURATION_SECONDS: HistogramVec = create_histogram_vec(
         "rustok_http_request_duration_seconds",
         "HTTP request duration",
-        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        vec![
+            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
+        ],
         &["method", "path"],
     );
 }

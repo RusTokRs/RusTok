@@ -25,16 +25,8 @@ impl PostService {
         } = input;
 
         validate_title(&title)?;
-        validate_post_field_length(
-            excerpt.as_deref(),
-            MAX_POST_EXCERPT_CHARS,
-            "Excerpt",
-        )?;
-        validate_post_field_length(
-            seo_title.as_deref(),
-            MAX_POST_SEO_TITLE_CHARS,
-            "SEO title",
-        )?;
+        validate_post_field_length(excerpt.as_deref(), MAX_POST_EXCERPT_CHARS, "Excerpt")?;
+        validate_post_field_length(seo_title.as_deref(), MAX_POST_SEO_TITLE_CHARS, "SEO title")?;
         validate_post_field_length(
             seo_description.as_deref(),
             MAX_POST_SEO_DESCRIPTION_CHARS,
@@ -44,11 +36,10 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
-        let allow_tag_create =
-            !matches!(
-                security.get_scope(Resource::Tags, Action::Create),
-                rustok_core::PermissionScope::None
-            );
+        let allow_tag_create = !matches!(
+            security.get_scope(Resource::Tags, Action::Create),
+            rustok_core::PermissionScope::None
+        );
         if publish {
             enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;
         }
@@ -200,11 +191,7 @@ impl PostService {
 
         validate_optional_title(title.as_deref())?;
         if let Patch::Set(value) = excerpt.as_ref() {
-            validate_post_field_length(
-                Some(value.as_str()),
-                MAX_POST_EXCERPT_CHARS,
-                "Excerpt",
-            )?;
+            validate_post_field_length(Some(value.as_str()), MAX_POST_EXCERPT_CHARS, "Excerpt")?;
         }
         if let Patch::Set(value) = seo_title.as_ref() {
             validate_post_field_length(
@@ -353,14 +340,8 @@ impl PostService {
 
         let normalized_slug_for_error = normalized_slug.clone();
         let result = update.exec(&txn).await.map_err(|error| {
-            if normalized_slug_for_error.is_some()
-                && PostService::is_unique_constraint(&error)
-            {
-                BlogError::duplicate_slug(
-                    normalized_slug_for_error
-                        .clone()
-                        .unwrap_or_default(),
-                )
+            if normalized_slug_for_error.is_some() && PostService::is_unique_constraint(&error) {
+                BlogError::duplicate_slug(normalized_slug_for_error.clone().unwrap_or_default())
             } else {
                 BlogError::from(error)
             }
@@ -373,7 +354,9 @@ impl PostService {
 
         if has_translation_change {
             let locale = locale.as_deref().ok_or_else(|| {
-                BlogError::invariant("localized change reached persistence without a canonical locale")
+                BlogError::invariant(
+                    "localized change reached persistence without a canonical locale",
+                )
             })?;
             self.upsert_translation_in_tx(
                 &txn,

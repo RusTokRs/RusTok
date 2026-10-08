@@ -491,14 +491,23 @@ async fn resolve_typed_storefront_line_item_input(
                 let mut item_metadata = super::legacy_helpers::sanitize_storefront_metadata(
                     parse_line_item_metadata(input.metadata.as_deref(), product_model.id)?,
                 );
-                if let Some(tax_class) = product_model.metadata.get("tax_class").and_then(serde_json::Value::as_str) {
+                if let Some(tax_class) = product_model
+                    .metadata
+                    .get("tax_class")
+                    .and_then(serde_json::Value::as_str)
+                {
                     if let serde_json::Value::Object(ref mut map) = item_metadata {
-                        map.insert("tax_class".to_string(), serde_json::Value::String(tax_class.to_string()));
+                        map.insert(
+                            "tax_class".to_string(),
+                            serde_json::Value::String(tax_class.to_string()),
+                        );
                     }
                 }
                 super::legacy_helpers::merge_graphql_metadata(
                     item_metadata,
-                    super::legacy_helpers::seller_snapshot_metadata(product_model.seller_id.as_deref()),
+                    super::legacy_helpers::seller_snapshot_metadata(
+                        product_model.seller_id.as_deref(),
+                    ),
                 )
             },
         },

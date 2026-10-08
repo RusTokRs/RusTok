@@ -26,12 +26,32 @@ fn order_status_badge_style(status: &str) -> &'static str {
 fn localize_status(locale: Option<&str>, status: &str) -> String {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     match status.trim().to_uppercase().as_str() {
-        "PENDING" => if is_ru { "В обработке" } else { "Pending" }.to_string(),
-        "CONFIRMED" => if is_ru { "Подтвержден" } else { "Confirmed" }.to_string(),
+        "PENDING" => if is_ru {
+            "В обработке"
+        } else {
+            "Pending"
+        }
+        .to_string(),
+        "CONFIRMED" => if is_ru {
+            "Подтвержден"
+        } else {
+            "Confirmed"
+        }
+        .to_string(),
         "PAID" => if is_ru { "Оплачен" } else { "Paid" }.to_string(),
         "PROCESSING" => if is_ru { "Сборка" } else { "Processing" }.to_string(),
-        "SHIPPED" => if is_ru { "Отправлен" } else { "Shipped" }.to_string(),
-        "DELIVERED" => if is_ru { "Доставлен" } else { "Delivered" }.to_string(),
+        "SHIPPED" => if is_ru {
+            "Отправлен"
+        } else {
+            "Shipped"
+        }
+        .to_string(),
+        "DELIVERED" => if is_ru {
+            "Доставлен"
+        } else {
+            "Delivered"
+        }
+        .to_string(),
         "CANCELLED" => if is_ru { "Отменен" } else { "Cancelled" }.to_string(),
         other => other.to_string(),
     }
@@ -41,7 +61,10 @@ fn localize_status(locale: Option<&str>, status: &str) -> String {
 pub fn OrderView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
 
     let initial_order_id = route_context
         .subpath
@@ -75,7 +98,11 @@ pub fn OrderView() -> impl IntoView {
             "order.checkout.moduleOwnership",
             "Order status and checkout completion stay in order-owned UI.",
         ),
-        order_status_label: t(locale.as_deref(), "order.checkout.orderStatus", "Order status"),
+        order_status_label: t(
+            locale.as_deref(),
+            "order.checkout.orderStatus",
+            "Order status",
+        ),
     };
 
     view! {
@@ -373,7 +400,10 @@ pub fn OrdersHistoryView(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
 
     let (active_tab, set_active_tab) = signal("ALL".to_string());
     let (refresh_nonce, _) = signal(0_u64);
@@ -381,11 +411,7 @@ pub fn OrdersHistoryView(
     let orders_resource = Resource::new_blocking(
         move || (active_tab.get(), refresh_nonce.get()),
         move |(tab, _)| async move {
-            let status = if tab == "ALL" {
-                None
-            } else {
-                Some(tab)
-            };
+            let status = if tab == "ALL" { None } else { Some(tab) };
             fetch_orders(Some(1), Some(30), status).await
         },
     );

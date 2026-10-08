@@ -1,13 +1,13 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::GroupsAdminInvitation;
 use crate::model::{
     CreateGroupInvitationCommand, GroupsAdminCreateInvitationResult,
     GroupsAdminInvitationConnection, GroupsAdminInvitationQuery, GroupsAdminRevokeInvitationResult,
     RevokeGroupInvitationCommand,
 };
-#[cfg(feature = "ssr")]
-use crate::model::GroupsAdminInvitation;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsInvitationError(pub String);

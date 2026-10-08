@@ -1,8 +1,9 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_outbox::SysEventsMigration;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ModuleTermCreateInput, ModuleTermUpdateInput, ResolveTaxonomyTermInput,
-    TaxonomyError, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    UpdateTaxonomyTermInput,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, ModuleTermUpdateInput,
+    ResolveTaxonomyTermInput, TaxonomyError, TaxonomyModule, TaxonomyScopeType, TaxonomyService,
+    TaxonomyTermKind, UpdateTaxonomyTermInput,
     entities::{taxonomy_term_alias, taxonomy_term_route_key},
     update_module_term_in_tx,
 };
@@ -11,9 +12,8 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
 };
-use sea_orm_migration::prelude::SchemaManager;
-use rustok_outbox::SysEventsMigration;
 use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
 async fn setup() -> (DatabaseConnection, TaxonomyService) {
@@ -97,14 +97,7 @@ async fn remove_route_key_fixture(
 async fn same_term_translation_and_alias_share_one_route_reservation() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let term_id = create_module_term(
-        &service,
-        tenant_id,
-        "Systems",
-        "systems",
-        vec![],
-    )
-    .await;
+    let term_id = create_module_term(&service, tenant_id, "Systems", "systems", vec![]).await;
     taxonomy_term_alias::ActiveModel {
         id: Set(Uuid::new_v4()),
         term_id: Set(term_id),

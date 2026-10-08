@@ -255,7 +255,9 @@ pub(crate) enum DataCapabilityCall {
     QueryIndex { query: ArtifactDataIndexQuery },
 }
 
-pub(crate) fn decode_data_capability_call(call: &CapabilityCall) -> SandboxResult<DataCapabilityCall> {
+pub(crate) fn decode_data_capability_call(
+    call: &CapabilityCall,
+) -> SandboxResult<DataCapabilityCall> {
     let input = call
         .input
         .as_object()

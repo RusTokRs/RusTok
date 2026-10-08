@@ -58,15 +58,15 @@ fn channel_cache_generations_are_bounded_and_fail_safe() {
 #[test]
 fn host_resolution_context_preserves_the_matched_target() {
     let channel = source("apps/server/src/middleware/channel.rs");
-    assert!(channel.contains(
-        "fn from_decision(decision: ResolutionDecision, facts: &RequestFacts)"
-    ));
+    assert!(
+        channel.contains("fn from_decision(decision: ResolutionDecision, facts: &RequestFacts)")
+    );
     assert!(channel.contains("ChannelResolutionSource::Host => facts"));
     assert!(channel.contains("ChannelTargetType::WebDomain.normalize_value(host)"));
     assert!(channel.contains("value == normalized_host"));
-    assert!(channel.contains(
-        ".or_else(|| detail.targets.iter().find(|target| target.is_primary))"
-    ));
+    assert!(
+        channel.contains(".or_else(|| detail.targets.iter().find(|target| target.is_primary))")
+    );
 }
 
 #[test]
@@ -105,7 +105,10 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
         .map(|endpoint| format!("/api/fn/{endpoint}"))
         .collect::<Vec<_>>();
 
-    assert!(!native_paths.is_empty(), "expected channel mutation endpoints");
+    assert!(
+        !native_paths.is_empty(),
+        "expected channel mutation endpoints"
+    );
     native_paths.sort_unstable();
 
     let mut wrapper_paths = wrapper
@@ -123,7 +126,9 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
         .expect("native channel wrapper must declare its mutation path list");
 
     assert!(
-        wrapper_paths.iter().all(|path| path.starts_with("/api/fn/channel/")),
+        wrapper_paths
+            .iter()
+            .all(|path| path.starts_with("/api/fn/channel/")),
         "native channel wrapper must contain only channel server-function paths"
     );
     wrapper_paths.sort_unstable();
@@ -132,7 +137,11 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
         wrapper_paths, native_paths,
         "native mutation path inventory must exactly match the channel admin server-function owner"
     );
-    assert!(!wrapper_paths.iter().any(|path| path == "/api/fn/channel/bootstrap"));
+    assert!(
+        !wrapper_paths
+            .iter()
+            .any(|path| path == "/api/fn/channel/bootstrap")
+    );
 }
 
 #[test]

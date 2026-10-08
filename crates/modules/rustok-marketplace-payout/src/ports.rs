@@ -139,13 +139,19 @@ fn map_owner_error(error: MarketplacePayoutError) -> PortError {
             kind,
         } => PortError::new(
             match kind {
-                crate::error::MarketplaceLedgerBoundaryKind::Validation => PortErrorKind::Validation,
+                crate::error::MarketplaceLedgerBoundaryKind::Validation => {
+                    PortErrorKind::Validation
+                }
                 crate::error::MarketplaceLedgerBoundaryKind::NotFound => PortErrorKind::NotFound,
                 crate::error::MarketplaceLedgerBoundaryKind::Conflict => PortErrorKind::Conflict,
                 crate::error::MarketplaceLedgerBoundaryKind::Forbidden => PortErrorKind::Forbidden,
-                crate::error::MarketplaceLedgerBoundaryKind::Unavailable => PortErrorKind::Unavailable,
+                crate::error::MarketplaceLedgerBoundaryKind::Unavailable => {
+                    PortErrorKind::Unavailable
+                }
                 crate::error::MarketplaceLedgerBoundaryKind::Timeout => PortErrorKind::Timeout,
-                crate::error::MarketplaceLedgerBoundaryKind::InvariantViolation => PortErrorKind::InvariantViolation,
+                crate::error::MarketplaceLedgerBoundaryKind::InvariantViolation => {
+                    PortErrorKind::InvariantViolation
+                }
             },
             code,
             message,

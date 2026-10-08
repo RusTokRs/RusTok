@@ -14,10 +14,7 @@ pub(crate) struct ReactionTargetDeletionHandler {
 }
 
 impl ReactionTargetDeletionHandler {
-    pub(crate) fn new(
-        db: DatabaseConnection,
-        subjects: Arc<ReactionSubjectRegistry>,
-    ) -> Self {
+    pub(crate) fn new(db: DatabaseConnection, subjects: Arc<ReactionSubjectRegistry>) -> Self {
         Self { db, subjects }
     }
 }

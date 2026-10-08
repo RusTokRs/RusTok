@@ -469,9 +469,7 @@ fn ensure_payment_permission(
     Ok(())
 }
 
-fn validate_webhook_payload(
-    body: &[u8],
-) -> Result<(), (StatusCode, Json<Value>)> {
+fn validate_webhook_payload(body: &[u8]) -> Result<(), (StatusCode, Json<Value>)> {
     if body.is_empty() {
         return Err(safe_error(
             StatusCode::BAD_REQUEST,
@@ -559,7 +557,7 @@ fn safe_error(
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_webhook_payload, DELIVERY_ID_HEADERS, MAX_RAW_PAYLOAD_BYTES, REPLAY_KEY_HEADERS,
+        DELIVERY_ID_HEADERS, MAX_RAW_PAYLOAD_BYTES, REPLAY_KEY_HEADERS, validate_webhook_payload,
     };
     use axum::http::{HeaderMap, HeaderValue, StatusCode};
 
@@ -594,8 +592,7 @@ mod tests {
         );
 
         let oversize = vec![0_u8; MAX_RAW_PAYLOAD_BYTES + 1];
-        let error = validate_webhook_payload(&oversize)
-            .expect_err("oversize payload must fail");
+        let error = validate_webhook_payload(&oversize).expect_err("oversize payload must fail");
         assert_eq!(error.0, StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

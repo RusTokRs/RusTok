@@ -52,16 +52,10 @@ pub fn CategoryOverview(
         .into_iter()
         .map(|root| {
             let subcategories = children_map.remove(&root.id).unwrap_or_default();
-            let total_topic_count = root.topic_count
-                + subcategories
-                    .iter()
-                    .map(|sub| sub.topic_count)
-                    .sum::<i32>();
-            let total_reply_count = root.reply_count
-                + subcategories
-                    .iter()
-                    .map(|sub| sub.reply_count)
-                    .sum::<i32>();
+            let total_topic_count =
+                root.topic_count + subcategories.iter().map(|sub| sub.topic_count).sum::<i32>();
+            let total_reply_count =
+                root.reply_count + subcategories.iter().map(|sub| sub.reply_count).sum::<i32>();
 
             CategoryHierarchyNode {
                 category: root,

@@ -77,4 +77,3 @@ pub async fn load_event_history(
 fn normalize_enum_output(value: String) -> String {
     value.trim().to_ascii_lowercase()
 }
-

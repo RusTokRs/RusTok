@@ -387,7 +387,6 @@ impl InProcessCheckoutPaymentExecutionPort {
     }
 }
 
-
 #[cfg(test)]
 pub(super) fn capture_provider_amount(collection: &PaymentCollectionResponse) -> Decimal {
     collection.authorized_amount

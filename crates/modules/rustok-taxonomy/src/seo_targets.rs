@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use rustok_seo_targets::{
@@ -12,10 +12,10 @@ use rustok_seo_targets::{
     builtin_slug, schema,
 };
 
+use crate::TaxonomyScopeType;
 use crate::dto::TaxonomyTermKind;
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::owner_category_read::TaxonomyOwnerCategoryReader;
-use crate::TaxonomyScopeType;
 
 #[derive(Clone, Default)]
 pub struct TaxonomyCategorySeoTargetProvider;

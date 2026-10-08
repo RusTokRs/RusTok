@@ -208,12 +208,7 @@ async fn apply(
         match result {
             Ok(output) => {
                 if let Err(error) = persistence
-                    .finish_http_job_succeeded(
-                        job_id,
-                        output.session_id,
-                        output.tenant_id,
-                        &output,
-                    )
+                    .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
                     .await
                 {
                     tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
@@ -392,7 +387,8 @@ async fn job_status(
     let Some(job) = persistence.get_http_job(job_id).await.map_err(|error| {
         tracing::error!(%error, %job_id, "Failed to read durable installer HTTP job");
         internal_error("failed to read installer job")
-    })? else {
+    })?
+    else {
         return Err(not_found_error("installer job not found"));
     };
 
@@ -408,7 +404,9 @@ fn install_job_status_response(
         "failed" => InstallJobState::Failed,
         _ => {
             tracing::error!(%job.id, status = %job.status, "Durable installer HTTP job has an unknown status");
-            return Err(internal_error("installer job has an invalid persisted state"));
+            return Err(internal_error(
+                "installer job has an invalid persisted state",
+            ));
         }
     };
 

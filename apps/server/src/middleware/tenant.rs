@@ -6,9 +6,9 @@ use axum::{
     response::Response,
 };
 use rustok_cache::{
-    cache_backend_generation_snapshot, CacheBackendGenerationSnapshot, CacheEnvelope,
-    CacheKeyBuilder as CanonicalCacheKeyBuilder, CacheLoadPolicy, CacheLoadSource, CacheService,
-    CacheTtlPolicy, NegativeCachePolicy,
+    CacheBackendGenerationSnapshot, CacheEnvelope, CacheKeyBuilder as CanonicalCacheKeyBuilder,
+    CacheLoadPolicy, CacheLoadSource, CacheService, CacheTtlPolicy, NegativeCachePolicy,
+    cache_backend_generation_snapshot,
 };
 use rustok_core::{CacheBackend, Error as CoreError};
 use rustok_tenant::{
@@ -21,10 +21,10 @@ use std::{fmt, sync::Arc};
 
 use super::{
     tenant_resolution::{
-        resolve_explicit_slug, resolve_request, ResolvedTenantIdentifier, TenantIdentifierKind,
-        TenantResolution, TenantResolutionSource,
+        ResolvedTenantIdentifier, TenantIdentifierKind, TenantResolution, TenantResolutionSource,
+        resolve_explicit_slug, resolve_request,
     },
-    tenant_route_policy::{tenant_route_scope, TenantRouteScope},
+    tenant_route_policy::{TenantRouteScope, tenant_route_scope},
 };
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -300,21 +300,11 @@ impl TenantCacheKeyBuilder {
         Self { version }
     }
 
-    fn tenant_key(
-        &self,
-        kind: TenantIdentifierKind,
-        value: &str,
-        generation: u64,
-    ) -> String {
+    fn tenant_key(&self, kind: TenantIdentifierKind, value: &str, generation: u64) -> String {
         self.build("resolution", kind, value, generation)
     }
 
-    fn negative_key(
-        &self,
-        kind: TenantIdentifierKind,
-        value: &str,
-        generation: u64,
-    ) -> String {
+    fn negative_key(&self, kind: TenantIdentifierKind, value: &str, generation: u64) -> String {
         self.build("negative", kind, value, generation)
     }
 
@@ -697,9 +687,10 @@ pub(crate) async fn load_tenant_context(
     // Generation-aware backend I/O alone cannot cover the interval occupied by the DB loader.
     for _attempt in 0..TENANT_CACHE_GENERATION_STABILITY_ATTEMPTS {
         let generation = tenant_cache_generation_snapshot()?;
-        let cache_key = infra
-            .key_builder
-            .kind_key(identifier.kind(), &identifier_value, generation.generation);
+        let cache_key =
+            infra
+                .key_builder
+                .kind_key(identifier.kind(), &identifier_value, generation.generation);
         let negative_key = infra.key_builder.kind_negative_key(
             identifier.kind(),
             &identifier_value,
@@ -789,8 +780,8 @@ pub(crate) async fn load_tenant_context(
     ))
 }
 
-fn tenant_cache_generation_snapshot(
-) -> Result<CacheBackendGenerationSnapshot, TenantContextLoadError> {
+fn tenant_cache_generation_snapshot()
+-> Result<CacheBackendGenerationSnapshot, TenantContextLoadError> {
     cache_backend_generation_snapshot(
         crate::services::tenant_cache_generation::TENANT_CACHE_BACKEND_PREFIX,
     )
@@ -858,7 +849,10 @@ pub async fn resolve(
     match tenant_route_scope(req.uri().path()) {
         TenantRouteScope::TenantBound => {}
         TenantRouteScope::GlobalOperator | TenantRouteScope::SelfResolvingHandshake => {
-            tracing::info!(path = req.uri().path(), "tenant::resolve bypassed (global/handshake)");
+            tracing::info!(
+                path = req.uri().path(),
+                "tenant::resolve bypassed (global/handshake)"
+            );
             return Ok(next.run(req).await);
         }
     }

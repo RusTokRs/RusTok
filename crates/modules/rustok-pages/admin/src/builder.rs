@@ -254,10 +254,11 @@ async fn dispatch_pages_page_builder_capability(
             trusted_rollout.tenant_slug
         )));
     }
-    let verified_user = leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
-        .await
-        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
-        .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
+    let verified_user =
+        leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
+            .await
+            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+            .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
     let permissions = page_builder_permissions_for_role(&verified_user.role);
     let actor_id = verified_user.id;
     let auth = PageBuilderRequestAuth::new(permissions);

@@ -292,7 +292,9 @@ fn estimate_artifact_release_bytes(
     }
     for evidence in &artifact.evidence {
         bytes = bytes
-            .saturating_add(std::mem::size_of::<rustok_modules::ModuleMarketplaceEvidenceReference>())
+            .saturating_add(std::mem::size_of::<
+                rustok_modules::ModuleMarketplaceEvidenceReference,
+            >())
             .saturating_add(evidence.reference.len())
             .saturating_add(evidence.digest.len());
     }
@@ -450,15 +452,24 @@ mod wrapper_tests {
             repository: "rustok/test-module".to_string(),
             origin: rustok_modules::ModuleMarketplaceArtifactOrigin::PlatformBuilt,
             runtime_kind: rustok_modules::ModuleMarketplaceRuntimeKind::WasmComponent,
-            oci_manifest_digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
-            payload_digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222".to_string(),
-            descriptor_digest: "sha256:3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+            oci_manifest_digest:
+                "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                    .to_string(),
+            payload_digest:
+                "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+                    .to_string(),
+            descriptor_digest:
+                "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+                    .to_string(),
             source_reference: "git:v1.0.0".to_string(),
-            source_digest: "sha256:4444444444444444444444444444444444444444444444444444444444444444".to_string(),
+            source_digest:
+                "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+                    .to_string(),
             evidence: vec![rustok_modules::ModuleMarketplaceEvidenceReference {
                 kind: rustok_modules::ModuleMarketplaceEvidenceKind::AuthorSignature,
                 reference: "sig-ref".to_string(),
-                digest: "sha256:5555555555555555555555555555555555555555555555555555555555555555".to_string(),
+                digest: "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+                    .to_string(),
             }],
         });
         let with_artifact = estimate_catalog_module_bytes(&module);

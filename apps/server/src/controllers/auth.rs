@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::error::Result;
-use chrono::Utc;
 use axum::response::Response;
 use axum::{
     Json,
@@ -9,6 +8,7 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
+use chrono::Utc;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
 use sea_orm::{
@@ -17,10 +17,11 @@ use sea_orm::{
 use std::net::SocketAddr;
 
 use crate::auth::{
-    decode_email_verification_token, encode_email_verification_token,
-    encode_password_reset_token,
+    decode_email_verification_token, encode_email_verification_token, encode_password_reset_token,
 };
-use crate::common::{RustokSettings, RequestContext, demo_mode_token_exposure_enabled, is_production_environment};
+use crate::common::{
+    RequestContext, RustokSettings, demo_mode_token_exposure_enabled, is_production_environment,
+};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
     sessions,
@@ -271,7 +272,10 @@ async fn request_reset(
 
     if let Some(reset_token_value) = reset_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = match email_service_from_ctx(runtime_ctx, request_context.locale.as_str()) {
+        let email_service = match email_service_from_ctx(
+            runtime_ctx,
+            request_context.locale.as_str(),
+        ) {
             Ok(service) => service,
             Err(_) => {
                 tracing::warn!(
@@ -383,7 +387,10 @@ async fn request_verification(
 
     if let Some(verification_token_value) = verification_token.as_ref() {
         let runtime_ctx = ctx.runtime_ctx();
-        let email_service = match email_service_from_ctx(runtime_ctx, request_context.locale.as_str()) {
+        let email_service = match email_service_from_ctx(
+            runtime_ctx,
+            request_context.locale.as_str(),
+        ) {
             Ok(service) => service,
             Err(_) => {
                 tracing::warn!(

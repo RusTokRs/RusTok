@@ -144,10 +144,7 @@ impl TenantLocaleCache {
     }
 
     fn with_max_weight(max_weight_bytes: u64) -> Self {
-        Self::with_limits(
-            max_weight_bytes,
-            TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS,
-        )
+        Self::with_limits(max_weight_bytes, TENANT_LOCALE_CACHE_MAX_TENANT_VERSIONS)
     }
 
     fn with_limits(max_weight_bytes: u64, max_tenant_versions: usize) -> Self {
@@ -492,10 +489,7 @@ mod tests {
             fallback_locale: Some("y".repeat(512)),
         }]);
 
-        assert!(
-            tenant_locale_entry_weight(&key, &long)
-                > tenant_locale_entry_weight(&key, &short)
-        );
+        assert!(tenant_locale_entry_weight(&key, &long) > tenant_locale_entry_weight(&key, &short));
     }
 
     #[tokio::test]
@@ -505,7 +499,9 @@ mod tests {
 
         assert!(cache.get(tenant_id).await.is_none());
         cache.record_db_query();
-        let version = cache.tenant_version(tenant_id).expect("cache should be enabled");
+        let version = cache
+            .tenant_version(tenant_id)
+            .expect("cache should be enabled");
         cache
             .cache
             .insert(
@@ -534,7 +530,9 @@ mod tests {
     async fn tenant_cache_version_rotates_on_tenant_invalidation() {
         let cache = TenantLocaleCache::with_max_weight(1024 * 1024);
         let tenant_id = Uuid::new_v4();
-        let initial = cache.tenant_version(tenant_id).expect("cache should be enabled");
+        let initial = cache
+            .tenant_version(tenant_id)
+            .expect("cache should be enabled");
         let key = cache.cache_key(tenant_id, initial);
 
         cache
@@ -553,7 +551,9 @@ mod tests {
 
         cache.invalidate(tenant_id).await;
 
-        let next = cache.tenant_version(tenant_id).expect("cache should remain enabled");
+        let next = cache
+            .tenant_version(tenant_id)
+            .expect("cache should remain enabled");
         assert_ne!(initial, next);
         assert!(cache.get(tenant_id).await.is_none());
     }
@@ -587,10 +587,7 @@ mod tests {
             effective_locale: "ru".to_string(),
         };
 
-        assert_eq!(
-            constrain_locale_to_tenant(&resolved, &[], "en"),
-            "en"
-        );
+        assert_eq!(constrain_locale_to_tenant(&resolved, &[], "en"), "en");
     }
 
     #[test]

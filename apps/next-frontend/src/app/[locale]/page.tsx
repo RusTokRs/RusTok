@@ -53,8 +53,8 @@ export default async function StorefrontHome({
   const { locale } = await params;
   const resolvedSearchParams = await searchParams;
   const t = await getTranslations("Storefront");
-  const features = t.raw("features") as string[];
-  const chips = t.raw("chips") as string[];
+  const features = (t as any).raw("features") as string[];
+  const chips = (t as any).raw("chips") as string[];
   const tenantSlug = getStorefrontTenantSlug();
   const enabledModules = await fetchEnabledModules(tenantSlug);
   const moduleSections = getModulesForSlot("home:afterHero", enabledModules);

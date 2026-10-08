@@ -156,7 +156,6 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
     assert!(matches!(repeated, ForumError::TopicDeleted));
 }
 
-
 #[tokio::test]
 async fn owner_topic_restore_rehydrates_closed_locked_solution_thread() {
     let db = setup_db().await;
@@ -497,7 +496,6 @@ async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
     .await
 }
 
-
 async fn topic_locked(db: &DatabaseConnection, topic_id: Uuid) -> bool {
     scalar_i64(
         db,
@@ -507,7 +505,7 @@ async fn topic_locked(db: &DatabaseConnection, topic_id: Uuid) -> bool {
         ),
     )
     .await
-    == 1
+        == 1
 }
 
 async fn solution_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {

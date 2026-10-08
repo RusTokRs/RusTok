@@ -880,9 +880,7 @@ impl RootQuery {
                 let role: rustok_core::UserRole = role.into();
                 let user_ids = RbacService::get_user_ids_for_role(db, &tenant.id, role)
                     .await
-                    .map_err(|err| {
-                        graphql_internal_error("GraphQL query failed", err)
-                    })?;
+                    .map_err(|err| graphql_internal_error("GraphQL query failed", err))?;
                 query = query.filter(UsersColumn::Id.is_in(user_ids));
             }
 
@@ -1192,11 +1190,10 @@ mod tests {
 
     #[test]
     fn module_recovery_post_hook_error_redacts_backend_diagnostics() {
-        let error = map_module_operation_recovery_error(
-            ModuleOperationRecoveryError::PostHookFailed(
+        let error =
+            map_module_operation_recovery_error(ModuleOperationRecoveryError::PostHookFailed(
                 "post-hook: database password=secret".to_string(),
-            ),
-        );
+            ));
 
         assert_eq!(error.message, "Module hook failed");
         assert!(!error.message.contains("database password=secret"));

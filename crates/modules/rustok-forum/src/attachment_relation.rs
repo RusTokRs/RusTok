@@ -81,9 +81,7 @@ pub enum ForumAttachmentRelationRevisionError {
     Negative { value: i64 },
     #[error("Forum attachment relation revision counter is exhausted")]
     Exhausted,
-    #[error(
-        "Forum attachment relation revision conflict: expected {expected}, current {current}"
-    )]
+    #[error("Forum attachment relation revision conflict: expected {expected}, current {current}")]
     Conflict { expected: i64, current: i64 },
 }
 

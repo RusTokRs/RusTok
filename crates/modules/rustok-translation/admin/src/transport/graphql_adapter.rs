@@ -920,8 +920,6 @@ enum GraphqlMachineProposalOutcome {
     InProgress(crate::model::MachineOperationStatus),
 }
 
-
-
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GraphqlJobItem {

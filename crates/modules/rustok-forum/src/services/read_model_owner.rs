@@ -112,14 +112,12 @@ impl ForumReadModelService {
 
         let mut rows = Vec::with_capacity(categories.len());
         for category in categories {
-            let canonical = projection_by_id
-                .remove(&category.id)
-                .ok_or_else(|| {
-                    ForumError::Validation(format!(
-                        "Forum category {} Taxonomy Category projection is missing",
-                        category.id
-                    ))
-                })?;
+            let canonical = projection_by_id.remove(&category.id).ok_or_else(|| {
+                ForumError::Validation(format!(
+                    "Forum category {} Taxonomy Category projection is missing",
+                    category.id
+                ))
+            })?;
             let parent_id = canonical.parent_id;
             rows.push(BoundCategoryReadModel {
                 owner: category,
@@ -543,8 +541,6 @@ fn decode_category_cursor(value: &str) -> ForumResult<CategoryCursor> {
 fn invalid_category_cursor() -> ForumError {
     ForumError::Validation("Invalid category cursor".to_string())
 }
-
-
 
 #[derive(Clone)]
 struct TopicCursor {

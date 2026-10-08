@@ -161,7 +161,8 @@ fn build_alloy_publication(
     )?)
 }
 
-fn parse_publication_policy() -> Result<RegistryValidationPublicationPolicy, Box<dyn std::error::Error>> {
+fn parse_publication_policy()
+-> Result<RegistryValidationPublicationPolicy, Box<dyn std::error::Error>> {
     Ok(RegistryValidationPublicationPolicy {
         registry_id: required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID")?,
         trust_policy_revision: required_u64("RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION")?,

@@ -795,7 +795,11 @@ fn safe_registry_storage_suffix(value: &str) -> Option<String> {
             return None;
         };
         let segment = segment.to_str()?.trim();
-        if segment.is_empty() || segment == "." || segment == ".." || segment.chars().any(char::is_control) {
+        if segment.is_empty()
+            || segment == "."
+            || segment == ".."
+            || segment.chars().any(char::is_control)
+        {
             return None;
         }
         components.push(segment.to_string());
@@ -913,7 +917,6 @@ enum RegistryGovernanceEvents {
     ActorPrincipal,
     PublisherPrincipal,
 }
-
 
 #[cfg(test)]
 mod tests {

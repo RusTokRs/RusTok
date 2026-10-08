@@ -26,8 +26,12 @@ impl ButtonVariant {
         match self {
             Self::Primary => "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
             Self::Secondary => "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-            Self::Destructive => "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
-            Self::Outline => "border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
+            Self::Destructive => {
+                "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
+            }
+            Self::Outline => {
+                "border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+            }
             Self::Ghost => "text-foreground hover:bg-accent hover:text-accent-foreground",
         }
     }
@@ -82,7 +86,10 @@ pub fn SubmitButton(
     let form_ctx = use_context::<FormContext>();
 
     let is_submitting = move || {
-        form_ctx.as_ref().map(|ctx| ctx.state.get().is_submitting).unwrap_or(false)
+        form_ctx
+            .as_ref()
+            .map(|ctx| ctx.state.get().is_submitting)
+            .unwrap_or(false)
     };
 
     let is_disabled = move || {
@@ -168,7 +175,10 @@ pub fn ResetButton(
     let form_ctx = use_context::<FormContext>();
 
     let is_submitting = move || {
-        form_ctx.as_ref().map(|ctx| ctx.state.get().is_submitting).unwrap_or(false)
+        form_ctx
+            .as_ref()
+            .map(|ctx| ctx.state.get().is_submitting)
+            .unwrap_or(false)
     };
 
     let is_disabled = move || {

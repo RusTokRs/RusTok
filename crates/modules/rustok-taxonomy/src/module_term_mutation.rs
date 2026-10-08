@@ -3,8 +3,7 @@ use rustok_content::normalize_locale_code;
 use rustok_core::SecurityContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
-    QuerySelect,
-    sea_query::Expr,
+    QuerySelect, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -50,7 +49,6 @@ pub async fn update_module_term_in_tx(
     module_slug: &str,
     input: ModuleTermUpdateInput,
 ) -> TaxonomyResult<ModuleTermMutationResult> {
-
     let module_scope = normalize_module_scope(module_slug)?;
     let locale = normalize_locale(&input.locale)?;
     let term = find_module_term_in_tx(txn, tenant_id, term_id, kind, &module_scope).await?;

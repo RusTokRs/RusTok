@@ -79,12 +79,14 @@ impl FulfillmentCreateLabelRecoveryService {
             }
         }
 
-        let request: FulfillmentProviderOperationRequest =
-            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "create_label operation {operation_id} contains invalid request_payload: {error}"
-                ))
-            })?;
+        let request: FulfillmentProviderOperationRequest = serde_json::from_value(
+            operation.request_payload.clone(),
+        )
+        .map_err(|error| {
+            FulfillmentOrchestrationError::Validation(format!(
+                "create_label operation {operation_id} contains invalid request_payload: {error}"
+            ))
+        })?;
         if request.tenant_id != tenant_id
             || request.fulfillment_id != operation.fulfillment_id
             || request.idempotency_key.as_deref().map(str::trim)
@@ -240,7 +242,6 @@ fn validate_result(
     }
     Ok(result)
 }
-
 
 #[cfg(test)]
 mod tests {

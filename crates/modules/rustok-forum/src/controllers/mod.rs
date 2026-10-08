@@ -133,7 +133,9 @@ async fn ensure_forum_module_enabled(
                 error = %error,
                 "failed to verify Forum tenant-module lifecycle state"
             );
-            Err(HttpError::internal("The Forum operation could not be completed"))
+            Err(HttpError::internal(
+                "The Forum operation could not be completed",
+            ))
         }
     }
 }
@@ -385,11 +387,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .with_state(state))
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::ensure_forum_module_enabled;
     use super::ForumHttpRuntime;
+    use super::ensure_forum_module_enabled;
     use axum::http::StatusCode;
     use sea_orm::{ConnectionTrait, Database};
     use uuid::Uuid;

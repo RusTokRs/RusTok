@@ -45,12 +45,10 @@ pub async fn receive(
         .map_err(|err| match err {
             crate::WorkflowError::WebhookSignatureMissing
             | crate::WorkflowError::WebhookSignatureInvalid
-            | crate::WorkflowError::WebhookSecretNotConfigured => {
-                HttpError::unauthorized(
-                    "workflow_webhook_unauthorized",
-                    "Webhook signature verification failed".to_string(),
-                )
-            }
+            | crate::WorkflowError::WebhookSecretNotConfigured => HttpError::unauthorized(
+                "workflow_webhook_unauthorized",
+                "Webhook signature verification failed".to_string(),
+            ),
             other => HttpError::bad_request("workflow_operation_failed", other.to_string()),
         })?;
 

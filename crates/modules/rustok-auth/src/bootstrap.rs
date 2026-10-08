@@ -75,8 +75,7 @@ impl AuthUserBootstrapDbWriter {
             return Ok(existing);
         }
 
-        let password_hash = hash_password(&request.password)
-            .map_err(internal_bootstrap_error)?;
+        let password_hash = hash_password(&request.password).map_err(internal_bootstrap_error)?;
         let user_id = rustok_core::generate_id();
         let sql = match backend {
             DbBackend::Sqlite => {
@@ -181,12 +180,8 @@ impl AuthUserBootstrapDbWriter {
 
         row.map(|row| {
             Ok(AuthUserBootstrapRecord {
-                id: row
-                    .try_get("", "id")
-                    .map_err(internal_bootstrap_error)?,
-                email: row
-                    .try_get("", "email")
-                    .map_err(internal_bootstrap_error)?,
+                id: row.try_get("", "id").map_err(internal_bootstrap_error)?,
+                email: row.try_get("", "email").map_err(internal_bootstrap_error)?,
                 created: false,
             })
         })

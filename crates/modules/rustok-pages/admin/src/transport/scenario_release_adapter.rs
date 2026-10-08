@@ -35,4 +35,3 @@ pub async fn fetch(
     .await?;
     Ok(response.status)
 }
-

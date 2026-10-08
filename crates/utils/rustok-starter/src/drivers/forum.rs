@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use sea_orm::DatabaseConnection;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use rustok_core::SecurityContext;
@@ -121,11 +121,7 @@ pub async fn import_forum_topics(
             .0;
 
         let exists = existing_topics.iter().any(|item| {
-            item.title == topic.title
-                || topic
-                    .slug
-                    .as_deref()
-                    .is_some_and(|s| s == item.slug)
+            item.title == topic.title || topic.slug.as_deref().is_some_and(|s| s == item.slug)
         });
 
         if exists {
@@ -167,7 +163,9 @@ pub async fn import_forum_topics(
                     created_topic.id,
                     CreateReplyInput {
                         locale: locale.to_string(),
-                        content: rustok_api::RichTextDocument::single_paragraph(&reply.body_markdown),
+                        content: rustok_api::RichTextDocument::single_paragraph(
+                            &reply.body_markdown,
+                        ),
                         parent_reply_id: None,
                     },
                 )

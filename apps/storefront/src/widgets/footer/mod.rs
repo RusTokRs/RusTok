@@ -91,4 +91,3 @@ pub fn Footer(tagline: String, navigation_views: Vec<AnyView>) -> impl IntoView 
         </footer>
     }
 }
-

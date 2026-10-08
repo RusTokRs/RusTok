@@ -276,10 +276,12 @@ mod tests {
             .extensions_mut()
             .insert(TenantContextExtension(tenant));
         request.extensions_mut().insert(AuthContextExtension(auth));
-        request.extensions_mut().insert(rustok_api::ResolvedRequestLocale {
-            requested_locale: None,
-            effective_locale: default_locale,
-        });
+        request
+            .extensions_mut()
+            .insert(rustok_api::ResolvedRequestLocale {
+                requested_locale: None,
+                effective_locale: default_locale,
+            });
         request
     }
 

@@ -3,10 +3,10 @@ use std::sync::{Mutex, OnceLock};
 
 use rustok_graphql::GraphqlHttpError;
 
+use super::product_lifecycle_graphql;
 use crate::lifecycle_retry_identity::{
     ProductAdminLifecycleOperation, ProductAdminLifecycleRetryIdentity,
 };
-use super::product_lifecycle_graphql;
 use crate::model::{
     ProductDetail, ProductDraft, ProductImage, ProductImageDraft, ProductVariant,
     UpdateProductImageDraft, VariantDraft,
@@ -391,9 +391,8 @@ pub(crate) async fn update_product_image(
 ) -> Result<ProductImage, GraphqlHttpError> {
     let operation = ProductAdminLifecycleOperation::UpdateImage;
     let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&image_id));
-    let intent = format!(
-        "operation=update-image;tenant={tenant_id:?};actor={user_id:?};image={image_id:?}"
-    );
+    let intent =
+        format!("operation=update-image;tenant={tenant_id:?};actor={user_id:?};image={image_id:?}");
     let idempotency_key = retained_caller_key(&slot, operation, intent);
     let result = product_lifecycle_graphql::update_product_image(
         token,
@@ -422,9 +421,8 @@ pub(crate) async fn delete_product_image(
 ) -> Result<bool, GraphqlHttpError> {
     let operation = ProductAdminLifecycleOperation::DeleteImage;
     let slot = lifecycle_slot(operation, &tenant_id, &user_id, Some(&image_id));
-    let intent = format!(
-        "operation=delete-image;tenant={tenant_id:?};actor={user_id:?};image={image_id:?}"
-    );
+    let intent =
+        format!("operation=delete-image;tenant={tenant_id:?};actor={user_id:?};image={image_id:?}");
     let idempotency_key = retained_caller_key(&slot, operation, intent);
     let result = product_lifecycle_graphql::delete_product_image(
         token,

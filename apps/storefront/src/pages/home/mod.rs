@@ -370,4 +370,3 @@ pub fn HomePage(
         </main>
     }
 }
-

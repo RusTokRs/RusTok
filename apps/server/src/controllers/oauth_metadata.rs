@@ -99,9 +99,8 @@ fn metadata_for_issuer(issuer: &str) -> Result<OAuthAuthorizationServerMetadata,
 }
 
 fn parse_metadata_issuer(issuer: &str) -> Result<Url, Error> {
-    let url = Url::parse(issuer).map_err(|_| {
-        Error::Message("OAuth metadata requires an absolute issuer URL".into())
-    })?;
+    let url = Url::parse(issuer)
+        .map_err(|_| Error::Message("OAuth metadata requires an absolute issuer URL".into()))?;
 
     if url.scheme() != "https" || url.host_str().is_none() {
         return Err(Error::Message(
@@ -196,10 +195,7 @@ mod tests {
     fn metadata_advertises_only_supported_query_response_mode() {
         let metadata = metadata_for_issuer("https://api.example.com").expect("valid issuer");
 
-        assert_eq!(
-            metadata.response_modes_supported,
-            vec!["query".to_string()]
-        );
+        assert_eq!(metadata.response_modes_supported, vec!["query".to_string()]);
         assert_eq!(
             metadata.claims_supported,
             vec![

@@ -24,7 +24,6 @@ pub struct SmtpConfig {
     pub password: String,
 }
 
-
 impl std::fmt::Debug for EmailConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter

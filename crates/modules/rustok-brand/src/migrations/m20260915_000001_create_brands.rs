@@ -121,9 +121,12 @@ CREATE INDEX IF NOT EXISTS idx_brand_products_brand
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-        db.execute_unprepared("DROP TABLE IF EXISTS brand_products;").await?;
-        db.execute_unprepared("DROP TABLE IF EXISTS brand_translations;").await?;
-        db.execute_unprepared("DROP TABLE IF EXISTS brands;").await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS brand_products;")
+            .await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS brand_translations;")
+            .await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS brands;")
+            .await?;
         Ok(())
     }
 }

@@ -71,7 +71,10 @@ fn auth_lifecycle_context(
     let tenant = ctx.data::<TenantContext>()?;
     let locale = ctx.data::<Locale>().copied().unwrap_or_default();
     let user_auth = auth.filter(|auth| auth.grant_type != "client_credentials");
-    let principal_kind = ctx.data::<AuthPrincipalContext>().ok().map(|context| context.kind);
+    let principal_kind = ctx
+        .data::<AuthPrincipalContext>()
+        .ok()
+        .map(|context| context.kind);
     Ok(AuthLifecycleContext {
         tenant_id: tenant.id,
         user_id: user_auth.map(|auth| auth.user_id),

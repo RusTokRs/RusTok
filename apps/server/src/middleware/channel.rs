@@ -148,11 +148,11 @@ impl CachedChannelResolution {
                         .and_then(|host| ChannelTargetType::WebDomain.normalize_value(host))
                         .and_then(|normalized_host| {
                             detail.targets.iter().find(|target| {
-                                ChannelTargetType::parse(&target.target_type)
-                                    .is_some_and(|target_type| target_type.supports_host_resolution())
-                                    && ChannelTargetType::WebDomain
-                                        .normalize_value(&target.value)
-                                        .is_some_and(|value| value == normalized_host)
+                                ChannelTargetType::parse(&target.target_type).is_some_and(
+                                    |target_type| target_type.supports_host_resolution(),
+                                ) && ChannelTargetType::WebDomain
+                                    .normalize_value(&target.value)
+                                    .is_some_and(|value| value == normalized_host)
                             })
                         }),
                     _ => None,
@@ -309,7 +309,10 @@ pub async fn resolve(
 ) -> Result<Response, axum::http::StatusCode> {
     tracing::info!(path = req.uri().path(), "channel::resolve entry");
     let Some(tenant) = req.extensions().tenant_context().cloned() else {
-        tracing::info!(path = req.uri().path(), "channel::resolve bypassed: no tenant_context on request");
+        tracing::info!(
+            path = req.uri().path(),
+            "channel::resolve bypassed: no tenant_context on request"
+        );
         return Ok(next.run(req).await);
     };
 

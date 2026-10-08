@@ -1,4 +1,10 @@
-use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, TenantLocale};
@@ -10,14 +16,17 @@ use rustok_translation_targets::{
     TranslationFieldPatch, TranslationPatchRequest, TranslationTargetChangesRequest,
     TranslationTargetProgressRequest, TranslationTargetProvider,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, TransactionTrait,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 use crate::{
-    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule, UpdateTaxonomyTermInput,
+    CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule,
     TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, TaxonomyTranslationTargetProvider,
+    UpdateTaxonomyTermInput,
 };
 
 #[derive(Clone)]
@@ -388,7 +397,6 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
     assert_eq!(unauthorized.kind, PortErrorKind::Forbidden);
 }
 
-
 #[tokio::test]
 async fn global_tag_update_and_delete_enqueue_search_reindex() {
     let (database, service) = setup().await;
@@ -433,10 +441,7 @@ async fn global_tag_update_and_delete_enqueue_search_reindex() {
         .await
         .expect("Search reindex event should be durable after global Tag update");
     assert_eq!(events_after_update.len(), 1);
-    assert_eq!(
-        events_after_update[0].event_type,
-        "index.reindex_requested"
-    );
+    assert_eq!(events_after_update[0].event_type, "index.reindex_requested");
     assert_eq!(
         events_after_update[0].payload["event"]["data"]["target_type"],
         "search"
@@ -506,18 +511,12 @@ async fn global_tag_reindex_outbox_failure_rolls_back_taxonomy_update() {
     assert!(matches!(error, crate::TaxonomyError::Internal(_)));
 
     let persisted = service
-        .get_term(
-            tenant_id,
-            admin(),
-            term_id,
-            "en",
-            None,
-        )
+        .get_term(tenant_id, admin(), term_id, "en", None)
         .await
         .expect("rolled-back Taxonomy term should remain readable");
     assert_eq!(persisted.name, "Systems");
 }
- 
+
 #[tokio::test]
 async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook() {
     let (database, service) = setup().await;
@@ -539,7 +538,10 @@ async fn module_owned_translation_requires_owner_and_runs_owner_side_effect_hook
         )
         .await
         .expect("module term should be created");
-    transaction.commit().await.expect("transaction should commit");
+    transaction
+        .commit()
+        .await
+        .expect("transaction should commit");
 
     let identity = rustok_translation_targets::TranslationResourceIdentity {
         owner_slug: rustok_translation_targets::OwnerSlug::new("taxonomy").unwrap(),

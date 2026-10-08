@@ -18,7 +18,7 @@ use crate::dto::{
 use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{
-    append_listing_event, normalize_listing_event_locale, AppendListingEventParams,
+    AppendListingEventParams, append_listing_event, normalize_listing_event_locale,
 };
 use crate::service::{
     ensure_listing_identity_available, find_listing, listing_reason_codes_without_lifecycle,

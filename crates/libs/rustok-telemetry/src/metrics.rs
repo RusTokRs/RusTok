@@ -1,3 +1,4 @@
+use crate::factory::*;
 /// Custom Prometheus Metrics for RusToK
 ///
 /// This module provides specialized metrics for:
@@ -7,7 +8,6 @@
 /// - Span counts by operation
 /// - Error rates by module
 use lazy_static::lazy_static;
-use crate::factory::*;
 use prometheus::{
     GaugeVec, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
 };
@@ -388,7 +388,9 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
 
     // Outbox retention
     registry.register(Box::new(OUTBOX_PRUNED_TOTAL.clone()))?;
-    registry.register(Box::new(OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.clone()))?;
+    registry.register(Box::new(
+        OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.clone(),
+    ))?;
 
     // Checkout reconciliation
     registry.register(Box::new(CHECKOUT_RECONCILIATION_PARKED_TOTAL.clone()))?;
@@ -488,7 +490,8 @@ pub fn record_outbox_retention_run() {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs())
         .unwrap_or_default();
-    OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS.set(i64::try_from(unix_seconds).unwrap_or(i64::MAX));
+    OUTBOX_RETENTION_LAST_RUN_TIMESTAMP_SECONDS
+        .set(i64::try_from(unix_seconds).unwrap_or(i64::MAX));
 }
 
 /// Update circuit breaker state (0=closed, 1=open, 2=half-open)

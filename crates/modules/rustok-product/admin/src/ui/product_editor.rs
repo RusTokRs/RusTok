@@ -4,16 +4,14 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 
-use crate::core::{
-    build_product_image_view_models, build_variant_row_view_models, slugify,
-    ProductKind,
-};
 use super::leptos::{ProductAttributeValuesSection, ProductVariantAxesSection};
-use crate::model::{
-    CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm,
-    ProductImageDraft,
-};
 use crate::catalog_transport;
+use crate::core::{
+    ProductKind, build_product_image_view_models, build_variant_row_view_models, slugify,
+};
+use crate::model::{
+    CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
+};
 
 #[component]
 pub fn ProductEditorPage(
@@ -119,13 +117,10 @@ pub fn ProductEditorPage(
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
-            let res = catalog_transport::fetch_shipping_profiles(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+            let res =
+                catalog_transport::fetch_shipping_profiles(tok, ten, bootstrap.current_tenant.id)
+                    .await
+                    .map_err(|e| e.to_string())?;
             Ok::<Vec<crate::model::ShippingProfile>, String>(res.items)
         }
     });
@@ -173,17 +168,13 @@ pub fn ProductEditorPage(
         let loc = eff_locale.clone();
 
         spawn_local(async move {
-            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+            else {
                 return;
             };
-            if let Ok(Some(detail)) = catalog_transport::fetch_product(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                pid,
-                loc,
-            )
-            .await
+            if let Ok(Some(detail)) =
+                catalog_transport::fetch_product(tok, ten, bootstrap.current_tenant.id, pid, loc)
+                    .await
             {
                 // Populate signals from loaded product detail
                 if let Some(tr) = detail.translations.first() {
@@ -197,7 +188,8 @@ pub fn ProductEditorPage(
                 set_vendor.set(detail.vendor.clone().unwrap_or_default());
                 set_seller_id.set(detail.seller_id.clone().unwrap_or_default());
                 set_primary_category_id.set(detail.primary_category_id.clone().unwrap_or_default());
-                set_shipping_profile_slug.set(detail.shipping_profile_slug.clone().unwrap_or_default());
+                set_shipping_profile_slug
+                    .set(detail.shipping_profile_slug.clone().unwrap_or_default());
                 set_tags.set(detail.tags.clone());
 
                 if let Some(ref kind_str) = detail.product_type {
@@ -213,7 +205,8 @@ pub fn ProductEditorPage(
                     if let Some(price) = variant.prices.first() {
                         set_currency_code.set(price.currency_code.clone());
                         set_amount.set(price.amount.clone());
-                        set_compare_at_amount.set(price.compare_at_amount.clone().unwrap_or_default());
+                        set_compare_at_amount
+                            .set(price.compare_at_amount.clone().unwrap_or_default());
                     }
                 }
 
@@ -270,7 +263,9 @@ pub fn ProductEditorPage(
             let loc = base_locale.clone();
 
             spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some(if is_ru {
                         "Не удалось получить данные сессии".to_string()
@@ -335,7 +330,9 @@ pub fn ProductEditorPage(
             let ten = base_tenant.get_untracked();
 
             spawn_local(async move {
-                let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+                let Ok(bootstrap) =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+                else {
                     set_is_busy.set(false);
                     set_error_msg.set(Some(if is_ru {
                         "Не удалось получить данные сессии".to_string()
@@ -382,7 +379,14 @@ pub fn ProductEditorPage(
     let save_product = move |target_status: Option<&'static str>| {
         let t_val = title.get_untracked().trim().to_string();
         if t_val.is_empty() {
-            set_error_msg.set(Some(if is_ru { "Введите название товара" } else { "Please enter product title" }.to_string()));
+            set_error_msg.set(Some(
+                if is_ru {
+                    "Введите название товара"
+                } else {
+                    "Please enter product title"
+                }
+                .to_string(),
+            ));
             return;
         }
 
@@ -420,8 +424,10 @@ pub fn ProductEditorPage(
             seller_id: seller_id.get_untracked(),
             vendor: vendor.get_untracked(),
             product_type: kind.as_str().to_string(),
-            shipping_profile_slug: Some(shipping_profile_slug.get_untracked()).filter(|s| !s.is_empty()),
-            primary_category_id: Some(primary_category_id.get_untracked()).filter(|s| !s.is_empty()),
+            shipping_profile_slug: Some(shipping_profile_slug.get_untracked())
+                .filter(|s| !s.is_empty()),
+            primary_category_id: Some(primary_category_id.get_untracked())
+                .filter(|s| !s.is_empty()),
             sku: sku.get_untracked(),
             barcode: barcode.get_untracked(),
             currency_code: currency_code.get_untracked(),
@@ -439,7 +445,8 @@ pub fn ProductEditorPage(
         };
 
         spawn_local(async move {
-            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await else {
+            let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
+            else {
                 set_is_busy.set(false);
                 set_error_msg.set(Some("Failed to authenticate bootstrap".to_string()));
                 return;
@@ -481,14 +488,34 @@ pub fn ProductEditorPage(
                     let cur_comp = compare_at_amount.get_untracked();
 
                     let v_draft = crate::model::VariantDraft {
-                        sku: if cur_sku.trim().is_empty() { None } else { Some(cur_sku) },
-                        barcode: if cur_bc.trim().is_empty() { None } else { Some(cur_bc) },
+                        sku: if cur_sku.trim().is_empty() {
+                            None
+                        } else {
+                            Some(cur_sku)
+                        },
+                        barcode: if cur_bc.trim().is_empty() {
+                            None
+                        } else {
+                            Some(cur_bc)
+                        },
                         shipping_profile_slug: None,
                         axis_values: Vec::new(),
                         prices: vec![crate::model::VariantPriceDraft {
-                            currency_code: if cur_cur.trim().is_empty() { "USD".to_string() } else { cur_cur },
-                            amount: if cur_amt.trim().is_empty() { "0.00".to_string() } else { cur_amt },
-                            compare_at_amount: if cur_comp.trim().is_empty() { None } else { Some(cur_comp) },
+                            currency_code: if cur_cur.trim().is_empty() {
+                                "USD".to_string()
+                            } else {
+                                cur_cur
+                            },
+                            amount: if cur_amt.trim().is_empty() {
+                                "0.00".to_string()
+                            } else {
+                                cur_amt
+                            },
+                            compare_at_amount: if cur_comp.trim().is_empty() {
+                                None
+                            } else {
+                                Some(cur_comp)
+                            },
                         }],
                         inventory_quantity: Some(cur_qty),
                         inventory_policy: Some(inventory_policy.get_untracked()),
@@ -527,7 +554,14 @@ pub fn ProductEditorPage(
                         }
 
                         if secondary_failures.is_empty() {
-                            set_success_msg.set(Some(if is_ru { "Товар успешно сохранён" } else { "Product saved successfully" }.to_string()));
+                            set_success_msg.set(Some(
+                                if is_ru {
+                                    "Товар успешно сохранён"
+                                } else {
+                                    "Product saved successfully"
+                                }
+                                .to_string(),
+                            ));
                         } else {
                             set_error_msg.set(Some(if is_ru {
                                 format!(
@@ -568,9 +602,17 @@ pub fn ProductEditorPage(
     };
 
     let page_title = if is_editing {
-        if is_ru { "Редактирование товара" } else { "Edit Product" }
+        if is_ru {
+            "Редактирование товара"
+        } else {
+            "Edit Product"
+        }
     } else {
-        if is_ru { "Создание товара" } else { "New Product" }
+        if is_ru {
+            "Создание товара"
+        } else {
+            "New Product"
+        }
     };
 
     let save_product_cb_draft = save_product.clone();

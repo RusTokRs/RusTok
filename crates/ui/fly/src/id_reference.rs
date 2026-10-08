@@ -227,7 +227,11 @@ mod tests {
         remap_attribute_ids(&mut attributes, &mapping());
         assert_eq!(attributes["href"], "#paste-1");
 
-        for untouched in ["/hero", "https://example.com/hero", "mailto:hero@example.com"] {
+        for untouched in [
+            "/hero",
+            "https://example.com/hero",
+            "mailto:hero@example.com",
+        ] {
             let mut attributes = Map::from_iter([("href".to_string(), json!(untouched))]);
             remap_attribute_ids(&mut attributes, &mapping());
             assert_eq!(attributes["href"], untouched);

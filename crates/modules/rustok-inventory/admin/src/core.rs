@@ -385,22 +385,42 @@ pub fn inventory_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                 options: vec![
                     FilterOption {
                         value: "".to_string(),
-                        label: if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() },
+                        label: if is_ru {
+                            "Все статусы".to_string()
+                        } else {
+                            "All statuses".to_string()
+                        },
                     },
                     FilterOption {
                         value: "ACTIVE".to_string(),
-                        label: if is_ru { "Активен".to_string() } else { "Active".to_string() },
+                        label: if is_ru {
+                            "Активен".to_string()
+                        } else {
+                            "Active".to_string()
+                        },
                     },
                     FilterOption {
                         value: "DRAFT".to_string(),
-                        label: if is_ru { "Черновик".to_string() } else { "Draft".to_string() },
+                        label: if is_ru {
+                            "Черновик".to_string()
+                        } else {
+                            "Draft".to_string()
+                        },
                     },
                     FilterOption {
                         value: "ARCHIVED".to_string(),
-                        label: if is_ru { "В архиве".to_string() } else { "Archived".to_string() },
+                        label: if is_ru {
+                            "В архиве".to_string()
+                        } else {
+                            "Archived".to_string()
+                        },
                     },
                 ],
-                placeholder: Some(if is_ru { "Все статусы".to_string() } else { "All statuses".to_string() }),
+                placeholder: Some(if is_ru {
+                    "Все статусы".to_string()
+                } else {
+                    "All statuses".to_string()
+                }),
             }),
         GridColumnDef::new("product_type", if is_ru { "Тип" } else { "Type" })
             .width(120)
@@ -412,32 +432,50 @@ pub fn inventory_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                     "Product type...".to_string()
                 }),
             }),
-        GridColumnDef::new("vendor", if is_ru { "Поставщик" } else { "Vendor" })
-            .width(120)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Поставщик...".to_string()
-                } else {
-                    "Vendor...".to_string()
-                }),
+        GridColumnDef::new(
+            "vendor",
+            if is_ru {
+                "Поставщик"
+            } else {
+                "Vendor"
+            },
+        )
+        .width(120)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Поставщик...".to_string()
+            } else {
+                "Vendor...".to_string()
             }),
-        GridColumnDef::new("shipping_profile_slug", if is_ru { "Профиль" } else { "Profile" })
-            .width(130)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Профиль доставки...".to_string()
-                } else {
-                    "Shipping profile...".to_string()
-                }),
+        }),
+        GridColumnDef::new(
+            "shipping_profile_slug",
+            if is_ru { "Профиль" } else { "Profile" },
+        )
+        .width(130)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Профиль доставки...".to_string()
+            } else {
+                "Shipping profile...".to_string()
             }),
+        }),
         GridColumnDef::new("created_at", if is_ru { "Создан" } else { "Created" })
             .width(120)
             .align(ColumnAlign::Left)
             .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
-                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+                from_placeholder: Some(if is_ru {
+                    "С".to_string()
+                } else {
+                    "From".to_string()
+                }),
+                to_placeholder: Some(if is_ru {
+                    "По".to_string()
+                } else {
+                    "To".to_string()
+                }),
             }),
         GridColumnDef::new("actions", "")
             .width(80)

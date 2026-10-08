@@ -228,7 +228,8 @@ impl CheckoutService {
             .validate_cart_inventory(tenant_id, actor_id, &cart)
             .await
         {
-            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
+                .await;
             return Err(error);
         }
         let context = match self
@@ -246,7 +247,8 @@ impl CheckoutService {
         {
             Ok(context) => context,
             Err(error) => {
-                self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
+                self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
+                    .await;
                 return Err(stage_error("resolve_context")(error));
             }
         };
@@ -259,7 +261,8 @@ impl CheckoutService {
             )
             .await
         {
-            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
+                .await;
             return Err(error);
         }
         let order_metadata = merge_checkout_metadata(
@@ -643,7 +646,8 @@ impl CheckoutService {
         .await;
 
         if should_release_checkout_lock(&checkout_result) {
-            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart).await;
+            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
+                .await;
         }
 
         checkout_result

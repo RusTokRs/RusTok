@@ -39,11 +39,19 @@ pub fn ModuleRequestProvider(
         Locale::Ru => Some("ru".to_string()),
     });
 
-    leptos::logging::log!("ModuleRequestProvider init: route_segment={:?}, subpath={:?}", route_segment, subpath);
+    leptos::logging::log!(
+        "ModuleRequestProvider init: route_segment={:?}, subpath={:?}",
+        route_segment,
+        subpath
+    );
     Effect::new(move |_| {
         let raw_query = raw_query.get();
         let sanitized_query = sanitized_query.get();
-        leptos::logging::log!("ModuleRequestProvider Effect: raw={:?}, sanitized={:?}", raw_query, sanitized_query);
+        leptos::logging::log!(
+            "ModuleRequestProvider Effect: raw={:?}, sanitized={:?}",
+            raw_query,
+            sanitized_query
+        );
         if raw_query == sanitized_query {
             return;
         }

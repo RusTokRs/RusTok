@@ -58,7 +58,6 @@ pub async fn fetch_storefront_pages(
     })
 }
 
-
 async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,

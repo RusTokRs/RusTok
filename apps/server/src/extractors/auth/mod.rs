@@ -291,16 +291,15 @@ pub async fn resolve_current_user_from_access_token(
             } else {
                 granted_permissions
             };
-            let effective_role = match crate::services::auth_lifecycle::AuthLifecycleService::resolve_effective_role(
-                db,
-                tenant_id,
-                user.id,
-            )
-            .await
-            {
-                Ok(role) => role,
-                Err(_) => infer_user_role_from_permissions(&effective_permissions),
-            };
+            let effective_role =
+                match crate::services::auth_lifecycle::AuthLifecycleService::resolve_effective_role(
+                    db, tenant_id, user.id,
+                )
+                .await
+                {
+                    Ok(role) => role,
+                    Err(_) => infer_user_role_from_permissions(&effective_permissions),
+                };
             if claims.role != effective_role {
                 RbacService::record_claim_role_mismatch();
                 warn!(

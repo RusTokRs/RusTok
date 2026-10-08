@@ -13,7 +13,7 @@ use rustok_navigation::{MenuLocation, NavigationModule};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::PagesModule;
 use rustok_pages::services::PageService;
-use rustok_starter::{default_starter, StarterEngine};
+use rustok_starter::{StarterEngine, default_starter};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -134,7 +134,8 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<(DatabaseConnection, Uuid)> {
 }
 
 #[tokio::test]
-async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visibility() -> TestResult<()> {
+async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visibility()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let (db, channel_id) = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -170,7 +171,12 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
     // 2. Verify Blog Posts are published and accessible
     let post_service = PostService::new(db.clone(), event_bus.clone());
     let post = post_service
-        .get_post_by_slug(tenant_id, SecurityContext::system(), "ru", "welcome-to-rustok")
+        .get_post_by_slug(
+            tenant_id,
+            SecurityContext::system(),
+            "ru",
+            "welcome-to-rustok",
+        )
         .await?
         .expect("Blog post should be found and published");
     assert_eq!(post.slug, "welcome-to-rustok");
@@ -194,7 +200,13 @@ async fn test_starter_engine_import_default_blueprint_and_verify_storefront_visi
     // 4. Verify Navigation Menu is bound to default channel and active
     let binding_service = MenuBindingService::new(db.clone());
     let active_header = binding_service
-        .get_active(tenant_id, SecurityContext::system(), channel_id, MenuLocation::Header, "ru")
+        .get_active(
+            tenant_id,
+            SecurityContext::system(),
+            channel_id,
+            MenuLocation::Header,
+            "ru",
+        )
         .await?
         .expect("Header menu should be bound and active for default channel");
 

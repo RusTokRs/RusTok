@@ -16,8 +16,8 @@ use crate::{
     dto::{
         ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE,
         MediaAssetReference, MediaAssetReferenceInput, MediaAssetSummary, MediaItem,
-        MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput,
-        PreparedUploadSession, UploadInput, UpsertTranslationInput,
+        MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput, PreparedUploadSession,
+        UploadInput, UpsertTranslationInput,
     },
     entities::{
         asset::{ActiveModel as AssetActiveModel, Column as AssetCol, Entity as AssetEntity},
@@ -439,7 +439,6 @@ pub(crate) fn extract_module_from_staging_key(key: &str) -> Option<String> {
         None
     }
 }
-
 
 pub(crate) fn media_item_from_storage(
     storage: &StorageRuntime,
@@ -1305,10 +1304,7 @@ impl MediaService {
             size,
             width: output.width as i32,
             height: output.height as i32,
-            public_url: self
-                .storage
-                .public_url(key.as_path())
-                .unwrap_or_default(),
+            public_url: self.storage.public_url(key.as_path()).unwrap_or_default(),
             storage_path: object_key,
         })
     }
@@ -1339,10 +1335,7 @@ impl MediaService {
             size: blob.size,
             width: blob.width.unwrap_or_default(),
             height: blob.height.unwrap_or_default(),
-            public_url: self
-                .storage
-                .public_url(&path)
-                .unwrap_or_default(),
+            public_url: self.storage.public_url(&path).unwrap_or_default(),
             storage_path: blob.object_key,
         }))
     }

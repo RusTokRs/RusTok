@@ -127,11 +127,19 @@ pub fn bundle_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                 options: vec![
                     FilterOption {
                         value: "fixed".to_string(),
-                        label: if is_ru { "Фиксированный".to_string() } else { "Fixed".to_string() },
+                        label: if is_ru {
+                            "Фиксированный".to_string()
+                        } else {
+                            "Fixed".to_string()
+                        },
                     },
                     FilterOption {
                         value: "custom".to_string(),
-                        label: if is_ru { "Настраиваемый".to_string() } else { "Custom".to_string() },
+                        label: if is_ru {
+                            "Настраиваемый".to_string()
+                        } else {
+                            "Custom".to_string()
+                        },
                     },
                 ],
                 placeholder: Some(if is_ru {
@@ -153,15 +161,27 @@ pub fn bundle_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                 options: vec![
                     FilterOption {
                         value: "active".to_string(),
-                        label: if is_ru { "Активен".to_string() } else { "Active".to_string() },
+                        label: if is_ru {
+                            "Активен".to_string()
+                        } else {
+                            "Active".to_string()
+                        },
                     },
                     FilterOption {
                         value: "draft".to_string(),
-                        label: if is_ru { "Черновик".to_string() } else { "Draft".to_string() },
+                        label: if is_ru {
+                            "Черновик".to_string()
+                        } else {
+                            "Draft".to_string()
+                        },
                     },
                     FilterOption {
                         value: "archived".to_string(),
-                        label: if is_ru { "В архиве".to_string() } else { "Archived".to_string() },
+                        label: if is_ru {
+                            "В архиве".to_string()
+                        } else {
+                            "Archived".to_string()
+                        },
                     },
                 ],
                 placeholder: Some(if is_ru {
@@ -209,7 +229,9 @@ pub fn filter_bundles(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<BundleAdminListItem> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
     bundles
         .iter()

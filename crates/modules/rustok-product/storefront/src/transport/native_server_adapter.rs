@@ -9,13 +9,13 @@ use crate::core::build_pricing_context;
 #[cfg(feature = "ssr")]
 use crate::core::{resolve_requested_locale, sanitize_channel_slug, sanitize_uuid_string};
 
-use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 #[cfg(feature = "ssr")]
 use crate::model::{
     ProductCatalogSearchOption, ProductDetail, ProductEffectivePrice, ProductImage, ProductList,
     ProductListItem, ProductPrice, ProductPricingDetail, ProductPricingVariant, ProductScopedPrice,
     ProductTranslation, ProductVariant,
 };
+use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -335,8 +335,8 @@ async fn storefront_catalog_search_options_native(
         if locale.trim().is_empty() {
             return Err(ServerFnError::new("locale is required"));
         }
-        let runtime_ctx = use_context::<HostRuntimeContext>()
-            .ok_or_else(map_product_internal_error)?;
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(map_product_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(map_product_internal_error)?;
@@ -407,8 +407,8 @@ async fn storefront_products_native(
         use rustok_product::CatalogService;
         use uuid::Uuid;
 
-        let runtime_ctx = use_context::<HostRuntimeContext>()
-            .ok_or_else(map_product_internal_error)?;
+        let runtime_ctx =
+            use_context::<HostRuntimeContext>().ok_or_else(map_product_internal_error)?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(map_product_internal_error)?;

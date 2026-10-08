@@ -72,10 +72,10 @@ pub use runner::{
     AlloyEvolutionBuildError, AlloyEvolutionBuildService, AlloyEvolutionExecutionError,
     AlloyEvolutionExecutionService, AlloyPublishedRhaiSourceProvider,
     AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
-    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
-    RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator, RustComponentGeneratedSource,
-    RustComponentGenerationError, RustComponentGenerationRequest,
-    MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES, generate_rust_component,
+    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome,
+    MAX_RUST_COMPONENT_IMPLEMENTATION_BODY_BYTES, RevisionedReleaseStager, RevisionedTestRunner,
+    RustComponentGeneratedSource, RustComponentGenerationError, RustComponentGenerationRequest,
+    ScriptExecutor, ScriptOrchestrator, generate_rust_component,
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{

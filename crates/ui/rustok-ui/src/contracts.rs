@@ -324,7 +324,12 @@ pub fn extract_headings_from_html(html: &str) -> Vec<TocItem> {
             break;
         }
         let after_char = html.as_bytes()[after_tag_idx];
-        if after_char != b' ' && after_char != b'>' && after_char != b'\t' && after_char != b'\n' && after_char != b'\r' {
+        if after_char != b' '
+            && after_char != b'>'
+            && after_char != b'\t'
+            && after_char != b'\n'
+            && after_char != b'\r'
+        {
             search_pos = tag_start + tag_prefix_len;
             continue;
         }
@@ -394,4 +399,3 @@ pub fn extract_headings_from_html(html: &str) -> Vec<TocItem> {
 
     items
 }
-

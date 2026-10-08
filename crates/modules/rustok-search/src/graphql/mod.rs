@@ -20,7 +20,9 @@ pub use types::*;
 
 const SEARCH_INTERNAL_ERROR_MESSAGE: &str = "Search service is temporarily unavailable";
 
-pub(super) fn map_search_module_error(error: impl Into<rustok_core::Error>) -> async_graphql::FieldError {
+pub(super) fn map_search_module_error(
+    error: impl Into<rustok_core::Error>,
+) -> async_graphql::FieldError {
     match error.into() {
         rustok_core::Error::Validation(message) => {
             <async_graphql::FieldError as rustok_api::graphql::GraphQLError>::bad_user_input(
@@ -95,8 +97,8 @@ async fn ensure_search_admin_permission(
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::FieldError;
     use super::map_search_module_error;
+    use async_graphql::FieldError;
 
     fn error_code(error: &FieldError) -> Option<String> {
         error
@@ -116,8 +118,14 @@ mod tests {
             "upstream secret=driver-details".to_string(),
         ));
 
-        assert_eq!(internal.message, "Search service is temporarily unavailable");
-        assert_eq!(external.message, "Search service is temporarily unavailable");
+        assert_eq!(
+            internal.message,
+            "Search service is temporarily unavailable"
+        );
+        assert_eq!(
+            external.message,
+            "Search service is temporarily unavailable"
+        );
         assert_eq!(error_code(&internal).as_deref(), Some("INTERNAL_ERROR"));
         assert_eq!(error_code(&external).as_deref(), Some("INTERNAL_ERROR"));
         assert!(!internal.message.contains("super-secret"));

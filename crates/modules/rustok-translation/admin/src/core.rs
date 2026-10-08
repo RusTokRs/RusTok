@@ -1872,19 +1872,26 @@ pub fn format_actor_display(actor: Option<&Actor>, unassigned_label: &str) -> St
 pub fn translation_target_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("provider", if is_ru { "Провайдер" } else { "Provider" })
-            .min_width(180)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр провайдера..."
-                    } else {
-                        "Filter provider..."
-                    }
-                    .into(),
-                ),
-            }),
+        GridColumnDef::new(
+            "provider",
+            if is_ru {
+                "Провайдер"
+            } else {
+                "Provider"
+            },
+        )
+        .min_width(180)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр провайдера..."
+                } else {
+                    "Filter provider..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("target", if is_ru { "Цель" } else { "Target" })
             .min_width(220)
             .align(ColumnAlign::Left)
@@ -1898,19 +1905,26 @@ pub fn translation_target_grid_columns(locale: Option<&str>) -> Vec<GridColumnDe
                     .into(),
                 ),
             }),
-        GridColumnDef::new("capabilities", if is_ru { "Возможности" } else { "Capabilities" })
-            .min_width(240)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр возможностей..."
-                    } else {
-                        "Filter capabilities..."
-                    }
-                    .into(),
-                ),
-            }),
+        GridColumnDef::new(
+            "capabilities",
+            if is_ru {
+                "Возможности"
+            } else {
+                "Capabilities"
+            },
+        )
+        .min_width(240)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр возможностей..."
+                } else {
+                    "Filter capabilities..."
+                }
+                .into(),
+            ),
+        }),
     ]
 }
 
@@ -2036,10 +2050,7 @@ pub fn reviewer_queue_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     ]
 }
 
-pub fn matches_reviewer_queue_filter(
-    entry: &ReviewerQueueItem,
-    filters: &ColumnFilters,
-) -> bool {
+pub fn matches_reviewer_queue_filter(entry: &ReviewerQueueItem, filters: &ColumnFilters) -> bool {
     let assignee_str = format_actor_id(entry.item.assignee.as_ref());
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
@@ -2124,13 +2135,24 @@ pub fn reviewer_workload_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef
             .align(ColumnAlign::Right),
         GridColumnDef::new(
             "in_review_items",
-            if is_ru { "На ревью" } else { "In review" },
+            if is_ru {
+                "На ревью"
+            } else {
+                "In review"
+            },
         )
         .min_width(100)
         .align(ColumnAlign::Right),
-        GridColumnDef::new("approved_items", if is_ru { "Одобрено" } else { "Approved" })
-            .min_width(100)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "approved_items",
+            if is_ru {
+                "Одобрено"
+            } else {
+                "Approved"
+            },
+        )
+        .min_width(100)
+        .align(ColumnAlign::Right),
         GridColumnDef::new(
             "rebase_required_items",
             if is_ru {
@@ -2141,9 +2163,16 @@ pub fn reviewer_workload_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef
         )
         .min_width(120)
         .align(ColumnAlign::Right),
-        GridColumnDef::new("blocked_items", if is_ru { "Заблокировано" } else { "Blocked" })
-            .min_width(110)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "blocked_items",
+            if is_ru {
+                "Заблокировано"
+            } else {
+                "Blocked"
+            },
+        )
+        .min_width(110)
+        .align(ColumnAlign::Right),
         GridColumnDef::new(
             "source_characters",
             if is_ru {
@@ -2230,19 +2259,26 @@ pub fn interchange_artifact_grid_columns(locale: Option<&str>) -> Vec<GridColumn
                 .into(),
             ),
         }),
-        GridColumnDef::new("direction", if is_ru { "Направление" } else { "Direction" })
-            .min_width(120)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр направления..."
-                    } else {
-                        "Filter direction..."
-                    }
-                    .into(),
-                ),
-            }),
+        GridColumnDef::new(
+            "direction",
+            if is_ru {
+                "Направление"
+            } else {
+                "Direction"
+            },
+        )
+        .min_width(120)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр направления..."
+                } else {
+                    "Filter direction..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
             .min_width(120)
             .align(ColumnAlign::Left)
@@ -2256,18 +2292,26 @@ pub fn interchange_artifact_grid_columns(locale: Option<&str>) -> Vec<GridColumn
                     .into(),
                 ),
             }),
-        GridColumnDef::new("expires_at", if is_ru { "Истекает" } else { "Expires at" })
-            .min_width(180)
-            .align(ColumnAlign::Left),
         GridColumnDef::new(
-            "accepted_items",
-            if is_ru { "Принято" } else { "Accepted" },
+            "expires_at",
+            if is_ru {
+                "Истекает"
+            } else {
+                "Expires at"
+            },
         )
-        .min_width(100)
-        .align(ColumnAlign::Right),
+        .min_width(180)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new("accepted_items", if is_ru { "Принято" } else { "Accepted" })
+            .min_width(100)
+            .align(ColumnAlign::Right),
         GridColumnDef::new(
             "conflict_items",
-            if is_ru { "Конфликты" } else { "Conflicts" },
+            if is_ru {
+                "Конфликты"
+            } else {
+                "Conflicts"
+            },
         )
         .min_width(100)
         .align(ColumnAlign::Right),
@@ -3097,7 +3141,8 @@ mod tests {
         assert_eq!(workload_cols.len(), 7);
         let workloads = vec![workload];
         assert_eq!(
-            filter_reviewer_workloads(&workloads, &ColumnFilters::default(), Some("reviewer-42")).len(),
+            filter_reviewer_workloads(&workloads, &ColumnFilters::default(), Some("reviewer-42"))
+                .len(),
             1
         );
 
@@ -3118,7 +3163,8 @@ mod tests {
         assert_eq!(art_cols.len(), 6);
         let artifacts = vec![artifact];
         assert_eq!(
-            filter_interchange_artifacts(&artifacts, &ColumnFilters::default(), Some("export")).len(),
+            filter_interchange_artifacts(&artifacts, &ColumnFilters::default(), Some("export"))
+                .len(),
             1
         );
     }

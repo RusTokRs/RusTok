@@ -33,9 +33,7 @@ pub async fn load_directory(
     bundle_directory_native(filters).await.map_err(Into::into)
 }
 
-pub async fn load_detail(
-    bundle_id: String,
-) -> Result<BundleAdminRecord, NativeBundleAdminError> {
+pub async fn load_detail(bundle_id: String) -> Result<BundleAdminRecord, NativeBundleAdminError> {
     bundle_detail_native(bundle_id).await.map_err(Into::into)
 }
 
@@ -121,9 +119,7 @@ async fn bundle_directory_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "bundle/detail")]
-async fn bundle_detail_native(
-    bundle_id: String,
-) -> Result<BundleAdminRecord, ServerFnError> {
+async fn bundle_detail_native(bundle_id: String) -> Result<BundleAdminRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -204,12 +200,12 @@ async fn bundle_command_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
+        use rust_decimal::Decimal;
         use rustok_api::{AuthContext, HostRuntimeContext, Permission, TenantContext};
         use rustok_product_bundles::{
             BundleCommandContext, BundlePort, BundleService, CreateBundleInput, UpdateBundleInput,
             dto::BundleItemInput,
         };
-        use rust_decimal::Decimal;
 
         let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -246,11 +242,13 @@ async fn bundle_command_native(
                             discount_type: Some(draft.discount_type),
                             discount_value: Some(discount_val),
                             metadata: None,
-                            translations: vec![rustok_product_bundles::dto::BundleTranslationInput {
-                                locale: "en".to_string(),
-                                name: draft.name,
-                                description: draft.description,
-                            }],
+                            translations: vec![
+                                rustok_product_bundles::dto::BundleTranslationInput {
+                                    locale: "en".to_string(),
+                                    name: draft.name,
+                                    description: draft.description,
+                                },
+                            ],
                             items: vec![],
                         },
                     )
@@ -417,10 +415,7 @@ async fn bundle_command_native(
                     success: true,
                 })
             }
-            BundleAdminCommand::RemoveItem {
-                bundle_id,
-                item_id,
-            } => {
+            BundleAdminCommand::RemoveItem { bundle_id, item_id } => {
                 let b_id = parse_uuid(bundle_id.as_str(), "bundle_id")?;
                 let i_id = parse_uuid(item_id.as_str(), "item_id")?;
 

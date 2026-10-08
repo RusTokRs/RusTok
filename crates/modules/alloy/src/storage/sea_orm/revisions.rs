@@ -7,17 +7,17 @@ use sea_orm::{
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    validate_transition, ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision,
-    TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus,
+    ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, validate_transition,
 };
 use crate::storage::ScriptRegistry;
 
-use super::entities::{draft_review, draft_revision, draft_test_run, Column, Entity};
+use super::SeaOrmStorage;
+use super::entities::{Column, Entity, draft_review, draft_revision, draft_test_run};
 use super::mapping::{
     model_to_review_decision, model_to_source_revision, model_to_test_run, source_digest,
     source_provenance_to_json, workspace_to_json,
 };
-use super::SeaOrmStorage;
 
 impl SeaOrmStorage {
     pub(crate) async fn source_for_test_run(

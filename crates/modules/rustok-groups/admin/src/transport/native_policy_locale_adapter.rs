@@ -1,13 +1,13 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::application_model::GroupsAdminApplicationPolicy;
 use crate::application_model::{
     GroupsAdminApplicationPolicyLocaleCatalog, GroupsAdminApplicationPolicyLocaleCatalogQuery,
     GroupsAdminApplicationPolicyManagementView, GroupsAdminApplicationPolicyQuery,
     GroupsAdminUpsertApplicationPolicyResult, UpsertGroupApplicationPolicyCommand,
 };
-#[cfg(feature = "ssr")]
-use crate::application_model::GroupsAdminApplicationPolicy;
 
 #[derive(Debug, Clone)]
 pub struct NativeGroupsPolicyLocaleError(pub String);

@@ -587,10 +587,10 @@ pub(super) async fn ensure_authenticated_blog_channel_enabled(
     if enabled {
         Ok(())
     } else {
-        Err(async_graphql::Error::new(
-            "Blog is not available for the current channel",
+        Err(
+            async_graphql::Error::new("Blog is not available for the current channel")
+                .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")),
         )
-        .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
     }
 }
 
@@ -624,22 +624,21 @@ pub(super) async fn ensure_public_blog_channel_enabled(
         return Ok(());
     }
 
-    Err(async_graphql::Error::new(
-        "Blog is not available for the current channel",
+    Err(
+        async_graphql::Error::new("Blog is not available for the current channel")
+            .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")),
     )
-    .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_public_blog_channel_enabled, is_post_visible_for_request,
-        security_context_from_auth,
+        ensure_public_blog_channel_enabled, is_post_visible_for_request, security_context_from_auth,
     };
     use rustok_api::AuthContext;
-    use rustok_core::SecurityActorKind;
     use rustok_api::{RequestContext, context::ChannelResolutionSource};
     use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
+    use rustok_core::SecurityActorKind;
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;
@@ -884,9 +883,10 @@ mod tests {
             correlation_id: "test-correlation-id".to_string(),
         };
 
-        let error = ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
-            .await
-            .expect_err("disabled binding should be reported");
+        let error =
+            ensure_public_blog_channel_enabled(&db, tenant_id, Some(&request_context), false)
+                .await
+                .expect_err("disabled binding should be reported");
 
         assert_eq!(
             error.message,

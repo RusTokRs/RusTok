@@ -375,7 +375,8 @@ pub fn attach_commerce_provider_registries(
             });
         match runtime {
             Some(runtime) => {
-                let runtime = compose_product_catalog_media_asset_validation(runtime, server, &host);
+                let runtime =
+                    compose_product_catalog_media_asset_validation(runtime, server, &host);
                 server.shared_insert(runtime.clone());
                 host.with_shared_value(runtime)
             }

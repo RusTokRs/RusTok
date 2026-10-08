@@ -65,8 +65,8 @@ impl CheckoutExecutionAdmissionPort for CheckoutExecutionAdmissionReader {
             // see: the claim gate fails closed on extending effects.
             return Ok(None);
         };
-        let admission =
-            CheckoutExecutionAdmission::parse(row.execution_admission.as_str()).ok_or_else(|| {
+        let admission = CheckoutExecutionAdmission::parse(row.execution_admission.as_str())
+            .ok_or_else(|| {
                 PortError::invariant_violation(
                     "commerce.checkout_admission_unknown_level",
                     "checkout operation carries an admission level outside the bounded vocabulary",

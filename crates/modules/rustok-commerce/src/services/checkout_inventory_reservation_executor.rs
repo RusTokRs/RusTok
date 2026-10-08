@@ -1,10 +1,10 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::PreparedCartCheckoutSnapshot;
-use rustok_outbox::TransactionalEventBus;
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationRequest,
     InventoryReservationIdentityPort,
 };
+use rustok_outbox::TransactionalEventBus;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;

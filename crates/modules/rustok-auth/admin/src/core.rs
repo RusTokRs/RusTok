@@ -297,7 +297,9 @@ pub fn filter_users(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<GraphqlUserViewModel> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
     users
         .iter()
@@ -550,23 +552,43 @@ pub fn oauth_app_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                 options: vec![
                     FilterOption {
                         value: "ThirdParty".to_string(),
-                        label: if is_ru { "Third Party".to_string() } else { "Third Party".to_string() },
+                        label: if is_ru {
+                            "Third Party".to_string()
+                        } else {
+                            "Third Party".to_string()
+                        },
                     },
                     FilterOption {
                         value: "FirstParty".to_string(),
-                        label: if is_ru { "First Party".to_string() } else { "First Party".to_string() },
+                        label: if is_ru {
+                            "First Party".to_string()
+                        } else {
+                            "First Party".to_string()
+                        },
                     },
                     FilterOption {
                         value: "Mobile".to_string(),
-                        label: if is_ru { "Mobile".to_string() } else { "Mobile".to_string() },
+                        label: if is_ru {
+                            "Mobile".to_string()
+                        } else {
+                            "Mobile".to_string()
+                        },
                     },
                     FilterOption {
                         value: "Service".to_string(),
-                        label: if is_ru { "Service".to_string() } else { "Service".to_string() },
+                        label: if is_ru {
+                            "Service".to_string()
+                        } else {
+                            "Service".to_string()
+                        },
                     },
                     FilterOption {
                         value: "Embedded".to_string(),
-                        label: if is_ru { "Embedded".to_string() } else { "Embedded".to_string() },
+                        label: if is_ru {
+                            "Embedded".to_string()
+                        } else {
+                            "Embedded".to_string()
+                        },
                     },
                 ],
                 placeholder: Some(if is_ru {
@@ -575,18 +597,32 @@ pub fn oauth_app_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                     "All types".to_string()
                 }),
             }),
-        GridColumnDef::new("scopes_grants", if is_ru { "Области / Доступы" } else { "Scopes / Grants" })
-            .width(220)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "scopes_grants",
+            if is_ru {
+                "Области / Доступы"
+            } else {
+                "Scopes / Grants"
+            },
+        )
+        .width(220)
+        .align(ColumnAlign::Left),
         GridColumnDef::new("client_id", if is_ru { "Client ID" } else { "Client ID" })
             .width(160)
             .align(ColumnAlign::Left),
         GridColumnDef::new("tokens", if is_ru { "Токены" } else { "Tokens" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("last_used", if is_ru { "Использовано" } else { "Last Used" })
-            .width(140)
-            .align(ColumnAlign::Right),
+        GridColumnDef::new(
+            "last_used",
+            if is_ru {
+                "Использовано"
+            } else {
+                "Last Used"
+            },
+        )
+        .width(140)
+        .align(ColumnAlign::Right),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(240)
             .align(ColumnAlign::Right)
@@ -594,10 +630,7 @@ pub fn oauth_app_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     ]
 }
 
-pub fn matches_oauth_app_filter(
-    item: &OAuthAppListItemViewModel,
-    filters: &ColumnFilters,
-) -> bool {
+pub fn matches_oauth_app_filter(item: &OAuthAppListItemViewModel, filters: &ColumnFilters) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("name", FilterValue::Text(q)) => {
@@ -626,10 +659,11 @@ pub fn filter_oauth_apps(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<OAuthAppListItemViewModel> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
-    apps
-        .iter()
+    apps.iter()
         .filter(|item| {
             if let Some(ref term) = search_term {
                 let matches_global = item.app.name.to_lowercase().contains(term)

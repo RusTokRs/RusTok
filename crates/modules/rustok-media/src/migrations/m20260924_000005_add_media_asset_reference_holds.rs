@@ -109,7 +109,9 @@ EXECUTE FUNCTION media_asset_reference_admission_guard_fn();
                     .await?;
 
                 connection
-                    .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_delete_guard ON media_assets")
+                    .execute_unprepared(
+                        "DROP TRIGGER IF EXISTS media_asset_reference_delete_guard ON media_assets",
+                    )
                     .await?;
                 connection
                     .execute_unprepared(
@@ -140,7 +142,9 @@ EXECUTE FUNCTION media_asset_reference_delete_guard_fn();
             }
             DatabaseBackend::Sqlite => {
                 connection
-                    .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_admission_guard")
+                    .execute_unprepared(
+                        "DROP TRIGGER IF EXISTS media_asset_reference_admission_guard",
+                    )
                     .await?;
                 connection
                     .execute_unprepared(
@@ -206,16 +210,22 @@ END
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => {
                 connection
-                    .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_delete_guard ON media_assets")
+                    .execute_unprepared(
+                        "DROP TRIGGER IF EXISTS media_asset_reference_delete_guard ON media_assets",
+                    )
                     .await?;
                 connection
-                    .execute_unprepared("DROP FUNCTION IF EXISTS media_asset_reference_delete_guard_fn()")
+                    .execute_unprepared(
+                        "DROP FUNCTION IF EXISTS media_asset_reference_delete_guard_fn()",
+                    )
                     .await?;
                 connection
                     .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_admission_guard ON media_asset_reference_holds")
                     .await?;
                 connection
-                    .execute_unprepared("DROP FUNCTION IF EXISTS media_asset_reference_admission_guard_fn()")
+                    .execute_unprepared(
+                        "DROP FUNCTION IF EXISTS media_asset_reference_admission_guard_fn()",
+                    )
                     .await?;
             }
             DatabaseBackend::Sqlite => {
@@ -223,7 +233,9 @@ END
                     .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_delete_guard")
                     .await?;
                 connection
-                    .execute_unprepared("DROP TRIGGER IF EXISTS media_asset_reference_admission_guard")
+                    .execute_unprepared(
+                        "DROP TRIGGER IF EXISTS media_asset_reference_admission_guard",
+                    )
                     .await?;
             }
             backend => {

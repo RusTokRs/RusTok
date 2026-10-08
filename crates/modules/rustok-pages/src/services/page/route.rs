@@ -58,8 +58,6 @@ struct CurrentPublishedRoute {
     slug: String,
 }
 
-
-
 pub struct PageRouteService {
     db: DatabaseConnection,
 }

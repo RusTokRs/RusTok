@@ -565,7 +565,9 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| {
             let (scheme, token) = value.trim().split_once(' ')?;
-            scheme.eq_ignore_ascii_case("bearer").then_some(token.trim())
+            scheme
+                .eq_ignore_ascii_case("bearer")
+                .then_some(token.trim())
         })
         .filter(|token| !token.is_empty())
 }

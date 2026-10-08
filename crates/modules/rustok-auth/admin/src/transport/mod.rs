@@ -55,10 +55,7 @@ impl std::fmt::Debug for ServerGraphqlRequest {
             .debug_struct("ServerGraphqlRequest")
             .field("query", &self.query)
             .field("variables", &"<redacted>")
-            .field(
-                "persisted_query_sha256",
-                &self.persisted_query_sha256,
-            )
+            .field("persisted_query_sha256", &self.persisted_query_sha256)
             .field("context", &self.context)
             .finish()
     }
@@ -1078,4 +1075,3 @@ pub async fn revoke_all_sessions(
 
     Ok(response.revoke_all_sessions.revoked_count)
 }
-

@@ -90,7 +90,12 @@ pub fn FormInput(
 
     let t = input_type.unwrap_or("text");
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -105,7 +110,10 @@ pub fn FormInput(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = input_id.clone();
@@ -250,7 +258,12 @@ pub fn FormPasswordInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let show_password = RwSignal::new(false);
 
@@ -267,7 +280,10 @@ pub fn FormPasswordInput(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = input_id.clone();
@@ -618,7 +634,12 @@ pub fn FormTextarea(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let textarea_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let textarea_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
     let r = rows.unwrap_or(3);
 
     let field_for_disabled = field.clone();
@@ -634,7 +655,10 @@ pub fn FormTextarea(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = textarea_id.clone();
@@ -766,7 +790,12 @@ pub fn FormSelect(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let select_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let select_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -781,7 +810,10 @@ pub fn FormSelect(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = select_id.clone();
@@ -911,7 +943,12 @@ pub fn FormCheckbox(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -926,7 +963,10 @@ pub fn FormCheckbox(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = input_id.clone();
@@ -1027,7 +1067,12 @@ pub fn FormSwitch(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let switch_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let switch_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1042,7 +1087,10 @@ pub fn FormSwitch(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = switch_id.clone();
@@ -1163,7 +1211,10 @@ pub fn FormRadioGroup(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let group_name_for_desc = group_name.clone();
@@ -1269,7 +1320,12 @@ pub fn FormColorInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1354,7 +1410,12 @@ pub fn FormRangeInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1446,8 +1507,12 @@ pub fn FormOtpInput(
 ) -> impl IntoView {
     let field = use_context::<FieldContext>();
 
-    let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone())).unwrap_or_else(|| "otp".to_string());
-    let base_id = id.or_else(|| field.as_ref().map(|f| f.id.clone())).unwrap_or_else(|| name_attr.clone());
+    let name_attr = name
+        .or_else(|| field.as_ref().map(|f| f.name.clone()))
+        .unwrap_or_else(|| "otp".to_string());
+    let base_id = id
+        .or_else(|| field.as_ref().map(|f| f.id.clone()))
+        .unwrap_or_else(|| name_attr.clone());
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1462,13 +1527,21 @@ pub fn FormOtpInput(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let field_for_dirty = field;
     let on_digit_input = std::rc::Rc::new(move |idx: usize, ev: Event| {
         let raw = event_target_value(&ev);
-        let digit = raw.chars().filter(|c| c.is_ascii_digit()).last().map(|c| c.to_string()).unwrap_or_default();
+        let digit = raw
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .last()
+            .map(|c| c.to_string())
+            .unwrap_or_default();
 
         let current_val = value.get();
         let mut chars: Vec<char> = current_val.chars().collect();
@@ -1576,7 +1649,12 @@ pub fn FormFileInput(
     let field = use_context::<FieldContext>();
 
     let name_attr = name.or_else(|| field.as_ref().map(|f| f.name.clone()));
-    let input_id = id.or_else(|| field.as_ref().map(|f| f.id.clone()).or_else(|| name_attr.clone()));
+    let input_id = id.or_else(|| {
+        field
+            .as_ref()
+            .map(|f| f.id.clone())
+            .or_else(|| name_attr.clone())
+    });
 
     let field_for_disabled = field.clone();
     let is_disabled = Signal::derive(move || {
@@ -1591,7 +1669,10 @@ pub fn FormFileInput(
 
     let field_for_invalid = field.clone();
     let is_invalid = Signal::derive(move || {
-        field_for_invalid.as_ref().map(|f| f.is_invalid()).unwrap_or(false)
+        field_for_invalid
+            .as_ref()
+            .map(|f| f.is_invalid())
+            .unwrap_or(false)
     });
 
     let id_for_desc = input_id.clone();

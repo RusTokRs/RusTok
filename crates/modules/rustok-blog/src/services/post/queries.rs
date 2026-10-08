@@ -223,7 +223,9 @@ impl PostService {
                 slug: post.slug.clone(),
                 locale: locale.clone(),
                 effective_locale: resolved.effective_locale,
-                available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
+                available_locales: available_locales_from(&translations, |item| {
+                    item.locale.as_str()
+                }),
                 excerpt: translation.excerpt.clone(),
                 status: storage_to_status(&post.status)?,
                 author_id: post.author_id,
@@ -366,7 +368,9 @@ impl PostService {
                 slug: post.slug.clone(),
                 locale: locale.clone(),
                 effective_locale: resolved.effective_locale,
-                available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
+                available_locales: available_locales_from(&translations, |item| {
+                    item.locale.as_str()
+                }),
                 excerpt: translation.excerpt.clone(),
                 status: storage_to_status(&post.status)?,
                 author_id: post.author_id,

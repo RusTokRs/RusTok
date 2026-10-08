@@ -65,20 +65,20 @@ pub async fn is_tenant_module_enabled(
 
     let values = match backend {
         sea_orm::DbBackend::Sqlite => {
-            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+            vec![
+                tenant_id.to_string().into(),
+                tenant_id.into(),
+                module_slug.into(),
+            ]
         }
         _ => {
             vec![tenant_id.into(), module_slug.into()]
         }
     };
 
-    db.query_one_raw(Statement::from_sql_and_values(
-        backend,
-        query,
-        values,
-    ))
-    .await
-    .map(|row| row.is_some())
+    db.query_one_raw(Statement::from_sql_and_values(backend, query, values))
+        .await
+        .map(|row| row.is_some())
 }
 
 /// Returns the settings snapshot for one exact enabled tenant module while
@@ -111,7 +111,11 @@ pub async fn tenant_module_settings_in_tx(
 
     let values = match backend {
         sea_orm::DbBackend::Sqlite => {
-            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+            vec![
+                tenant_id.to_string().into(),
+                tenant_id.into(),
+                module_slug.into(),
+            ]
         }
         _ => {
             vec![tenant_id.into(), module_slug.into()]
@@ -119,11 +123,7 @@ pub async fn tenant_module_settings_in_tx(
     };
 
     let Some(row) = txn
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            query,
-            values,
-        ))
+        .query_one_raw(Statement::from_sql_and_values(backend, query, values))
         .await?
     else {
         return Ok(None);
@@ -165,7 +165,11 @@ pub async fn tenant_module_settings(
 
     let values = match backend {
         sea_orm::DbBackend::Sqlite => {
-            vec![tenant_id.to_string().into(), tenant_id.into(), module_slug.into()]
+            vec![
+                tenant_id.to_string().into(),
+                tenant_id.into(),
+                module_slug.into(),
+            ]
         }
         _ => {
             vec![tenant_id.into(), module_slug.into()]
@@ -173,11 +177,7 @@ pub async fn tenant_module_settings(
     };
 
     let Some(row) = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            query,
-            values,
-        ))
+        .query_one_raw(Statement::from_sql_and_values(backend, query, values))
         .await?
     else {
         return Ok(None);
@@ -189,7 +189,6 @@ pub async fn tenant_module_settings(
         ))
     })
 }
-
 
 /// Immutable host configuration snapshot provided to internal server-function
 /// adapters. It keeps adapters independent of a framework-specific app context.

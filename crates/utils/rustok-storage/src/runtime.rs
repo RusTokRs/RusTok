@@ -45,10 +45,7 @@ impl StorageRuntime {
         Self::build_local(base_dir, config)
     }
 
-    fn build_local(
-        base_dir: PathBuf,
-        config: &LocalStorageConfig,
-    ) -> object_store::Result<Self> {
+    fn build_local(base_dir: PathBuf, config: &LocalStorageConfig) -> object_store::Result<Self> {
         let store = LocalFileSystem::new_with_prefix(&base_dir)?
             .with_automatic_cleanup(true)
             .with_fsync(config.fsync);

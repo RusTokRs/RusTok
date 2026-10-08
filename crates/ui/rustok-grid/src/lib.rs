@@ -32,9 +32,7 @@ pub use facet::{
 };
 pub use filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
 pub use pagination::{DEFAULT_PAGE_SIZE, GridPagination, PaginationMode};
-pub use resize::{
-    ColumnWidths, KEYBOARD_RESIZE_STEP, calculate_resized_width, step_resized_width,
-};
+pub use resize::{ColumnWidths, KEYBOARD_RESIZE_STEP, calculate_resized_width, step_resized_width};
 pub use selection::RowSelection;
 pub use sort::{SortDirection, SortState};
 pub use state::GridState;

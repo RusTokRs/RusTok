@@ -1,5 +1,4 @@
 use super::patch::ComponentPatch;
-use std::sync::Arc;
 use crate::{
     BindingCommand, ComponentNode, ContextCommand, DynamicCommand, FlyError, FlyResult,
     GrapesJsCodec, PageCommand, ProjectDocument, ProjectSnapshot, StyleRuleCommand,
@@ -8,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]

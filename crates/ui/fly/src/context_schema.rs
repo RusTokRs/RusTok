@@ -1747,4 +1747,3 @@ mod tests {
         assert_eq!(conflicts, vec!["a.b", "a.b.c", "a.b.c"]);
     }
 }
-

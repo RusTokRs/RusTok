@@ -386,7 +386,10 @@ where
         let list = filtered_schemas.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -396,8 +399,8 @@ where
     let cell_locale = locale.clone();
     let cell_on_rebuild = on_rebuild.clone();
 
-    let cell_renderer = Callback::new(move |(schema, col_id): (IndexSchemaRowViewModel, String)| {
-        match col_id.as_str() {
+    let cell_renderer = Callback::new(
+        move |(schema, col_id): (IndexSchemaRowViewModel, String)| match col_id.as_str() {
             "name" => {
                 let name = schema.qualified_name.clone();
                 view! {
@@ -477,10 +480,15 @@ where
                 .into_any()
             }
             _ => ().into_any(),
-        }
-    });
+        },
+    );
 
-    let empty_msg = t(locale.as_deref(), "index.schema.empty", "No schemas registered for this tenant yet.").to_string();
+    let empty_msg = t(
+        locale.as_deref(),
+        "index.schema.empty",
+        "No schemas registered for this tenant yet.",
+    )
+    .to_string();
 
     view! {
         <section class="rounded-2xl border border-border bg-card shadow-sm overflow-hidden p-6 space-y-4">
@@ -595,7 +603,10 @@ fn view_storage(locale: Option<&str>, vm: &IndexAdminOverviewViewModel) -> AnyVi
         let list = filtered_tables.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let cell_renderer = Callback::new(move |(table, col_id): (IndexTableRowViewModel, String)| {
@@ -690,7 +701,10 @@ where
     let empty_locale = locale.clone();
     let btn_locale = locale.clone();
     let retry_btn_locale = locale.clone();
-    let is_ru = locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let is_ru = locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let source_columns = index_source_grid_columns(locale.as_deref());
     let source_search = RwSignal::new(String::new());
     let source_filters = RwSignal::new(ColumnFilters::new());
@@ -717,11 +731,15 @@ where
         let list = filtered_sources.get();
         let p = source_pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
-    let source_cell_renderer = Callback::new(move |(src, col_id): (IndexSourceRowViewModel, String)| {
-        match col_id.as_str() {
+    let source_cell_renderer = Callback::new(
+        move |(src, col_id): (IndexSourceRowViewModel, String)| {
+            match col_id.as_str() {
             "name" => view! {
                 <span class="font-mono text-xs font-semibold text-card-foreground">
                     {src.name}
@@ -742,7 +760,8 @@ where
             .into_any(),
             _ => ().into_any(),
         }
-    });
+        },
+    );
 
     view! {
         <div class="space-y-6">

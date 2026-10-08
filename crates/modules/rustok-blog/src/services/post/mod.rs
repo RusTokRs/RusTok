@@ -30,7 +30,9 @@ use crate::dto::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSortField, PostSortOrder,
     PostSummary, UpdatePostInput,
 };
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation};
+use crate::entities::{
+    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
+};
 use crate::error::{BlogError, BlogResult};
 use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
 use crate::services::category::CategoryService;
@@ -225,9 +227,8 @@ fn normalize_custom_metadata(metadata: Option<Value>) -> BlogResult<Value> {
     }
 
     let normalized = Value::Object(map);
-    let encoded = serde_json::to_vec(&normalized).map_err(|_| {
-        BlogError::validation("Post metadata could not be serialized")
-    })?;
+    let encoded = serde_json::to_vec(&normalized)
+        .map_err(|_| BlogError::validation("Post metadata could not be serialized"))?;
     if encoded.len() > MAX_POST_METADATA_BYTES {
         return Err(BlogError::validation(format!(
             "Post metadata cannot exceed {MAX_POST_METADATA_BYTES} bytes"

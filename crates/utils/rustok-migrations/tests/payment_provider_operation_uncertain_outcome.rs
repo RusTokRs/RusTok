@@ -104,7 +104,6 @@ async fn seed_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
     .expect("tenant fixture must be inserted");
 }
 
-
 #[tokio::test]
 async fn provider_operation_tenant_ownership_is_enforced_at_service_and_database_boundaries() {
     let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;

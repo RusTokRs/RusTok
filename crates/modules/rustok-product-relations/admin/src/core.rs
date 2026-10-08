@@ -73,7 +73,11 @@ pub fn relation_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             .align(ColumnAlign::Left),
         GridColumnDef::new(
             "target_product_id",
-            t(locale, "relations.targetProductId", "Target Product ID (UUID)"),
+            t(
+                locale,
+                "relations.targetProductId",
+                "Target Product ID (UUID)",
+            ),
         )
         .align(ColumnAlign::Left)
         .filter(GridFilterType::Text {
@@ -98,7 +102,9 @@ pub fn matches_relation_filter(
     let matches_query = match normalize_ui_text(query.unwrap_or_default()) {
         Some(q) => {
             let q_lower = q.to_ascii_lowercase();
-            item.related_product_id.to_ascii_lowercase().contains(&q_lower)
+            item.related_product_id
+                .to_ascii_lowercase()
+                .contains(&q_lower)
                 || item.id.to_ascii_lowercase().contains(&q_lower)
                 || item.product_id.to_ascii_lowercase().contains(&q_lower)
         }

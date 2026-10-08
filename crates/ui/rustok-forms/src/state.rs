@@ -1,7 +1,7 @@
 //! Form submission lifecycle and state tracking.
 
-use std::hash::Hash;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
 use crate::FieldError;
 
@@ -110,7 +110,11 @@ impl FormState {
     // ── Builder ─────────────────────────────────────────────────────
 
     /// Builder method to append a field error.
-    pub fn with_field_error(mut self, field: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn with_field_error(
+        mut self,
+        field: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         self.is_success = false;
         self.field_errors.push(FieldError {
             field: field.into(),
@@ -241,7 +245,10 @@ impl FormState {
 
     /// Count of errors specifically for a given field name.
     pub fn field_error_count(&self, field: &str) -> usize {
-        self.field_errors.iter().filter(|fe| fe.field == field).count()
+        self.field_errors
+            .iter()
+            .filter(|fe| fe.field == field)
+            .count()
     }
 
     /// Return the first error message available (form-level error, or first field-level error).
@@ -368,8 +375,7 @@ mod tests {
 
     #[test]
     fn reset_clears_everything() {
-        let mut state = FormState::with_form_error("Boom")
-            .with_field_error("x", "bad");
+        let mut state = FormState::with_form_error("Boom").with_field_error("x", "bad");
         state.reset();
         assert!(!state.is_submitting);
         assert!(!state.has_errors());

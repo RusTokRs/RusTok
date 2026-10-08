@@ -1,15 +1,11 @@
-use std::{
-    fs,
-    path::Path,
-    process::Stdio,
-};
+use std::{fs, path::Path, process::Stdio};
 
 use tokio::{process::Command, time::timeout};
 
 use super::{
-    StaticDistributionJobConfig, StaticDistributionJobError, StaticDistributionJobRequest,
-    create_directory_path, digest_bounded_regular, failed_outcome, io_error, validate_directory,
-    write_terminal_receipt, MAX_CARGO_LOCK_BYTES, WORKSPACE_LOCK_FILE,
+    MAX_CARGO_LOCK_BYTES, StaticDistributionJobConfig, StaticDistributionJobError,
+    StaticDistributionJobRequest, WORKSPACE_LOCK_FILE, create_directory_path,
+    digest_bounded_regular, failed_outcome, io_error, validate_directory, write_terminal_receipt,
 };
 
 pub(super) struct CargoPipelineEvidence {
@@ -40,7 +36,14 @@ impl<'a> StageContext<'a> {
         command_args: &[String],
         desc: StageOutcomeDesc<'a>,
     ) -> Result<bool, StaticDistributionJobError> {
-        match run_fixed_command(&self.config.cargo_path, command_args, self.workspace, self.config).await? {
+        match run_fixed_command(
+            &self.config.cargo_path,
+            command_args,
+            self.workspace,
+            self.config,
+        )
+        .await?
+        {
             FixedCommandOutcome::Succeeded => Ok(true),
             FixedCommandOutcome::Failed => {
                 write_terminal_receipt(
@@ -84,10 +87,8 @@ async fn run_lock_resolution(
     if !lock_succeeded {
         return Ok(None);
     }
-    let resolved_lock_digest = digest_bounded_regular(
-        &workspace.join(WORKSPACE_LOCK_FILE),
-        MAX_CARGO_LOCK_BYTES,
-    )?;
+    let resolved_lock_digest =
+        digest_bounded_regular(&workspace.join(WORKSPACE_LOCK_FILE), MAX_CARGO_LOCK_BYTES)?;
     Ok(Some((lock_command, resolved_lock_digest)))
 }
 
@@ -143,8 +144,7 @@ pub(super) async fn run_cargo_pipeline(
         request,
         job_request_digest,
     };
-    let Some((lock_command, resolved_lock_digest)) =
-        run_lock_resolution(&ctx, workspace).await?
+    let Some((lock_command, resolved_lock_digest)) = run_lock_resolution(&ctx, workspace).await?
     else {
         return Ok(None);
     };

@@ -258,7 +258,6 @@ async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
     );
 }
 
-
 #[tokio::test]
 async fn delete_nested_category_replays_only_its_sibling_positions() {
     let db = setup().await;
@@ -277,11 +276,19 @@ async fn delete_nested_category_replays_only_its_sibling_positions() {
         .await
         .expect("root Blog Category should be created");
     let first_child = service
-        .create(tenant_id, admin(), create_child_input("First Child", root, 0))
+        .create(
+            tenant_id,
+            admin(),
+            create_child_input("First Child", root, 0),
+        )
         .await
         .expect("first child Blog Category should be created");
     let second_child = service
-        .create(tenant_id, admin(), create_child_input("Second Child", root, 1))
+        .create(
+            tenant_id,
+            admin(),
+            create_child_input("Second Child", root, 1),
+        )
         .await
         .expect("second child Blog Category should be created");
 
@@ -302,7 +309,6 @@ async fn delete_nested_category_replays_only_its_sibling_positions() {
     assert_eq!(remaining.position, 0);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
-
 
 #[tokio::test]
 async fn create_rejects_preexisting_hierarchy_coverage_drift() {

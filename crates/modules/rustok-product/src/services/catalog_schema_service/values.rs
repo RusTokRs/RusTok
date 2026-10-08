@@ -15,7 +15,9 @@ async fn lock_product_for_update_in_tx(
     let query = crate::entities::product::Entity::find_by_id(product_id)
         .filter(crate::entities::product::Column::TenantId.eq(tenant_id));
     let product = match txn.get_database_backend() {
-        DatabaseBackend::Postgres | DatabaseBackend::MySql => query.lock_exclusive().one(txn).await?,
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query.lock_exclusive().one(txn).await?
+        }
         DatabaseBackend::Sqlite => {
             let statement = Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
@@ -155,13 +157,18 @@ impl ProductCatalogSchemaService {
         C: ConnectionTrait,
     {
         validate_uuid("product_id", product_id)?;
-        let Some(form) = Self::load_effective_form_for_product_in(conn, tenant_id, product_id).await?
+        let Some(form) =
+            Self::load_effective_form_for_product_in(conn, tenant_id, product_id).await?
         else {
             return Ok(());
         };
         let mut required_attribute_ids = Vec::new();
         let mut required_locales_by_attribute: HashMap<Uuid, Vec<String>> = HashMap::new();
-        for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+        for binding in form
+            .attributes
+            .iter()
+            .filter(|binding| !binding.is_disabled)
+        {
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             if binding.is_required || rules.required || !rules.required_locales.is_empty() {
@@ -277,7 +284,11 @@ impl ProductCatalogSchemaService {
             .load_effective_form_for_category(tenant_id, category_id, &[])
             .await?;
         let mut required_attribute_ids = Vec::new();
-        for binding in form.attributes.iter().filter(|binding| !binding.is_disabled) {
+        for binding in form
+            .attributes
+            .iter()
+            .filter(|binding| !binding.is_disabled)
+        {
             let rules =
                 attribute_validation::parse_product_attribute_validation(&binding.validation)?;
             if binding.is_required || rules.required || !rules.required_locales.is_empty() {
@@ -565,11 +576,10 @@ where
     let (placeholders, mut values) = uuid_filter_values(tenant_id, &attribute_ids);
     let product_placeholder = format!("${}", values.len() + 1);
     values.push(product_id.into());
-    let filled = ProductAttributeValueLocaleRow::find_by_statement(
-        Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            format!(
-                r#"
+    let filled = ProductAttributeValueLocaleRow::find_by_statement(Statement::from_sql_and_values(
+        conn.get_database_backend(),
+        format!(
+            r#"
                 SELECT pav.attribute_id, pavt.locale
                 FROM product_attribute_values pav
                 JOIN product_attribute_value_translations pavt
@@ -579,10 +589,9 @@ where
                   AND pav.product_id = {product_placeholder}
                   AND NULLIF(BTRIM(pavt.value_text), '') IS NOT NULL
                 "#
-            ),
-            values,
         ),
-    )
+        values,
+    ))
     .all(conn)
     .await?;
 

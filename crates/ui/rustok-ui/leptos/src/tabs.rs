@@ -20,10 +20,7 @@ use rustok_ui::{
 /// [`TabsTrigger`] and [`TabsContent`] is expressed by handing the same id to
 /// `panel_id` (trigger) and `id` (content) / `tab_id` (content).
 #[component]
-pub fn Tabs(
-    #[prop(optional, into)] class: String,
-    children: Children,
-) -> impl IntoView {
+pub fn Tabs(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     let full_class = merge_classes(&["w-full", custom.unwrap_or("")]);
 

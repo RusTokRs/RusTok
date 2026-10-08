@@ -16,7 +16,7 @@ use crate::dto::{
 use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{
-    append_listing_event, normalize_listing_event_locale, AppendListingEventParams,
+    AppendListingEventParams, append_listing_event, normalize_listing_event_locale,
 };
 use crate::service::{find_listing, load_response_for_model, map_listing};
 
@@ -273,7 +273,11 @@ async fn transition_in_transaction(
     {
         return Err(MarketplaceListingError::InvalidTransition {
             from: format!("{}:{}", current.status, current.approval_status),
-            to: format!("{}:{}", params.target_status.as_str(), params.target_approval.as_str()),
+            to: format!(
+                "{}:{}",
+                params.target_status.as_str(),
+                params.target_approval.as_str()
+            ),
         });
     }
 

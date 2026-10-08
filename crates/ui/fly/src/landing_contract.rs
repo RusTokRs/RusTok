@@ -894,9 +894,11 @@ mod tests {
         .artifact
         .expect("artifact");
         assert!(artifact.pages[0].body_html.contains("href=\"/about\""));
-        assert!(artifact.pages[0]
-            .body_html
-            .contains("data-fly-action-kind=\"navigate_page\""));
+        assert!(
+            artifact.pages[0]
+                .body_html
+                .contains("data-fly-action-kind=\"navigate_page\"")
+        );
     }
 
     #[test]

@@ -43,10 +43,7 @@ impl RusToKModule for ProductBundlesModule {
     }
 
     fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::PRODUCTS_READ,
-            Permission::PRODUCTS_UPDATE,
-        ]
+        vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE]
     }
 }
 

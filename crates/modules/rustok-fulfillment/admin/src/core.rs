@@ -54,26 +54,40 @@ pub fn shipping_option_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
 
     vec![
-        GridColumnDef::new("name", if is_ru { "Название" } else { "Option Name" })
-            .width(220)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Поиск по названию...".to_string()
-                } else {
-                    "Search name...".to_string()
-                }),
+        GridColumnDef::new(
+            "name",
+            if is_ru {
+                "Название"
+            } else {
+                "Option Name"
+            },
+        )
+        .width(220)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Поиск по названию...".to_string()
+            } else {
+                "Search name...".to_string()
             }),
-        GridColumnDef::new("provider_id", if is_ru { "Провайдер" } else { "Provider" })
-            .width(130)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Провайдер...".to_string()
-                } else {
-                    "Provider...".to_string()
-                }),
+        }),
+        GridColumnDef::new(
+            "provider_id",
+            if is_ru {
+                "Провайдер"
+            } else {
+                "Provider"
+            },
+        )
+        .width(130)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Провайдер...".to_string()
+            } else {
+                "Provider...".to_string()
             }),
+        }),
         GridColumnDef::new("price", if is_ru { "Стоимость" } else { "Price" })
             .width(130)
             .align(ColumnAlign::Right),
@@ -109,13 +123,28 @@ pub fn shipping_option_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> 
                     "All statuses".to_string()
                 }),
             }),
-        GridColumnDef::new("updated_at", if is_ru { "Обновлено" } else { "Updated" })
-            .width(140)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::DateRange {
-                from_placeholder: Some(if is_ru { "С".to_string() } else { "From".to_string() }),
-                to_placeholder: Some(if is_ru { "По".to_string() } else { "To".to_string() }),
+        GridColumnDef::new(
+            "updated_at",
+            if is_ru {
+                "Обновлено"
+            } else {
+                "Updated"
+            },
+        )
+        .width(140)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::DateRange {
+            from_placeholder: Some(if is_ru {
+                "С".to_string()
+            } else {
+                "From".to_string()
             }),
+            to_placeholder: Some(if is_ru {
+                "По".to_string()
+            } else {
+                "To".to_string()
+            }),
+        }),
         GridColumnDef::new("actions", "")
             .width(140)
             .align(ColumnAlign::Center)
@@ -151,7 +180,11 @@ pub fn matches_shipping_option_filter(
             }
         }
         ("updated_at", FilterValue::DateRange { from, to }) => {
-            let date = item.updated_at.split('T').next().unwrap_or(&item.updated_at);
+            let date = item
+                .updated_at
+                .split('T')
+                .next()
+                .unwrap_or(&item.updated_at);
             if let Some(f) = from {
                 if !f.is_empty() && date < f.as_str() {
                     return false;
@@ -175,9 +208,9 @@ pub fn filter_shipping_options(
     items
         .iter()
         .filter(|item| {
-            filters
-                .iter()
-                .all(|(col_id, filter_val)| matches_shipping_option_filter(item, col_id, filter_val))
+            filters.iter().all(|(col_id, filter_val)| {
+                matches_shipping_option_filter(item, col_id, filter_val)
+            })
         })
         .cloned()
         .collect()
@@ -187,7 +220,12 @@ pub fn filter_shipping_options(
 mod tests {
     use super::*;
 
-    fn sample_shipping_option(name: &str, provider: &str, active: bool, updated_at: &str) -> ShippingOption {
+    fn sample_shipping_option(
+        name: &str,
+        provider: &str,
+        active: bool,
+        updated_at: &str,
+    ) -> ShippingOption {
         ShippingOption {
             id: format!("opt-{}", name.to_lowercase().replace(' ', "-")),
             tenant_id: "tenant-1".to_string(),
@@ -262,4 +300,3 @@ mod tests {
         assert_eq!(filtered_status.len(), 2);
     }
 }
-

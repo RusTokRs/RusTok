@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::model::{RhaiWorkspace, Script, ScriptTrigger, SourceProvenance};
 
 use super::{
-    SeaOrmScriptPresentationStore, ScriptPresentationStoreError, ScriptsActiveModel, ScriptsColumn,
-    ScriptsEntity,
+    ScriptPresentationStoreError, ScriptsActiveModel, ScriptsColumn, ScriptsEntity,
+    SeaOrmScriptPresentationStore,
 };
 
 mod source_revision {
@@ -245,10 +245,7 @@ impl SeaOrmScriptAuthoringStore {
                 ScriptsColumn::Permissions,
                 Expr::value(permissions_to_json(&next.permissions)),
             )
-            .col_expr(
-                ScriptsColumn::AuthorId,
-                Expr::value(next.author_id.clone()),
-            )
+            .col_expr(ScriptsColumn::AuthorId, Expr::value(next.author_id.clone()))
             .col_expr(
                 ScriptsColumn::SourceProvenance,
                 Expr::value(source_provenance_to_json(&next.source_provenance)?),
@@ -259,10 +256,7 @@ impl SeaOrmScriptAuthoringStore {
                     ScriptAuthoringStoreError::Storage("script error count exceeds i32".into())
                 })?),
             )
-            .col_expr(
-                ScriptsColumn::LastErrorAt,
-                Expr::value(next.last_error_at),
-            )
+            .col_expr(ScriptsColumn::LastErrorAt, Expr::value(next.last_error_at))
             .col_expr(ScriptsColumn::UpdatedAt, Expr::value(next.updated_at))
             .filter(ScriptsColumn::Id.eq(next.id))
             .filter(ScriptsColumn::TenantId.eq(self.tenant_id))
@@ -415,9 +409,7 @@ fn source_provenance_to_json(
         .map_err(|error| ScriptAuthoringStoreError::Storage(error.to_string()))
 }
 
-fn script_active_model(
-    script: &Script,
-) -> Result<ScriptsActiveModel, ScriptAuthoringStoreError> {
+fn script_active_model(script: &Script) -> Result<ScriptsActiveModel, ScriptAuthoringStoreError> {
     let (trigger_type, trigger_config) = trigger_to_parts(&script.trigger);
     Ok(ScriptsActiveModel {
         id: Set(script.id),
@@ -460,9 +452,8 @@ async fn ensure_source_revision(
     transaction: &sea_orm::DatabaseTransaction,
     script: &Script,
 ) -> Result<(), ScriptAuthoringStoreError> {
-    let revision = i32::try_from(script.version).map_err(|_| {
-        ScriptAuthoringStoreError::Storage("script revision exceeds i32".into())
-    })?;
+    let revision = i32::try_from(script.version)
+        .map_err(|_| ScriptAuthoringStoreError::Storage("script revision exceeds i32".into()))?;
     if source_revision::Entity::find()
         .filter(source_revision::Column::ScriptId.eq(script.id))
         .filter(source_revision::Column::Revision.eq(revision))
@@ -485,9 +476,8 @@ async fn insert_source_revision(
     script: &Script,
     parent_revision: Option<i32>,
 ) -> Result<(), ScriptAuthoringStoreError> {
-    let revision = i32::try_from(script.version).map_err(|_| {
-        ScriptAuthoringStoreError::Storage("script revision exceeds i32".into())
-    })?;
+    let revision = i32::try_from(script.version)
+        .map_err(|_| ScriptAuthoringStoreError::Storage("script revision exceeds i32".into()))?;
     let source_digest = script
         .workspace
         .digest()

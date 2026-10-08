@@ -182,10 +182,7 @@ impl TaxonomyService {
         module_slug: &str,
         input: ModuleTermCreateInput,
     ) -> TaxonomyResult<Uuid> {
-        let module_scope = normalize_scope_value(
-            TaxonomyScopeType::Module,
-            Some(module_slug),
-        )?;
+        let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
         let locale = normalize_locale(&input.locale)?;
         validate_term_name(&input.name)?;
         let normalized_slug = match input.slug.as_deref() {
@@ -397,13 +394,8 @@ impl TaxonomyService {
         )
         .await?;
 
-        self.publish_global_tag_search_reindex_in_tx(
-            &txn,
-            tenant_id,
-            term.kind,
-            term.scope_type,
-        )
-        .await?;
+        self.publish_global_tag_search_reindex_in_tx(&txn, tenant_id, term.kind, term.scope_type)
+            .await?;
 
         txn.commit().await?;
         self.get_term(
@@ -476,13 +468,8 @@ impl TaxonomyService {
                 "taxonomy term changed before deletion could commit",
             ));
         }
-        self.publish_global_tag_search_reindex_in_tx(
-            &txn,
-            tenant_id,
-            term.kind,
-            term.scope_type,
-        )
-        .await?;
+        self.publish_global_tag_search_reindex_in_tx(&txn, tenant_id, term.kind, term.scope_type)
+            .await?;
 
         txn.commit().await?;
         Ok(())
@@ -528,9 +515,7 @@ impl TaxonomyService {
         }
 
         let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
-        let translations_by_term = self
-            .load_translations_map(tenant_id, &term_ids)
-            .await?;
+        let translations_by_term = self.load_translations_map(tenant_id, &term_ids).await?;
         let items = terms
             .into_iter()
             .map(|term| {
@@ -1039,9 +1024,7 @@ impl TaxonomyService {
         .await
         .map_err(|error| {
             if is_unique_constraint(&error) {
-                TaxonomyError::conflict(
-                    "Module term localized copy was created concurrently",
-                )
+                TaxonomyError::conflict("Module term localized copy was created concurrently")
             } else {
                 error.into()
             }
@@ -1190,13 +1173,8 @@ impl TaxonomyService {
         let resource_revision = self
             .update_term_revision_in_tx(txn, &term, Utc::now())
             .await?;
-        self.publish_global_tag_search_reindex_in_tx(
-            txn,
-            tenant_id,
-            term.kind,
-            term.scope_type,
-        )
-        .await?;
+        self.publish_global_tag_search_reindex_in_tx(txn, tenant_id, term.kind, term.scope_type)
+            .await?;
         Ok(TaxonomyTranslationApplyResult {
             resource_revision,
             target_revision,
@@ -1225,9 +1203,7 @@ impl TaxonomyService {
         )
         .await
         .map_err(|_| {
-            TaxonomyError::internal(
-                "failed to enqueue Search reindex after global Tag mutation",
-            )
+            TaxonomyError::internal("failed to enqueue Search reindex after global Tag mutation")
         })
     }
 

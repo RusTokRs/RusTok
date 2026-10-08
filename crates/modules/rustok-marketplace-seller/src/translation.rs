@@ -359,12 +359,9 @@ impl MarketplaceSellerTranslationService {
                 seller_id,
                 operation_id.expect("changed seller Translation apply must have an operation id"),
                 &resource_revision,
-                translation_lifecycle_for_status(&seller.status)
-                    .map_err(|error| {
-                        MarketplaceSellerTranslationExactLocaleError::Validation(
-                            error.to_string(),
-                        )
-                    })?,
+                translation_lifecycle_for_status(&seller.status).map_err(|error| {
+                    MarketplaceSellerTranslationExactLocaleError::Validation(error.to_string())
+                })?,
             )
             .await
             .map_err(|error| {

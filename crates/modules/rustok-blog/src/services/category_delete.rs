@@ -4,9 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
-};
+use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
     ColumnTrait, DatabaseTransaction, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter,
     QuerySelect,
@@ -169,8 +167,6 @@ fn map_blog_error(error: BlogError) -> TaxonomyError {
         BlogError::Conflict(message) => TaxonomyError::conflict(message),
         BlogError::Forbidden(message) => TaxonomyError::forbidden(message),
         BlogError::Validation(message) => TaxonomyError::validation(message),
-        other => TaxonomyError::internal(format!(
-            "Blog Category delete cleanup failed: {other:?}"
-        )),
+        other => TaxonomyError::internal(format!("Blog Category delete cleanup failed: {other:?}")),
     }
 }

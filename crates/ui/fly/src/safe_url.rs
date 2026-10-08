@@ -77,7 +77,6 @@ fn validate_non_empty_target(value: &str, prefix_len: usize, label: &str) -> Res
     }
 }
 
-
 /// Which attribute slot a URL is destined for. Each slot allows a different set of schemes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UrlAttributeKind {
@@ -284,9 +283,16 @@ mod tests {
             "mailto:sales@example.com",
             "tel:+12025550123",
         ] {
-            assert!(normalize_safe_url(value, "URL").is_ok(), "strict rejected {value}");
             assert!(
-                url_allowed(value, UrlAttributeKind::Navigation, &UrlPolicy::permissive()),
+                normalize_safe_url(value, "URL").is_ok(),
+                "strict rejected {value}"
+            );
+            assert!(
+                url_allowed(
+                    value,
+                    UrlAttributeKind::Navigation,
+                    &UrlPolicy::permissive()
+                ),
                 "attribute policy rejected {value}"
             );
         }
@@ -303,9 +309,16 @@ mod tests {
             "https://example.com/line\nbreak",
             "https://",
         ] {
-            assert!(normalize_safe_url(value, "URL").is_err(), "strict accepted {value}");
             assert!(
-                !url_allowed(value, UrlAttributeKind::Navigation, &UrlPolicy::permissive()),
+                normalize_safe_url(value, "URL").is_err(),
+                "strict accepted {value}"
+            );
+            assert!(
+                !url_allowed(
+                    value,
+                    UrlAttributeKind::Navigation,
+                    &UrlPolicy::permissive()
+                ),
                 "attribute policy accepted {value}"
             );
         }
@@ -338,6 +351,10 @@ mod tests {
     #[test]
     fn overlong_urls_are_rejected() {
         let value = format!("https://example.com/{}", "a".repeat(MAXIMUM_URL_LENGTH));
-        assert!(!url_allowed(&value, UrlAttributeKind::Resource, &UrlPolicy::permissive()));
+        assert!(!url_allowed(
+            &value,
+            UrlAttributeKind::Resource,
+            &UrlPolicy::permissive()
+        ));
     }
 }

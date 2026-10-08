@@ -64,9 +64,13 @@ pub(crate) async fn execute_journaled_provider_operation(
         });
     }
 
-    let claimed = journal.claim_execution(journal_operation.tenant_id, journal_operation.id).await?;
+    let claimed = journal
+        .claim_execution(journal_operation.tenant_id, journal_operation.id)
+        .await?;
     if claimed.is_none() {
-        let current = journal.get(journal_operation.tenant_id, journal_operation.id).await?;
+        let current = journal
+            .get(journal_operation.tenant_id, journal_operation.id)
+            .await?;
         if let Some(result) = persisted_provider_result(&current)? {
             return Ok(JournaledProviderResult {
                 operation_id: current.id,
@@ -97,11 +101,19 @@ pub(crate) async fn execute_journaled_provider_operation(
         Err(source) => {
             let journal_result = if source.requires_provider_reconciliation() {
                 journal
-                    .mark_reconciliation_required(journal_operation.tenant_id, journal_operation.id, source.to_string())
+                    .mark_reconciliation_required(
+                        journal_operation.tenant_id,
+                        journal_operation.id,
+                        source.to_string(),
+                    )
                     .await
             } else {
                 journal
-                    .mark_provider_error(journal_operation.tenant_id, journal_operation.id, source.to_string())
+                    .mark_provider_error(
+                        journal_operation.tenant_id,
+                        journal_operation.id,
+                        source.to_string(),
+                    )
                     .await
             };
             if journal_result.is_err() {
@@ -325,7 +337,11 @@ pub(crate) async fn mark_journal_committed(
     operation_id: Uuid,
     operation: &'static str,
 ) -> PaymentOrchestrationResult<()> {
-    if journal.mark_committed(tenant_id, operation_id).await.is_err() {
+    if journal
+        .mark_committed(tenant_id, operation_id)
+        .await
+        .is_err()
+    {
         if let Err(mark_error) = journal
             .mark_reconciliation_required(
                 tenant_id,

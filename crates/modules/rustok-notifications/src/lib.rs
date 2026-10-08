@@ -82,11 +82,11 @@ pub use inbox_group_summary::{
     NotificationInboxGroupSummary, NotificationInboxGroupSummaryPage,
     NotificationInboxGroupSummaryRequest, NotificationInboxGroupSummaryService,
 };
+use inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImpl;
 pub use inbox_reconcile::{
     NotificationInboxReconcileInspectionPage, NotificationInboxReconcilePage,
     NotificationInboxReconcileRequest, NotificationInboxReconcileService,
 };
-use inbox_reconcile::NotificationInboxReconciliationInspectPortFactoryImpl;
 pub use inbox_selected::{
     MAX_NOTIFICATION_INBOX_SELECTED_IDS, NotificationInboxSelectedAction,
     NotificationInboxSelectedStateRequest, NotificationInboxSelectedStateResult,
@@ -183,9 +183,9 @@ mod tests {
 
     use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
     use rustok_notifications_api::{
-    notification_source_registry_from_extensions, NotificationInboxReconciliationInspectPortFactory,
-};
-
+        NotificationInboxReconciliationInspectPortFactory,
+        notification_source_registry_from_extensions,
+    };
 
     use super::{NotificationsModule, NotificationsService};
 
@@ -207,11 +207,7 @@ mod tests {
                 .get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
                 .is_some()
         );
-        assert!(
-            module
-                .register_runtime_extensions(&mut extensions)
-                .is_err()
-        );
+        assert!(module.register_runtime_extensions(&mut extensions).is_err());
 
         let service = NotificationsService::from_runtime_extensions(&extensions);
         assert_eq!(service.source_count(), 0);

@@ -75,7 +75,8 @@ pub async fn list_categories(
     Query(mut filter): Query<ListCategoriesFilter>,
 ) -> HttpResult<Json<CategoryListResponse>> {
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
-    ensure_category_permission(&tenant, &auth, Action::List)?;    filter.locale = filter.locale.or(Some(request_context.locale));
+    ensure_category_permission(&tenant, &auth, Action::List)?;
+    filter.locale = filter.locale.or(Some(request_context.locale));
     filter.page = filter.page.max(1);
     filter.per_page = filter.per_page.clamp(1, 100);
     let page = filter.page;
@@ -118,7 +119,8 @@ pub async fn get_category(
     Query(params): Query<HashMap<String, String>>,
 ) -> HttpResult<Json<CategoryResponse>> {
     ensure_blog_module_enabled(&runtime, tenant.id).await?;
-    ensure_category_permission(&tenant, &auth, Action::Read)?;    let locale = params
+    ensure_category_permission(&tenant, &auth, Action::Read)?;
+    let locale = params
         .get("locale")
         .map(String::as_str)
         .unwrap_or(request_context.locale.as_str());

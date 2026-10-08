@@ -64,11 +64,7 @@ async fn dispatch_http(
         &installation,
         binding,
         header_idempotency_key(&headers)?,
-        ArtifactBindingOperation::Http {
-            method,
-            path,
-            body,
-        },
+        ArtifactBindingOperation::Http { method, path, body },
     )
     .await?;
     Ok(artifact_json_response(output))
@@ -282,7 +278,10 @@ mod tests {
     fn artifact_json_responses_are_private_and_not_stored() {
         let response = artifact_json_response(serde_json::json!({"ok": true}));
         assert_eq!(
-            response.headers().get(CACHE_CONTROL).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
             Some(ARTIFACT_PRIVATE_CACHE_CONTROL)
         );
     }
@@ -335,12 +334,14 @@ mod tests {
             }),
         };
 
-        assert!(find_artifact_http_binding(
-            std::slice::from_ref(&binding),
-            ModuleHttpMethod::Post,
-            "status/query/",
-        )
-        .is_none());
+        assert!(
+            find_artifact_http_binding(
+                std::slice::from_ref(&binding),
+                ModuleHttpMethod::Post,
+                "status/query/",
+            )
+            .is_none()
+        );
         assert_eq!(
             find_artifact_http_binding(
                 std::slice::from_ref(&binding),

@@ -119,7 +119,8 @@ impl std::fmt::Debug for StorefrontShippingSelectionValidationError {
             Self::ChannelUnavailable { .. } => "channel_unavailable",
             Self::ProfileIncompatible { .. } => "profile_incompatible",
         };
-        formatter.debug_struct("StorefrontShippingSelectionValidationError")
+        formatter
+            .debug_struct("StorefrontShippingSelectionValidationError")
             .field("kind", &kind)
             .finish()
     }
@@ -136,10 +137,12 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
     shipping_option_read_port: &dyn ShippingOptionReadPort,
 ) -> Result<ShippingOptionResponse, StorefrontShippingSelectionValidationError> {
     let Some(shipping_option_id) = selection.selected_shipping_option_id else {
-        return Err(StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
-            shipping_option_id: Uuid::nil(),
-            shipping_profile_slug: selection.shipping_profile_slug.clone(),
-        });
+        return Err(
+            StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
+                shipping_option_id: Uuid::nil(),
+                shipping_profile_slug: selection.shipping_profile_slug.clone(),
+            },
+        );
     };
 
     let normalized_profile =
@@ -173,9 +176,7 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
         })?;
 
     if !option.active {
-        return Err(StorefrontShippingSelectionValidationError::Inactive {
-            shipping_option_id,
-        });
+        return Err(StorefrontShippingSelectionValidationError::Inactive { shipping_option_id });
     }
     if !option.currency_code.eq_ignore_ascii_case(currency_code) {
         return Err(
@@ -191,9 +192,7 @@ pub(crate) async fn validate_storefront_shipping_option_selection(
         public_channel_slug,
     ) {
         return Err(
-            StorefrontShippingSelectionValidationError::ChannelUnavailable {
-                shipping_option_id,
-            },
+            StorefrontShippingSelectionValidationError::ChannelUnavailable { shipping_option_id },
         );
     }
 
@@ -472,8 +471,8 @@ fn extract_allowed_shipping_profile_slugs_from_metadata(
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
-        StorefrontShippingSelectionValidationError,
+        StorefrontShippingSelectionValidationError, effective_shipping_profile_slug,
+        is_shipping_option_compatible_with_profiles,
     };
     use crate::dto::ShippingOptionResponse;
     use chrono::Utc;

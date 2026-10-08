@@ -40,8 +40,13 @@ pub fn ProductRelationsPanel(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let effective_locale = locale.clone().or_else(|| route_context.locale.clone());
-    let copy = std::sync::Arc::new(build_product_relations_panel_copy(effective_locale.as_deref()));
-    let is_ru = effective_locale.as_deref().map(|l| l.starts_with("ru")).unwrap_or(false);
+    let copy = std::sync::Arc::new(build_product_relations_panel_copy(
+        effective_locale.as_deref(),
+    ));
+    let is_ru = effective_locale
+        .as_deref()
+        .map(|l| l.starts_with("ru"))
+        .unwrap_or(false);
     let columns = relation_grid_columns(effective_locale.as_deref());
 
     let (selected_type, set_selected_type) = signal("cross_sell".to_string());
@@ -88,7 +93,10 @@ pub fn ProductRelationsPanel(
     let filtered_relations = Memo::new({
         let relations_resource = relations_resource.clone();
         move |_| {
-            let relations = relations_resource.get().and_then(Result::ok).unwrap_or_default();
+            let relations = relations_resource
+                .get()
+                .and_then(Result::ok)
+                .unwrap_or_default();
             let s_val = search.get();
             let col_filters = filters.get();
             let target_filter = col_filters.get("target_product_id").and_then(|f| match f {
@@ -110,7 +118,10 @@ pub fn ProductRelationsPanel(
         let list = filtered_relations.get();
         let p = pagination.get();
         let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter().skip(start).take(p.page_size).collect::<Vec<_>>()
+        list.into_iter()
+            .skip(start)
+            .take(p.page_size)
+            .collect::<Vec<_>>()
     });
 
     let on_add_submit = {
@@ -265,12 +276,10 @@ pub fn ProductRelationsPanel(
 
     let cell_renderer = Callback::new(move |(item, col_id): (ProductRelationItem, String)| {
         match col_id.as_str() {
-            "position" => {
-                view! {
-                    <span class="font-mono text-xs text-muted-foreground">{item.position}</span>
-                }
-                .into_any()
+            "position" => view! {
+                <span class="font-mono text-xs text-muted-foreground">{item.position}</span>
             }
+            .into_any(),
             "target_product_id" => {
                 let target_id = item.related_product_id.clone();
                 view! {
@@ -282,7 +291,10 @@ pub fn ProductRelationsPanel(
             }
             "actions" => {
                 let item_id = item.id.clone();
-                let all_items = relations_resource.get().and_then(Result::ok).unwrap_or_default();
+                let all_items = relations_resource
+                    .get()
+                    .and_then(Result::ok)
+                    .unwrap_or_default();
                 let idx = all_items.iter().position(|r| r.id == item_id).unwrap_or(0);
                 let is_first = idx == 0;
                 let is_last = idx + 1 >= all_items.len();

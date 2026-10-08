@@ -28,8 +28,10 @@ impl MigrationTrait for Migration {
 }
 
 async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.get_connection().execute_unprepared(
-        r#"
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 CREATE TABLE forum_attachment_relation_heads (
     tenant_id UUID NOT NULL,
     target_kind VARCHAR(16) NOT NULL
@@ -131,13 +133,16 @@ BEFORE UPDATE ON forum_attachment_relations
 FOR EACH ROW
 EXECUTE FUNCTION forum_forbid_attachment_relation_update();
 "#,
-    ).await?;
+        )
+        .await?;
     Ok(())
 }
 
 async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.get_connection().execute_unprepared(
-        r#"
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 DROP TRIGGER IF EXISTS forum_attachment_relation_update_guard
     ON forum_attachment_relations;
 DROP FUNCTION IF EXISTS forum_forbid_attachment_relation_update();
@@ -149,7 +154,8 @@ DROP INDEX IF EXISTS uq_forum_attachment_relations_target_position;
 DROP TABLE IF EXISTS forum_attachment_relations;
 DROP TABLE IF EXISTS forum_attachment_relation_heads;
 "#,
-    ).await?;
+        )
+        .await?;
     Ok(())
 }
 

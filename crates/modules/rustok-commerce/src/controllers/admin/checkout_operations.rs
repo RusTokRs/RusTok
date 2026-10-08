@@ -342,7 +342,11 @@ pub async fn list_checkout_operations(
         "Permission denied: orders:read required",
     )?;
     let operations = crate::CheckoutOperationJournal::new(runtime.db_clone(), runtime.event_bus())
-        .list_by_status(tenant.id, query.status.as_deref(), query.limit.unwrap_or(50))
+        .list_by_status(
+            tenant.id,
+            query.status.as_deref(),
+            query.limit.unwrap_or(50),
+        )
         .await
         .map_err(|error| {
             map_operation_error(
@@ -709,7 +713,9 @@ fn reconciliation_error_policy(
             ),
             "rustok_commerce.checkout_reconciliation",
         ),
-        CheckoutReconciliationError::PaymentOwner { retryable: true, .. } => (
+        CheckoutReconciliationError::PaymentOwner {
+            retryable: true, ..
+        } => (
             (
                 StatusCode::CONFLICT,
                 "checkout_reconciliation_pending",

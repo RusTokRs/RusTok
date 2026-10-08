@@ -1,6 +1,4 @@
-use rustok_grid::{
-    ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType,
-};
+use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
 
 use crate::i18n::t;
 use crate::model::{
@@ -332,38 +330,59 @@ pub fn format_cancel_action_result(locale: Option<&str>, result: &CancelActionRe
 pub fn index_schema_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("name", if is_ru { "Схема / Сущность" } else { "Schema / Entity" })
-            .width(240)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Фильтр схемы...".to_string()
-                } else {
-                    "Filter schema...".to_string()
-                }),
+        GridColumnDef::new(
+            "name",
+            if is_ru {
+                "Схема / Сущность"
+            } else {
+                "Schema / Entity"
+            },
+        )
+        .width(240)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Фильтр схемы...".to_string()
+            } else {
+                "Filter schema...".to_string()
             }),
+        }),
         GridColumnDef::new("version", if is_ru { "Версия" } else { "Version" })
             .width(100)
             .align(ColumnAlign::Center),
-        GridColumnDef::new("fingerprint", if is_ru { "Контрольная сумма" } else { "Fingerprint" })
-            .width(200)
-            .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "fingerprint",
+            if is_ru {
+                "Контрольная сумма"
+            } else {
+                "Fingerprint"
+            },
+        )
+        .width(200)
+        .align(ColumnAlign::Left),
         GridColumnDef::new("fields", if is_ru { "Поля" } else { "Fields" })
             .width(90)
             .align(ColumnAlign::Right),
         GridColumnDef::new("links", if is_ru { "Связи" } else { "Links" })
             .width(90)
             .align(ColumnAlign::Right),
-        GridColumnDef::new("owner", if is_ru { "Модуль-владелец" } else { "Owner Module" })
-            .width(180)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Фильтр владельца...".to_string()
-                } else {
-                    "Filter owner...".to_string()
-                }),
+        GridColumnDef::new(
+            "owner",
+            if is_ru {
+                "Модуль-владелец"
+            } else {
+                "Owner Module"
+            },
+        )
+        .width(180)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Фильтр владельца...".to_string()
+            } else {
+                "Filter owner...".to_string()
             }),
+        }),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(120)
             .align(ColumnAlign::Right)
@@ -403,7 +422,9 @@ pub fn filter_index_schemas(
     filters: &ColumnFilters,
     search: Option<&str>,
 ) -> Vec<IndexSchemaRowViewModel> {
-    let search_term = search.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
+    let search_term = search
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
 
     schemas
         .iter()
@@ -426,34 +447,53 @@ pub fn filter_index_schemas(
 pub fn index_table_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("name", if is_ru { "Имя таблицы" } else { "Table Name" })
-            .width(280)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Фильтр таблиц...".to_string()
-                } else {
-                    "Filter tables...".to_string()
-                }),
+        GridColumnDef::new(
+            "name",
+            if is_ru {
+                "Имя таблицы"
+            } else {
+                "Table Name"
+            },
+        )
+        .width(280)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Фильтр таблиц...".to_string()
+            } else {
+                "Filter tables...".to_string()
             }),
-        GridColumnDef::new("role", if is_ru { "Назначение таблицы" } else { "Table Role" })
-            .align(ColumnAlign::Left),
+        }),
+        GridColumnDef::new(
+            "role",
+            if is_ru {
+                "Назначение таблицы"
+            } else {
+                "Table Role"
+            },
+        )
+        .align(ColumnAlign::Left),
     ]
 }
 
-pub fn matches_index_table_filter(
-    table: &IndexTableRowViewModel,
-    filters: &ColumnFilters,
-) -> bool {
+pub fn matches_index_table_filter(table: &IndexTableRowViewModel, filters: &ColumnFilters) -> bool {
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("name", FilterValue::Text(q)) => {
-                if !table.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !table
+                    .name
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("role", FilterValue::Text(q)) => {
-                if !table.role.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !table
+                    .role
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
@@ -489,21 +529,42 @@ pub fn filter_index_tables(
 pub fn index_source_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
     let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
     vec![
-        GridColumnDef::new("name", if is_ru { "Имя источника" } else { "Source Name" })
-            .width(260)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(if is_ru {
-                    "Фильтр источника...".to_string()
-                } else {
-                    "Filter source...".to_string()
-                }),
+        GridColumnDef::new(
+            "name",
+            if is_ru {
+                "Имя источника"
+            } else {
+                "Source Name"
+            },
+        )
+        .width(260)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(if is_ru {
+                "Фильтр источника...".to_string()
+            } else {
+                "Filter source...".to_string()
             }),
-        GridColumnDef::new("entity", if is_ru { "Целевая сущность" } else { "Target Entity" })
-            .width(200)
-            .align(ColumnAlign::Left),
-        GridColumnDef::new("mode", if is_ru { "Режим воспроизведения" } else { "Replay Mode" })
-            .align(ColumnAlign::Left),
+        }),
+        GridColumnDef::new(
+            "entity",
+            if is_ru {
+                "Целевая сущность"
+            } else {
+                "Target Entity"
+            },
+        )
+        .width(200)
+        .align(ColumnAlign::Left),
+        GridColumnDef::new(
+            "mode",
+            if is_ru {
+                "Режим воспроизведения"
+            } else {
+                "Replay Mode"
+            },
+        )
+        .align(ColumnAlign::Left),
     ]
 }
 
@@ -514,17 +575,29 @@ pub fn matches_index_source_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("name", FilterValue::Text(q)) => {
-                if !source.name.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !source
+                    .name
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("entity", FilterValue::Text(q)) => {
-                if !source.entity.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !source
+                    .entity
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }
             ("mode", FilterValue::Text(q)) => {
-                if !source.mode.to_ascii_lowercase().contains(&q.to_ascii_lowercase()) {
+                if !source
+                    .mode
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
                     return false;
                 }
             }

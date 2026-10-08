@@ -133,8 +133,10 @@ $$ LANGUAGE plpgsql;
 }
 
 async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.get_connection().execute_unprepared(
-        r#"
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 CREATE OR REPLACE FUNCTION forum_guard_deleted_topic_update()
 RETURNS trigger AS $$
 BEGIN
@@ -174,7 +176,9 @@ $$ LANGUAGE plpgsql;
 
 DROP TABLE forum_topic_reply_delete_snapshots;
 DROP TABLE forum_topic_delete_snapshots;
-"#).await?;
+"#,
+        )
+        .await?;
     Ok(())
 }
 

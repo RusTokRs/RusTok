@@ -65,9 +65,7 @@ impl EventForwarderHandle {
 
 pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
     let _ = ctx.shared_insert_if_absent(EventBusStartLock::default());
-    let start_lock = ctx
-        .shared_get::<EventBusStartLock>()
-        .unwrap_or_default();
+    let start_lock = ctx.shared_get::<EventBusStartLock>().unwrap_or_default();
     let _start_guard = start_lock
         .0
         .lock()

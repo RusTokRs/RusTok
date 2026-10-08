@@ -1138,7 +1138,6 @@ async fn record_search_query_log(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{

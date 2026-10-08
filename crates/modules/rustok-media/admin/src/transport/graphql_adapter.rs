@@ -159,7 +159,6 @@ struct DeleteMediaVariables {
     id: String,
 }
 
-
 async fn graphql_request<V, T>(
     query: &str,
     variables: Option<V>,

@@ -136,4 +136,3 @@ fn map_application(value: ApplicationWire) -> GroupsStorefrontMembershipApplicat
         submitted_at: value.submitted_at,
     }
 }
-

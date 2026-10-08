@@ -3,8 +3,7 @@ use rustok_api::{PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::storefront_shipping::{
-    StorefrontShippingSelectionValidationError,
-    validate_storefront_shipping_option_selection,
+    StorefrontShippingSelectionValidationError, validate_storefront_shipping_option_selection,
 };
 
 const STOREFRONT_SHIPPING_OPTION_GRAPHQL_BOUNDARY: &str =
@@ -166,9 +165,7 @@ impl ShippingOptionFailure {
         }
     }
 
-    fn from_selection_validation_error(
-        error: StorefrontShippingSelectionValidationError,
-    ) -> Self {
+    fn from_selection_validation_error(error: StorefrontShippingSelectionValidationError) -> Self {
         match error {
             StorefrontShippingSelectionValidationError::MissingDeliveryGroup {
                 shipping_option_id,
@@ -196,10 +193,7 @@ impl ShippingOptionFailure {
             StorefrontShippingSelectionValidationError::ProfileIncompatible {
                 shipping_option_id,
                 shipping_profile_slug,
-            } => Self::profile_incompatible(
-                shipping_option_id,
-                shipping_profile_slug.as_str(),
-            ),
+            } => Self::profile_incompatible(shipping_option_id, shipping_profile_slug.as_str()),
         }
     }
 
@@ -332,7 +326,7 @@ fn shipping_option_graphql_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{shipping_option_graphql_error, ShippingOptionFailure};
+    use super::{ShippingOptionFailure, shipping_option_graphql_error};
     use rustok_api::{PortActor, PortContext, PortError};
     use uuid::Uuid;
 
@@ -395,13 +389,9 @@ mod tests {
             Some("en"),
         );
 
-        assert_eq!(
-            error.message,
-            "Shipping option is not active"
-        );
+        assert_eq!(error.message, "Shipping option is not active");
     }
 }
-
 
 fn current_shipping_selections(
     cart: &crate::dto::CartResponse,

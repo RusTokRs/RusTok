@@ -120,4 +120,3 @@ fn configured_tenant_slug() -> Option<String> {
         })
     })
 }
-

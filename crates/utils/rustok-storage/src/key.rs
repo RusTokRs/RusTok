@@ -333,9 +333,7 @@ mod tests {
 
         assert_eq!(
             key.to_string(),
-            format!(
-                "media/objects/tenants/{tenant_id}/modules/blog/2023/11/14/02/{object_id}.png"
-            )
+            format!("media/objects/tenants/{tenant_id}/modules/blog/2023/11/14/02/{object_id}.png")
         );
     }
 }

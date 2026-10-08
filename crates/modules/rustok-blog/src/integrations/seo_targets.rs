@@ -48,14 +48,15 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
         let Some(post) = optional_post(
-            service.get_post_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await,
+            service
+                .get_post_with_locale_fallback(
+                    request.tenant_id,
+                    SecurityContext::system(),
+                    request.target_id,
+                    request.locale,
+                    Some(request.default_locale),
+                )
+                .await,
         )?
         else {
             return Ok(None);
@@ -80,14 +81,15 @@ impl SeoTargetProvider for BlogSeoTargetProvider {
             return Ok(None);
         };
         let service = PostService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let post = service.get_post_by_slug_with_locale_fallback(
-            request.tenant_id,
-            SecurityContext::system(),
-            request.locale,
-            slug.as_str(),
-            Some(request.default_locale),
-        )
-        .await?;
+        let post = service
+            .get_post_by_slug_with_locale_fallback(
+                request.tenant_id,
+                SecurityContext::system(),
+                request.locale,
+                slug.as_str(),
+                Some(request.default_locale),
+            )
+            .await?;
 
         Ok(post
             .filter(|post| {
@@ -204,9 +206,9 @@ fn map_post_bulk_summary(item: PostSummary) -> SeoBulkSummaryRecord {
 
 fn map_post_sitemap_candidate(item: PostSummary) -> SeoSitemapCandidateRecord {
     let image_alt = item.title.clone();
-    let image = item.featured_image_url.and_then(|url| {
-        SeoTargetImageRecord::from_parts(url, Some(image_alt), None, None, None)
-    });
+    let image = item
+        .featured_image_url
+        .and_then(|url| SeoTargetImageRecord::from_parts(url, Some(image_alt), None, None, None));
     let route = format!("/modules/blog?slug={}", item.slug);
     SeoSitemapCandidateRecord {
         target_kind: SeoTargetSlug::new(builtin_slug::BLOG_POST)

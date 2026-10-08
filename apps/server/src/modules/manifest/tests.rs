@@ -1266,7 +1266,10 @@ template_defaults = { type = "object", shape = { title = { type = "string" } } }
 
     let manifest_file = blog_dir.join("rustok-module.toml");
     let result = ManifestManager::read_module_package_manifest(&manifest_file);
-    assert!(result.is_err(), "unknown schema keyword 'shape' must be rejected by deny_unknown_fields");
+    assert!(
+        result.is_err(),
+        "unknown schema keyword 'shape' must be rejected by deny_unknown_fields"
+    );
 }
 
 #[test]

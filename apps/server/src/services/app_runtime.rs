@@ -8,9 +8,9 @@ use crate::common::settings::{RuntimeHostMode, RustokSettings, SharedRustokSetti
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
-    PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
-    SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
-    PUBLIC_READINESS_RATE_LIMIT_PREFIXES, cleanup_task,
+    PUBLIC_READINESS_RATE_LIMIT_PREFIXES, PathRateLimitMiddlewareState, PathRateLimitPolicy,
+    RateLimitConfig, RateLimiter, SharedApiRateLimiter, SharedAuthRateLimiter,
+    SharedOAuthRateLimiter, SharedSearchRateLimiter, cleanup_task,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -350,7 +350,9 @@ async fn init_alloy_runtime(
                     draft_runtime,
                 )));
             } else {
-                tracing::warn!("RUSTOK_SANDBOX_WORKER_ENDPOINT is not configured; Alloy scripting runtime disabled");
+                tracing::warn!(
+                    "RUSTOK_SANDBOX_WORKER_ENDPOINT is not configured; Alloy scripting runtime disabled"
+                );
             }
         }
         Ok(())
@@ -614,9 +616,11 @@ mod tests {
 
     #[test]
     fn dedicated_auth_rate_limit_covers_verification_requests() {
-        assert!(AUTH_RATE_LIMIT_PREFIXES
-            .iter()
-            .any(|prefix| "/api/auth/verify/request".starts_with(prefix)));
+        assert!(
+            AUTH_RATE_LIMIT_PREFIXES
+                .iter()
+                .any(|prefix| "/api/auth/verify/request".starts_with(prefix))
+        );
         assert!(AUTH_RATE_LIMIT_PREFIXES.contains(&"/api/auth/reset"));
     }
 

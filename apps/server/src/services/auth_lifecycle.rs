@@ -318,15 +318,9 @@ impl AuthLifecycleService {
             None,
         )
         .await?;
-        let tokens = Self::create_session_and_tokens_in_tx(
-            &tx,
-            config,
-            tenant_id,
-            &user,
-            None,
-            None,
-        )
-        .await?;
+        let tokens =
+            Self::create_session_and_tokens_in_tx(&tx, config, tenant_id, &user, None, None)
+                .await?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok((user, tokens))
@@ -398,12 +392,7 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         let tokens = Self::create_session_and_tokens_in_tx(
-            &txn,
-            config,
-            tenant_id,
-            &user,
-            ip_address,
-            user_agent,
+            &txn, config, tenant_id, &user, ip_address, user_agent,
         )
         .await?;
         txn.commit().await.map_err(AuthLifecycleError::from)?;
@@ -671,11 +660,7 @@ impl AuthLifecycleService {
                     let statement = Statement::from_sql_and_values(
                         DatabaseBackend::Sqlite,
                         "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL",
-                        [
-                            tenant_id.into(),
-                            user_id.into(),
-                            existing.id.into(),
-                        ],
+                        [tenant_id.into(), user_id.into(), existing.id.into()],
                     );
                     let result = txn
                         .execute_raw(statement)
@@ -714,8 +699,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
-        let new_password_hash =
-            hash_password(new_password).map_err(AuthLifecycleError::from)?;
+        let new_password_hash = hash_password(new_password).map_err(AuthLifecycleError::from)?;
 
         let txn = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::find_user_for_password_change_in_tx(&txn, tenant_id, user_id)
@@ -920,12 +904,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let tokens = Self::create_session_and_tokens_in_tx(
-            &tx,
-            config,
-            tenant_id,
-            user,
-            ip_address,
-            user_agent,
+            &tx, config, tenant_id, user, ip_address, user_agent,
         )
         .await?;
         tx.commit().await.map_err(AuthLifecycleError::from)?;
@@ -1137,19 +1116,18 @@ mod tests {
         assert_eq!(AuthLifecycleService::clamp_session_list_limit(50), 50);
         assert_eq!(AuthLifecycleService::clamp_session_list_limit(100), 100);
         assert_eq!(AuthLifecycleService::clamp_session_list_limit(101), 100);
-        assert_eq!(AuthLifecycleService::clamp_session_list_limit(u64::MAX), 100);
+        assert_eq!(
+            AuthLifecycleService::clamp_session_list_limit(u64::MAX),
+            100
+        );
     }
 
     #[test]
     fn session_expiration_rejects_out_of_range_ttl() {
         let now = Utc::now();
 
-        assert!(
-            AuthLifecycleService::session_expiration(now, u64::MAX).is_err()
-        );
-        assert!(
-            AuthLifecycleService::session_expiration(now, i64::MAX as u64).is_err()
-        );
+        assert!(AuthLifecycleService::session_expiration(now, u64::MAX).is_err());
+        assert!(AuthLifecycleService::session_expiration(now, i64::MAX as u64).is_err());
         assert!(
             AuthLifecycleService::session_expiration(now, 3_600)
                 .expect("normal session ttl should be representable")
@@ -1645,7 +1623,10 @@ mod tests {
             .insert(&db)
             .await
             .expect("failed to create tenant");
-        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let ctx = ServerRuntimeContext::new(
+            db.clone(),
+            crate::common::settings::RustokSettings::default(),
+        );
         let config = AuthConfig::new("register-atomic-secret".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
 
@@ -1685,14 +1666,10 @@ mod tests {
             .await
             .expect("failed to create tenant");
         let password_hash = hash_password("Password123!").expect("failed to hash password");
-        let user = users::ActiveModel::new(
-            tenant.id,
-            "atomic-login@example.com",
-            &password_hash,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create user");
+        let user = users::ActiveModel::new(tenant.id, "atomic-login@example.com", &password_hash)
+            .insert(&db)
+            .await
+            .expect("failed to create user");
 
         let config = AuthConfig::new("login-atomic-secret".to_string())
             .with_rs256("not-a-valid-private-key", "not-a-valid-public-key");
@@ -1732,19 +1709,17 @@ mod tests {
     #[tokio::test]
     async fn change_password_rejects_revoked_current_session() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Password session tenant", "password-session-tenant")
-            .insert(&db)
-            .await
-            .expect("failed to create tenant");
+        let tenant =
+            tenants::ActiveModel::new("Password session tenant", "password-session-tenant")
+                .insert(&db)
+                .await
+                .expect("failed to create tenant");
         let password_hash = hash_password("OldPassword123!").expect("failed to hash password");
-        let user = users::ActiveModel::new(
-            tenant.id,
-            "password-session@example.com",
-            &password_hash,
-        )
-        .insert(&db)
-        .await
-        .expect("failed to create user");
+        let user =
+            users::ActiveModel::new(tenant.id, "password-session@example.com", &password_hash)
+                .insert(&db)
+                .await
+                .expect("failed to create user");
 
         let session = sessions::ActiveModel::new(
             tenant.id,
@@ -1759,7 +1734,10 @@ mod tests {
         .expect("failed to create session");
 
         sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(Utc::now()))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(Utc::now()),
+            )
             .filter(sessions::Column::TenantId.eq(tenant.id))
             .filter(sessions::Column::Id.eq(session.id))
             .exec(&db)
@@ -2481,15 +2459,12 @@ mod tests {
         .await
         .expect("create tenant B session");
 
-        let runtime = ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
+        let runtime =
+            ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
 
-        AuthLifecycleService::logout_by_refresh_token_runtime(
-            &runtime,
-            tenant_a.id,
-            refresh_token,
-        )
-        .await
-        .expect("tenant A logout should succeed");
+        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant_a.id, refresh_token)
+            .await
+            .expect("tenant A logout should succeed");
 
         let session_a = sessions::Entity::find_by_id(session_a.id)
             .one(&db)

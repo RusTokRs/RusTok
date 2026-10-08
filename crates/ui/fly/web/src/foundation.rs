@@ -491,7 +491,6 @@ impl Drop for CleanupRegistry {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -816,7 +815,11 @@ mod tests {
         // Both share a rectangle, so proximity is equal and only the priority separates them.
         assert_eq!(candidates[0].target_component_id, "c1");
         assert!(candidates[0].score > candidates[1].score);
-        assert!(candidates.iter().all(|candidate| candidate.score.is_finite()));
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.score.is_finite())
+        );
     }
 
     #[test]
@@ -838,4 +841,3 @@ mod tests {
         assert!(transform.canvas_to_browser(canvas).is_finite());
     }
 }
-

@@ -18,11 +18,11 @@ use crate::entities::{
 };
 use crate::{AiError, AiResult};
 
+use super::AiManagementService;
+use super::TaskJobExecutionAuthority;
 use super::helpers::*;
 use super::mapping::*;
 use super::types::*;
-use super::AiManagementService;
-use super::TaskJobExecutionAuthority;
 
 fn ensure_agent_provider_capabilities(
     provider: &ai_provider_profiles::Model,
@@ -1466,11 +1466,9 @@ pub(crate) fn validate_approval_resolution_policy(
 
 #[cfg(test)]
 mod approval_outcome_tests {
+    use super::super::{decision_trace_with_agent_usage, decision_trace_with_prompt_template};
     use super::{
         ApprovalExecutionOutcome, approval_execution_outcome, validate_approval_policy_evidence,
-    };
-    use super::super::{
-        decision_trace_with_agent_usage, decision_trace_with_prompt_template,
     };
     use crate::entities::{ai_approval_requests, ai_chat_runs, ai_tool_traces};
     use crate::{

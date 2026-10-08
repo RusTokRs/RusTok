@@ -259,7 +259,10 @@ async fn updates_deletes_and_reorders_relations() {
     assert_eq!(reordered[1].position, 1);
 
     // Delete rel1
-    service.delete_relation(tenant_id, None, rel1.id).await.unwrap();
+    service
+        .delete_relation(tenant_id, None, rel1.id)
+        .await
+        .unwrap();
 
     let remaining = service
         .list_relations(tenant_id, product_a, Some(RelationType::Related))

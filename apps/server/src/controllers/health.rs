@@ -733,9 +733,7 @@ fn check_runtime_workers(
     checks.push(runtime_worker_check(
         "worker:outbox_retention",
         retention_required,
-        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(
-            OutboxRetentionWorkerHandle::is_finished,
-        ),
+        ctx.shared_map::<OutboxRetentionWorkerHandle, _>(OutboxRetentionWorkerHandle::is_finished),
         stop_requested,
     ));
 
@@ -748,10 +746,10 @@ fn check_runtime_workers(
 
     #[cfg(feature = "mod-seo")]
     {
-        let seo_worker_finished = ctx.shared_map::<
-            crate::services::app_lifecycle::SeoBulkWorkerHandle,
-            _,
-        >(crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished);
+        let seo_worker_finished = ctx
+            .shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
+                crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
+            );
         checks.push(runtime_worker_check(
             "worker:seo_bulk",
             settings.runtime.background_workers.seo_bulk_enabled,
@@ -1225,7 +1223,8 @@ mod tests {
 
     #[test]
     fn parse_host_port_uses_https_default_port() {
-        let (host, port) = parse_host_port("https://search.example.test/search").expect("valid url");
+        let (host, port) =
+            parse_host_port("https://search.example.test/search").expect("valid url");
         assert_eq!(host, "search.example.test");
         assert_eq!(port, 443);
     }

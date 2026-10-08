@@ -44,13 +44,13 @@ pub use dto::{
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
-    ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
-    lock_module_term_in_tx, update_module_term_in_tx,
+    ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput,
+    delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
 pub use owner_category_hierarchy_mutation::{
-    delete_module_category_placement_and_compact_in_tx,
-    move_module_category_in_tx, reorder_module_category_siblings_in_tx, shift_module_category_siblings_for_insert_in_tx,
+    delete_module_category_placement_and_compact_in_tx, move_module_category_in_tx,
+    reorder_module_category_siblings_in_tx, shift_module_category_siblings_for_insert_in_tx,
 };
 pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
 pub use owner_category_revision::{

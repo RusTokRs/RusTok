@@ -320,8 +320,8 @@ async fn delete_entry(
 ) -> Result<Json<DeleteFlexResponse>> {
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
-            .await
-            .map_err(map_flex_rest_error)?;
+        .await
+        .map_err(map_flex_rest_error)?;
 
     Ok(Json(DeleteFlexResponse::success()))
 }

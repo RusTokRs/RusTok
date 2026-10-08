@@ -199,10 +199,7 @@ impl TaxonomyOwnerReader {
         expected_ids.sort_unstable();
         expected_ids.dedup();
 
-        let module_scope = normalize_scope_value(
-            TaxonomyScopeType::Module,
-            Some(module_slug),
-        )?;
+        let module_scope = normalize_scope_value(TaxonomyScopeType::Module, Some(module_slug))?;
         let terms = taxonomy_term::Entity::find()
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term::Column::Kind.eq(kind))
@@ -431,7 +428,8 @@ mod tests {
 
     #[test]
     fn persisted_invalid_term_locale_is_an_invariant_failure() {
-        let error = normalize_persisted_term_locale(Uuid::nil(), "und").expect_err("invalid locale");
+        let error =
+            normalize_persisted_term_locale(Uuid::nil(), "und").expect_err("invalid locale");
         assert!(matches!(error, TaxonomyError::Internal(_)));
     }
 

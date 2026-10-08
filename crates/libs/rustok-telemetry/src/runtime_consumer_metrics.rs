@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use lazy_static::lazy_static;
 use crate::factory::*;
+use lazy_static::lazy_static;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
 use prometheus::{HistogramVec, IntCounterVec, IntGaugeVec};
@@ -29,24 +29,85 @@ struct RuntimeConsumerMetrics {
 impl RuntimeConsumerMetrics {
     fn new() -> Self {
         Self {
-            received_total: create_int_counter_vec("rustok_runtime_consumer_received_total", "Total broker deliveries received by durable runtime consumers", &["consumer"]),
-            deliveries_total: create_int_counter_vec("rustok_runtime_consumer_deliveries_total", "Total durable runtime-consumer deliveries by terminal outcome", &["consumer", "outcome"]),
-            retries_total: create_int_counter_vec("rustok_runtime_consumer_retries_total", "Total durable runtime-consumer retries by stage", &["consumer", "stage"]),
-            failures_total: create_int_counter_vec("rustok_runtime_consumer_failures_total", "Total durable runtime-consumer failures by bounded stage and error code", &["consumer", "stage", "error_code"]),
-            dlq_total: create_int_counter_vec("rustok_runtime_consumer_dlq_total", "Total durable runtime-consumer DLQ publication outcomes", &["consumer", "result"]),
-            processing_duration_seconds: create_histogram_vec("rustok_runtime_consumer_processing_duration_seconds", "Receive-to-terminal-ack duration for durable runtime-consumer deliveries", vec![
-                    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
-                    10.0, 30.0, 60.0,
-                ], &["consumer", "outcome"]),
-            worker_starts_total: create_int_counter_vec("rustok_runtime_consumer_worker_starts_total", "Total durable runtime-consumer worker starts", &["consumer"]),
-            worker_terminations_total: create_int_counter_vec("rustok_runtime_consumer_worker_terminations_total", "Total durable runtime-consumer worker terminations by bounded reason", &["consumer", "reason"]),
-            in_flight: create_int_gauge_vec("rustok_runtime_consumer_in_flight", "Whether a durable runtime consumer currently owns an unacknowledged delivery", &["consumer"]),
-            in_flight_started_timestamp_seconds: create_int_gauge_vec("rustok_runtime_consumer_in_flight_started_timestamp_seconds", "Unix timestamp when the current unacknowledged delivery was received, or zero", &["consumer"]),
-            last_success_timestamp_seconds: create_int_gauge_vec("rustok_runtime_consumer_last_success_timestamp_seconds", "Unix timestamp of the last terminally acknowledged delivery", &["consumer"]),
-            position_snapshot_timestamp_seconds: create_int_gauge_vec("rustok_runtime_consumer_position_snapshot_timestamp_seconds", "Unix timestamp of the last broker-backed consumer-position snapshot", &["consumer"]),
-            position_partition_count: create_int_gauge_vec("rustok_runtime_consumer_position_partition_count", "Topic partitions included in the last consumer-position snapshot", &["consumer"]),
-            position_complete: create_int_gauge_vec("rustok_runtime_consumer_position_complete", "Whether every topic partition has a coherent committed offset and high-watermark", &["consumer"]),
-            lag: create_int_gauge_vec("rustok_runtime_consumer_lag", "Exact broker offset lag from a complete partition-qualified snapshot", &["consumer", "aggregation"]),
+            received_total: create_int_counter_vec(
+                "rustok_runtime_consumer_received_total",
+                "Total broker deliveries received by durable runtime consumers",
+                &["consumer"],
+            ),
+            deliveries_total: create_int_counter_vec(
+                "rustok_runtime_consumer_deliveries_total",
+                "Total durable runtime-consumer deliveries by terminal outcome",
+                &["consumer", "outcome"],
+            ),
+            retries_total: create_int_counter_vec(
+                "rustok_runtime_consumer_retries_total",
+                "Total durable runtime-consumer retries by stage",
+                &["consumer", "stage"],
+            ),
+            failures_total: create_int_counter_vec(
+                "rustok_runtime_consumer_failures_total",
+                "Total durable runtime-consumer failures by bounded stage and error code",
+                &["consumer", "stage", "error_code"],
+            ),
+            dlq_total: create_int_counter_vec(
+                "rustok_runtime_consumer_dlq_total",
+                "Total durable runtime-consumer DLQ publication outcomes",
+                &["consumer", "result"],
+            ),
+            processing_duration_seconds: create_histogram_vec(
+                "rustok_runtime_consumer_processing_duration_seconds",
+                "Receive-to-terminal-ack duration for durable runtime-consumer deliveries",
+                vec![
+                    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0,
+                    60.0,
+                ],
+                &["consumer", "outcome"],
+            ),
+            worker_starts_total: create_int_counter_vec(
+                "rustok_runtime_consumer_worker_starts_total",
+                "Total durable runtime-consumer worker starts",
+                &["consumer"],
+            ),
+            worker_terminations_total: create_int_counter_vec(
+                "rustok_runtime_consumer_worker_terminations_total",
+                "Total durable runtime-consumer worker terminations by bounded reason",
+                &["consumer", "reason"],
+            ),
+            in_flight: create_int_gauge_vec(
+                "rustok_runtime_consumer_in_flight",
+                "Whether a durable runtime consumer currently owns an unacknowledged delivery",
+                &["consumer"],
+            ),
+            in_flight_started_timestamp_seconds: create_int_gauge_vec(
+                "rustok_runtime_consumer_in_flight_started_timestamp_seconds",
+                "Unix timestamp when the current unacknowledged delivery was received, or zero",
+                &["consumer"],
+            ),
+            last_success_timestamp_seconds: create_int_gauge_vec(
+                "rustok_runtime_consumer_last_success_timestamp_seconds",
+                "Unix timestamp of the last terminally acknowledged delivery",
+                &["consumer"],
+            ),
+            position_snapshot_timestamp_seconds: create_int_gauge_vec(
+                "rustok_runtime_consumer_position_snapshot_timestamp_seconds",
+                "Unix timestamp of the last broker-backed consumer-position snapshot",
+                &["consumer"],
+            ),
+            position_partition_count: create_int_gauge_vec(
+                "rustok_runtime_consumer_position_partition_count",
+                "Topic partitions included in the last consumer-position snapshot",
+                &["consumer"],
+            ),
+            position_complete: create_int_gauge_vec(
+                "rustok_runtime_consumer_position_complete",
+                "Whether every topic partition has a coherent committed offset and high-watermark",
+                &["consumer"],
+            ),
+            lag: create_int_gauge_vec(
+                "rustok_runtime_consumer_lag",
+                "Exact broker offset lag from a complete partition-qualified snapshot",
+                &["consumer", "aggregation"],
+            ),
         }
     }
 }

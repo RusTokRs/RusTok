@@ -368,10 +368,7 @@ fn cache_key_canonicalizes_equivalent_hosts() {
     canonical.host = Some("shop.example.test".to_string());
 
     let canonical_key = channel_cache_key_from_facts(&canonical, 1);
-    assert_eq!(
-        channel_cache_key_from_facts(&mixed_case, 1),
-        canonical_key
-    );
+    assert_eq!(channel_cache_key_from_facts(&mixed_case, 1), canonical_key);
     assert_eq!(
         channel_cache_key_from_facts(&with_port_and_dot, 1),
         canonical_key

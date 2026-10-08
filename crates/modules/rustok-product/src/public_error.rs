@@ -1,10 +1,10 @@
 use uuid::Uuid;
 
+use crate::CommerceError;
 use crate::services::catalog::revision_conflict_of;
 use crate::services::catalog_schema_service::attribute_validation::{
     attribute_validation_public_message, attribute_validation_rule_of,
 };
-use crate::CommerceError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductPublicError {
@@ -123,7 +123,11 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
 /// rule set, so no tenant-authored text can reach a public error.
 fn attribute_validation_public_failure(message: &str) -> (&'static str, &'static str, bool) {
     let rule = attribute_validation_rule_of(message).unwrap_or_default();
-    (attribute_validation_public_message(rule), "PRODUCT_ATTRIBUTE_VALIDATION", false)
+    (
+        attribute_validation_public_message(rule),
+        "PRODUCT_ATTRIBUTE_VALIDATION",
+        false,
+    )
 }
 
 pub fn map_product_public_error(

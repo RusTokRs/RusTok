@@ -88,7 +88,13 @@ pub async fn import_navigation(
         if let Some(channel) = target_channel {
             let binding_service = rustok_navigation::services::MenuBindingService::new(db.clone());
             binding_service
-                .bind(tenant_id, security.clone(), channel.id, location, created_menu.id)
+                .bind(
+                    tenant_id,
+                    security.clone(),
+                    channel.id,
+                    location,
+                    created_menu.id,
+                )
                 .await?;
         }
 

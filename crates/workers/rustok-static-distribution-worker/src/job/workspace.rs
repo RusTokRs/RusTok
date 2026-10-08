@@ -378,8 +378,6 @@ fn validated_relative_path(value: &str) -> Result<PathBuf, StaticDistributionJob
     Ok(path)
 }
 
-
-
 fn read_bounded_regular(
     path: &Path,
     max_bytes: u64,

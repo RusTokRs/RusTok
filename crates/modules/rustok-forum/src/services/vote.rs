@@ -68,13 +68,8 @@ impl VoteService {
         lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         self.upsert_topic_vote_in_tx(&txn, tenant_id, topic_id, user_id, value)
             .await?;
-        publish_forum_topic_projection_direct_in_tx(
-            &txn,
-            tenant_id,
-            Some(user_id),
-            topic_id,
-        )
-        .await?;
+        publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
+            .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -101,13 +96,8 @@ impl VoteService {
             .filter(forum_topic_vote::Column::UserId.eq(user_id))
             .exec(&txn)
             .await?;
-        publish_forum_topic_projection_direct_in_tx(
-            &txn,
-            tenant_id,
-            Some(user_id),
-            topic_id,
-        )
-        .await?;
+        publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
+            .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -128,10 +118,9 @@ impl VoteService {
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
-        let reply = crate::services::ReplyService::find_reply_for_update_in_tx(
-            &txn, tenant_id, reply_id,
-        )
-        .await?;
+        let reply =
+            crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
+                .await?;
         if reply.status != ReplyStatus::Approved {
             return Err(ForumError::Validation(
                 "Only approved replies can receive votes".to_string(),
@@ -270,7 +259,6 @@ impl VoteService {
 
         Ok(summaries)
     }
-
 
     async fn upsert_topic_vote_in_tx(
         &self,

@@ -4,8 +4,8 @@
 //! without depending on any UI framework. They enable shared schema
 //! construction, dynamic form generation, and cross-framework parity checks.
 
-use std::hash::Hash;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
 use crate::FieldError;
 
@@ -86,7 +86,9 @@ impl FieldKind {
             Self::Radio => "radio",
             Self::File => "file",
             Self::Hidden => "hidden",
-            Self::Textarea | Self::Select | Self::Switch | Self::RichText | Self::Custom { .. } => "text",
+            Self::Textarea | Self::Select | Self::Switch | Self::RichText | Self::Custom { .. } => {
+                "text"
+            }
         }
     }
 }
@@ -120,7 +122,11 @@ impl FieldOption {
     }
 
     /// Create a new `FieldOption` specifying disabled explicitly.
-    pub fn with_disabled(value: impl Into<String>, label: impl Into<String>, disabled: bool) -> Self {
+    pub fn with_disabled(
+        value: impl Into<String>,
+        label: impl Into<String>,
+        disabled: bool,
+    ) -> Self {
         Self {
             value: value.into(),
             label: label.into(),
@@ -615,8 +621,7 @@ mod tests {
         assert!(constraints.validate("age", "ab").is_err());
         assert!(constraints.validate("age", "abc").is_ok());
 
-        let descriptor = FieldDescriptor::new("score", FieldKind::Number)
-            .constraints(constraints);
+        let descriptor = FieldDescriptor::new("score", FieldKind::Number).constraints(constraints);
         assert!(descriptor.validate("50").is_ok());
     }
 

@@ -60,7 +60,9 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn ensure_existing_rows_are_tenant_consistent(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+async fn ensure_existing_rows_are_tenant_consistent(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
     let violation = manager
         .get_connection()
         .query_one_raw(Statement::from_string(

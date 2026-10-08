@@ -59,4 +59,3 @@ pub(crate) async fn sync_category_copy_in_tx(
 pub(crate) fn canonical_key_for_blog_category(category_id: Uuid) -> String {
     format!("blog-category-{category_id}")
 }
-

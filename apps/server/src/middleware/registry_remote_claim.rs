@@ -206,13 +206,8 @@ async fn handle_heartbeat(
         Err(response) => return *response,
     };
 
-    match heartbeat_remote_validation_stage_atomic(
-        ctx.db(),
-        claim_id,
-        &runner_id,
-        lease_ttl_ms,
-    )
-    .await
+    match heartbeat_remote_validation_stage_atomic(ctx.db(), claim_id, &runner_id, lease_ttl_ms)
+        .await
     {
         Ok(_) => mutation_response(claim_id, "running"),
         Err(error) => transition_error_response(error),
@@ -402,8 +397,8 @@ mod tests {
 
     #[test]
     fn runner_id_normalization_matches_controller_contract() {
-        let normalized = super::normalize_runner_id("  runner-1  ")
-            .expect("runner id should be normalized");
+        let normalized =
+            super::normalize_runner_id("  runner-1  ").expect("runner id should be normalized");
         assert_eq!(normalized, "runner-1");
         assert!(super::normalize_runner_id("   ").is_err());
     }

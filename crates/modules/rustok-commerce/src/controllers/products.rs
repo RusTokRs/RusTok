@@ -763,12 +763,7 @@ pub async fn archive_product(
         .await
         .map_err(|error| {
             map_admin_product_port_error(
-                AdminProductErrorContext::new(
-                    tenant.id,
-                    auth.user_id,
-                    Some(id),
-                    "archive_product",
-                ),
+                AdminProductErrorContext::new(tenant.id, auth.user_id, Some(id), "archive_product"),
                 &port_context,
                 error,
             )

@@ -54,7 +54,9 @@ pub fn components_for_slot(
     enabled_modules: Option<&HashSet<String>>,
 ) -> Vec<AdminComponentRegistration> {
     super::init_modules();
-    let registry = REGISTRY.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let registry = REGISTRY
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut components = registry
         .iter()
         .filter(|component| component.slot == slot)
@@ -80,7 +82,9 @@ pub fn page_for_route_segment(
     enabled_modules: Option<&HashSet<String>>,
 ) -> Option<AdminPageRegistration> {
     super::init_modules();
-    let registry = PAGE_REGISTRY.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let registry = PAGE_REGISTRY
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry
         .iter()
         .find(|page| {

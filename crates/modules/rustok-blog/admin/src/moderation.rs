@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use uuid::Uuid;
 use leptos_ui_routing::use_route_query_value;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
+use uuid::Uuid;
 
 use crate::i18n::t;
 use crate::model::{BlogModerationComment, BlogModerationCommentList, BlogModerationStatus};
@@ -71,12 +71,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
 
             spawn_local(async move {
                 match transport::moderate_comment(
-                    token,
-                    tenant,
-                    comment_id,
-                    command_id,
-                    status,
-                    locale,
+                    token, tenant, comment_id, command_id, status, locale,
                 )
                 .await
                 {

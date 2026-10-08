@@ -29,11 +29,8 @@ pub trait BrandPort: Send + Sync {
         locale: Option<&str>,
     ) -> BrandResult<BrandListResponse>;
 
-    async fn create_brand(
-        &self,
-        tenant_id: Uuid,
-        input: CreateBrandInput,
-    ) -> BrandResult<BrandDto>;
+    async fn create_brand(&self, tenant_id: Uuid, input: CreateBrandInput)
+    -> BrandResult<BrandDto>;
 
     async fn update_brand(
         &self,

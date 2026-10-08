@@ -175,9 +175,7 @@ impl<'a> CommandRegistry<'a> {
         let descriptor = self
             .commands
             .iter()
-            .find(|command| {
-                command.namespace == request.namespace && command.name == request.name
-            })
+            .find(|command| command.namespace == request.namespace && command.name == request.name)
             .ok_or_else(|| CliCoreError::UnknownCommand {
                 namespace: request.namespace.clone(),
                 name: request.name.clone(),

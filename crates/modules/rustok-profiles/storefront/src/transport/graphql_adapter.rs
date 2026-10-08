@@ -223,7 +223,6 @@ impl From<FollowMutationStateWire> for ProfilesStorefrontFollowState {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

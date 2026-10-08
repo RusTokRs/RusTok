@@ -11,7 +11,9 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::ForumModule;
 use rustok_outbox::SysEventsMigration;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 

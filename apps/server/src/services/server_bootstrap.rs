@@ -57,11 +57,7 @@ fn should_initialize_default_superadmin_for_mode(
     )
 }
 
-fn check_production_secrets(
-    jwt_secret: &str,
-    database_uri: &str,
-    production: bool,
-) -> Result<()> {
+fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bool) -> Result<()> {
     if !production {
         return Ok(());
     }
@@ -159,8 +155,7 @@ pub async fn bootstrap_application_router(
     tracing::info!("RusTok application bootstrap started");
     configure_product_catalog_deployment(&runtime_ctx).await?;
     configure_profile_media_public_image_deployment(&runtime_ctx).await?;
-    let runtime =
-        bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;
+    let runtime = bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
     let router = compose_application_router(
@@ -249,7 +244,6 @@ pub async fn bootstrap_application_router(
     Ok(router)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -278,8 +272,12 @@ mod tests {
 
     #[test]
     fn production_secret_validation_is_disabled_outside_production() {
-        check_production_secrets("dev-secret", "postgres://postgres:postgres@db/rustok", false)
-            .expect("non-production startup may use development values");
+        check_production_secrets(
+            "dev-secret",
+            "postgres://postgres:postgres@db/rustok",
+            false,
+        )
+        .expect("non-production startup may use development values");
     }
 
     #[test]
@@ -303,12 +301,8 @@ mod tests {
     #[test]
     fn production_secret_validation_redacts_database_sample_credentials() {
         let uri = "postgres://postgres:postgres@db/rustok";
-        let error = check_production_secrets(
-            "aB3!zY7@qW8#eR2$".repeat(5).as_str(),
-            uri,
-            true,
-        )
-        .expect_err("sample database credentials must be rejected");
+        let error = check_production_secrets("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
+            .expect_err("sample database credentials must be rejected");
         let message = error.to_string();
         assert!(message.contains("known sample credentials"));
         assert!(!message.contains("postgres:postgres"));
@@ -324,7 +318,10 @@ mod tests {
 
     #[test]
     fn helper_matchers_still_identify_known_samples_without_disclosing_them() {
-        assert_eq!(known_dev_jwt_fragment("dev-secret-value"), Some("dev-secret"));
+        assert_eq!(
+            known_dev_jwt_fragment("dev-secret-value"),
+            Some("dev-secret")
+        );
         assert_eq!(
             sample_database_credentials_pattern("postgres://postgres:postgres@db/rustok"),
             Some("://postgres:postgres@")

@@ -6,8 +6,8 @@ use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::HttpResult;
 use uuid::Uuid;
 
-use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
 use crate::TopicResponse;
+use crate::moderation_transport::{ForumModerationTransport, moderation_audience_port_context};
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
@@ -55,7 +55,8 @@ pub async fn mark_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),
@@ -106,7 +107,8 @@ pub async fn clear_topic_solution(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let topic = runtime.topic_service()
+    let topic = runtime
+        .topic_service()
         .get_with_locale_fallback(
             tenant.id,
             forum_security(&auth),

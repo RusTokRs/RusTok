@@ -63,10 +63,7 @@ pub(crate) fn validate_provider_metadata_safety(value: &Value) -> FulfillmentRes
             Value::Array(values) => {
                 stack.extend(values.iter().map(|child| (child, depth + 1)));
             }
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_) => {}
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
     }
     Ok(())
@@ -85,10 +82,7 @@ fn provider_payload_exceeds_depth(value: &Value) -> bool {
             Value::Array(values) => {
                 stack.extend(values.iter().map(|child| (child, depth + 1)));
             }
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_) => {}
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
     }
     false

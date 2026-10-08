@@ -284,7 +284,10 @@ fn product_title_search_condition(
 
     sea_orm::Condition::all().add(sea_orm::sea_query::Expr::cust_with_values(
         exists_sql,
-        vec![sea_orm::Value::from(tenant_id), sea_orm::Value::from(pattern)],
+        vec![
+            sea_orm::Value::from(tenant_id),
+            sea_orm::Value::from(pattern),
+        ],
     ))
 }
 

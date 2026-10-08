@@ -1,7 +1,5 @@
 use chrono::Utc;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use rustok_core::{Error, Result};
 
@@ -204,10 +202,7 @@ mod tests {
         let failed = insert_event(&db, SysEventStatus::Failed, Some(stale)).await;
 
         let retention = OutboxRetention::new(db.clone());
-        let report = retention
-            .prune_once()
-            .await
-            .expect("prune succeeds");
+        let report = retention.prune_once().await.expect("prune succeeds");
 
         assert_eq!(report.pruned, 1);
         assert!(!report.batch_exhausted);
@@ -218,12 +213,7 @@ mod tests {
                 .expect("query")
                 .is_none()
         );
-        for survivor in [
-            fresh_dispatched,
-            undated_dispatched,
-            pending,
-            failed,
-        ] {
+        for survivor in [fresh_dispatched, undated_dispatched, pending, failed] {
             assert!(
                 crate::entity::Entity::find_by_id(survivor)
                     .one(&db)

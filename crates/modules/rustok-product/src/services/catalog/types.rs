@@ -132,7 +132,10 @@ pub(crate) fn normalize_storefront_currency_code(
         return Ok(None);
     };
     let normalized = currency_code.to_ascii_uppercase();
-    if normalized.len() != 3 || !normalized.chars().all(|character| character.is_ascii_alphabetic())
+    if normalized.len() != 3
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
     {
         return Err(CommerceError::Validation(
             "currency_code must be a three-letter ISO 4217 code".to_string(),
@@ -364,7 +367,6 @@ pub struct StorefrontProductListPrice {
     pub compare_at_amount: Option<Decimal>,
     pub on_sale: bool,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminProductList {

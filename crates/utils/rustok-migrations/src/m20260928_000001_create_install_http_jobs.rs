@@ -95,7 +95,6 @@ enum InstallHttpJobs {
     UpdatedAt,
 }
 
-
 #[cfg(test)]
 mod tests {
     use sea_orm::Database;

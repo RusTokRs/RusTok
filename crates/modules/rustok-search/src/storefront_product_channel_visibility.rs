@@ -13,7 +13,8 @@ pub(crate) fn storefront_channel_visibility_sql(
     bound_values: &mut Vec<Value>,
     next_param: &mut usize,
 ) -> String {
-    let product_allowed_slugs = format!("{payload_column} #> '{PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH}'");
+    let product_allowed_slugs =
+        format!("{payload_column} #> '{PRODUCT_ALLOWED_CHANNEL_SLUGS_PATH}'");
     let blog_allowed_slugs = format!("{payload_column} #> '{BLOG_ALLOWED_CHANNEL_SLUGS_PATH}'");
     let channel_placeholder = normalized_trusted_channel_slug(channel).map(|slug| {
         let placeholder = format!("${}", *next_param);

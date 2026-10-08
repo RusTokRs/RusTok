@@ -154,4 +154,3 @@ fn test_dioxus_toc_instantiation() {
     });
     dom.rebuild_in_place();
 }
-

@@ -47,28 +47,60 @@ pub fn build_order_tracking_steps(status: &str, is_ru: bool) -> Vec<OrderTrackin
     let step_defs = [
         (
             1,
-            if is_ru { "Оформлен" } else { "Order Placed" },
-            if is_ru { "Заказ получен системой" } else { "Order received" },
+            if is_ru {
+                "Оформлен"
+            } else {
+                "Order Placed"
+            },
+            if is_ru {
+                "Заказ получен системой"
+            } else {
+                "Order received"
+            },
         ),
         (
             2,
-            if is_ru { "Оплачен" } else { "Payment Confirmed" },
-            if is_ru { "Оплата подтверждена" } else { "Payment processed" },
+            if is_ru {
+                "Оплачен"
+            } else {
+                "Payment Confirmed"
+            },
+            if is_ru {
+                "Оплата подтверждена"
+            } else {
+                "Payment processed"
+            },
         ),
         (
             3,
             if is_ru { "Сборка" } else { "Processing" },
-            if is_ru { "Комплектуется на складе" } else { "Packing items" },
+            if is_ru {
+                "Комплектуется на складе"
+            } else {
+                "Packing items"
+            },
         ),
         (
             4,
             if is_ru { "В пути" } else { "In Transit" },
-            if is_ru { "Передан в службу доставки" } else { "Handed to courier" },
+            if is_ru {
+                "Передан в службу доставки"
+            } else {
+                "Handed to courier"
+            },
         ),
         (
             5,
-            if is_ru { "Доставлен" } else { "Delivered" },
-            if is_ru { "Вручен получателю" } else { "Successfully delivered" },
+            if is_ru {
+                "Доставлен"
+            } else {
+                "Delivered"
+            },
+            if is_ru {
+                "Вручен получателю"
+            } else {
+                "Successfully delivered"
+            },
         ),
     ];
 

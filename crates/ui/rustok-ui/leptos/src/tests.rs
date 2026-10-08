@@ -277,4 +277,3 @@ fn test_render_toc_ssr() {
     assert!(html.contains("Overview"));
     assert!(html.contains("Details"));
 }
-

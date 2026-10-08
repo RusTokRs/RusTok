@@ -378,7 +378,6 @@ async fn setup_db() -> DatabaseConnection {
         migration.up(&manager).await.expect("module migration");
     }
 
-
     db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         r#"

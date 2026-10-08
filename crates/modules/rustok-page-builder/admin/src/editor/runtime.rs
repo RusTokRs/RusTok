@@ -459,12 +459,16 @@ impl AdminEditorRuntime {
         self.controller.set(state.controller.clone());
         self.last_error.set(state.last_error.clone());
         self.last_announcement.set(state.last_announcement.clone());
-        self.server_preview_html.set(state.server_preview_html.clone());
+        self.server_preview_html
+            .set(state.server_preview_html.clone());
         self.preview_in_progress.set(state.preview_in_progress);
         self.runtime_context.set(state.runtime_context.clone());
-        self.runtime_context_configured.set(state.runtime_context_configured);
-        self.active_runtime_scenario.set(state.active_runtime_scenario.clone());
-        self.runtime_publish_gate_evaluation.set(state.runtime_publish_gate_evaluation.clone());
+        self.runtime_context_configured
+            .set(state.runtime_context_configured);
+        self.active_runtime_scenario
+            .set(state.active_runtime_scenario.clone());
+        self.runtime_publish_gate_evaluation
+            .set(state.runtime_publish_gate_evaluation.clone());
         self.preview_request.set(state.preview_request.clone());
     }
 }

@@ -234,8 +234,8 @@ mod tests {
     use sea_orm_migration::prelude::SchemaManager;
 
     use super::*;
-    use sea_orm::TransactionTrait;
     use crate::{CreateTaxonomyTermInput, ModuleTermCreateInput, TaxonomyModule};
+    use sea_orm::TransactionTrait;
 
     async fn setup() -> (DatabaseConnection, TaxonomyService) {
         let db = setup_test_db().await;
@@ -264,7 +264,11 @@ mod tests {
         slug: &str,
     ) -> Uuid {
         if scope_type == TaxonomyScopeType::Module {
-            let txn = service.database().begin().await.expect("transaction should start");
+            let txn = service
+                .database()
+                .begin()
+                .await
+                .expect("transaction should start");
             let term_id = service
                 .create_module_term_in_tx(
                     &txn,

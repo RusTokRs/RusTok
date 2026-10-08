@@ -646,7 +646,10 @@ pub(crate) fn validate_provider_operation_tenant(tenant_id: Uuid) -> Fulfillment
     Ok(())
 }
 
-pub(crate) fn validate_operation_identity(tenant_id: Uuid, operation_id: Uuid) -> FulfillmentResult<()> {
+pub(crate) fn validate_operation_identity(
+    tenant_id: Uuid,
+    operation_id: Uuid,
+) -> FulfillmentResult<()> {
     if tenant_id.is_nil() || operation_id.is_nil() {
         return Err(FulfillmentError::Validation(
             "provider operation requires non-nil tenant_id and operation_id".to_string(),

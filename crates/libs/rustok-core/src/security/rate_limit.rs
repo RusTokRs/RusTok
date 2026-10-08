@@ -266,10 +266,7 @@ mod tests {
             limiter.check_api_key(api_key).await,
             RateLimitResult::Allowed
         );
-        assert_eq!(
-            limiter.check_login(login).await,
-            RateLimitResult::Allowed
-        );
+        assert_eq!(limiter.check_login(login).await, RateLimitResult::Allowed);
 
         let debug = format!("{limiter:?}");
         assert!(!debug.contains(api_key));

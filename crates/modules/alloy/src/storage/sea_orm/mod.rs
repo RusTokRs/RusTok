@@ -17,8 +17,8 @@ use crate::model::{
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 
-pub mod entities;
 mod candidates;
+pub mod entities;
 mod mapping;
 mod retention;
 mod revisions;
@@ -28,10 +28,10 @@ mod tests;
 
 #[allow(unused_imports)]
 pub use entities::{
-    component_candidate, component_candidate_build, component_candidate_build_execution,
-    component_candidate_review, draft_purge_receipt, draft_retention_receipt, draft_review,
-    draft_revision, draft_test_run, draft_tombstone, release_import, ActiveModel, Column, Entity,
-    Model,
+    ActiveModel, Column, Entity, Model, component_candidate, component_candidate_build,
+    component_candidate_build_execution, component_candidate_review, draft_purge_receipt,
+    draft_retention_receipt, draft_review, draft_revision, draft_test_run, draft_tombstone,
+    release_import,
 };
 
 #[derive(Clone)]
@@ -144,7 +144,9 @@ impl SeaOrmStorage {
                 .col_expr(Column::AuthorId, Expr::value(script.author_id.clone()))
                 .col_expr(
                     Column::SourceProvenance,
-                    Expr::value(mapping::source_provenance_to_json(&script.source_provenance)?),
+                    Expr::value(mapping::source_provenance_to_json(
+                        &script.source_provenance,
+                    )?),
                 )
                 .col_expr(Column::ErrorCount, Expr::value(script.error_count as i32))
                 .col_expr(Column::LastErrorAt, Expr::value(script.last_error_at))

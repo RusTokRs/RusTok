@@ -329,7 +329,11 @@ impl BrandPort for BrandService {
             .all(&self.db)
             .await?;
 
-        Ok(Self::assemble_brand_dto(updated_brand, all_translations, None))
+        Ok(Self::assemble_brand_dto(
+            updated_brand,
+            all_translations,
+            None,
+        ))
     }
 
     async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {

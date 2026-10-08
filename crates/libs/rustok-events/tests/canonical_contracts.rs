@@ -101,8 +101,12 @@ fn sample_events() -> Vec<DomainEvent> {
         DomainEvent::ProductCreated { product_id: id(24) },
         DomainEvent::ProductUpdated { product_id: id(25) },
         DomainEvent::ProductPublished { product_id: id(26) },
-        DomainEvent::ProductUnpublished { product_id: id(1013) },
-        DomainEvent::ProductArchived { product_id: id(1014) },
+        DomainEvent::ProductUnpublished {
+            product_id: id(1013),
+        },
+        DomainEvent::ProductArchived {
+            product_id: id(1014),
+        },
         DomainEvent::ProductDeleted { product_id: id(27) },
         DomainEvent::VariantCreated {
             variant_id: id(28),

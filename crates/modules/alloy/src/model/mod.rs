@@ -30,8 +30,7 @@ pub use import::{
     AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
 };
 pub use presentation::{
-    ScriptPresentation, script_presentation_locale_revision,
-    script_presentation_resource_revision,
+    ScriptPresentation, script_presentation_locale_revision, script_presentation_resource_revision,
 };
 pub use provenance::{
     AuthoringOrigin, MAX_PROVENANCE_TOOL_NAME_LENGTH, ProvenanceError, SourceProvenance,

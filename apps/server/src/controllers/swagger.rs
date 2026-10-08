@@ -8,9 +8,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use utoipa::OpenApi;
 use utoipa::openapi::OpenApi as OpenApiDoc;
-use utoipa::openapi::security::{
-    ApiKey, ApiKeyValue, SecurityRequirement, SecurityScheme,
-};
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityRequirement, SecurityScheme};
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
@@ -363,12 +361,7 @@ fn collect_component_references(
     match value {
         Value::Array(values) => {
             for value in values {
-                collect_component_references(
-                    value,
-                    schema_names,
-                    security_names,
-                    tag_names,
-                );
+                collect_component_references(value, schema_names, security_names, tag_names);
             }
         }
         Value::Object(map) => {
@@ -396,12 +389,7 @@ fn collect_component_references(
             }
 
             for value in map.values() {
-                collect_component_references(
-                    value,
-                    schema_names,
-                    security_names,
-                    tag_names,
-                );
+                collect_component_references(value, schema_names, security_names, tag_names);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
@@ -488,7 +476,12 @@ impl utoipa::Modify for SecurityAddon {
             "/v2/catalog/runner/{claim_id}/complete",
             "/v2/catalog/runner/{claim_id}/fail",
         ] {
-            if let Some(operation) = openapi.paths.paths.get_mut(path).and_then(|item| item.post.as_mut()) {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.post.as_mut())
+            {
                 operation.security = Some(vec![SecurityRequirement::new(
                     "runner_token",
                     std::iter::empty::<String>(),
@@ -503,8 +496,6 @@ mod tests {
     use super::{ApiDoc, build_openapi_document};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
-
-
 
     #[test]
     fn openapi_includes_all_documented_core_paths() {
@@ -632,7 +623,10 @@ mod tests {
                 "/v2/catalog/publish/{request_id}/author-signature",
                 HttpMethod::Post,
             ),
-            ("/v2/catalog/publish/{request_id}/validate", HttpMethod::Post),
+            (
+                "/v2/catalog/publish/{request_id}/validate",
+                HttpMethod::Post,
+            ),
             ("/v2/catalog/publish/{request_id}/stages", HttpMethod::Post),
             ("/v2/catalog/publish/{request_id}/approve", HttpMethod::Post),
             ("/v2/catalog/publish/{request_id}/reject", HttpMethod::Post),
@@ -649,10 +643,9 @@ mod tests {
                 .paths
                 .get_path_operation(path, method)
                 .unwrap_or_else(|| panic!("marketplace operation must exist: {path}"));
-            let security = operation
-                .security
-                .as_ref()
-                .unwrap_or_else(|| panic!("marketplace operation must require bearer auth: {path}"));
+            let security = operation.security.as_ref().unwrap_or_else(|| {
+                panic!("marketplace operation must require bearer auth: {path}")
+            });
 
             assert_eq!(
                 serde_json::to_value(security).expect("security serializes"),
@@ -749,16 +742,8 @@ mod tests {
             ("/api/users", HttpMethod::Get, "GET"),
             ("/api/v1/flex/schemas", HttpMethod::Get, "GET"),
             ("/api/v1/flex/schemas", HttpMethod::Post, "POST"),
-            (
-                "/api/v1/flex/schemas/{schema_id}",
-                HttpMethod::Get,
-                "GET",
-            ),
-            (
-                "/api/v1/flex/schemas/{schema_id}",
-                HttpMethod::Put,
-                "PUT",
-            ),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Get, "GET"),
+            ("/api/v1/flex/schemas/{schema_id}", HttpMethod::Put, "PUT"),
             (
                 "/api/v1/flex/schemas/{schema_id}",
                 HttpMethod::Delete,
@@ -1001,9 +986,7 @@ mod tests {
             "disabled Flex request schemas must not remain publicly advertised"
         );
         assert!(
-            !components
-                .schemas
-                .contains_key("FlexSchemaResponse"),
+            !components.schemas.contains_key("FlexSchemaResponse"),
             "disabled Flex response schemas must not remain publicly advertised"
         );
     }

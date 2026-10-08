@@ -277,7 +277,8 @@ pub async fn set_reply_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    runtime.vote_service()
+    runtime
+        .vote_service()
         .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
         .await
         .map_err(crate::controllers::map_forum_error)?;
@@ -349,7 +350,8 @@ pub async fn clear_reply_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    runtime.vote_service()
+    runtime
+        .vote_service()
         .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
         .map_err(crate::controllers::map_forum_error)?;

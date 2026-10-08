@@ -123,7 +123,6 @@ struct CancelOrderInput {
     reason: Option<String>,
 }
 
-
 async fn request<V, T>(
     query: &str,
     variables: Option<V>,

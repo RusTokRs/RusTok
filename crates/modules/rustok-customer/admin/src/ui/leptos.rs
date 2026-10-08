@@ -213,7 +213,11 @@ pub fn CustomerAdmin() -> impl IntoView {
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
     let filtered_customers = Memo::new(move |_| {
-        let raw = customers.get().and_then(Result::ok).map(|l| l.items).unwrap_or_default();
+        let raw = customers
+            .get()
+            .and_then(Result::ok)
+            .map(|l| l.items)
+            .unwrap_or_default();
         let current_filters = filters.get();
         filter_customers(&raw, &current_filters)
     });
@@ -226,7 +230,8 @@ pub fn CustomerAdmin() -> impl IntoView {
         CustomerAdminListStateKind::Empty,
         &list_state_labels,
         None,
-    ).message;
+    )
+    .message;
 
     let cell_locale = ui_locale.clone();
     let cell_editing_id = editing_id;
@@ -694,10 +699,7 @@ struct CustomerFormSignals {
     phone: WriteSignal<String>,
 }
 
-fn apply_customer_form_snapshot(
-    snapshot: CustomerAdminFormSnapshot,
-    signals: CustomerFormSignals,
-) {
+fn apply_customer_form_snapshot(snapshot: CustomerAdminFormSnapshot, signals: CustomerFormSignals) {
     signals.editing_id.set(snapshot.editing_customer_id);
     signals.selected.set(snapshot.selected_detail);
     signals.user_id.set(snapshot.user_id);

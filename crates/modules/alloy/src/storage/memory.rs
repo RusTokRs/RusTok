@@ -544,15 +544,11 @@ impl ScriptRegistry for InMemoryStorage {
         command
             .validate()
             .map_err(|error| ScriptError::InvalidLineage(error.to_string()))?;
-        let parent_release = command
-            .script
-            .parent_release
-            .clone()
-            .ok_or_else(|| {
-                ScriptError::InvalidLineage(
-                    "validated imported draft must have a parent release".into(),
-                )
-            })?;
+        let parent_release = command.script.parent_release.clone().ok_or_else(|| {
+            ScriptError::InvalidLineage(
+                "validated imported draft must have a parent release".into(),
+            )
+        })?;
         let key = (command.script.tenant_id, command.idempotency_key);
         let mut receipts = self.release_imports.write().await;
         let mut scripts = self.scripts.write().await;

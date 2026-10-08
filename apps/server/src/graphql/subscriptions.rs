@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
-use std::fmt::Display;
 use futures_util::stream;
 use sea_orm::DatabaseConnection;
+use std::fmt::Display;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::types::BuildProgressEvent;
@@ -37,7 +37,9 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
         ],
     )
     .await
-    .map_err(|err| graphql_internal_error("Unable to resolve build subscription permission", err))?;
+    .map_err(|err| {
+        graphql_internal_error("Unable to resolve build subscription permission", err)
+    })?;
 
     if !can_read_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
