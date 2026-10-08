@@ -36,6 +36,18 @@ Consequences, stated plainly:
   - `scripts/audit/rustfmt_check.mjs` — reproduces `cargo fmt --check` per file using
     `@scalar/rust-fmt` (the actual rustfmt compiled to wasm; upstream asserts byte-identical output
     against the native CLI and rustfmt's own 345-file corpus). Supports `--write`.
+  - `scripts/audit/rust_module_resolution_check.py` — resolves every `mod`, `#[path] mod`,
+    `include!`, `include_str!` and `include_bytes!` target in a crate. A missing target is E0583 /
+    E0584, the one class of compile error that needs no type information to detect.
+  - `scripts/audit/admin_module_registry_check.py` — replays `apps/admin/build.rs`'s registry
+    contract: each module manifest's `[provides.admin_ui].leptos_crate` must have an
+    `admin/Cargo.toml`, must be a dependency of `apps/admin`, and must export the generated
+    `{PascalSlug}Admin` component. The build script checks only the first of the three.
+  - Calibration: both checkers were run against deliberately broken fixtures before being trusted
+    (missing `mod`/`#[path]`/`include!` targets; a registry whose crate is unlisted and whose
+    component is renamed) and against healthy controls, and they fail and pass accordingly. They
+    were then run over the audited crates: 407 declarations resolve, and all 34 admin-UI modules
+    satisfy the registry contract.
   - Calibration: the wasm formatter reproduces the repository's own formatting history exactly —
     it re-derives the 55 files that upstream commit `6d353fda` reformatted, and it flags nothing
     else in those packages except one boundary case discussed in F-6. A tool that is wrong in
@@ -48,9 +60,9 @@ Consequences, stated plainly:
 | F-1 | `Verify editor capability policy` | **Fixed** — brittle literal marker in the gate |
 | F-2 | `Run Fly browser contract tests` | **Fixed** — 6 assertions tied to pre-refactor code shapes; suites also never ran before `--lib` was removed |
 | F-3 | `Check Fly adapter feature combinations` | Root-caused (hypothesis): the `desktop` combination needs WebKitGTK/GTK system libraries the job never installs. **Workflow patch proposed, not applied** (§4.1) |
-| F-4 | `Check admin SSR Page Builder endpoint` | **Unresolved — needs toolchain** (§4.2) |
+| F-4 | `Check admin SSR Page Builder endpoint` | **Unresolved — needs toolchain**, but narrowed by static sweep (§4.2): the generated admin registry, every module declaration and the build script's own validation all resolve, and the same CI job compiles the Pages/Page Builder crates |
 | F-5 | `Lint Fly browser and Page Builder integrations` | **Unresolved — needs toolchain** (§4.3) |
-| F-6 | `Check focused formatting` (`Focused formatting`) | Root-caused and bounded: 56 in-package files at the audit base, 55 of them reformatted by upstream `6d353fda`, 1 remaining case judged a formatter-version boundary (§4.4) |
+| F-6 | `Check focused formatting` (`Focused formatting`) | **Closed upstream, verified.** The step is green in run `37732431202` (head `6d353fda`, the format commit) and `bundle.rs` is canonical for the pinned stable toolchain — leave it (§4.4) |
 | F-7 | `Audit dependencies` (advisory job, non-blocking) | Out of scope; job is explicitly advisory |
 
 Two source defects were also found and fixed (F-8, F-9 below).
@@ -162,12 +174,30 @@ runner settles this in one command.
 
 ### 4.2 F-4 — `Check admin SSR Page Builder endpoint`
 
-`cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr` failed in
-runs `37723570779` and earlier. No static evidence explains it: the crate's default feature set is
-`["ssr"]`, so the invocation is the plain default build, and the Page Builder contribution glue in
-`apps/admin/src/app/page_builder_contributions.rs` (the file this step exists to protect) was
-reformatted upstream in `6d353fda` with no semantic change. **Needs toolchain** — run the command
-and triage, or read the failing step's log.
+`cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr` fails in run
+`37732431202` (head `6d353fda`, the tip of `main`) and in every earlier run inspected. The crate is
+`apps/admin`; its default feature set is `["ssr"]`, so the invocation is the plain default build,
+and the Page Builder contribution glue in `apps/admin/src/app/page_builder_contributions.rs` (the
+file this step exists to protect) was reformatted upstream in `6d353fda` with no semantic change.
+
+Static sweep performed for this audit, using the two new checkers in §1:
+
+- **The generated registry resolves.** `apps/admin/build.rs` turns every module manifest with
+  `[provides.admin_ui].leptos_crate` into generated Rust naming `{leptos_crate}::{PascalSlug}Admin`.
+  All 34 such modules have their crate listed in `apps/admin/Cargo.toml` and export the expected
+  root component; the build script's own `admin/Cargo.toml` ↔ `leptos_crate` validation passes for
+  every module. A registry mismatch would have produced E0433/E0425 in exactly this step, and there
+  is none.
+- **Every module declaration resolves.** 407 `mod`/`#[path] mod`/`include!` targets across
+  `apps/admin` and the audited crates exist; a missing one would be E0583.
+- **The failure is admin-specific, not environmental.** In the same job and on the same runner,
+  `Run Pages domain unit tests`, `Run Page Builder admin unit tests`, `Check Pages storefront` and
+  `Check Page Builder storefront` all pass, and `Lint Fly` compiles `fly` and its peers. Only the
+  `rustok-admin` SSR build fails.
+
+That leaves real compile semantics (a type/feature error inside `apps/admin` or its unique
+dependency set) or the step's environment. **Needs toolchain** — run the command and read the first
+error, or fetch the failing step's log.
 
 ### 4.3 F-5 — `Lint Fly browser and Page Builder integrations`
 
@@ -196,13 +226,25 @@ columns:
     RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq, validate_project,
 ```
 
-The wasm build (rustfmt 1.88-era nightly) wants that line split; upstream's formatter run left it
-untouched, and the same file contains a 100-column line that another crate's import block keeps
-unchanged in a file the formatter accepts. The evidence says this is a nightly-vs-stable boundary
-case, **not** a violation: splitting it on a nightly verdict risks *creating* the very failure it
-is meant to fix. Recommendation: leave `bundle.rs` alone and confirm with
-`cargo fmt -p fly -- --check`; if stable agrees with the nightly, the two-line split below is the
-expected output.
+**Updated 2026-10-08: closed upstream and verified, and the decision is to leave `bundle.rs`
+untouched.** Two independent measurements settle it:
+
+- **The CI step is green at the tip of `main`.** In run `37732431202` (head `6d353fda`, the format
+  commit) the `Focused formatting` job and its `Check focused formatting` step both conclude
+  `success`. The repo pins `channel = "stable"` in `rust-toolchain.toml`, so a green
+  `cargo fmt … -- --check` at that commit *is* the statement that `bundle.rs` is canonical for the
+  toolchain CI uses. The F-6 failure belonged to the pre-format state — which is the state this
+  branch is based on, not a defect of this change set.
+- **Formatter calibration, re-measured at this HEAD.** The wasm formatter flags 56 files in the
+  F-6 package scope; exactly the 55 of them that upstream's format run reformatted are flagged, and
+  exactly one file it left untouched is flagged — `bundle.rs`. The disputed line is exactly
+  **100 columns**, and the repository has no `rustfmt.toml`, so `max_width` is rustfmt's default
+  **100**: the line is inside the contract, not over it.
+
+Splitting it would follow a nightly-only verdict and move the file away from what stable's
+`--check` accepts — and the CI evidence above is that stable accepts the file as it stands.
+Recommendation, now a decision: **leave `bundle.rs` alone.** The two-line split below stays for
+reference in case a future stable toolchain adopts the nightly behaviour.
 
 ```rust
     RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
@@ -337,9 +379,12 @@ reader does not repeat the work:
   `cargo build` for `rustok-page-builder` recording `E0252` (three duplicate imports at
   `service.rs:13`) and `E0433` (`crate::runtime_telemetry::crate::runtime_telemetry::…` at
   `service.rs:1295,1307`). All five errors are fixed at the audit base — the duplicate import block
-  and the malformed paths are gone. The file is a stale receipt: it is in both `typos.toml` and
-  `_typos.toml` ignore lists, and nothing references it. Recommend moving it to the evidence archive
-  or deleting it, so the repository root does not advertise a defect that no longer exists.
+  and the malformed paths are gone. The file was a stale receipt: it sat in both `typos.toml` and
+  `_typos.toml` ignore lists and nothing referenced it. **Retired in this change set — deleted.**
+  There is no tracked evidence archive to move it to (`scripts/evidence/` holds workflow-side
+  producer scripts, and `output/` is git-ignored), the capture survives in git history, and
+  `AGENTS.md` §15 directs that superseded current-state material be removed once the replacement is
+  canonical. Both `typos` entries were removed with it.
 - Two gates assert a *tag* where the repository's supply-chain policy pins a *SHA*:
   `verify-page-builder-static-sanitization-execution.mjs` (literal `actions/upload-artifact@v7`)
   and `verify-pages-consumer-properties-source-execution.mjs` (same). All workflows pin the
@@ -370,14 +415,31 @@ reader does not repeat the work:
 
 ## 8. Recommended order of work
 
-1. Apply the `bundle.rs` decision in §4.4 and run `cargo fmt -p fly -- --check` (one minute; closes F-6).
+1. ~~Apply the `bundle.rs` decision in §4.4~~ — done: leave it, verified green in CI at the tip of
+   `main` (§4.4).
 2. Apply the adapter-dependency patch in §4.1 (F-3) and run the feature-combination step.
 3. Run `cargo test -p fly-browser --all-targets` and `cargo clippy … -- -D warnings` locally to
    close F-2 and name F-5 (F-2 is expected to pass; F-5 needs the warning text).
 4. Triage F-4 with the failing log.
 5. ~~Schedule §5 (C-1 residual) as a migration-sized change~~ — done; review the migration
    behaviour in §5 on a database that already holds baselines, and confirm `cargo test -p fly -p rustok-pages`.
-6. Repair the two `upload-artifact` gates (§7) and retire the stale root receipt.
+6. Repair the two `upload-artifact` gates (§7) — **left to the maintainer** (CI/workflow scope);
+   the stale root receipt is ~~retired~~ done.
+
+## 8.1 CI snapshot at the tip of `main` (`6d353fda`, run `37732431202`)
+
+Recorded because it separates "fixed upstream" from "still open", which a red badge does not:
+
+| Step in job `Focused tests and source guards` | Conclusion at `6d353fda` |
+|---|---|
+| `Run Fly browser contract tests` (F-2) | **failure** — fixed on this branch |
+| `Verify editor capability policy` (F-1) | **failure** — fixed on this branch |
+| `Check Fly adapter feature combinations` (F-3) | **failure** — needs the workflow patch (§4.1) |
+| `Check admin SSR Page Builder endpoint` (F-4) | **failure** — needs the toolchain or the log (§4.2) |
+| `Lint Fly browser and Page Builder integrations` (F-5) | **failure** — needs the clippy output (§4.3) |
+| `Focused formatting` (F-6, separate job) | **success** — closed upstream (§4.4) |
+| `Run Fly core tests`, `Run Fly UI and web runtime tests`, `Check Fly framework adapters`, `Check Fly without the platform i18n dependency`, `Run Page Builder admin unit tests`, `Run Pages domain unit tests`, `Run Pages integration unit tests`, `Check Pages storefront`, `Check Page Builder storefront`, `Lint Fly`, and all 16 `Verify …` source guards | success |
+| `Audit dependencies` (F-7, advisory job) | failure — advisory, out of scope |
 
 ## 9. What this audit does not establish
 

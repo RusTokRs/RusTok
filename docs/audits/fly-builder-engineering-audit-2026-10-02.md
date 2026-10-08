@@ -1092,6 +1092,18 @@ workflow. Этого мало: `scripts/verify/verify-fly-ui-capability-policy.m
 «зелено» одним требованием — расширить мета-гейт или добавить проверку обязательных контекстов
 ветки, иначе следующий такой гейт снова проживёт незамеченным.
 
+**Снимок статуса на вершине `main` (`6d353fda`, прогон `37732431202`).** Он отделяет «исправлено
+выше по потоку» от «ещё открыто», чего красный бейдж не показывает. Падают: `Run Fly browser
+contract tests` (F-2 — исправлен в этой ветке), `Verify editor capability policy` (F-1 — исправлен
+в этой ветке), `Check Fly adapter feature combinations` (F-3 — нужен патч workflow), `Check admin
+SSR Page Builder endpoint` (F-4 — нужен тулчейн или лог шага), `Lint Fly browser and Page Builder
+integrations` (F-5 — нужен вывод clippy), плюс advisory-job `Audit dependencies` (F-7). Зелены, в
+частности: `Focused formatting` (F-6), `Run Fly core tests`, `Run Pages domain unit tests`,
+`Run Page Builder admin unit tests`, `Lint Fly` и все 16 шагов `Verify …`. Для F-4 статическая
+проверка (скрипты `scripts/audit/*`, §1 нового аудита) исключила генератор реестра админки и
+разрешение модулей: не разрешаются 0 целей, реестр из 34 модулей корректен, а в том же job
+собираются Pages/Page Builder — то есть ошибка лежит в семантике компиляции `apps/admin`.
+
 ### 10.4. Ответ на §9 («что обязательно подтвердить сборкой»)
 
 - Пункт 3 (8 contract-тестов `fly-browser` никогда не исполнялись) — **причина падения найдена**:
@@ -1113,14 +1125,22 @@ workflow. Этого мало: `scripts/verify/verify-fly-ui-capability-policy.m
   («format workspace») переформатировал **ровно 55** из них (совпадение множеств один в один,
   лишних файлов нет). Оставшийся — `crates/ui/fly/src/bundle.rs`: строка продолжения `use`-блока
   ровно 100 колонок. Форматер nightly (через wasm-сборку rustfmt) хочет её разбить, а прогон
-  upstream — тот, что форматировал 55 файлов, — её не тронул. Это похоже на расхождение
-  nightly/stable на границе 100 колонок, а не на нарушение; разбивать её на основании вердикта
-  nightly рискованно, нужен `cargo fmt -p fly -- --check`.
+  upstream — тот, что форматировал 55 файлов, — её не тронул. Это расхождение nightly/stable на
+  границе 100 колонок, а не нарушение: в репозитории нет `rustfmt.toml`, значит `max_width` —
+  дефолтные 100, и спорная строка ровно 100 колонок, то есть в пределах контракта.
+  **Проверено по CI 2026-10-08:** в прогоне `37732431202` (head `6d353fda` — тот самый коммит
+  форматирования) job `Focused formatting` и шаг `Check focused formatting` завершились `success`,
+  а `rust-toolchain.toml` пинит `channel = "stable"`. Значит, файл каноничен для того тулчейна,
+  которым форматирует CI, и F-6 закрыт на main. Решение: не трогать `bundle.rs`.
 - `PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md` в корне (928 строк) — снимок падения сборки
   `rustok-page-builder` с `E0252` (дубли импортов в `service.rs:13`) и `E0433`
   (`crate::runtime_telemetry::crate::runtime_telemetry::…`, `service.rs:1295,1307`). На проверенной
-  ревизии все пять ошибок исправлены; ничего на файл не ссылается, а из проверки опечаток он
-  исключён. Рекомендация: перенести в архив доказательств или удалить.
+  ревизии все пять ошибок исправлены; ничего на файл не ссылался, а из проверки опечаток он был
+  исключён. **Выведен из дерева в этом наборе изменений — удалён:** отслеживаемого архива
+  доказательств в репозитории нет (`scripts/evidence/` — это workflow-скрипты, `output/` в
+  `.gitignore`), снимок сохраняется в истории git, а `AGENTS.md` §15 предписывает удалять
+  устаревшее состояние после канонизации замены. Обе записи в `typos.toml`/`_typos.toml` убраны
+  вместе с файлом.
 - Два гейта (`verify-page-builder-static-sanitization-execution.mjs`,
   `verify-pages-consumer-properties-source-execution.mjs`) требуют литерал
   `actions/upload-artifact@v7`, тогда как все workflow пинят неизменяемый SHA v7.0.1. Устарели
